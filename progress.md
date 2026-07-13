@@ -34,7 +34,8 @@
 - [x] 실제 ttyd WebSocket shell 회귀 테스트를 Docker smoke에 추가했다.
 - [x] `0.1.1-dev` amd64 build, 25 unit/policy tests, full smoke, Chrome 렌더·명령 입력을 검증했다.
 - [x] changelog, 사용 설명서, 아키텍처, 테스트 계획을 실제 결과에 맞췄다.
-- [ ] PR/CI 후 public `main`에 병합하고 사용자의 HAOS 업데이트 재검증을 기다린다.
+- [x] PR [#3](https://github.com/Kanu-Coffee/codex-for-home-assistant/pull/3)의 CI를 통과하고 merge commit `b9e2808`로 public `main`에 병합했다. main CI run `29222324024`도 통과했다.
+- 다음: 사용자가 App Store 저장소를 새로고침해 `0.1.1-dev`로 업데이트하고 HAOS Ingress/resize/reconnect를 재검증한다.
 
 ### 2026-07-13 — public App Store 설치 전달
 
@@ -66,6 +67,7 @@
 - [x] Public repository/main delivery: PASS — visibility PUBLIC, PR #1 MERGED, anonymous repository/App source reads, final main CI.
 - [x] Local Ingress terminal regression: PASS — actual ttyd WebSocket handshake and command returned `/config`, `TERM=tmux-256color`; Chrome rendered the shell with no console warning/error.
 - [x] HAOS App repository install/start: PASS — public 저장소 설치와 App/S6 서비스 시작 로그 확인.
+- [x] Ingress TERM fix delivery: PASS — PR #3 merge commit `b9e2808`, final public `main` CI run `29222324024`의 3개 job 통과.
 - [ ] 실제 Ingress/WebSocket/resize/browser tmux reattach: `0.1.0-dev` FAIL — transport 200/101 성공 후 TERM 손실; `0.1.1-dev` 로컬 수정 PASS, HAOS 재검증 필요.
 - [ ] 실제 device auth 및 App update 인증 영속성: NOT RUN — 사용자 인증/HAOS 필요.
 - [ ] Home Assistant Network 2223 및 Codex Desktop Remote SSH: NOT RUN — HAOS/desktop E2E 필요.
@@ -186,13 +188,14 @@
 
 ## 최근 완료 기록
 
-### 2026-07-13 — Ingress terminal TERM 수정 후보
+### 2026-07-13 — Ingress terminal TERM 수정 배포
 
 - HAOS 증거: repository 설치/App 시작과 Ingress `/` 200, `/token` 200, `/ws` 101은 성공했다. tmux는 `terminal does not support clear`로 실패했다.
 - 원인: ttyd의 연결별 `TERM=xterm-256color`가 S6 `with-contenv`에서 제거됐다.
 - 수정: web entrypoint의 외부 TERM 복원, tmux pane TERM 보존, App `0.1.1-dev` version bump, rootfs LF 강제.
 - 로컬 검증: 실패 재현 후 actual WebSocket shell `/config:tmux-256color`, Chrome 입력·출력, amd64 build/full smoke PASS.
-- 남음: public `main` 병합 후 사용자가 App Store를 새로고침해 `0.1.1-dev`로 업데이트하고 HAOS Ingress를 재검증한다.
+- 배포: PR [#3](https://github.com/Kanu-Coffee/codex-for-home-assistant/pull/3)을 merge commit `b9e2808`로 public `main`에 병합했고, final main CI run `29222324024`가 통과했다.
+- 남음: 사용자가 App Store를 새로고침해 `0.1.1-dev`로 업데이트하고 HAOS Ingress를 재검증한다.
 
 ### 2026-07-13 — public App repository main 배포
 
