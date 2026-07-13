@@ -4,8 +4,8 @@
 
 ## Project Status
 
-- 상태: **M2 HAOS Web UI/Codex/Core/Supervisor/Remote SSH PASS / 0.1.3-dev 로그 helper 실기 재검증 대기**
-- 현재 마일스톤: **M2 — HAOS 실기 검증 및 0.1.0**
+- 상태: **amd64 주요 사용자 경로 PASS / M2 수용·첫 non-dev 릴리스 게이트 대기**
+- 현재 마일스톤: **M2 — HAOS 실기 검증 및 첫 non-dev 릴리스**
 - 마지막 문서 기준일: **2026-07-13**
 - 저장소: public `Kanu-Coffee/codex-for-home-assistant`, default branch `main`
 
@@ -23,6 +23,20 @@
 - [x] 문서 주도 개발 파일 세트 작성
 
 ## Current Work
+
+### 2026-07-13 — 0.1.3-dev 최종 HAOS 회귀·완료 판정
+
+- 목표: 새 HAOS 보고서와 기존 사용자 E2E 증거를 합쳐 로그 helper, Web UI 재접속, 인증·SSH 경로의 회귀 여부를 판정하고 amd64 MVP와 정식 릴리스의 남은 조건을 분리한다.
+- 실기 결과: `0.1.3-dev`/amd64 보고서는 PASS 16, FAIL 0이다. Core/App 직접 로그 요청과 `ha-core-logs`/`ha-addon-logs self`가 모두 rc 0/nonempty였고, 재접속 뒤 App helper도 stderr 없이 성공했다. raw 로그나 진단 원문은 저장소에 포함하지 않는다.
+- Web UI 결과: 다른 브라우저/환경으로 다시 열었을 때 이전 대화와 터미널이 복구됐고 resize와 `clear` 오류 부재를 확인했다. 사전 session ID가 없어 HAOS의 동일 ID 기계 비교는 미실행이지만, 실제 ttyd 로컬 smoke가 동일 session/pane/pid를 별도로 검증한다.
+- 합산 증거: 보고서 한 회차에서 미실행한 외부 SSH/Remote와 로그인 영속성은 사용자의 기존 mobile Remote → desktop SSH project → HAOS `/config` E2E 및 삭제 없는 연속 업데이트 뒤 인증 유지 결과로 이미 PASS다.
+- 완료 판정: 새 런타임 결함은 없으며 현재 주 사용 경로는 **실사용 가능한 beta/MVP candidate**다. 그러나 저장소의 M1/M2 수용 기준상 HAOS auto-start 양 모드, device-auth·재시작 영속성, 안전한 Core POST service call이 미검증이므로 프로젝트 완료로 표시하지 않는다. 첫 non-dev 릴리스에는 인증/host identity 재시작 확인과 tag/GHCR 배포도 필요하다. Home Assistant `stage`는 M3 평가 전까지 `experimental`을 유지한다. 위험한 Core/App lifecycle 실동작은 구현 결함 증거가 없으므로 자동 실행하지 않는다.
+- 데이터 전환: 이번 변경은 실기 증거와 프로젝트 상태 문서만 갱신한다. App 업데이트도 기능 반영 목적으로 필요하지 않으며 `/data` 초기화나 App 삭제·재설치는 하지 않는다. 영속성 후속 시험도 일반 App 재시작/업데이트로 수행한다.
+- [x] 보고서의 PASS/FAIL/UNVERIFIED를 기존 실기·자동 검증 증거와 대조한다.
+- [x] 실제 결함과 시험 절차상 미확정을 분리하고 MVP/릴리스 완료 여부를 판정한다.
+- [x] `progress.md`, README, App DOCS/CHANGELOG의 실기 상태와 남은 릴리스 게이트를 실제 결과에 맞춘다.
+- [x] Linux pytest 30개, manifest/secret policy, Markdown 20개와 `git diff --check`를 통과했다. App runtime은 바꾸지 않아 로컬 image rebuild를 생략하고 원격 CI의 amd64 build/smoke를 병합 게이트로 사용한다.
+- [x] commit `3598798`을 `agent/live-regression-completion`에 push하고 PR [#9](https://github.com/Kanu-Coffee/codex-for-home-assistant/pull/9)을 생성했다. 최초 head CI run `29242099208`의 App linter, amd64 build/smoke, lint/unit 3개 job이 통과했다. 이 기록은 같은 PR의 public `main` 병합으로 전달하며 최종 merge/main CI는 작업 결과에서 별도로 확인한다.
 
 ### 2026-07-13 — 0.1.3-dev 라이브 회귀 수정·로고·M2 증거 반영
 
@@ -94,13 +108,14 @@
 - [x] Ingress TERM fix delivery: PASS — PR #3 merge commit `b9e2808`, final public `main` CI run `29222324024`의 3개 job 통과.
 - [x] Persistent safety guidance delivery: PASS — PR #5 merge commit `7105bcd`, final public `main` CI run `29225737374`의 lint/unit, App config, amd64 build/smoke 통과.
 - [x] 실제 Ingress/WebSocket shell과 인증된 Codex 실행: PASS — 사용자 `0.1.1-dev` Web UI 실기 확인.
-- [ ] 실제 HAOS UI resize/browser tmux reattach: NOT RUN — 로컬 실제 WebSocket은 PASS, 유효한 Web UI baseline으로 사용자 재검증 필요.
+- [x] 실제 HAOS UI resize/browser tmux reattach: PASS — 다른 브라우저/환경에서 이전 터미널·대화 복구와 resize를 사용자 확인했고 detached `codex-ha` session을 사후 확인했다. 동일 ID 기계 비교는 로컬 실제 WebSocket smoke가 보완한다.
 - [x] App update Codex 인증 영속성: PASS — App 삭제 없이 연속 업데이트한 환경에서 로그인 상태와 인증된 Codex 실행 유지.
 - [ ] device code 로그인 방식 자체: NOT RUN — 현재 인증의 최초 로그인 방식 증거 없음.
 - [x] Home Assistant Network 공개키 SSH와 remote app server: PASS — 사용자 mobile Remote → 연결된 desktop SSH project → HAOS `/config` E2E 확인.
 - [x] 실제 `/config` write/rollback, Core REST 조회, Supervisor 조회/direct log/config-check: PASS — `/config` 임시 변경 정리, `/config`·`/states`·`/services`, Core/App direct logs, self/info, `/core/check` 확인.
-- [ ] `0.1.3-dev`의 `ha-core-logs`/`ha-addon-logs`: NOT RUN — 원인 수정과 Linux/mock 검증 PASS, HAOS 일반 업데이트 뒤 재검증 필요.
-- [ ] 실제 Core service call 및 Supervisor start/stop/restart: NOT RUN — 안전한 테스트 entity와 명시적 운영 시험 필요.
+- [x] `0.1.3-dev`의 `ha-core-logs`/`ha-addon-logs`: PASS — 사용자 별도 결과와 보고서에서 모두 rc 0/nonempty이며 direct `text/x-log` 요청과 helper 사이의 불일치나 negotiation 오류 없음.
+- [ ] 실제 Core service call: NOT RUN — 첫 non-dev 릴리스 전에 임시 persistent notification처럼 되돌릴 수 있는 저위험 서비스로 확인 필요.
+- [ ] Supervisor/Core/App start/stop/restart: NOT RUN — manager helper와 info/log/config-check는 PASS이나 운영 중단 동작은 명시적 유지보수 승인 없이는 실행하지 않는다.
 - [x] 실제 HAOS의 기본 전역 `AGENTS.md`: PASS — 0644, 이미지 기본본과 byte 동일, 사용자 override 비파괴 정책 확인.
 - [ ] SSH host key 업데이트 전후 fingerprint 동일성: NOT RUN — 파일/키 존재와 로컬 persistence는 PASS이나 HAOS 전후 fingerprint 미기록.
 - Known issues: 공식 명시 Linux 지원은 Ubuntu/Debian 중심이지만 amd64 Alpine/musl remote app server는 사용자 E2E에서 동작했다. aarch64, 향후 Codex 버전 변경과 HAOS lifecycle 영향은 별도 검증 대상이다.
@@ -179,12 +194,12 @@
 - [x] GitHub Actions lint workflow
 - [x] GitHub Actions amd64 build workflow
 - [ ] GHCR publish 구조
-- [x] App `image` 필드 적용 시점 결정 — 0.1.0/공개 pull 경로 확정 뒤 적용
+- [x] App `image` 필드 적용 시점 결정 — 첫 non-dev/public GHCR pull 경로 확정 뒤 적용
 - [x] 기능 브랜치 커밋/push — `95bc564`, `feat/mvp-runtime`
 - [x] draft PR 생성 및 검증 결과 기록 — [#1](https://github.com/Kanu-Coffee/codex-for-home-assistant/pull/1)
 - [x] public 저장소 전환과 PR #1 `main` 병합 — `ce06435`
 
-## M2 — HAOS 실기 검증 및 0.1.0
+## M2 — HAOS 실기 검증 및 첫 non-dev 릴리스
 
 - [x] public App repository 설치와 App 시작
 - [x] Ingress 웹 터미널과 인증된 Codex 실행
@@ -196,11 +211,11 @@
 - [ ] 안전한 테스트 엔티티 서비스 호출
 - [x] Supervisor 정보·로그와 Core 설정 검사
 - [ ] Supervisor/Core/App start/stop/restart 테스트
-- [ ] 브라우저 끊김 후 tmux 재접속
+- [x] 브라우저 끊김 후 tmux 기능적 재접속과 resize
 - [ ] App 업데이트 후 host key fingerprint 유지
 - [x] `0.1.2-dev` 기본 전역 운영 지침 생성·기본본 일치·사용자 override 보존
-- [ ] `0.1.3-dev` Core/App 로그 helper HAOS 회귀 확인
-- [ ] 0.1.0 release/tag/GHCR publish
+- [x] `0.1.3-dev` Core/App 로그 helper HAOS 회귀 확인
+- [ ] 첫 non-dev release/tag/GHCR publish — 이미 배포된 `0.1.3-dev`보다 낮은 `0.1.0`으로 내리지 않음
 
 ## M3 — aarch64 및 안정화
 

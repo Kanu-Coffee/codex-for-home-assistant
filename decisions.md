@@ -118,7 +118,7 @@ hassio_role: manager
 
 - 상태: Accepted
 - 결정: public 저장소 MVP의 `config.yaml`에는 GHCR `image` 필드를 넣지 않고, 저장소 URL로 추가한 Home Assistant가 Dockerfile을 amd64 장치에서 소스 빌드하게 한다.
-- 이유: 사용자가 App Store에서 즉시 설치·HAOS 검증할 수 있게 하면서 아직 실기 검증하지 않은 registry image를 릴리스하지 않기 위해서다. 0.1.0 배포 전에 공식 builder workflow와 generic image name을 별도로 활성화한다.
+- 이유: 사용자가 App Store에서 즉시 설치·HAOS 검증할 수 있게 하면서 아직 실기 검증하지 않은 registry image를 릴리스하지 않기 위해서다. 첫 non-dev 배포 전에 공식 builder workflow와 generic image name을 별도로 활성화한다.
 
 ## ADR-019 비파괴 전역 Home Assistant 운영 지침
 
