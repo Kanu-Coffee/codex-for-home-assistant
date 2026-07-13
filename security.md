@@ -108,6 +108,17 @@
 - 향후 `backup_exclude` 옵션의 장단점을 실기 검증
 - 노출 의심 시 Codex logout/re-auth
 
+### T-008 registry image 변조 또는 비공개 배포
+
+완화:
+
+- App version과 정확히 같은 숫자 Git tag에서만 image 게시
+- 공식 Home Assistant builder actions의 version을 고정
+- 장기 registry credential 대신 repository-scoped `GITHUB_TOKEN` 사용
+- 기존 version tag 덮어쓰기 금지
+- generic/per-arch GHCR package public visibility와 인증 없는 amd64 pull 확인
+- pull한 image의 `io.hass.version`, `io.hass.arch`, source label과 container smoke 검증
+
 ## 4. `manager` 선택 근거
 
 `manager`는 CLI형 관리 App에 필요한 Supervisor 운영 권한을 제공하면서 `admin`보다 제한적이다. Core 기기 제어는 `homeassistant_api: true`로 별도 제공되므로 실제 서비스 호출을 위해 `admin`이 필요하지 않다.

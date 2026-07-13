@@ -1,0 +1,119 @@
+---
+name: Builder
+
+"on":
+  pull_request:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/build-app.yaml"
+      - ".github/workflows/builder.yaml"
+      - "codex_home_assistant/**"
+  push:
+    tags:
+      - "[0-9]*.[0-9]*.[0-9]*"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: builder-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    name: Validate release metadata
+    runs-on: ubuntu-latest
+    outputs:
+      app_version: ${{ fromJSON(steps.info.outputs.version) }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7.0.0
+
+      - name: Get app information
+        id: info
+        uses: home-assistant/actions/helpers/info@f4ca6f671bd429efb108c0f2fa0ae8af0215986c
+        with:
+          path: ./codex_home_assistant
+
+      - name: Validate image and release tag
+        env:
+          APP_IMAGE: ${{ fromJSON(steps.info.outputs.image) }}
+          APP_VERSION: ${{ fromJSON(steps.info.outputs.version) }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          expected_image="ghcr.io/kanu-coffee/codex-for-home-assistant"
+          if [[ "${APP_IMAGE}" != "${expected_image}" ]]; then
+            echo "Unexpected image: ${APP_IMAGE}" >&2
+            exit 1
+          fi
+
+          if [[ "${GITHUB_EVENT_NAME}" == "push" ]]; then
+            if [[ ! "${RELEASE_TAG}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              echo "Release tag must be a non-dev semantic version" >&2
+              exit 1
+            fi
+            if [[ "${RELEASE_TAG}" != "${APP_VERSION}" ]]; then
+              echo "Release tag and App version differ" >&2
+              exit 1
+            fi
+          fi
+
+  release-guard:
+    name: Reject an existing version tag
+    if: github.event_name == 'push'
+    needs: validate
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+    env:
+      APP_VERSION: ${{ needs.validate.outputs.app_version }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Check generic and architecture package tags
+        run: |
+          for package in \
+            codex-for-home-assistant \
+            amd64-codex-for-home-assistant; do
+            error_file=$(mktemp)
+            if tags=$(gh api --paginate \
+              "/users/Kanu-Coffee/packages/container/${package}/versions" \
+              --jq '.[].metadata.container.tags[]?' 2>"$error_file"); then
+              if grep -Fxq "$APP_VERSION" <<< "$tags"; then
+                echo "Refusing to overwrite ${package}:${APP_VERSION}" >&2
+                exit 1
+              fi
+            elif ! grep -Fq '(HTTP 404)' "$error_file"; then
+              cat "$error_file" >&2
+              exit 1
+            fi
+            rm -f "$error_file"
+          done
+
+  build-app:
+    name: Build codex_home_assistant without publishing
+    if: github.event_name == 'pull_request'
+    needs: validate
+    permissions:
+      contents: read
+      packages: read
+    uses: ./.github/workflows/build-app.yaml
+    with:
+      app: codex_home_assistant
+      publish: false
+
+  publish-app:
+    name: Build and publish codex_home_assistant
+    if: github.event_name == 'push'
+    needs:
+      - validate
+      - release-guard
+    permissions:
+      contents: read
+      id-token: write
+      packages: write
+    uses: ./.github/workflows/build-app.yaml
+    with:
+      app: codex_home_assistant
+      publish: true

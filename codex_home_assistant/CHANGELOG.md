@@ -2,6 +2,29 @@
 
 All notable changes to this App are documented in this file.
 
+## [0.1.3] - 2026-07-13
+
+### Added
+
+- Publish an amd64 image and preferred generic manifest at `ghcr.io/kanu-coffee/codex-for-home-assistant:0.1.3` with the official Home Assistant builder actions.
+- Add a My Home Assistant one-click App repository button and clarify that Supervisor Apps are not a supported HACS repository type.
+
+### Changed
+
+- Promote the HAOS-validated `0.1.3-dev` payload to the first non-dev release while retaining `stage: experimental` and amd64-only support.
+- Download the pre-built public GHCR image during install/update instead of building the Dockerfile on the Home Assistant host.
+- Gate registry publishing on an immutable numeric Git tag that must exactly match the App version.
+
+### Security
+
+- Publish with the repository-scoped GitHub Actions token and explicit `contents: read`, `packages: write`, and `id-token: write` permissions; no long-lived registry credential is stored.
+- Keep the transition update-only and non-destructive: the runtime, options, `/data` format, Codex credentials, and SSH host keys are unchanged.
+
+### Testing
+
+- Confirm HAOS auto-start false/true, device-code login, restart credential persistence, SSH host identity persistence, and reversible Core notification create/dismiss calls.
+- Require the public generic manifest to resolve anonymously as linux/amd64 and pass the full container smoke test before release completion.
+
 ## [0.1.3-dev] - 2026-07-13
 
 ### Added

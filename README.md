@@ -16,7 +16,7 @@ Home Assistant OS 안에서 OpenAI Codex CLI를 운영하기 위한 amd64 Home A
 - Codex 인증, 설정, SSH host key의 `/data` 영속화
 - 기존 사용자 파일을 보존하는 전역 Home Assistant 운영 가드레일
 
-현재 버전은 `0.1.3-dev`, `stage: experimental`, amd64 전용입니다. AppArmor는 활성화되어 있고 Supervisor `admin`, Docker API, App `full_access`, host network는 사용하지 않습니다.
+현재 버전은 `0.1.3`, `stage: experimental`, amd64 전용입니다. AppArmor는 활성화되어 있고 Supervisor `admin`, Docker API, App `full_access`, host network는 사용하지 않습니다.
 
 > 이 App은 `/config`의 비밀과 `SUPERVISOR_TOKEN`을 사용할 수 있는 강한 관리자 도구입니다. 신뢰하는 관리자만 사용하고 TCP 2223을 인터넷으로 직접 port-forward하지 마세요.
 
@@ -28,16 +28,22 @@ Home Assistant OS 안에서 OpenAI Codex CLI를 운영하기 위한 amd64 Home A
 https://github.com/Kanu-Coffee/codex-for-home-assistant
 ```
 
+[![Open your Home Assistant instance and add this App repository.](https://my.home-assistant.io/badges/supervisor_store.svg)](https://my.home-assistant.io/redirect/supervisor_store/?repository_url=https%3A%2F%2Fgithub.com%2FKanu-Coffee%2Fcodex-for-home-assistant)
+
 1. Home Assistant에서 **설정 → Apps → App store**를 엽니다.
 2. 우측 상단 메뉴의 **Repositories**에 위 URL을 추가합니다.
 3. 목록을 새로고침한 뒤 **Codex for Home Assistant**를 선택해 설치합니다.
 4. 공개키와 Network 포트를 설정하고 App을 시작합니다.
 
-현재 `config.yaml`에는 registry `image`가 없으므로 Supervisor가 저장소의 Dockerfile을 amd64 장치에서 빌드합니다. 첫 설치는 Home Assistant base image, Alpine 패키지와 Codex release 다운로드 때문에 시간이 걸릴 수 있습니다. `0.1.3-dev` experimental 버전이며 실제 HAOS 기능 결과는 `progress.md`의 M2 항목별 증거를 기준으로 합니다.
+Supervisor는 public generic manifest `ghcr.io/kanu-coffee/codex-for-home-assistant:0.1.3`을 내려받습니다. 이미지는 공식 Home Assistant builder action으로 amd64에서 미리 빌드하며 App Store 설치 중 소스 컴파일을 요구하지 않습니다. 실제 HAOS 기능 결과는 `progress.md`의 M2 항목별 증거를 기준으로 합니다.
 
-기존 App은 삭제하지 말고 일반 업데이트하세요. `0.1.3-dev`는 `/data` 형식이나 영구 파일을 변경·초기화하지 않으므로 완전 삭제나 재설치가 필요하지 않습니다.
+기존 `0.1.3-dev` App은 삭제하지 말고 일반 업데이트하세요. `0.1.3`은 `/data` 형식이나 영구 파일을 변경·초기화하지 않으므로 완전 삭제나 재설치가 필요하지 않습니다.
 
 설치, Codex device login, Windows SSH config, Remote SSH, API helper, 안전한 서비스 호출과 복구 절차는 [App 사용 설명서](codex_home_assistant/DOCS.md)를 따르세요.
+
+### HACS 지원 여부
+
+HACS가 지원하는 저장소 유형에는 Home Assistant App(구 Add-on)이 없으므로 이 저장소를 HACS custom/default repository로 등록할 수 없습니다. Integration이나 Dashboard로 잘못 등록해도 App 설치로 연결되지 않습니다. [HACS 공식 repository types](https://hacs.xyz/docs/use/repositories/type/) 대신 위 Home Assistant App repository 버튼이나 URL을 사용하세요.
 
 ## 로컬 빌드
 
@@ -65,7 +71,7 @@ shellcheck <scripts...>
 npx --yes markdownlint-cli2@0.23.0
 ```
 
-GitHub Actions도 같은 amd64 build/smoke와 Home Assistant App linter를 실행합니다.
+GitHub Actions는 같은 amd64 build/smoke와 Home Assistant App linter를 실행하고, version과 동일한 Git tag에서만 public GHCR image와 generic manifest를 게시합니다.
 
 ## 주요 명령
 
@@ -94,14 +100,7 @@ progress.md            실제 완료/미검증 상태의 단일 기준
 
 ## 검증 경계
 
-로컬 Docker 검증은 image build, Codex 실행, S6 서비스, ttyd/nginx, 동일 tmux pane 재접속·resize, 공개키 sshd, 영속 데이터와 helper 오류 처리를 다룹니다. 실제 HAOS에서는 public 설치·시작, Web UI와 인증된 Codex, 브라우저 재접속·resize, `/config` 쓰기, Core REST 조회, Supervisor 정보·직접 로그·helper·설정 검사, 업데이트 후 Codex 인증 보존, mobile Remote를 통한 SSH 프로젝트 작업을 확인했습니다. 현재 주요 사용자 경로에서 FAIL은 없어 실사용 가능한 amd64 beta/MVP candidate입니다.
-
-첫 non-dev 릴리스 전에는 다음 증거와 배포 작업이 남아 있습니다.
-
-- HAOS에서 auto-start false/true 양 모드와 장치 코드 로그인 방식 확인
-- 일반 App 재시작/업데이트 전후 인증과 SSH host identity 동일성 확인
-- 되돌릴 수 있는 저위험 Core 서비스 호출
-- non-dev version, tag, public GHCR image와 GitHub Release
+로컬 Docker 검증은 image build, Codex 실행, S6 서비스, ttyd/nginx, 동일 tmux pane 재접속·resize, 공개키 sshd, 영속 데이터와 helper 오류 처리를 다룹니다. 실제 HAOS에서는 public 설치·시작, auto-start false/true, device-code 로그인과 재시작 인증 유지, Web UI 재접속·resize, `/config` 쓰기, Core REST 조회·저위험 service call, Supervisor 정보·로그 helper·설정 검사, SSH host identity 유지와 mobile Remote SSH 프로젝트 작업을 확인했습니다. amd64 M1/M2 수용 기준은 PASS입니다.
 
 Supervisor/Core/App start/stop/restart 실동작은 manager API 기능 범위에 포함되지만 운영 중단 위험이 있으므로, 명시적인 유지보수 승인 없이 완료 판정을 위해 자동 실행하지 않습니다.
 
