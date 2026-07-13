@@ -1,0 +1,12 @@
+#!/command/with-contenv bashio
+# shellcheck shell=bash
+set -Eeuo pipefail
+
+exit_code=${1:-1}
+if [[ "${exit_code}" -ne 0 && "${exit_code}" -ne 256 ]]; then
+  bashio::log.fatal "ttyd stopped unexpectedly with exit code ${exit_code}"
+  printf '%s\n' "${exit_code}" > /run/s6-linux-init-container-results/exitcode
+  exec /run/s6/basedir/bin/halt
+fi
+
+bashio::log.warning 'ttyd stopped; S6 will restart it'

@@ -1,0 +1,19 @@
+#!/command/with-contenv bashio
+# shellcheck shell=bash
+set -Eeuo pipefail
+
+declare -a options=(
+  --interface 127.0.0.1
+  --port 7682
+  --writable
+)
+
+log_level=$(jq --raw-output '.log_level // "info"' /data/options.json)
+if [[ "${log_level}" == trace || "${log_level}" == debug ]]; then
+  options+=(--debug 7)
+else
+  options+=(--debug 1)
+fi
+
+bashio::log.info 'Starting ttyd on the loopback interface'
+exec ttyd "${options[@]}" /usr/local/bin/web-terminal-entrypoint

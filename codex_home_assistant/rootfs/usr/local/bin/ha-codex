@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+# shellcheck source=/dev/null
+. /usr/local/lib/codex-ha/environment.sh
+cd /config
+exec "${CODEX_BIN:-codex}" "$@"

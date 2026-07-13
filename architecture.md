@@ -46,12 +46,14 @@ Home Assistant Frontend ─── Ingress/WebSocket ─┤
 4. App 옵션에서 `authorized_keys` 렌더링
 5. 공통 runtime environment 파일 생성
 6. `/config` 존재 및 RW 여부 검사
-7. 서비스 시작에 필요한 설정 검증
+7. `sshd -t`, `nginx -t`, 옵션 형식 검사
+8. S6가 ttyd, Ingress proxy, sshd 서비스를 시작
 
 ### 3.2 ttyd 서비스
 
-- 내부 Ingress port: `7681` 권장
-- 외부 포트 미노출
+- Ingress port `7681`: nginx가 Supervisor gateway `172.30.32.2`와 loopback만 허용
+- ttyd port `7682`: loopback에만 bind하고 nginx가 WebSocket reverse proxy
+- 두 포트 모두 `ports`에 넣지 않아 외부 포트 미노출
 - 실행 대상: `web-terminal-entrypoint`
 - entrypoint는 tmux 세션에 attach/create
 - tmux working directory: `/config`
@@ -65,12 +67,14 @@ Home Assistant Frontend ─── Ingress/WebSocket ─┤
 - MVP 권장: 컨테이너 root login을 공개키로만 허용하되 App 경계 밖 권한은 부여하지 않음
 - host keys와 authorized_keys는 `/data/ssh`
 - login shell에서 `/config`로 이동
+- non-interactive SSH는 root의 Bash `BASH_ENV`로 동일 runtime environment와 `/config` 시작 경로 적용
 
 전용 non-root 사용자를 선택하려면 `/config`의 host 권한을 바꾸지 않고 RW를 보장하는 방법을 먼저 증명해야 한다. 검증 없이 host-mounted `/config`에 `chown -R`하지 않는다.
 
 ### 3.4 Codex CLI
 
-- binary: `/usr/local/bin/codex`
+- command wrapper: `/usr/local/bin/codex`
+- pinned binary: `/usr/local/libexec/codex-real`
 - `HOME=/data/home`
 - `CODEX_HOME=/data/codex`
 - working directory: `/config`
@@ -86,6 +90,7 @@ check_for_update_on_startup = false
 ```
 
 기존 `config.toml`이 있으면 전체 덮어쓰지 않는다. 누락된 필수 키만 안전하게 초기화하거나 샘플을 별도 제공한다.
+wrapper는 현재 App의 approval/sandbox 옵션을 `-c` override로 주입해 파일을 덮어쓰지 않고 웹·SSH·Remote app-server에 같은 정책을 적용한다.
 
 ## 4. 영속 데이터
 

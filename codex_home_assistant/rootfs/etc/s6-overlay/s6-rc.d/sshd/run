@@ -1,0 +1,11 @@
+#!/command/with-contenv bashio
+# shellcheck shell=bash
+set -Eeuo pipefail
+
+if [[ -e /run/codex-ha/ssh-disabled ]]; then
+  bashio::log.warning 'SSH service is disabled until at least one valid authorized key is configured'
+  exec /command/s6-pause
+fi
+
+bashio::log.info 'Starting public-key-only OpenSSH server'
+exec /usr/sbin/sshd -D -e -f /etc/ssh/sshd_config < /dev/null

@@ -4,10 +4,10 @@
 
 ## Project Status
 
-- 상태: **Specification complete / Implementation not started**
+- 상태: **M1 local MVP implemented and verified / M2 HAOS validation pending**
 - 현재 마일스톤: **M1 — 동작 가능한 amd64 MVP**
-- 마지막 문서 기준일: **2026-07-12**
-- 권장 저장소: `codex-for-home-assistant` (초기에는 private)
+- 마지막 문서 기준일: **2026-07-13**
+- 저장소: private `Kanu-Coffee/codex-for-home-assistant`
 
 ## 완료된 결정
 
@@ -26,87 +26,102 @@
 
 ### 2026-07-13 — amd64 MVP 런타임 구현 및 GitHub 전달
 
-- 목표: Codex CLI, Ingress ttyd+tmux, 공개키 SSH/Remote SSH 기반, `/config` RW, Core/Supervisor manager API helper를 포함하는 설치 가능한 amd64 Home Assistant App MVP를 구현한다.
-- 변경 예정 파일: 저장소/App 골격(`repository.yaml`, `codex_home_assistant/**`), 런타임 스크립트와 S6 서비스, 테스트와 lint/build workflow, 사용자·보안·운영 문서, `references.md`, `progress.md`.
-- 검증 계획: YAML/Markdown/정책/비밀 검사, shellcheck, hadolint, 단위 테스트, Docker amd64 build, 컨테이너 smoke, `codex --version`, `sshd -t`, ttyd/tmux 및 SSH/API helper 동작을 로컬에서 검증하고 결과를 명령과 함께 기록한다.
-- 현재 위험/가정: 이 작업 환경에는 HAOS/Supervisor 및 실제 Home Assistant 엔티티가 없을 수 있다. Ingress/WebSocket, Supervisor token/manager endpoint, 실제 서비스 호출, App 업데이트 영속성, Windows Codex Desktop Remote SSH는 로컬 검증으로 완료 처리하지 않고 M2 실기 항목으로 남긴다. 공식 문서와 현재 release artifact를 확인한 뒤 base image·Codex pin을 결정한다.
-- Git 계획: 새 저장소이므로 baseline을 보존해 Git을 초기화하고 `feat/mvp-runtime`에서 작업한다. `origin`이 없으면 인증된 `Kanu-Coffee` 계정에 private `codex-for-home-assistant`를 만들고 검증 후 push와 draft PR을 시도한다.
+- 결과: Home Assistant base `3.24`, S6 v3, Codex CLI `0.144.1`, nginx Ingress ACL, loopback ttyd, 공유 tmux, 공개키 sshd, `/config` RW, Core/Supervisor helper를 구현했다. Codex/App/SSH 데이터는 `/data`, runtime token 환경은 `/run`에 둔다.
+- 보안 결과: manager/Core API 권한은 유지하고 `admin`, `docker_api`, `full_access`, `host_network`, `apparmor: false`는 사용하지 않았다. SSH 비밀번호·keyboard-interactive·reverse forwarding·agent forwarding은 차단했다.
+- 배포 결과: private GitHub 저장소와 `feat/mvp-runtime` 브랜치를 만들었다. private GHCR pull 문제 때문에 개발판 `image` 필드는 유보하고 Local Apps source build를 문서화했다.
+
+### Verification
+
+- [x] `docker build --platform linux/amd64 ...`: PASS — base `3.24`, 공식 Codex SHA-256, `codex-cli 0.144.1`.
+- [x] Linux `python -m pytest -ra`: PASS — 24 tests; manifest/policy, S6/runtime, API error/result/token redaction, secret scan.
+- [x] `tests/docker-smoke.sh codex-ha:mvp`: PASS — S6, `/config` RW, permissions, nginx/ttyd, auto-start false/true, Codex 후 Bash 복귀, 공개키 SSH, 비밀번호 거부, UTF-8 env, host-key/config 영속성, invalid/no-key degraded recovery.
+- [x] `shellcheck` 0.11.0: PASS — runtime/test shell scripts, warning 이상 없음.
+- [x] `hadolint` 2.14.0, `yamllint`, `markdownlint-cli2` 0.23.0: PASS.
+- [x] Home Assistant App linter 2.21.0: PASS.
+- [x] `git diff --check`: PASS.
+- [x] Windows OpenSSH → local Docker sshd: PASS — `/config`, `/data/codex`, `codex --version`, `codex app-server --help`, fake token presence without output.
+- [ ] HAOS Local App install/start: NOT RUN — HAOS/Supervisor 환경 없음.
+- [ ] 실제 Ingress/WebSocket/resize/browser tmux reattach: NOT RUN — HAOS 필요.
+- [ ] 실제 device auth 및 App update 인증 영속성: NOT RUN — 사용자 인증/HAOS 필요.
+- [ ] Home Assistant Network 2223 및 Codex Desktop Remote SSH: NOT RUN — HAOS/desktop E2E 필요.
+- [ ] 실제 Core API/service call 및 Supervisor manager endpoint: NOT RUN — 실제 HA/안전한 테스트 entity 필요.
+- Known issues: Alpine/musl은 Codex release target과 로컬 CLI/app-server help가 동작하지만 OpenAI의 명시 지원 OS 목록은 Ubuntu/Debian 중심이다. Remote SSH 완료로 간주하지 않는다.
 
 ## M1 — 동작 가능한 amd64 MVP
 
 ### 1. 저장소 및 기본 골격
 
-- [ ] 기존 Git 상태와 remote 확인
-- [ ] remote가 없으면 private GitHub repo `codex-for-home-assistant` 생성
-- [ ] 현재 공식 `home-assistant/apps-example` 구조 확인
-- [ ] `repository.yaml`, App 폴더, `config.yaml`, `Dockerfile`, `rootfs`, 문서 골격 생성
-- [ ] `.gitignore`, `.editorconfig`, lint 설정 추가
+- [x] 기존 Git 상태와 remote 확인
+- [x] remote가 없으면 private GitHub repo `codex-for-home-assistant` 생성
+- [x] 현재 공식 `home-assistant/apps-example` 구조 확인
+- [x] `repository.yaml`, App 폴더, `config.yaml`, `Dockerfile`, `rootfs`, 문서 골격 생성
+- [x] `.gitignore`, `.editorconfig`, lint 설정 추가
 
 ### 2. 컨테이너 런타임
 
-- [ ] 최신 Home Assistant base image 선택 및 근거 기록
-- [ ] `bash`, `curl`, `git`, `jq`, `yq`, `yamllint`, `openssh`, `ttyd`, `tmux`, `sqlite`, `ripgrep` 설치
-- [ ] S6 서비스/초기화 구조 구현
-- [ ] `/data/home`, `/data/codex`, `/data/ssh`, `/data/tmux` 초기화
-- [ ] 민감 파일 권한 검증
+- [x] 최신 Home Assistant base image 선택 및 근거 기록
+- [x] `bash`, `curl`, `git`, `jq`, `yq`, `yamllint`, `openssh`, `ttyd`, `tmux`, `sqlite`, `ripgrep` 설치
+- [x] S6 서비스/초기화 구조 구현
+- [x] `/data/home`, `/data/codex`, `/data/ssh`, `/data/tmux` 초기화
+- [x] 민감 파일 권한 검증
 
 ### 3. Codex CLI
 
-- [ ] amd64에서 재현 가능한 설치 방식 선택
-- [ ] Codex 버전 pin 및 checksum 검증
-- [ ] `/usr/local/bin/codex` PATH 보장
-- [ ] `CODEX_HOME=/data/codex` 적용
-- [ ] 기본 `config.toml`을 비파괴 방식으로 생성
-- [ ] `ha-codex`, `ha-codex-login` 구현
-- [ ] `codex --version` 컨테이너 테스트
+- [x] amd64에서 재현 가능한 설치 방식 선택
+- [x] Codex 버전 pin 및 checksum 검증
+- [x] `/usr/local/bin/codex` PATH 보장
+- [x] `CODEX_HOME=/data/codex` 적용
+- [x] 기본 `config.toml`을 비파괴 방식으로 생성
+- [x] `ha-codex`, `ha-codex-login` 구현
+- [x] `codex --version` 컨테이너 테스트
 
 ### 4. 웹 터미널
 
-- [ ] `ingress: true`, `ingress_stream: true` 구성
-- [ ] ttyd가 Ingress 하위 경로에서 정상 동작하도록 구현
-- [ ] tmux 세션 자동 생성/재접속
-- [ ] `/config` 시작 경로 확인
-- [ ] `web_terminal_auto_start_codex=false` 동작 검증
-- [ ] `web_terminal_auto_start_codex=true` 동작 검증
-- [ ] Codex 종료 후 셸 복귀 검증
+- [x] `ingress: true`, `ingress_stream: true` 구성
+- [x] ttyd가 Ingress 하위 경로에서 정상 동작하도록 구현 (실제 HAOS Ingress는 M2)
+- [x] tmux 세션 자동 생성/재접속 구현 (browser reattach는 M2)
+- [x] `/config` 시작 경로 확인
+- [x] `web_terminal_auto_start_codex=false` 동작 검증
+- [x] `web_terminal_auto_start_codex=true` 동작 검증
+- [x] Codex 종료 후 셸 복귀 검증
 
 ### 5. SSH 및 Remote SSH
 
-- [ ] 공개키 전용 sshd 설정
-- [ ] SSH host key를 `/data/ssh`에 영속화
-- [ ] `authorized_keys` 옵션 반영 및 권한 검증
-- [ ] 키가 없을 때 안전한 degraded 동작
-- [ ] 기본 host port `2223` 노출
-- [ ] login shell에서 `codex`, `CODEX_HOME`, `/config` 확인
-- [ ] Windows OpenSSH 접속 검증
+- [x] 공개키 전용 sshd 설정
+- [x] SSH host key를 `/data/ssh`에 영속화
+- [x] `authorized_keys` 옵션 반영 및 권한 검증
+- [x] 키가 없을 때 안전한 degraded 동작
+- [x] 기본 host port `2223` 노출
+- [x] login shell에서 `codex`, `CODEX_HOME`, `/config` 확인
+- [x] Windows OpenSSH 접속 검증 (local Docker port; HA Network는 M2)
 - [ ] Codex Desktop Remote SSH bootstrap 검증
 
 ### 6. Home Assistant API 운영 기능
 
-- [ ] `SUPERVISOR_TOKEN`을 웹/SSH 셸에서 안전하게 사용할 수 있도록 런타임 환경 구성
-- [ ] `ha-api` 래퍼 구현
-- [ ] `supervisor-api` 래퍼 구현
-- [ ] `ha-config-check` 구현
-- [ ] Core 로그 조회 helper 구현
-- [ ] App 로그 조회 helper 구현
-- [ ] REST/WebSocket 사용 예시 문서화
-- [ ] manager 역할에서 실제 허용되는 엔드포인트 검증표 작성
+- [x] `SUPERVISOR_TOKEN`을 웹/SSH 셸에서 안전하게 사용할 수 있도록 런타임 환경 구성
+- [x] `ha-api` 래퍼 구현
+- [x] `supervisor-api` 래퍼 구현
+- [x] `ha-config-check` 구현
+- [x] Core 로그 조회 helper 구현
+- [x] App 로그 조회 helper 구현
+- [x] REST/WebSocket 사용 예시 문서화
+- [x] manager 역할 endpoint 검증표 작성 (실제 결과는 모두 M2 NOT RUN)
 
 ### 7. 품질 및 문서
 
-- [ ] `shellcheck`, `yamllint`, Docker lint 적용
-- [ ] 단위/컨테이너 smoke test 추가
-- [ ] 실제 토큰이 출력되지 않는지 테스트
-- [ ] `DOCS.md`, `CHANGELOG.md`, `README.md` 작성
-- [ ] 한국어/영어 옵션 번역 추가
-- [ ] 위험 경고와 복구 절차 문서화
+- [x] `shellcheck`, `yamllint`, Docker lint 적용
+- [x] 단위/컨테이너 smoke test 추가
+- [x] 실제 토큰이 출력되지 않는지 테스트
+- [x] `DOCS.md`, `CHANGELOG.md`, `README.md` 작성
+- [x] 한국어/영어 옵션 번역 추가
+- [x] 위험 경고와 복구 절차 문서화
 
 ### 8. CI, GitHub, 배포
 
-- [ ] GitHub Actions lint workflow
-- [ ] GitHub Actions amd64 build workflow
+- [x] GitHub Actions lint workflow
+- [x] GitHub Actions amd64 build workflow
 - [ ] GHCR publish 구조
-- [ ] App `image` 필드 적용 시점 결정
+- [x] App `image` 필드 적용 시점 결정 — 0.1.0/공개 pull 경로 확정 뒤 적용
 - [ ] 기능 브랜치 커밋/push
 - [ ] PR 생성 및 검증 결과 기록
 
@@ -136,14 +151,21 @@
 
 | ID | 질문 | 현재 처리 |
 |---|---|---|
-| Q-001 | Codex standalone 바이너리가 선택한 Alpine/base image의 amd64 및 aarch64에서 안정적인가? | M1에서 컨테이너 실행 검증 |
-| Q-002 | ttyd의 Ingress base path/WebSocket 처리가 추가 플래그 없이 가능한가? | 공식 App 예제 및 app-ssh 구현 참고 후 실기 검증 |
+| Q-001 | Codex standalone 바이너리가 선택한 Alpine/base image의 amd64 및 aarch64에서 안정적인가? | amd64 CLI/app-server help 로컬 PASS; aarch64는 M3 |
+| Q-002 | ttyd의 Ingress base path/WebSocket 처리가 추가 플래그 없이 가능한가? | nginx/ttyd 로컬 PASS; 실제 Supervisor Ingress는 M2 |
 | Q-003 | Codex `workspace-write` sandbox가 HAOS App 컨테이너에서 정상 작동하는가? | MVP는 container 내부 `danger-full-access`; 이후 비교 테스트 |
 | Q-004 | `manager` 역할에서 필요한 Supervisor 엔드포인트가 모두 허용되는가? | endpoint별 통합 테스트로 확인; admin 자동 승격 금지 |
 | Q-005 | 실제 사용자 HAOS 아키텍처는 무엇인가? | 최초 MVP는 amd64; 확인·검증 후 aarch64 추가 |
-| Q-006 | Codex Desktop Remote SSH가 Alpine/musl 원격에서 요구하는 app-server를 정상 시작하는가? | M1 핵심 스파이크 |
+| Q-006 | Codex Desktop Remote SSH가 Alpine/musl 원격에서 요구하는 app-server를 정상 시작하는가? | CLI `app-server --help`만 PASS; Desktop E2E는 M2 |
 
 ## 최근 완료 기록
+
+### 2026-07-13 — amd64 local MVP
+
+- 결과: 설치 가능한 Local App source, Codex CLI, Ingress terminal runtime, 공개키 SSH, API helper, CI와 운영 문서를 구현했다.
+- 로컬 검증: amd64 build, 24 unit/policy tests, full Docker smoke, App/shell/YAML/Markdown/Docker lint와 secret scan 통과.
+- 미검증: 실제 HAOS Ingress, device auth/update persistence, Home Assistant Network 2223, Codex Desktop Remote SSH, 실제 Core/Supervisor manager API.
+- 다음: draft PR 후 HAOS amd64에서 M2 E2E 수행.
 
 ### 2026-07-12 — DDD baseline
 

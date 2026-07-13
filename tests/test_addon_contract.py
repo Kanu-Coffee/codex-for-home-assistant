@@ -1,0 +1,68 @@
+from pathlib import Path
+
+import yaml
+
+
+def test_all_yaml_files_parse(repository_root: Path) -> None:
+    yaml_files = [
+        path
+        for path in repository_root.rglob("*.yaml")
+        if ".git" not in path.parts and ".pytest_cache" not in path.parts
+    ]
+    assert yaml_files
+
+    for yaml_file in yaml_files:
+        with yaml_file.open(encoding="utf-8") as stream:
+            yaml.safe_load(stream)
+
+
+def test_mvp_is_amd64_local_build(addon_config: dict) -> None:
+    assert addon_config["arch"] == ["amd64"]
+    assert "image" not in addon_config
+    assert addon_config["stage"] == "experimental"
+
+
+def test_ingress_and_network_contract(addon_config: dict) -> None:
+    assert addon_config["ingress"] is True
+    assert addon_config["ingress_stream"] is True
+    assert addon_config["ingress_port"] == 7681
+    assert addon_config.get("panel_admin", True) is True
+    assert addon_config["ports"] == {"22/tcp": 2223}
+    assert "ssh_port" not in addon_config["options"]
+    assert "ssh_port" not in addon_config["schema"]
+
+
+def test_home_assistant_config_is_mapped_read_write(addon_config: dict) -> None:
+    config_maps = [
+        mapping
+        for mapping in addon_config["map"]
+        if mapping.get("type") == "homeassistant_config"
+    ]
+    assert config_maps == [
+        {
+            "type": "homeassistant_config",
+            "path": "/config",
+            "read_only": False,
+        }
+    ]
+
+
+def test_core_and_supervisor_manager_apis_are_enabled(addon_config: dict) -> None:
+    assert addon_config["homeassistant_api"] is True
+    assert addon_config["hassio_api"] is True
+    assert addon_config["hassio_role"] == "manager"
+
+
+def test_forbidden_privilege_settings_are_absent(addon_config: dict) -> None:
+    for forbidden_key in ("docker_api", "full_access", "host_network"):
+        assert forbidden_key not in addon_config
+
+    assert addon_config.get("hassio_role") != "admin"
+    assert addon_config.get("apparmor", True) is True
+
+
+def test_security_sensitive_defaults(addon_config: dict) -> None:
+    assert addon_config["options"]["authorized_keys"] == []
+    assert addon_config["options"]["web_terminal_auto_start_codex"] is False
+    assert addon_config["options"]["codex_approval_policy"] == "on-request"
+    assert addon_config["options"]["codex_sandbox_mode"] == "danger-full-access"

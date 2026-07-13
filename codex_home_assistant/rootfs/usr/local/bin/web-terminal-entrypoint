@@ -1,0 +1,17 @@
+#!/command/with-contenv bashio
+# shellcheck shell=bash
+set -Eeuo pipefail
+
+# shellcheck source=/dev/null
+. /usr/local/lib/codex-ha/environment.sh
+# shellcheck source=/dev/null
+. /usr/local/lib/codex-ha/config.sh
+
+session_name=$(codex_ha_config_string 'tmux_session_name' 'codex-ha')
+if [[ ! "${session_name}" =~ ^[A-Za-z0-9._-]{1,64}$ ]]; then
+  bashio::log.fatal 'Invalid tmux session name'
+  exit 1
+fi
+
+cd /config
+exec tmux -u new-session -A -s "${session_name}" -c /config /usr/local/bin/tmux-session-shell

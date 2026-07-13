@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+# These variables are consumed by the sourced client library.
+# shellcheck disable=SC2034
+API_PROGRAM_NAME=supervisor-api
+# shellcheck disable=SC2034
+API_BASE_URL=${SUPERVISOR_URL:-http://supervisor}
+# shellcheck disable=SC2034
+API_CHECK_RESULT=true
+# shellcheck source=/dev/null
+. /usr/local/lib/codex-ha/api-client.sh
+api_main "$@"

@@ -1,0 +1,35 @@
+Port 22
+ListenAddress 0.0.0.0
+
+HostKey /data/ssh/ssh_host_ed25519_key
+HostKey /data/ssh/ssh_host_rsa_key
+PidFile /run/sshd.pid
+
+AuthorizedKeysFile /data/ssh/authorized_keys
+PubkeyAuthentication yes
+AuthenticationMethods publickey
+PasswordAuthentication no
+KbdInteractiveAuthentication no
+ChallengeResponseAuthentication no
+PermitEmptyPasswords no
+PermitRootLogin prohibit-password
+AllowUsers root
+StrictModes yes
+
+# Codex Remote SSH needs client-side local tunnels but not reverse tunnels.
+AllowTcpForwarding local
+GatewayPorts no
+AllowAgentForwarding no
+X11Forwarding no
+PermitTunnel no
+
+# Make Supervisor/Codex environment available to non-interactive SSH commands.
+PermitUserEnvironment BASH_ENV,SUPERVISOR_TOKEN,CODEX_HOME,HA_URL,SUPERVISOR_URL
+
+PrintMotd yes
+TCPKeepAlive yes
+ClientAliveInterval 300
+ClientAliveCountMax 2
+LogLevel VERBOSE
+
+Subsystem sftp internal-sftp

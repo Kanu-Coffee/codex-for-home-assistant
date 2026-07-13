@@ -1,0 +1,22 @@
+---
+configuration:
+  authorized_keys:
+    name: Authorized SSH keys
+    description: OpenSSH public keys allowed to sign in as root. Password login is always disabled.
+  web_terminal_auto_start_codex:
+    name: Start Codex in the web terminal
+    description: Run Codex once when a new tmux session is created, then return to a normal shell.
+  tmux_session_name:
+    name: tmux session name
+    description: Shared session used to restore the terminal after a browser reconnect.
+  codex_approval_policy:
+    name: Codex approval policy
+    description: Controls when interactive Codex asks before running commands.
+  codex_sandbox_mode:
+    name: Codex sandbox mode
+    description: danger-full-access applies only inside this App container, not to the HAOS host.
+  log_level:
+    name: Web terminal log level
+    description: Enables detailed ttyd logs for trace or debug. Secrets and authorization headers are never logged.
+network:
+  22/tcp: Public-key SSH and Codex Remote SSH port. Change or disable the host mapping here.
