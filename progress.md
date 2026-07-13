@@ -36,7 +36,7 @@
 - [x] 실제 결함과 시험 절차상 미확정을 분리하고 MVP/릴리스 완료 여부를 판정한다.
 - [x] `progress.md`, README, App DOCS/CHANGELOG의 실기 상태와 남은 릴리스 게이트를 실제 결과에 맞춘다.
 - [x] Linux pytest 30개, manifest/secret policy, Markdown 20개와 `git diff --check`를 통과했다. App runtime은 바꾸지 않아 로컬 image rebuild를 생략하고 원격 CI의 amd64 build/smoke를 병합 게이트로 사용한다.
-- [ ] 기능 브랜치 PR의 CI를 통과하고 public `main` 병합을 완료한다.
+- [x] commit `3598798`을 `agent/live-regression-completion`에 push하고 PR [#9](https://github.com/Kanu-Coffee/codex-for-home-assistant/pull/9)을 생성했다. 최초 head CI run `29242099208`의 App linter, amd64 build/smoke, lint/unit 3개 job이 통과했다. 이 기록은 같은 PR의 public `main` 병합으로 전달하며 최종 merge/main CI는 작업 결과에서 별도로 확인한다.
 
 ### 2026-07-13 — 0.1.3-dev 라이브 회귀 수정·로고·M2 증거 반영
 
