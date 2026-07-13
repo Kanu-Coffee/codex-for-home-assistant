@@ -10,7 +10,7 @@ SHA-256 checksums:
 - `cf49a797b010f8475659472f3add22f2b4e233dc1e9e8aab041d0e1ef0511c7c`  `implementation_plan.md`
 - `a589c169be49d8084bcc4707618bb4a5dae73608094b064a9159e1eabde59698`  `master_prompt.md`
 - `72b4ca62de269ec979586521c7d74d9e16ac4e5668e1cb93a7ab94720ca0bfd4`  `product_spec.md`
-- `0f3e5608128725ddabfe65f0c719e79328bb43a4c93bf3dc2639bfe434974ffd`  `progress.md`
+- `0ff0dfccd239df4a8332d2830465d3925c1cdf4f43099b9be1751fb3a858b307`  `progress.md`
 - `5094829eaade8a35395734a46a7e1a899c6d727a45884f4d9ad52a40eef4e998`  `references.md`
 - `121545bc9e7ac36b98b06e8536643ae759d5dc5427dc1456be7641bfa22b0380`  `release_git.md`
 - `2acb1fbe992c4bb744ebee9a1be0597037be58afae76a6f2f20566573431aec3`  `rules.md`
