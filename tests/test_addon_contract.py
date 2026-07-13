@@ -22,6 +22,13 @@ def test_mvp_is_amd64_local_build(addon_config: dict) -> None:
     assert addon_config["stage"] == "experimental"
 
 
+def test_app_and_dockerfile_versions_match(
+    addon_config: dict, addon_root: Path
+) -> None:
+    dockerfile = (addon_root / "Dockerfile").read_text(encoding="utf-8")
+    assert f'ARG BUILD_VERSION={addon_config["version"]}' in dockerfile
+
+
 def test_ingress_and_network_contract(addon_config: dict) -> None:
     assert addon_config["ingress"] is True
     assert addon_config["ingress_stream"] is True

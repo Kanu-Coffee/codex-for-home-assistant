@@ -2,7 +2,21 @@
 
 All notable changes to this App are documented in this file.
 
-## [0.1.0-dev] - Unreleased
+## [0.1.1-dev] - Unreleased
+
+### Fixed
+
+- Restore `TERM=xterm-256color` after S6 `with-contenv` removes ttyd's per-PTY value, preventing tmux from exiting with `terminal does not support clear`.
+- Preserve tmux's own `TERM=tmux-256color` in the session shell instead of rebuilding its environment through `with-contenv`.
+- Force all `rootfs` files to LF in Git so Windows checkouts cannot produce broken container shebangs.
+
+### Testing
+
+- Added a dependency-free real ttyd WebSocket handshake and shell command smoke test that requires `/config` and a non-dumb TERM.
+- Reproduced the failure and verified the fix with S6, ttyd 1.7.7, tmux 3.6b, and headless Chrome.
+- HAOS public repository install/start and Ingress HTTP/token/WebSocket transport were confirmed; the fixed `0.1.1-dev` terminal UI still requires user retest on HAOS.
+
+## [0.1.0-dev] - 2026-07-13
 
 ### Added
 

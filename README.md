@@ -9,7 +9,7 @@ Home Assistant OS 안에서 OpenAI Codex CLI를 운영하기 위한 amd64 Home A
 - Supervisor API `manager` 운영 helper
 - Codex 인증, 설정, SSH host key의 `/data` 영속화
 
-현재 버전은 `0.1.0-dev`, `stage: experimental`, amd64 전용입니다. AppArmor는 활성화되어 있고 Supervisor `admin`, Docker API, App `full_access`, host network는 사용하지 않습니다.
+현재 버전은 `0.1.1-dev`, `stage: experimental`, amd64 전용입니다. AppArmor는 활성화되어 있고 Supervisor `admin`, Docker API, App `full_access`, host network는 사용하지 않습니다.
 
 > 이 App은 `/config`의 비밀과 `SUPERVISOR_TOKEN`을 사용할 수 있는 강한 관리자 도구입니다. 신뢰하는 관리자만 사용하고 TCP 2223을 인터넷으로 직접 port-forward하지 마세요.
 
@@ -26,7 +26,7 @@ https://github.com/Kanu-Coffee/codex-for-home-assistant
 3. 목록을 새로고침한 뒤 **Codex for Home Assistant**를 선택해 설치합니다.
 4. 공개키와 Network 포트를 설정하고 App을 시작합니다.
 
-현재 `config.yaml`에는 registry `image`가 없으므로 Supervisor가 저장소의 Dockerfile을 amd64 장치에서 빌드합니다. 첫 설치는 Home Assistant base image, Alpine 패키지와 Codex release 다운로드 때문에 시간이 걸릴 수 있습니다. `0.1.0-dev` experimental 버전이며 실제 HAOS 설치 결과는 아직 사용자가 검증할 M2 항목입니다.
+현재 `config.yaml`에는 registry `image`가 없으므로 Supervisor가 저장소의 Dockerfile을 amd64 장치에서 빌드합니다. 첫 설치는 Home Assistant base image, Alpine 패키지와 Codex release 다운로드 때문에 시간이 걸릴 수 있습니다. `0.1.1-dev` experimental 버전이며 실제 HAOS 기능 결과는 사용자가 검증하는 M2 항목입니다.
 
 설치, Codex device login, Windows SSH config, Remote SSH, API helper, 안전한 서비스 호출과 복구 절차는 [App 사용 설명서](codex_home_assistant/DOCS.md)를 따르세요.
 

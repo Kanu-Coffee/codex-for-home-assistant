@@ -121,6 +121,7 @@ docker run --detach \
   --name "${PUBLIC_CONTAINER}" \
   --env SUPERVISOR_TOKEN=smoke-supervisor-token-do-not-use \
   --publish 127.0.0.1::22 \
+  --publish 127.0.0.1::17682 \
   --volume "${PUBLIC_DATA}:/data" \
   --volume "${PUBLIC_CONFIG}:/config" \
   "${IMAGE}" >/dev/null
@@ -129,6 +130,19 @@ wait_for_log "${PUBLIC_CONTAINER}" 'Codex runtime ready:'
 wait_for_process "${PUBLIC_CONTAINER}" '/usr/sbin/sshd'
 wait_for_process "${PUBLIC_CONTAINER}" 'ttyd'
 wait_for_process "${PUBLIC_CONTAINER}" 'nginx'
+
+docker exec --detach "${PUBLIC_CONTAINER}" \
+  ttyd \
+  --interface 0.0.0.0 \
+  --port 17682 \
+  --writable \
+  --debug 1 \
+  /usr/local/bin/web-terminal-entrypoint
+wait_for_process "${PUBLIC_CONTAINER}" 'ttyd.*--port 17682'
+TTYD_PORT=$(docker port "${PUBLIC_CONTAINER}" 17682/tcp | head -n1 | sed 's/.*://')
+"${PYTHON_BIN}" tests/ttyd_websocket_smoke.py \
+  "ws://127.0.0.1:${TTYD_PORT}/ws" \
+  || fail 'ttyd WebSocket shell did not stay connected'
 
 EXPECTED_CODEX_VERSION=$(docker image inspect \
   --format '{{index .Config.Labels "io.hass.version"}}' "${IMAGE}")
