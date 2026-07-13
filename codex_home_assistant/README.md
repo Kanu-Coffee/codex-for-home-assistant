@@ -22,7 +22,7 @@ registry `image`는 아직 없으므로 amd64 Home Assistant 장치가 Dockerfil
 - `web_terminal_auto_start_codex: true`이면 새 tmux 세션에서 Codex를 한 번 실행한 뒤 Bash로 돌아옵니다.
 - SSH는 공개키 전용이며 App **Network**의 기본 호스트 포트는 `2223`입니다.
 - `CODEX_HOME=/data/codex`; `ha-codex-login`은 device code 로그인을 시작합니다.
-- 전역 `AGENTS.md`가 없을 때만 Home Assistant 운영 가드레일을 생성하며 사용자 파일은 보존합니다.
+- 전역 `AGENTS.md`와 `AGENTS.override.md`가 모두 없을 때만 Home Assistant 운영 가드레일을 생성하며 사용자 파일은 보존합니다.
 - `ha-api`, `supervisor-api`, `ha-config-check`, `ha-core-logs`, `ha-addon-logs`를 제공합니다.
 - Supervisor `admin`, Docker API, App `full_access`, host network는 사용하지 않습니다.
 
