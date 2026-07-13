@@ -15,26 +15,32 @@
 
 `codex_sandbox_mode: danger-full-access`는 **이 App 컨테이너 안에서의 Codex 정책**입니다. Home Assistant의 `full_access: true`나 HAOS host 권한을 뜻하지 않습니다.
 
-## 설치: Local Apps 개발 흐름
+## 설치: public App 저장소
 
-현재 저장소는 private 개발 저장소이고 `config.yaml`에 `image`가 없습니다. 아직 HAOS 실기 검증을 마친 GHCR 이미지를 배포하지 않았기 때문에 Home Assistant App Store에 저장소 URL을 추가하는 방식은 지원하지 않습니다. `image`를 생략하면 Supervisor가 `/addons`에 복사된 소스의 `Dockerfile`로 이미지를 로컬 빌드합니다. 이는 Home Assistant의 공식 [Local app testing](https://developers.home-assistant.io/docs/apps/testing/) 흐름입니다.
+Home Assistant의 공식 [App repository](https://developers.home-assistant.io/docs/apps/repository/) 방식으로 다음 public GitHub URL을 App Store에 추가합니다.
+
+```text
+https://github.com/Kanu-Coffee/codex-for-home-assistant
+```
+
+`config.yaml`에는 registry `image`가 없습니다. `image`는 선택 항목이며, 이 개발판은 저장소의 Dockerfile을 Supervisor가 amd64 장치에서 소스 빌드하도록 배포합니다. GHCR 이미지는 HAOS 실기 검증 뒤 별도 릴리스 단계에서 추가합니다.
 
 요구사항:
 
 - Home Assistant OS/Supervised와 Supervisor
 - amd64 시스템
 - 빌드 중 Home Assistant base image, Alpine 패키지, OpenAI Codex release를 받을 수 있는 인터넷 연결
-- `/addons`에 파일을 넣을 수 있는 기존 Samba 또는 SSH App
 
 설치 절차:
 
-1. 신뢰하는 PC에서 인증된 GitHub 계정으로 private 저장소를 clone/download합니다.
-2. 저장소의 `codex_home_assistant` 폴더 전체를 Home Assistant의 `/addons/codex_home_assistant`로 복사합니다. `config.yaml`, `Dockerfile`, `rootfs`, `translations`가 모두 있어야 합니다.
-3. Home Assistant에서 **설정 → Apps → App store**를 열고 우측 상단 메뉴에서 새로고침 또는 업데이트 확인을 실행합니다.
-4. **Local Apps**에 나타난 **Codex for Home Assistant**를 열어 설치합니다. 첫 로컬 빌드는 다운로드 때문에 오래 걸릴 수 있습니다.
-5. 아래 옵션과 Network를 설정한 뒤 App을 수동으로 시작합니다. 기본 `boot: manual`이므로 Home Assistant 부팅 시 자동 시작하지 않습니다.
+1. Home Assistant에서 **설정 → Apps → App store**를 엽니다.
+2. 우측 상단 메뉴의 **Repositories**를 열고 위 GitHub URL을 붙여 넣어 추가합니다.
+3. App Store를 새로고침하고 **Codex for Home Assistant**를 엽니다.
+4. **Install**을 누릅니다. 첫 소스 빌드는 다운로드와 컴파일 때문에 오래 걸릴 수 있습니다.
+5. 아래 옵션에 SSH 공개키를 추가하고 **Network**에서 `22/tcp`의 호스트 포트를 확인합니다.
+6. App을 수동으로 시작합니다. 기본 `boot: manual`이므로 Home Assistant 부팅 시 자동 시작하지 않습니다.
 
-private 저장소를 Home Assistant App Store에 그대로 등록하면 Supervisor가 사용자의 GitHub 자격 증명 없이 소스를 가져올 수 없습니다. 0.1.0 릴리스 전에 HAOS amd64 실기 검증, GHCR publish, `image` 설정을 완료한 뒤 일반 저장소 설치 절차를 제공할 예정입니다.
+목록에 보이지 않으면 장치가 amd64인지 확인하고 App Store를 새로고침하세요. 설치 실패 시 App/Supervisor 로그를 보존해 보고하되 token이나 `auth.json`은 공유하지 마세요.
 
 ## App 설정
 

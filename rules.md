@@ -224,7 +224,11 @@ gh auth status
 
 ### R-604 remote가 없을 때
 
-사용자의 GitHub 연동이 확인되고 현재 폴더가 새 프로젝트라면 기본적으로 private 저장소 `codex-for-home-assistant`를 생성해 `origin`으로 설정한다. 이미 저장소/remote가 있으면 새 저장소를 만들지 않는다.
+사용자의 GitHub 연동이 확인되고 현재 폴더가 새 프로젝트라면 기본적으로 private 저장소를 사용한다. 사용자가 명시적으로 public 배포를 승인한 이 프로젝트는 public `codex-for-home-assistant`를 `origin`으로 사용한다. 이미 저장소/remote가 있으면 새 저장소를 만들지 않는다.
+
+### R-605 HAOS 설치 테스트 전달
+
+사용자가 Home Assistant 웹에서 저장소를 연결해 설치·테스트할 수 있는 상태를 요청하면 기능 브랜치나 draft PR만으로 완료 처리하지 않는다. 자동 CI 통과와 미검증 항목 기록 후 변경을 `main`에 병합하고, 사용자가 승인한 public 저장소 URL에서 `repository.yaml`과 App 소스를 인증 없이 읽을 수 있는지 확인한다.
 
 ## 8. 완료 정의
 
@@ -237,3 +241,4 @@ gh auth status
 5. 관련 문서와 changelog가 갱신됐다.
 6. Git diff를 검토했다.
 7. 커밋·push가 완료됐고 가능하면 PR이 생성됐다.
+8. HAOS 설치 테스트 전달이면 public 저장소와 `main` 병합까지 완료됐다.

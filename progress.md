@@ -4,10 +4,10 @@
 
 ## Project Status
 
-- 상태: **M1 local MVP implemented, verified, and delivered as draft PR / M2 HAOS validation pending**
+- 상태: **M1 public App repository delivery in progress / M2 HAOS validation pending**
 - 현재 마일스톤: **M1 — 동작 가능한 amd64 MVP**
 - 마지막 문서 기준일: **2026-07-13**
-- 저장소: private `Kanu-Coffee/codex-for-home-assistant`
+- 저장소: `Kanu-Coffee/codex-for-home-assistant` — public 전환 및 `main` 병합 진행 중
 
 ## 완료된 결정
 
@@ -23,6 +23,16 @@
 - [x] 문서 주도 개발 파일 세트 작성
 
 ## Current Work
+
+### 2026-07-13 — public App Store 설치 전달
+
+- 목표: Home Assistant 웹의 App Store에서 GitHub 저장소 URL을 추가해 `codex_home_assistant`를 바로 설치할 수 있도록 public `main`에 배포한다.
+- [x] 공식 App repository 구조와 `image` 선택 항목·Dockerfile 소스 빌드 방식을 재확인했다.
+- [x] public 저장소 URL 설치 안내와 지속적인 `main` 병합 규칙을 문서에 반영했다.
+- [ ] 저장소 visibility를 public으로 전환한다.
+- [ ] PR #1을 ready로 바꾸고 `main`에 병합한다.
+- [ ] public `main`의 `repository.yaml`과 App manifest/Dockerfile을 인증 없이 조회한다.
+- [ ] 최종 `main` GitHub Actions를 확인한다.
 
 ### 2026-07-13 — amd64 MVP 런타임 구현 및 GitHub 전달
 
@@ -125,6 +135,7 @@
 - [x] App `image` 필드 적용 시점 결정 — 0.1.0/공개 pull 경로 확정 뒤 적용
 - [x] 기능 브랜치 커밋/push — `95bc564`, `feat/mvp-runtime`
 - [x] draft PR 생성 및 검증 결과 기록 — [#1](https://github.com/Kanu-Coffee/codex-for-home-assistant/pull/1)
+- [ ] public 저장소 전환과 PR #1 `main` 병합
 
 ## M2 — HAOS 실기 검증 및 0.1.0
 

@@ -114,8 +114,8 @@ hassio_role: manager
 - 결정: Supervisor Ingress port 7681의 nginx가 `172.30.32.2`와 loopback만 허용하고, loopback port 7682의 ttyd로 WebSocket을 전달한다. ttyd는 tmux 공유 세션을 실행한다.
 - 이유: `host_network` 없이 ttyd를 사용할 때 다른 내부 App이 인증 없이 터미널에 직접 접근하지 못하도록 공식 Ingress source ACL을 적용한다.
 
-## ADR-018 개발 중 `image` 필드 유보
+## ADR-018 public 저장소의 소스 빌드 배포
 
 - 상태: Accepted
-- 결정: private 저장소 MVP의 `config.yaml`에는 GHCR `image` 필드를 넣지 않고 Home Assistant Local Apps가 Dockerfile을 빌드하게 한다.
-- 이유: private GHCR image를 Supervisor가 인증 없이 pull하는 공식 경로가 확인되지 않았다. 0.1.0 배포 전에 package visibility와 설치 경로를 결정하고 공식 builder workflow와 generic image name을 활성화한다.
+- 결정: public 저장소 MVP의 `config.yaml`에는 GHCR `image` 필드를 넣지 않고, 저장소 URL로 추가한 Home Assistant가 Dockerfile을 amd64 장치에서 소스 빌드하게 한다.
+- 이유: 사용자가 App Store에서 즉시 설치·HAOS 검증할 수 있게 하면서 아직 실기 검증하지 않은 registry image를 릴리스하지 않기 위해서다. 0.1.0 배포 전에 공식 builder workflow와 generic image name을 별도로 활성화한다.

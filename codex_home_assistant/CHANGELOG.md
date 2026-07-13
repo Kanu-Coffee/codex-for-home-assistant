@@ -14,6 +14,7 @@ All notable changes to this App are documented in this file.
 - Public-key-only OpenSSH on container port 22 with default Network mapping 2223, persistent host keys, and disabled SSH when no valid authorized key is configured.
 - Core and Supervisor REST helpers with HTTP/result error handling and token redaction, plus config-check and log commands.
 - English and Korean App option/Network translations and operator documentation.
+- Public Home Assistant App repository metadata and direct App Store repository URL installation instructions.
 
 ### Security
 
@@ -23,7 +24,7 @@ All notable changes to this App are documented in this file.
 
 ### Known limitations
 
-- The repository is private and no release `image` is configured; this development version uses the Home Assistant Local Apps build flow.
+- No registry `image` is configured; this public development repository installs by building its Dockerfile on the amd64 Home Assistant host.
 - Local Docker verification covers public-key SSH, password rejection, host-key/config persistence, degraded no-key operation, API helper error/redaction behavior, and the complete lint suite.
 - Actual HAOS amd64 installation, Ingress/WebSocket behavior, device-auth persistence, Network port mapping, Windows SSH, Codex Desktop Remote SSH on Alpine/musl, real Core service calls, and Supervisor `manager` endpoints remain unverified M2 work.
 - Only amd64 is declared. aarch64 is not supported or claimed.
