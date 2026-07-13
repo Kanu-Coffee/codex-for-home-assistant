@@ -3,7 +3,7 @@ ARG BUILD_FROM=ghcr.io/home-assistant/base:3.24
 FROM ${BUILD_FROM}
 
 ARG BUILD_ARCH=amd64
-ARG BUILD_VERSION=0.1.1-dev
+ARG BUILD_VERSION=0.1.2-dev
 ARG TARGETARCH
 ARG CODEX_VERSION=0.144.1
 ARG CODEX_SHA256=84091ae20c65fcc7d4120db97d1bd57d7ff8df9c7609fb781c78c2ebbd4f5a28
@@ -56,7 +56,8 @@ RUN chmod 0755 \
       /etc/s6-overlay/s6-rc.d/ttyd/finish \
       /etc/s6-overlay/s6-rc.d/ttyd/run \
       /usr/local/bin/* \
-      /usr/local/lib/codex-ha/api-client.sh
+      /usr/local/lib/codex-ha/api-client.sh \
+    && chmod 0644 /usr/local/share/codex-ha/AGENTS.md
 
 RUN install -d -m 0700 /data/home /data/codex \
     && codex_version_output="$(codex --version)" \

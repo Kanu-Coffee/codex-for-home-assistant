@@ -83,6 +83,9 @@ seed_options() {
 }
 
 docker image inspect "${IMAGE}" >/dev/null 2>&1 || fail "image not found: ${IMAGE}"
+[[ $(docker run --rm --platform linux/amd64 --entrypoint stat "${IMAGE}" \
+  -c '%a:%U:%G' /usr/local/share/codex-ha/AGENTS.md) == 644:root:root ]] \
+  || fail 'image default AGENTS.md has unexpected ownership or mode'
 
 for volume in \
   "${PUBLIC_DATA}" \
@@ -114,7 +117,7 @@ docker run --rm \
   --entrypoint /bin/sh \
   --volume "${DEGRADED_DATA}:/data" \
   "${IMAGE}" \
-  -c 'mkdir -p /data/ssh && : > /data/ssh/ssh_host_ed25519_key'
+  -c 'mkdir -p /data/ssh /data/codex && : > /data/ssh/ssh_host_ed25519_key && printf "%s\n" "# user override" > /data/codex/AGENTS.override.md && chmod 0600 /data/codex/AGENTS.override.md'
 
 docker run --detach \
   --platform linux/amd64 \
@@ -144,11 +147,14 @@ TTYD_PORT=$(docker port "${PUBLIC_CONTAINER}" 17682/tcp | head -n1 | sed 's/.*:/
   "ws://127.0.0.1:${TTYD_PORT}/ws" \
   || fail 'ttyd WebSocket shell did not stay connected'
 
-EXPECTED_CODEX_VERSION=$(docker image inspect \
+EXPECTED_APP_VERSION=$(docker image inspect \
   --format '{{index .Config.Labels "io.hass.version"}}' "${IMAGE}")
+APP_VERSION=$(sed -n 's/^version: "\([^"]*\)"/\1/p' codex_home_assistant/config.yaml)
+[[ -n "${APP_VERSION}" && "${EXPECTED_APP_VERSION}" == "${APP_VERSION}" ]] \
+  || fail "image label version ${EXPECTED_APP_VERSION} does not match App version ${APP_VERSION}"
 CODEX_OUTPUT=$(docker exec "${PUBLIC_CONTAINER}" codex --version)
 [[ "${CODEX_OUTPUT}" =~ ^codex-cli\ [0-9]+\.[0-9]+\.[0-9]+$ ]] \
-  || fail "unexpected Codex version output: ${CODEX_OUTPUT} (image ${EXPECTED_CODEX_VERSION})"
+  || fail "unexpected Codex version output: ${CODEX_OUTPUT} (App ${EXPECTED_APP_VERSION})"
 
 docker exec "${PUBLIC_CONTAINER}" sshd -t -f /etc/ssh/sshd_config
 docker exec "${PUBLIC_CONTAINER}" nginx -t -c /etc/nginx/nginx.conf
@@ -206,6 +212,12 @@ done
 [[ $(docker exec "${PUBLIC_CONTAINER}" stat -c '%a' /data/ssh/ssh_host_ed25519_key.pub) == 644 ]]
 [[ $(docker exec "${PUBLIC_CONTAINER}" stat -c '%a' /run/codex-ha/runtime.env) == 600 ]]
 [[ $(docker exec "${PUBLIC_CONTAINER}" stat -c '%a' /root/.ssh/environment) == 600 ]]
+[[ $(docker exec "${PUBLIC_CONTAINER}" stat -c '%a' /data/codex/AGENTS.md) == 644 ]]
+[[ $(docker exec "${PUBLIC_CONTAINER}" stat -c '%U:%G' /data/codex/AGENTS.md) == root:root ]]
+docker exec "${PUBLIC_CONTAINER}" test -f /data/codex/AGENTS.md
+docker exec "${PUBLIC_CONTAINER}" cmp -s \
+  /usr/local/share/codex-ha/AGENTS.md /data/codex/AGENTS.md
+docker exec "${PUBLIC_CONTAINER}" grep -Fq 'Run `ha-config-check`' /data/codex/AGENTS.md
 
 PORT=$(docker port "${PUBLIC_CONTAINER}" 22/tcp | head -n1 | sed 's/.*://')
 SSH_OPTIONS=(
@@ -245,9 +257,12 @@ HOST_KEY_BEFORE=$(docker exec "${PUBLIC_CONTAINER}" \
   ssh-keygen -lf /data/ssh/ssh_host_ed25519_key.pub)
 docker exec "${PUBLIC_CONTAINER}" /bin/sh -c \
   'printf "\n# preserved-smoke-marker\n" >> /data/codex/config.toml'
+docker exec "${PUBLIC_CONTAINER}" /bin/sh -c \
+  'printf "\n# preserved-agents-smoke-marker\n" >> /data/codex/AGENTS.md'
 docker exec "${PUBLIC_CONTAINER}" rm -f /data/ssh/ssh_host_rsa_key.pub
 docker exec "${PUBLIC_CONTAINER}" codex-ha-init >/dev/null
 docker exec "${PUBLIC_CONTAINER}" grep -Fq '# preserved-smoke-marker' /data/codex/config.toml
+docker exec "${PUBLIC_CONTAINER}" grep -Fq '# preserved-agents-smoke-marker' /data/codex/AGENTS.md
 docker exec "${PUBLIC_CONTAINER}" test -s /data/ssh/ssh_host_rsa_key.pub
 [[ $(docker exec "${PUBLIC_CONTAINER}" stat -c '%a' /data/codex/config.toml) == 600 ]]
 
@@ -269,6 +284,7 @@ HOST_KEY_AFTER=$(docker exec "${PUBLIC_CONTAINER}" \
 [[ "${HOST_KEY_BEFORE}" == "${HOST_KEY_AFTER}" ]] \
   || fail 'SSH host key changed after container replacement'
 docker exec "${PUBLIC_CONTAINER}" grep -Fq '# preserved-smoke-marker' /data/codex/config.toml
+docker exec "${PUBLIC_CONTAINER}" grep -Fq '# preserved-agents-smoke-marker' /data/codex/AGENTS.md
 
 docker run --detach \
   --platform linux/amd64 \
@@ -284,6 +300,29 @@ wait_for_process "${DEGRADED_CONTAINER}" 'nginx'
 
 docker exec "${DEGRADED_CONTAINER}" test -e /run/codex-ha/ssh-disabled
 docker exec "${DEGRADED_CONTAINER}" test -s /data/ssh/ssh_host_ed25519_key
+docker exec "${DEGRADED_CONTAINER}" test ! -e /data/codex/AGENTS.md
+docker exec "${DEGRADED_CONTAINER}" grep -Fxq '# user override' /data/codex/AGENTS.override.md
+[[ $(docker exec "${DEGRADED_CONTAINER}" stat -c '%a' /data/codex/AGENTS.override.md) == 600 ]]
+
+docker exec "${DEGRADED_CONTAINER}" rm -f /data/codex/AGENTS.override.md
+docker exec "${DEGRADED_CONTAINER}" ln -s missing-user-guidance /data/codex/AGENTS.md
+docker exec "${DEGRADED_CONTAINER}" codex-ha-init >/dev/null
+docker exec "${DEGRADED_CONTAINER}" test -L /data/codex/AGENTS.md
+[[ $(docker exec "${DEGRADED_CONTAINER}" readlink /data/codex/AGENTS.md) == missing-user-guidance ]]
+
+docker exec "${DEGRADED_CONTAINER}" rm -f /data/codex/AGENTS.md
+docker exec "${DEGRADED_CONTAINER}" install -m 0600 /dev/null /data/codex/AGENTS.md
+docker exec "${DEGRADED_CONTAINER}" codex-ha-init >/dev/null
+docker exec "${DEGRADED_CONTAINER}" test ! -s /data/codex/AGENTS.md
+[[ $(docker exec "${DEGRADED_CONTAINER}" stat -c '%a' /data/codex/AGENTS.md) == 600 ]]
+
+docker exec "${DEGRADED_CONTAINER}" /bin/sh -c \
+  'printf "%s\n" "# existing user guidance" > /data/codex/AGENTS.md && chmod 0600 /data/codex/AGENTS.md'
+USER_GUIDANCE_HASH_BEFORE=$(docker exec "${DEGRADED_CONTAINER}" sha256sum /data/codex/AGENTS.md)
+docker exec "${DEGRADED_CONTAINER}" codex-ha-init >/dev/null
+USER_GUIDANCE_HASH_AFTER=$(docker exec "${DEGRADED_CONTAINER}" sha256sum /data/codex/AGENTS.md)
+[[ "${USER_GUIDANCE_HASH_BEFORE}" == "${USER_GUIDANCE_HASH_AFTER}" ]]
+[[ $(docker exec "${DEGRADED_CONTAINER}" stat -c '%a' /data/codex/AGENTS.md) == 600 ]]
 if docker exec "${DEGRADED_CONTAINER}" pgrep -f '/usr/sbin/sshd' >/dev/null 2>&1; then
   fail 'sshd is running without an authorized key'
 fi

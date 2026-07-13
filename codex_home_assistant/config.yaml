@@ -1,6 +1,6 @@
 ---
 name: Codex for Home Assistant
-version: "0.1.1-dev"
+version: "0.1.2-dev"
 slug: codex_home_assistant
 description: Codex CLI, Ingress web terminal, and Remote SSH for Home Assistant
 url: https://github.com/Kanu-Coffee/codex-for-home-assistant

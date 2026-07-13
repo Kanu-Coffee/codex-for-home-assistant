@@ -77,6 +77,9 @@
 - Codex environment variables
   https://developers.openai.com/codex/environment-variables/
 
+- Codex custom instructions and `AGENTS.md` discovery
+  https://developers.openai.com/codex/agent-configuration/agents-md
+
 ## 구현 참고 프로젝트
 
 - Advanced SSH & Web Terminal (`8fd57f1`)
@@ -103,3 +106,4 @@
 - 현재 generic Home Assistant Alpine base는 `3.24`, builder composite actions는 `2026.06.0`이다.
 - Codex CLI는 `0.144.1` amd64 musl release artifact와 GitHub asset digest를 사용한다.
 - Codex Remote SSH는 remote login shell의 PATH에서 `codex`를 찾고 remote host 자체의 인증을 요구한다.
+- Codex는 `CODEX_HOME`의 `AGENTS.md`를 전역 지침으로 읽고 프로젝트 root부터 현재 디렉터리까지 더 가까운 지침을 뒤에 결합한다.

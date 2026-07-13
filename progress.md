@@ -4,7 +4,7 @@
 
 ## Project Status
 
-- 상태: **M2 HAOS install PASS / Ingress TERM fix 0.1.1-dev locally verified, HAOS retest pending**
+- 상태: **M2 HAOS Web UI/Codex/Supervisor read-check PASS / 0.1.2-dev safety guidance locally verified**
 - 현재 마일스톤: **M2 — HAOS 실기 검증 및 0.1.0**
 - 마지막 문서 기준일: **2026-07-13**
 - 저장소: public `Kanu-Coffee/codex-for-home-assistant`, default branch `main`
@@ -24,6 +24,16 @@
 
 ## Current Work
 
+### 2026-07-13 — HAOS 실기 진단 검토와 Codex 운영 가드레일
+
+- 사용자 실기 증거: `0.1.1-dev` Web UI에서 Codex 인증·실행과 시스템 진단이 성공했다. 진단 중 실제 `/config` 파일 생성, Supervisor API의 Core/Supervisor/host/OS 정보·로그 조회, `POST /core/check` HTTP 200/`result: ok`를 확인했다.
+- 범위 결정: 사용자 자동화 Repairs, 서드파티 통합/앱 경고, Core 업데이트, `/config` 인증성 파일 권한은 실제 HA 구성과 운영 판단 영역이므로 App 소스에서 자동 변경하지 않는다.
+- [x] 진단 보고서를 제품·보안·테스트 계약과 대조하고 프로젝트 항목과 사용자 HA 항목을 분리한다.
+- [x] 기존 사용자 설정을 보존하면서 전역 `AGENTS.md`와 override가 모두 없을 때 Home Assistant 운영 안전 지침을 생성한다.
+- [x] 생성·0644·기본본 일치, 기존 base/override/빈 파일/dangling symlink의 내용·mode 보존 회귀 테스트와 운영 문서를 추가한다.
+- [x] `0.1.2-dev` amd64 build와 full Docker smoke, ttyd WebSocket, ShellCheck, Hadolint, YAML/Markdown lint를 로컬 검증했다.
+- [ ] 기능 브랜치 PR/CI를 통과하고 public `main`에 병합한 뒤 사용자의 HAOS `0.1.2-dev` 지침 적용 재검증을 기다린다.
+
 ### 2026-07-13 — HAOS Ingress terminal TERM 회귀 수정
 
 - HAOS 실기 결과: public repository 설치와 App 시작은 성공했다. Ingress는 `/` 200, `/token` 200, `/ws` 101까지 성공했지만 ttyd child에서 `open terminal failed: terminal does not support clear`가 발생해 Web UI가 재연결 상태가 됐다.
@@ -35,7 +45,7 @@
 - [x] `0.1.1-dev` amd64 build, 25 unit/policy tests, full smoke, Chrome 렌더·명령 입력을 검증했다.
 - [x] changelog, 사용 설명서, 아키텍처, 테스트 계획을 실제 결과에 맞췄다.
 - [x] PR [#3](https://github.com/Kanu-Coffee/codex-for-home-assistant/pull/3)의 CI를 통과하고 merge commit `b9e2808`로 public `main`에 병합했다. main CI run `29222324024`도 통과했다.
-- 다음: 사용자가 App Store 저장소를 새로고침해 `0.1.1-dev`로 업데이트하고 HAOS Ingress/resize/reconnect를 재검증한다.
+- 후속 실기: 사용자가 `0.1.1-dev` Web UI와 인증된 Codex 실행을 확인했다. resize와 브라우저 종료 후 tmux reattach는 계속 미검증이다.
 
 ### 2026-07-13 — public App Store 설치 전달
 
@@ -68,10 +78,13 @@
 - [x] Local Ingress terminal regression: PASS — actual ttyd WebSocket handshake and command returned `/config`, `TERM=tmux-256color`; Chrome rendered the shell with no console warning/error.
 - [x] HAOS App repository install/start: PASS — public 저장소 설치와 App/S6 서비스 시작 로그 확인.
 - [x] Ingress TERM fix delivery: PASS — PR #3 merge commit `b9e2808`, final public `main` CI run `29222324024`의 3개 job 통과.
-- [ ] 실제 Ingress/WebSocket/resize/browser tmux reattach: `0.1.0-dev` FAIL — transport 200/101 성공 후 TERM 손실; `0.1.1-dev` 로컬 수정 PASS, HAOS 재검증 필요.
-- [ ] 실제 device auth 및 App update 인증 영속성: NOT RUN — 사용자 인증/HAOS 필요.
+- [x] 실제 Ingress/WebSocket shell과 인증된 Codex 실행: PASS — 사용자 `0.1.1-dev` Web UI 실기 확인.
+- [ ] 실제 resize/browser tmux reattach: NOT RUN — 사용자 추가 실기 필요.
+- [ ] device code 로그인 방식 및 App restart/update 인증 영속성: NOT RUN — 인증된 실행만 확인, 영속성 증거 없음.
 - [ ] Home Assistant Network 2223 및 Codex Desktop Remote SSH: NOT RUN — HAOS/desktop E2E 필요.
-- [ ] 실제 Core API/service call 및 Supervisor manager endpoint: NOT RUN — 실제 HA/안전한 테스트 entity 필요.
+- [x] 실제 `/config` write와 Supervisor 조회/log/config-check: PASS — 진단 보고서 생성, `/core/info`, `/core/logs`, `/supervisor/info`, `/supervisor/logs`, `/host/info`, `/os/info`, App 목록, `/core/check` 확인.
+- [ ] 실제 Core REST state/service call 및 Supervisor start/stop/restart: NOT RUN — 안전한 테스트 entity와 명시적 운영 시험 필요.
+- [ ] 실제 HAOS의 기본 전역 `AGENTS.md` 생성·Codex 적용: NOT RUN — `0.1.2-dev` 업데이트와 새 인증 세션 필요.
 - Known issues: Alpine/musl은 Codex release target과 로컬 CLI/app-server help가 동작하지만 OpenAI의 명시 지원 OS 목록은 Ubuntu/Debian 중심이다. Remote SSH 완료로 간주하지 않는다.
 
 ## M1 — 동작 가능한 amd64 MVP
@@ -156,12 +169,13 @@
 ## M2 — HAOS 실기 검증 및 0.1.0
 
 - [x] public App repository 설치와 App 시작
-- [ ] Ingress 웹 터미널 테스트
+- [x] Ingress 웹 터미널과 인증된 Codex 실행
 - [ ] 장치 코드 로그인 및 인증 재시작 유지
 - [ ] SSH/Remote SSH 테스트
 - [ ] `/config` 파일 수정·롤백 테스트
 - [ ] Core API 상태 조회 및 안전한 테스트 엔티티 서비스 호출
-- [ ] Supervisor 로그·설정 검사·Core 재시작 테스트
+- [x] Supervisor 정보·로그와 Core 설정 검사
+- [ ] Supervisor/Core/App start/stop/restart 테스트
 - [ ] 브라우저 끊김 후 tmux 재접속
 - [ ] App 업데이트 후 host key와 Codex 인증 유지
 - [ ] 0.1.0 release/tag/GHCR publish
@@ -195,7 +209,7 @@
 - 수정: web entrypoint의 외부 TERM 복원, tmux pane TERM 보존, App `0.1.1-dev` version bump, rootfs LF 강제.
 - 로컬 검증: 실패 재현 후 actual WebSocket shell `/config:tmux-256color`, Chrome 입력·출력, amd64 build/full smoke PASS.
 - 배포: PR [#3](https://github.com/Kanu-Coffee/codex-for-home-assistant/pull/3)을 merge commit `b9e2808`로 public `main`에 병합했고, final main CI run `29222324024`가 통과했다.
-- 남음: 사용자가 App Store를 새로고침해 `0.1.1-dev`로 업데이트하고 HAOS Ingress를 재검증한다.
+- 후속: 사용자가 `0.1.1-dev` Web UI와 인증된 Codex 실행을 확인했다. resize/tmux reattach는 미검증이다.
 
 ### 2026-07-13 — public App repository main 배포
 
