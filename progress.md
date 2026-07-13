@@ -32,7 +32,8 @@
 - [x] 기존 사용자 설정을 보존하면서 전역 `AGENTS.md`와 override가 모두 없을 때 Home Assistant 운영 안전 지침을 생성한다.
 - [x] 생성·0644·기본본 일치, 기존 base/override/빈 파일/dangling symlink의 내용·mode 보존 회귀 테스트와 운영 문서를 추가한다.
 - [x] `0.1.2-dev` amd64 build와 full Docker smoke, ttyd WebSocket, ShellCheck, Hadolint, YAML/Markdown lint를 로컬 검증했다.
-- [ ] 기능 브랜치 PR/CI를 통과하고 public `main`에 병합한 뒤 사용자의 HAOS `0.1.2-dev` 지침 적용 재검증을 기다린다.
+- [x] PR [#5](https://github.com/Kanu-Coffee/codex-for-home-assistant/pull/5)의 push/PR CI 6개 job을 통과하고 merge commit `7105bcd`로 public `main`에 병합했다. final main CI run `29225737374`도 3개 job이 통과했다.
+- 다음: 사용자가 App Store 저장소를 새로고침해 `0.1.2-dev`로 업데이트하고 새 Codex 세션에서 기본 운영 지침 적용을 읽기 전용으로 확인한다.
 
 ### 2026-07-13 — HAOS Ingress terminal TERM 회귀 수정
 
@@ -66,7 +67,7 @@
 ### Verification
 
 - [x] `docker build --platform linux/amd64 ...`: PASS — base `3.24`, 공식 Codex SHA-256, `codex-cli 0.144.1`.
-- [x] Linux `python -m pytest -ra`: PASS — 24 tests; manifest/policy, S6/runtime, API error/result/token redaction, secret scan.
+- [x] Linux `python -m pytest -ra`: PASS — final main CI에서 26 tests; manifest/policy, S6/runtime, API error/result/token redaction, secret scan.
 - [x] `tests/docker-smoke.sh codex-ha:mvp`: PASS — S6, `/config` RW, permissions, nginx/ttyd, auto-start false/true, Codex 후 Bash 복귀, 공개키 SSH, 비밀번호 거부, UTF-8 env, host-key/config 영속성, invalid/no-key degraded recovery.
 - [x] `shellcheck` 0.11.0: PASS — runtime/test shell scripts, warning 이상 없음.
 - [x] `hadolint` 2.14.0, `yamllint`, `markdownlint-cli2` 0.23.0: PASS.
@@ -78,6 +79,7 @@
 - [x] Local Ingress terminal regression: PASS — actual ttyd WebSocket handshake and command returned `/config`, `TERM=tmux-256color`; Chrome rendered the shell with no console warning/error.
 - [x] HAOS App repository install/start: PASS — public 저장소 설치와 App/S6 서비스 시작 로그 확인.
 - [x] Ingress TERM fix delivery: PASS — PR #3 merge commit `b9e2808`, final public `main` CI run `29222324024`의 3개 job 통과.
+- [x] Persistent safety guidance delivery: PASS — PR #5 merge commit `7105bcd`, final public `main` CI run `29225737374`의 lint/unit, App config, amd64 build/smoke 통과.
 - [x] 실제 Ingress/WebSocket shell과 인증된 Codex 실행: PASS — 사용자 `0.1.1-dev` Web UI 실기 확인.
 - [ ] 실제 resize/browser tmux reattach: NOT RUN — 사용자 추가 실기 필요.
 - [ ] device code 로그인 방식 및 App restart/update 인증 영속성: NOT RUN — 인증된 실행만 확인, 영속성 증거 없음.
@@ -178,6 +180,7 @@
 - [ ] Supervisor/Core/App start/stop/restart 테스트
 - [ ] 브라우저 끊김 후 tmux 재접속
 - [ ] App 업데이트 후 host key와 Codex 인증 유지
+- [ ] `0.1.2-dev` 기본 전역 운영 지침 생성·새 Codex 세션 적용·사용자 override 보존
 - [ ] 0.1.0 release/tag/GHCR publish
 
 ## M3 — aarch64 및 안정화
@@ -201,6 +204,15 @@
 | Q-006 | Codex Desktop Remote SSH가 Alpine/musl 원격에서 요구하는 app-server를 정상 시작하는가? | CLI `app-server --help`만 PASS; Desktop E2E는 M2 |
 
 ## 최근 완료 기록
+
+### 2026-07-13 — HAOS 진단 검토와 비파괴 Codex 운영 가드레일
+
+- 진단 분류: 사용자 자동화 Repairs, 서드파티 통합/앱 경고, Core 업데이트, `/config` 파일 mode는 App 런타임 결함이 아니며 진단만으로 자동 수정하지 않기로 했다. 실환경 보고서 원문과 식별정보는 저장소에 포함하지 않았다.
+- 실기 증거: `0.1.1-dev` Web UI와 인증된 Codex 실행, 실제 `/config` write, Supervisor Core/Supervisor/host/OS info·logs와 `/core/check`를 확인했다. Core REST service call, 운영 restart, 인증 영속성은 완료로 표시하지 않았다.
+- 개선: 두 전역 지침 파일이 모두 없을 때만 `/data/codex/AGENTS.md`를 생성하고 기존 base/override/빈 파일/symlink의 내용과 mode를 보존한다. 진단과 변경 권한 분리, 비밀 비노출, `.storage`/DB 보호, config check, 고위험 승인 규칙을 담았다.
+- 검증: `0.1.2-dev` amd64 build/full smoke, 실제 ttyd WebSocket, 기존 지침 보존 fixture, Linux 26 tests, ShellCheck/Hadolint/YAML/Markdown/App lint PASS.
+- 배포: PR [#5](https://github.com/Kanu-Coffee/codex-for-home-assistant/pull/5)을 merge commit `7105bcd`로 public `main`에 병합했고 final main CI run `29225737374`가 통과했다.
+- 남음: 실제 HAOS에서 `0.1.2-dev`로 업데이트한 뒤 새 Codex 세션이 기본 전역 지침을 읽는지 확인한다.
 
 ### 2026-07-13 — Ingress terminal TERM 수정 배포
 
