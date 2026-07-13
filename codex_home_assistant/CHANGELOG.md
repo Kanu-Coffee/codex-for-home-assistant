@@ -13,7 +13,7 @@ All notable changes to this App are documented in this file.
 
 - Promote the HAOS-validated `0.1.3-dev` payload to the first non-dev release while retaining `stage: experimental` and amd64-only support.
 - Download the pre-built public GHCR image during install/update instead of building the Dockerfile on the Home Assistant host.
-- Gate registry publishing on an immutable numeric Git tag that must exactly match the App version.
+- Gate registry publishing on an exact numeric Git tag and refuse to overwrite an existing generic or per-architecture GHCR version tag.
 
 ### Security
 
