@@ -1,18 +1,18 @@
 # File Manifest
 
-SHA-256 checksums:
+SHA-256 checksums of the LF-normalized repository blobs:
 
 - `9345a628a5354ffec3e301659d8aef459a0b8e67e5ff720fa0a8e973a2eae0df`  `AGENTS.md`
-- `353b939e6b83eeda13f29507d563ab4cba1d5eb784ba9c84348524cb499b616d`  `README.md`
-- `5b2a5b5226d64d8480042e8d8c06b64b4bdbdb35b9451acbfa81955b91bc375e`  `addon_spec.md`
-- `a0e01fe627208a91e35536c74855efe50bdec4af662b58251d618cdd06cdba1f`  `architecture.md`
-- `226035c3a62bcc4783ab76f37ad20743edaea852cae2c576e9c9e8b755364bdc`  `decisions.md`
-- `d886331345470dbb9a0ef63bbaf90458ec4a3b4665c518e223fe1e1ce6e13cb2`  `implementation_plan.md`
+- `567335b7e4e7bf601e7a2a31c7400c44eaa337c9d079fe63c704ce510467d98d`  `README.md`
+- `6cb7bfaa64ee1d5dff00198e5825876c6efc51efb35288d5e89fe5cf3ab5e9bb`  `addon_spec.md`
+- `218270f79c65c855df8a032744c26d804be80e7bde744bad16a1676a59d65986`  `architecture.md`
+- `f1e3da17014fb04fd4ef28a775261cc1d06a5f6ba5ba6fb8ac2cdd801112646a`  `decisions.md`
+- `cd63e3d7f7893d699d276161d09cf217608b9af9ebbfb515bd409db0b7cb56e7`  `implementation_plan.md`
 - `a589c169be49d8084bcc4707618bb4a5dae73608094b064a9159e1eabde59698`  `master_prompt.md`
-- `105b2b6a3ecfcdc60538a19c891f801e6c508a7803e466c464d4ac91f5519c97`  `product_spec.md`
-- `076ff005d715a3b3b9107dd9b390840871cd7d5d37bc0c7e2123555162821b6f`  `progress.md`
-- `72555e1d1757363030f6211228711cbb9af8ae3232408dd7b1e2ca3731eff534`  `references.md`
-- `90687c8204270e21203e8ab26983946a787f74ea4c38a6640e4a31ff5f0e7a0d`  `release_git.md`
-- `f76a938769bd92d042406c9d898d934409ffcceeadfc7d5b06d0a87fe990fce1`  `rules.md`
-- `dc7cf79a4d09de8d4a481b270270d196017f0c9c9de456560fc98301431286dd`  `security.md`
-- `31d458dac81b67924b94a5867405bd4ac68bbdba9e497532d3f4838060aba858`  `test_plan.md`
+- `7910b4071335e369299debd783d07fca8e774e287fd1db793d86745beb78958e`  `product_spec.md`
+- `9482f04b3f434fccc1da0861093710977ccaa50c65a523ccda678b90f203dac1`  `progress.md`
+- `7dca90799b290156fb5172952f32fa38fafc3e46a94d15aef306a23651349b03`  `references.md`
+- `121545bc9e7ac36b98b06e8536643ae759d5dc5427dc1456be7641bfa22b0380`  `release_git.md`
+- `2acb1fbe992c4bb744ebee9a1be0597037be58afae76a6f2f20566573431aec3`  `rules.md`
+- `4d45873a044cc81646ffca990e061a071008232de338cd894aab5304d556da9c`  `security.md`
+- `4caa0239942a9ace3bc9d61ca19497477b55747eec4bc927b73d3e523166a814`  `test_plan.md`
