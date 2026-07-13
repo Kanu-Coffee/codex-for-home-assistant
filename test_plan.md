@@ -11,6 +11,7 @@
 - shellcheck
 - Dockerfile lint
 - App config 정책 검사
+- registry image/tag publish workflow 정책 검사
 - secret scan
 - 실행 파일 permission 검사
 
@@ -29,6 +30,7 @@ Supervisor가 없어도 검증 가능한 항목:
 - API response media type 협상과 header injection 거부
 - token redaction
 - `/data` persistence fixture
+- pulled GHCR image의 labels/platform 및 full smoke
 
 ### L3 Supervisor/App 개발 환경
 
@@ -41,6 +43,7 @@ Supervisor가 없어도 검증 가능한 항목:
 - Network port mapping
 - `SUPERVISOR_TOKEN`
 - Core/Supervisor API
+- source-build App에서 public GHCR image App으로 일반 업데이트
 
 ### L4 실제 사용자 HAOS E2E
 
@@ -78,6 +81,7 @@ Supervisor가 없어도 검증 가능한 항목:
 | AT-020 | 기본 전역 `AGENTS.md` | 생성·0644, 핵심 안전 규칙 포함, 재초기화 시 사용자 수정/override 보존 |
 | AT-021 | API `Accept` 협상 | 기본 JSON, 로그 x-log, 비허용/CRLF 값 요청 전 거부 |
 | AT-022 | ttyd resize/reconnect | resize 반영 후 WebSocket 재연결에도 session/pane/pid 동일 |
+| AT-023 | registry release contract | generic image, numeric tag gate, version 일치, package write 권한 |
 
 ## 3. HAOS 수동/E2E 시나리오
 
@@ -234,6 +238,15 @@ ha-api GET /states
 4. 사용자 문장 보존 확인
 
 성공 기준: 기본 안전 지침이 새 세션에 적용되고 기존 `AGENTS.md` 또는 `AGENTS.override.md`를 덮어쓰지 않음
+
+### E2E-014 public GHCR 업데이트
+
+1. `0.1.3` generic manifest가 인증 없이 linux/amd64로 resolve되는지 확인
+2. image labels와 `codex --version`을 검사하고 full container smoke 실행
+3. App Store 저장소를 새로고침하고 기존 `0.1.3-dev`를 일반 업데이트
+4. Web UI, Codex 로그인, SSH host identity와 `/data` 사용자 설정 확인
+
+성공 기준: 소스 빌드 없이 image를 받고 재로그인/known_hosts 변경 없이 주요 경로가 동작함. App 삭제나 `/data` reset은 하지 않음.
 
 ## 4. 회귀 테스트 우선순위
 

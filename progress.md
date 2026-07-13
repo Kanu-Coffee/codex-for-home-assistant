@@ -4,7 +4,7 @@
 
 ## Project Status
 
-- 상태: **amd64 주요 사용자 경로 PASS / M2 수용·첫 non-dev 릴리스 게이트 대기**
+- 상태: **amd64 M2 실기 수용 PASS / 0.1.3 non-dev 릴리스 진행 중**
 - 현재 마일스톤: **M2 — HAOS 실기 검증 및 첫 non-dev 릴리스**
 - 마지막 문서 기준일: **2026-07-13**
 - 저장소: public `Kanu-Coffee/codex-for-home-assistant`, default branch `main`
@@ -23,6 +23,20 @@
 - [x] 문서 주도 개발 파일 세트 작성
 
 ## Current Work
+
+### 2026-07-13 — 0.1.3 amd64 GHCR non-dev 릴리스와 HACS 검토
+
+- 사용자 최종 실기 증거: HAOS에서 auto-start 양 모드, device-code 로그인, App 재시작 뒤 인증 유지, SSH host identity 동일성을 확인했다. `persistent_notification` 생성·dismiss Core service call은 각각 rc 0이었고 임시 알림 정리도 성공했다.
+- 완료 경계: 위 결과로 제품 명세의 M1/M2 필수 실기 수용 기준은 충족한다. Supervisor/Core/App start/stop/restart 실동작은 운영 중단 위험 때문에 자동 실행하지 않으며 manager info/log/config-check와 범용 POST helper 검증 범위로 남긴다.
+- 릴리스 버전: Supervisor와 같은 AwesomeVersion 25.8.0에서 `0.1.3-dev < 0.1.3`을 재현했으므로 `0.1.3`을 첫 non-dev version으로 사용한다. Home Assistant `stage: experimental`, `arch: [amd64]`는 유지하고 `0.1.4`는 필요 시 복구 릴리스용으로 남긴다.
+- 배포 전환: 공식 Home Assistant builder action으로 amd64 per-arch image와 generic GHCR manifest를 게시하고 `config.yaml`은 `ghcr.io/kanu-coffee/codex-for-home-assistant`를 사용한다.
+- 데이터 전환: App runtime과 `/data` 형식은 바꾸지 않는다. 기존 App을 삭제하거나 reset하지 않고 일반 업데이트로 검증한다. registry 문제가 생기면 더 높은 patch version에서 `image`를 제거해 소스 빌드로 되돌린다.
+- HACS 판정: HACS는 Supervisor App 유형을 지원하지 않으므로 HACS manifest나 잘못된 repository type을 추가하지 않는다. 공식 App repository URL과 My Home Assistant 원클릭 등록 링크를 제공한다.
+- [x] 사용자 실기 PASS를 Verification/M2와 사용자 문서에 반영했다.
+- [x] 0.1.3 version, generic GHCR image, 공식 builder workflows와 계약 테스트를 구현했다. PR 빌드는 read-only이고 numeric version tag만 package write/OIDC 권한으로 게시한다.
+- [x] 로컬 amd64 image build/full smoke, Linux pytest 31개, ShellCheck/Hadolint/YAML/Markdown/actionlint와 Git diff 검사를 통과했다. image의 `io.hass.version=0.1.3`, `io.hass.arch=amd64` label도 확인했다.
+- [ ] PR CI와 게시 뒤 public GHCR anonymous linux/amd64 pull/full smoke를 검증한다.
+- [ ] public `main` 병합, `0.1.3` tag와 GitHub Release를 완료한다.
 
 ### 2026-07-13 — 0.1.3-dev 최종 HAOS 회귀·완료 판정
 
@@ -109,15 +123,16 @@
 - [x] Persistent safety guidance delivery: PASS — PR #5 merge commit `7105bcd`, final public `main` CI run `29225737374`의 lint/unit, App config, amd64 build/smoke 통과.
 - [x] 실제 Ingress/WebSocket shell과 인증된 Codex 실행: PASS — 사용자 `0.1.1-dev` Web UI 실기 확인.
 - [x] 실제 HAOS UI resize/browser tmux reattach: PASS — 다른 브라우저/환경에서 이전 터미널·대화 복구와 resize를 사용자 확인했고 detached `codex-ha` session을 사후 확인했다. 동일 ID 기계 비교는 로컬 실제 WebSocket smoke가 보완한다.
+- [x] 실제 HAOS auto-start false/true: PASS — 두 옵션의 의도된 shell/Codex 시작 동작을 사용자 확인.
 - [x] App update Codex 인증 영속성: PASS — App 삭제 없이 연속 업데이트한 환경에서 로그인 상태와 인증된 Codex 실행 유지.
-- [ ] device code 로그인 방식 자체: NOT RUN — 현재 인증의 최초 로그인 방식 증거 없음.
+- [x] device code 로그인과 App 재시작 인증 영속성: PASS — 사용자 실기 확인.
 - [x] Home Assistant Network 공개키 SSH와 remote app server: PASS — 사용자 mobile Remote → 연결된 desktop SSH project → HAOS `/config` E2E 확인.
 - [x] 실제 `/config` write/rollback, Core REST 조회, Supervisor 조회/direct log/config-check: PASS — `/config` 임시 변경 정리, `/config`·`/states`·`/services`, Core/App direct logs, self/info, `/core/check` 확인.
 - [x] `0.1.3-dev`의 `ha-core-logs`/`ha-addon-logs`: PASS — 사용자 별도 결과와 보고서에서 모두 rc 0/nonempty이며 direct `text/x-log` 요청과 helper 사이의 불일치나 negotiation 오류 없음.
-- [ ] 실제 Core service call: NOT RUN — 첫 non-dev 릴리스 전에 임시 persistent notification처럼 되돌릴 수 있는 저위험 서비스로 확인 필요.
+- [x] 실제 Core service call: PASS — 임시 persistent notification 생성·dismiss 각각 rc 0, 정리 확인.
 - [ ] Supervisor/Core/App start/stop/restart: NOT RUN — manager helper와 info/log/config-check는 PASS이나 운영 중단 동작은 명시적 유지보수 승인 없이는 실행하지 않는다.
 - [x] 실제 HAOS의 기본 전역 `AGENTS.md`: PASS — 0644, 이미지 기본본과 byte 동일, 사용자 override 비파괴 정책 확인.
-- [ ] SSH host key 업데이트 전후 fingerprint 동일성: NOT RUN — 파일/키 존재와 로컬 persistence는 PASS이나 HAOS 전후 fingerprint 미기록.
+- [x] SSH host key 업데이트/재시작 전후 동일성: PASS — 사용자 실기 확인.
 - Known issues: 공식 명시 Linux 지원은 Ubuntu/Debian 중심이지만 amd64 Alpine/musl remote app server는 사용자 E2E에서 동작했다. aarch64, 향후 Codex 버전 변경과 HAOS lifecycle 영향은 별도 검증 대상이다.
 
 ## M1 — 동작 가능한 amd64 MVP
@@ -203,16 +218,17 @@
 
 - [x] public App repository 설치와 App 시작
 - [x] Ingress 웹 터미널과 인증된 Codex 실행
-- [ ] 장치 코드 로그인 방식 확인
+- [x] auto-start false/true 동작
+- [x] 장치 코드 로그인 방식 확인
 - [x] App 업데이트 후 Codex 인증 유지
 - [x] SSH/Remote SSH 테스트 — mobile Remote 경유 desktop SSH project
 - [x] `/config` 파일 수정·롤백 테스트
 - [x] Core API 상태·서비스 목록 조회
-- [ ] 안전한 테스트 엔티티 서비스 호출
+- [x] 안전한 Core service call — 임시 persistent notification 생성·dismiss와 정리
 - [x] Supervisor 정보·로그와 Core 설정 검사
 - [ ] Supervisor/Core/App start/stop/restart 테스트
 - [x] 브라우저 끊김 후 tmux 기능적 재접속과 resize
-- [ ] App 업데이트 후 host key fingerprint 유지
+- [x] App 업데이트/재시작 후 host key fingerprint 유지
 - [x] `0.1.2-dev` 기본 전역 운영 지침 생성·기본본 일치·사용자 override 보존
 - [x] `0.1.3-dev` Core/App 로그 helper HAOS 회귀 확인
 - [ ] 첫 non-dev release/tag/GHCR publish — 이미 배포된 `0.1.3-dev`보다 낮은 `0.1.0`으로 내리지 않음

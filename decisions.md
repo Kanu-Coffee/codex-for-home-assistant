@@ -116,7 +116,7 @@ hassio_role: manager
 
 ## ADR-018 public 저장소의 소스 빌드 배포
 
-- 상태: Accepted
+- 상태: Superseded by ADR-021 after HAOS M2 acceptance
 - 결정: public 저장소 MVP의 `config.yaml`에는 GHCR `image` 필드를 넣지 않고, 저장소 URL로 추가한 Home Assistant가 Dockerfile을 amd64 장치에서 소스 빌드하게 한다.
 - 이유: 사용자가 App Store에서 즉시 설치·HAOS 검증할 수 있게 하면서 아직 실기 검증하지 않은 registry image를 릴리스하지 않기 위해서다. 첫 non-dev 배포 전에 공식 builder workflow와 generic image name을 별도로 활성화한다.
 
@@ -132,3 +132,16 @@ hassio_role: manager
 - 상태: Accepted
 - 결정: 공용 API helper의 기본 `Accept`는 `application/json`으로 유지하고, `application/json`, `text/plain`, `text/x-log`만 명시적으로 선택할 수 있게 한다. Core/App 로그 wrapper는 `text/x-log`를 사용한다.
 - 이유: Supervisor 로그 endpoint는 JSON이 아닌 log media type을 요구한다. `--raw` 출력 모드 전체의 요청 의미를 바꾸지 않으면서 실제 HAOS 실패를 수정하고, allowlist로 header injection을 막는다.
+
+## ADR-021 tag-gated public GHCR 배포
+
+- 상태: Accepted
+- 결정: `0.1.3`부터 `ghcr.io/kanu-coffee/codex-for-home-assistant` generic manifest를 사용한다. 공식 Home Assistant builder actions `2026.06.0`이 amd64 image와 manifest를 숫자 Git tag에서만 게시하며 tag는 App version과 정확히 같아야 한다.
+- 이유: pre-built image는 HAOS의 느리고 실패 가능성이 높은 소스 빌드를 제거한다. tag-only publish와 immutable version tag는 이후 문서 변경이나 version bump 누락이 기존 release image를 덮어쓰는 것을 막는다.
+- 제약: generic/per-arch GHCR package를 public으로 제공하고 인증 없는 linux/amd64 pull을 확인한다. `stage: experimental`과 amd64-only 지원은 유지한다.
+
+## ADR-022 HACS 대신 Home Assistant App repository
+
+- 상태: Accepted
+- 결정: HACS metadata나 repository submission을 추가하지 않고 public `repository.yaml`, GitHub URL과 My Home Assistant `supervisor_store` 링크로 배포한다.
+- 이유: HACS가 지원하는 Integration, Dashboard, Theme, Template, AppDaemon, Python Script 유형에는 Supervisor-managed Home Assistant App이 없다. 다른 유형으로 오분류해도 App Store 설치가 되지 않는다.

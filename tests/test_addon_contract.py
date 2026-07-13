@@ -26,10 +26,46 @@ def test_all_yaml_files_parse(repository_root: Path) -> None:
             yaml.safe_load(stream)
 
 
-def test_mvp_is_amd64_local_build(addon_config: dict) -> None:
+def test_release_is_amd64_with_generic_registry_image(addon_config: dict) -> None:
     assert addon_config["arch"] == ["amd64"]
-    assert "image" not in addon_config
+    assert (
+        addon_config["image"]
+        == "ghcr.io/kanu-coffee/codex-for-home-assistant"
+    )
+    assert "{arch}" not in addon_config["image"]
     assert addon_config["stage"] == "experimental"
+
+
+def test_registry_release_workflow_is_tag_gated(repository_root: Path) -> None:
+    workflow_root = repository_root / ".github" / "workflows"
+    builder_path = workflow_root / "builder.yaml"
+    build_app_path = workflow_root / "build-app.yaml"
+
+    with builder_path.open(encoding="utf-8") as stream:
+        builder = yaml.safe_load(stream)
+    assert builder["on"]["push"] == {
+        "tags": ["[0-9]*.[0-9]*.[0-9]*"]
+    }
+    assert "branches" not in builder["on"]["push"]
+
+    builder_text = builder_path.read_text(encoding="utf-8")
+    build_app_text = build_app_path.read_text(encoding="utf-8")
+    assert "publish: false" in builder_text
+    assert "publish: true" in builder_text
+    assert "secrets: inherit" not in builder_text
+    assert "packages: write" in builder_text
+    assert "Refusing to overwrite ${package}:${APP_VERSION}" in builder_text
+    assert "github.repository == 'Kanu-Coffee/codex-for-home-assistant'" in (
+        build_app_text
+    )
+    assert "home-assistant/builder/actions/build-image@2026.06.0" in (
+        build_app_text
+    )
+    assert (
+        "home-assistant/builder/actions/"
+        "publish-multi-arch-manifest@2026.06.0"
+    ) in build_app_text
+    assert "image-tags: latest" not in build_app_text
 
 
 def test_home_assistant_brand_assets(addon_root: Path) -> None:
