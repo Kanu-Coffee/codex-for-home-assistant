@@ -13,7 +13,6 @@ All notable changes to this App are documented in this file.
 ### Fixed
 
 - Negotiate `text/x-log` in `ha-core-logs` and `ha-addon-logs` instead of sending the JSON-only `Accept` header that failed against live Core and App log endpoints.
-- Remove the stale hand-maintained document checksum manifest instead of presenting outdated hashes as integrity evidence.
 
 ### Security
 

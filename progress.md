@@ -33,9 +33,9 @@
 - [x] 로그 API가 `text/x-log`를 협상하도록 공용 API 클라이언트와 두 로그 헬퍼를 수정하고 회귀 테스트를 추가했다. media type allowlist가 CR/LF header injection도 요청 전에 거부한다.
 - [x] 제공된 원본을 왜곡 없이 투명 RGBA `icon.png` 128x128과 `logo.png` 250x250으로 변환하고 README 표시·자산 계약 테스트를 추가했다.
 - [x] 실제 ttyd WebSocket에서 resize와 연결 종료/재접속 뒤 동일 tmux session/pane/pid를 확인했다. 이는 같은 App 실행 중 보장이며 업데이트를 넘는 영속성 주장이 아니다.
-- [x] 버전을 `0.1.3-dev`로 올리고 README, changelog, 설계·보안·테스트·운영 문서를 실제 실기 증거에 맞췄으며 오래되어 무결성 증거가 아니었던 수동 `MANIFEST.md`를 제거했다.
+- [x] 버전을 `0.1.3-dev`로 올리고 README, changelog, 설계·보안·테스트·운영 문서를 실제 실기 증거에 맞췄으며 `MANIFEST.md` 문서 checksum을 현재 내용으로 재생성했다.
 - [x] amd64 이미지 build/full smoke, Linux 29 tests, ShellCheck/Hadolint/YAML/Markdown/App lint, secret scan과 Git diff를 검증했다.
-- [ ] 기능 브랜치를 push하고 PR/CI 확인 후 public `main`에 병합해 HA App Store 업데이트 경로에 전달한다.
+- [ ] commit `2b145e4`를 `fix/live-log-logo`에 push하고 draft PR [#7](https://github.com/Kanu-Coffee/codex-for-home-assistant/pull/7)을 생성했다. CI 확인 후 public `main`에 병합해 HA App Store 업데이트 경로에 전달한다.
 
 ### 2026-07-13 — HAOS 실기 진단 검토와 Codex 운영 가드레일
 
