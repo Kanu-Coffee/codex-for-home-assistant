@@ -38,11 +38,11 @@ jobs:
       - name: Normalize app information
         id: normalize
         env:
-          APP_DESCRIPTION: ${{ steps.info.outputs.description }}
-          APP_IMAGE: ${{ steps.info.outputs.image }}
-          APP_NAME: ${{ steps.info.outputs.name }}
-          APP_URL: ${{ steps.info.outputs.url }}
-          APP_VERSION: ${{ steps.info.outputs.version }}
+          APP_DESCRIPTION: ${{ fromJSON(steps.info.outputs.description) }}
+          APP_IMAGE: ${{ fromJSON(steps.info.outputs.image) }}
+          APP_NAME: ${{ fromJSON(steps.info.outputs.name) }}
+          APP_URL: ${{ fromJSON(steps.info.outputs.url) }}
+          APP_VERSION: ${{ fromJSON(steps.info.outputs.version) }}
         run: |
           for variable in \
             APP_DESCRIPTION APP_IMAGE APP_NAME APP_URL APP_VERSION; do

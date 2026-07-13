@@ -54,6 +54,9 @@ def test_registry_release_workflow_is_tag_gated(repository_root: Path) -> None:
         "  release-guard:\n", maxsplit=1
     )
     assert "RELEASE_TAG: ${{ github.ref_name }}" in validate_section
+    assert "APP_IMAGE: ${{ fromJSON(steps.info.outputs.image) }}" in (
+        validate_section
+    )
     assert "Release tag and App version differ" in validate_section
     assert "Release tag and App version differ" not in release_guard_section
     assert "publish: false" in builder_text
