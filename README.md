@@ -94,13 +94,16 @@ progress.md            실제 완료/미검증 상태의 단일 기준
 
 ## 검증 경계
 
-로컬 Docker 검증은 image build, Codex 실행, S6 서비스, ttyd/nginx, 동일 tmux pane 재접속·resize, 공개키 sshd, 영속 데이터와 helper 오류 처리를 다룹니다. 실제 HAOS에서는 public 설치·시작, Web UI와 인증된 Codex, `/config` 쓰기, Core REST 조회, Supervisor 정보·직접 로그·설정 검사, 업데이트 후 Codex 인증 보존, mobile Remote를 통한 SSH 프로젝트 작업을 확인했습니다. 다음은 아직 완료가 아닙니다.
+로컬 Docker 검증은 image build, Codex 실행, S6 서비스, ttyd/nginx, 동일 tmux pane 재접속·resize, 공개키 sshd, 영속 데이터와 helper 오류 처리를 다룹니다. 실제 HAOS에서는 public 설치·시작, Web UI와 인증된 Codex, 브라우저 재접속·resize, `/config` 쓰기, Core REST 조회, Supervisor 정보·직접 로그·helper·설정 검사, 업데이트 후 Codex 인증 보존, mobile Remote를 통한 SSH 프로젝트 작업을 확인했습니다. 현재 주요 사용자 경로에서 FAIL은 없어 실사용 가능한 amd64 beta/MVP candidate입니다.
 
-- Ingress resize와 브라우저 종료 뒤 tmux 재접속
-- `0.1.3-dev`의 `ha-core-logs`/`ha-addon-logs` HAOS 회귀 확인
-- 업데이트 전후 SSH host key fingerprint 동일성
-- 장치 코드 로그인 UI 흐름
-- 실제 Core 서비스 호출과 Supervisor start/stop/restart endpoint
+첫 non-dev 릴리스 전에는 다음 증거와 배포 작업이 남아 있습니다.
+
+- HAOS에서 auto-start false/true 양 모드와 장치 코드 로그인 방식 확인
+- 일반 App 재시작/업데이트 전후 인증과 SSH host identity 동일성 확인
+- 되돌릴 수 있는 저위험 Core 서비스 호출
+- non-dev version, tag, public GHCR image와 GitHub Release
+
+Supervisor/Core/App start/stop/restart 실동작은 manager API 기능 범위에 포함되지만 운영 중단 위험이 있으므로, 명시적인 유지보수 승인 없이 완료 판정을 위해 자동 실행하지 않습니다.
 
 자세한 최신 결과와 명령 증거는 `progress.md`에 기록합니다.
 

@@ -95,14 +95,16 @@ GitHub Action 버전은 구현 시점의 공식 예제 값을 사용한다. 이 
 ### 개발
 
 ```text
-0.1.0-dev
+0.1.3-dev
 ```
 
-### 첫 release
+### 첫 non-dev release 후보
 
 ```text
-0.1.0
+0.1.3
 ```
+
+이미 HAOS에 배포된 `0.1.3-dev`보다 낮은 `0.1.0`으로 되돌리지 않는다. 실제 Home Assistant update version 비교와 registry image 설치를 release candidate에서 확인하고, 필요하면 더 높은 patch version을 사용한다.
 
 SemVer를 사용한다.
 
@@ -120,7 +122,7 @@ SemVer를 사용한다.
 ghcr.io/<owner>/codex-for-home-assistant
 ```
 
-0.1.0 배포 시 multi-arch manifest 또는 amd64 image를 publish하고 `config.yaml`의 `image`에 반영한다.
+첫 non-dev 배포 시 multi-arch manifest 또는 amd64 image를 publish하고 `config.yaml`의 `image`에 반영한다. Home Assistant App `stage`는 별도 M3 평가 전까지 `experimental`을 유지한다.
 
 ## 8. 릴리스 체크리스트
 

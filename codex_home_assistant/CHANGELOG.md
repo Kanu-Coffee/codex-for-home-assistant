@@ -2,7 +2,7 @@
 
 All notable changes to this App are documented in this file.
 
-## [0.1.3-dev] - Unreleased
+## [0.1.3-dev] - 2026-07-13
 
 ### Added
 
@@ -22,7 +22,8 @@ All notable changes to this App are documented in this file.
 ### Testing
 
 - Add regression coverage for default JSON negotiation, log media negotiation, malformed Accept values, wrapper arguments, and Home Assistant brand asset dimensions.
-- Treat the HAOS report's tmux result as unverified because no pre-existing Ingress session was present; do not infer a runtime regression from a non-interactive `TERM=dumb` observation.
+- Confirm on HAOS that direct `text/x-log` requests and both log helpers return rc 0 with nonempty responses and no negotiation error.
+- Confirm functional Web UI reconnection, conversation recovery, resize, and no recurring `clear` error on HAOS; the local real WebSocket smoke separately proves identical tmux session, pane, and process IDs.
 
 ## [0.1.2-dev] - 2026-07-13
 
