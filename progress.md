@@ -4,10 +4,10 @@
 
 ## Project Status
 
-- 상태: **M1 public App repository delivery in progress / M2 HAOS validation pending**
+- 상태: **M1 public App repository merged and ready for HAOS install / M2 HAOS validation pending**
 - 현재 마일스톤: **M1 — 동작 가능한 amd64 MVP**
 - 마지막 문서 기준일: **2026-07-13**
-- 저장소: `Kanu-Coffee/codex-for-home-assistant` — public 전환 및 `main` 병합 진행 중
+- 저장소: public `Kanu-Coffee/codex-for-home-assistant`, default branch `main`
 
 ## 완료된 결정
 
@@ -29,10 +29,10 @@
 - 목표: Home Assistant 웹의 App Store에서 GitHub 저장소 URL을 추가해 `codex_home_assistant`를 바로 설치할 수 있도록 public `main`에 배포한다.
 - [x] 공식 App repository 구조와 `image` 선택 항목·Dockerfile 소스 빌드 방식을 재확인했다.
 - [x] public 저장소 URL 설치 안내와 지속적인 `main` 병합 규칙을 문서에 반영했다.
-- [ ] 저장소 visibility를 public으로 전환한다.
-- [ ] PR #1을 ready로 바꾸고 `main`에 병합한다.
-- [ ] public `main`의 `repository.yaml`과 App manifest/Dockerfile을 인증 없이 조회한다.
-- [ ] 최종 `main` GitHub Actions를 확인한다.
+- [x] 저장소 visibility를 public으로 전환했다.
+- [x] PR #1을 ready로 바꾸고 merge commit `ce06435`로 `main`에 병합했다.
+- [x] public `main`의 `repository.yaml`, App `config.yaml`, Dockerfile을 인증 없이 조회했다.
+- [x] `main` GitHub Actions run `29220740986` PASS — 최초 amd64 build의 Alpine CDN TLS 오류는 failed job 재실행에서 해소됐고 build/smoke가 통과했다.
 
 ### 2026-07-13 — amd64 MVP 런타임 구현 및 GitHub 전달
 
@@ -51,7 +51,8 @@
 - [x] `git diff --check`: PASS.
 - [x] Windows OpenSSH → local Docker sshd: PASS — `/config`, `/data/codex`, `codex --version`, `codex app-server --help`, fake token presence without output.
 - [x] GitHub Actions push/PR CI at `a09301a`: PASS — unit/lint, Home Assistant App config, amd64 build/smoke 각 2회, 총 6 jobs.
-- [ ] HAOS Local App install/start: NOT RUN — HAOS/Supervisor 환경 없음.
+- [x] Public repository/main delivery: PASS — visibility PUBLIC, PR #1 MERGED, anonymous repository/App source reads, final main CI.
+- [ ] HAOS App repository install/start: NOT RUN — HAOS/Supervisor 환경 없음.
 - [ ] 실제 Ingress/WebSocket/resize/browser tmux reattach: NOT RUN — HAOS 필요.
 - [ ] 실제 device auth 및 App update 인증 영속성: NOT RUN — 사용자 인증/HAOS 필요.
 - [ ] Home Assistant Network 2223 및 Codex Desktop Remote SSH: NOT RUN — HAOS/desktop E2E 필요.
@@ -135,7 +136,7 @@
 - [x] App `image` 필드 적용 시점 결정 — 0.1.0/공개 pull 경로 확정 뒤 적용
 - [x] 기능 브랜치 커밋/push — `95bc564`, `feat/mvp-runtime`
 - [x] draft PR 생성 및 검증 결과 기록 — [#1](https://github.com/Kanu-Coffee/codex-for-home-assistant/pull/1)
-- [ ] public 저장소 전환과 PR #1 `main` 병합
+- [x] public 저장소 전환과 PR #1 `main` 병합 — `ce06435`
 
 ## M2 — HAOS 실기 검증 및 0.1.0
 
@@ -171,6 +172,14 @@
 | Q-006 | Codex Desktop Remote SSH가 Alpine/musl 원격에서 요구하는 app-server를 정상 시작하는가? | CLI `app-server --help`만 PASS; Desktop E2E는 M2 |
 
 ## 최근 완료 기록
+
+### 2026-07-13 — public App repository main 배포
+
+- 결과: 저장소를 public으로 전환하고 PR #1을 `main`에 병합해 Home Assistant App Store에 `https://github.com/Kanu-Coffee/codex-for-home-assistant`를 추가할 수 있게 했다.
+- 배포 검증: public GitHub 페이지와 raw `repository.yaml`, App `config.yaml`, Dockerfile을 인증 없이 조회했다.
+- 자동 검증: merge commit `ce06435`의 main CI에서 App config, lint/unit, amd64 build/smoke가 모두 PASS했다. 최초 build attempt의 Alpine CDN TLS 오류는 재실행에서 정상 통과했다.
+- 미검증: 실제 HAOS 설치·시작, Ingress, device auth, Network SSH, Codex Desktop Remote SSH, 실제 Core/Supervisor 호출은 사용자의 M2 테스트 결과를 기다린다.
+- 다음: 사용자가 amd64 HAOS App Store에서 public 저장소를 추가하고 설치·사용한 뒤 오류와 수정사항을 전달한다.
 
 ### 2026-07-13 — amd64 local MVP
 
