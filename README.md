@@ -87,7 +87,7 @@ progress.md            실제 완료/미검증 상태의 단일 기준
 
 로컬 Docker 검증은 image build, Codex 실행, S6 서비스, ttyd/nginx, 공개키 sshd, 영속 데이터와 helper 오류 처리를 다룹니다. 다음은 실제 HAOS amd64/Supervisor 환경에서 통과하기 전까지 완료가 아닙니다.
 
-- Home Assistant Local App 설치와 Ingress/WebSocket/resize
+- Home Assistant App repository 설치와 Ingress/WebSocket/resize
 - device code 인증 및 App update 뒤 인증 유지
 - Home Assistant Network mapping을 통한 Windows SSH
 - Codex Desktop Remote SSH app server on Alpine/musl
