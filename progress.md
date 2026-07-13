@@ -4,7 +4,7 @@
 
 ## Project Status
 
-- 상태: **M2 HAOS Web UI/Codex/Supervisor read-check PASS / 0.1.2-dev safety guidance locally verified**
+- 상태: **M2 HAOS Web UI/Codex/Core/Supervisor/Remote SSH PASS / 0.1.3-dev 로그 helper 실기 재검증 대기**
 - 현재 마일스톤: **M2 — HAOS 실기 검증 및 0.1.0**
 - 마지막 문서 기준일: **2026-07-13**
 - 저장소: public `Kanu-Coffee/codex-for-home-assistant`, default branch `main`
@@ -23,6 +23,19 @@
 - [x] 문서 주도 개발 파일 세트 작성
 
 ## Current Work
+
+### 2026-07-13 — 0.1.3-dev 라이브 회귀 수정·로고·M2 증거 반영
+
+- 사용자 실기 증거: `0.1.2-dev` Ingress Web UI와 인증된 Codex 실행, Codex 모바일 앱의 공개키 Remote SSH 접속이 정상 동작했다. App을 삭제하지 않고 업데이트해 온 환경에서도 기존 영구 데이터와 인증 상태가 유지됐다.
+- 라이브 보고서 증거: `/config` RW와 정리, Core REST 조회, Supervisor manager 조회·config-check, 직접 로그 API, SSH 공개키 전용 설정, 기본 전역 `AGENTS.md`의 비파괴 영속화는 통과했다. `ha-core-logs`와 `ha-addon-logs`만 JSON 전용 `Accept` 헤더 때문에 실패했다.
+- 시험 해석: 보고서의 tmux 재접속 항목은 기존 Ingress 세션을 먼저 만든 시험이 아니어서 회귀 증거로 사용하지 않는다. 사용자 Web UI 성공은 확인됐지만 브라우저 종료 후 동일 세션 재접속은 별도 실기 항목으로 남긴다.
+- 데이터 전환: 아래 변경은 이미지 계층의 헬퍼·표시 자산·문서만 바꾸며 `/data`를 초기화하거나 덮어쓰지 않는다. 일반 App 업데이트로 시험하고, 완전 삭제·재설치는 요구하지 않는다.
+- [x] 로그 API가 `text/x-log`를 협상하도록 공용 API 클라이언트와 두 로그 헬퍼를 수정하고 회귀 테스트를 추가했다. media type allowlist가 CR/LF header injection도 요청 전에 거부한다.
+- [x] 제공된 원본을 왜곡 없이 투명 RGBA `icon.png` 128x128과 `logo.png` 250x250으로 변환하고 README 표시·자산 계약 테스트를 추가했다.
+- [x] 실제 ttyd WebSocket에서 resize와 연결 종료/재접속 뒤 동일 tmux session/pane/pid를 확인했다. 이는 같은 App 실행 중 보장이며 업데이트를 넘는 영속성 주장이 아니다.
+- [x] 버전을 `0.1.3-dev`로 올리고 README, changelog, 설계·보안·테스트·운영 문서를 실제 실기 증거에 맞췄으며 `MANIFEST.md` 문서 checksum을 현재 내용으로 재생성했다.
+- [x] amd64 이미지 build/full smoke, Linux 29 tests, ShellCheck/Hadolint/YAML/Markdown/App lint, secret scan과 Git diff를 검증했다.
+- [ ] commit `2b145e4`를 `fix/live-log-logo`에 push하고 draft PR [#7](https://github.com/Kanu-Coffee/codex-for-home-assistant/pull/7)을 생성했다. CI 확인 후 public `main`에 병합해 HA App Store 업데이트 경로에 전달한다.
 
 ### 2026-07-13 — HAOS 실기 진단 검토와 Codex 운영 가드레일
 
@@ -66,12 +79,12 @@
 
 ### Verification
 
-- [x] `docker build --platform linux/amd64 ...`: PASS — base `3.24`, 공식 Codex SHA-256, `codex-cli 0.144.1`.
-- [x] Linux `python -m pytest -ra`: PASS — final main CI에서 26 tests; manifest/policy, S6/runtime, API error/result/token redaction, secret scan.
-- [x] `tests/docker-smoke.sh codex-ha:mvp`: PASS — S6, `/config` RW, permissions, nginx/ttyd, auto-start false/true, Codex 후 Bash 복귀, 공개키 SSH, 비밀번호 거부, UTF-8 env, host-key/config 영속성, invalid/no-key degraded recovery.
+- [x] `docker buildx build --platform linux/amd64 --load --tag codex-ha:0.1.3-dev ...`: PASS — base `3.24`, 공식 Codex SHA-256, `codex-cli 0.144.1`, image label `0.1.3-dev`.
+- [x] Linux `python -m pytest -ra`: PASS — 29 passed, 0 skipped; 자산 계약, S6/runtime, API JSON/x-log 협상·header injection 거부, token redaction, secret scan.
+- [x] `tests/docker-smoke.sh codex-ha:0.1.3-dev`: PASS — S6, `/config` RW, permissions, nginx/ttyd, 동일 tmux session/pane/pid 재접속과 96x32 resize, auto-start false/true, Codex 후 Bash 복귀, 공개키 SSH, 비밀번호 거부, UTF-8 env, host-key/config 영속성, invalid/no-key degraded recovery.
 - [x] `shellcheck` 0.11.0: PASS — runtime/test shell scripts, warning 이상 없음.
 - [x] `hadolint` 2.14.0, `yamllint`, `markdownlint-cli2` 0.23.0: PASS.
-- [x] Home Assistant App linter 2.21.0: PASS.
+- [x] Home Assistant App linter 2.21.0: PASS — `0.1.3-dev` config와 icon/logo 포함.
 - [x] `git diff --check`: PASS.
 - [x] Windows OpenSSH → local Docker sshd: PASS — `/config`, `/data/codex`, `codex --version`, `codex app-server --help`, fake token presence without output.
 - [x] GitHub Actions push/PR CI at `a09301a`: PASS — unit/lint, Home Assistant App config, amd64 build/smoke 각 2회, 총 6 jobs.
@@ -81,13 +94,16 @@
 - [x] Ingress TERM fix delivery: PASS — PR #3 merge commit `b9e2808`, final public `main` CI run `29222324024`의 3개 job 통과.
 - [x] Persistent safety guidance delivery: PASS — PR #5 merge commit `7105bcd`, final public `main` CI run `29225737374`의 lint/unit, App config, amd64 build/smoke 통과.
 - [x] 실제 Ingress/WebSocket shell과 인증된 Codex 실행: PASS — 사용자 `0.1.1-dev` Web UI 실기 확인.
-- [ ] 실제 resize/browser tmux reattach: NOT RUN — 사용자 추가 실기 필요.
-- [ ] device code 로그인 방식 및 App restart/update 인증 영속성: NOT RUN — 인증된 실행만 확인, 영속성 증거 없음.
-- [ ] Home Assistant Network 2223 및 Codex Desktop Remote SSH: NOT RUN — HAOS/desktop E2E 필요.
-- [x] 실제 `/config` write와 Supervisor 조회/log/config-check: PASS — 진단 보고서 생성, `/core/info`, `/core/logs`, `/supervisor/info`, `/supervisor/logs`, `/host/info`, `/os/info`, App 목록, `/core/check` 확인.
-- [ ] 실제 Core REST state/service call 및 Supervisor start/stop/restart: NOT RUN — 안전한 테스트 entity와 명시적 운영 시험 필요.
-- [ ] 실제 HAOS의 기본 전역 `AGENTS.md` 생성·Codex 적용: NOT RUN — `0.1.2-dev` 업데이트와 새 인증 세션 필요.
-- Known issues: Alpine/musl은 Codex release target과 로컬 CLI/app-server help가 동작하지만 OpenAI의 명시 지원 OS 목록은 Ubuntu/Debian 중심이다. Remote SSH 완료로 간주하지 않는다.
+- [ ] 실제 HAOS UI resize/browser tmux reattach: NOT RUN — 로컬 실제 WebSocket은 PASS, 유효한 Web UI baseline으로 사용자 재검증 필요.
+- [x] App update Codex 인증 영속성: PASS — App 삭제 없이 연속 업데이트한 환경에서 로그인 상태와 인증된 Codex 실행 유지.
+- [ ] device code 로그인 방식 자체: NOT RUN — 현재 인증의 최초 로그인 방식 증거 없음.
+- [x] Home Assistant Network 공개키 SSH와 remote app server: PASS — 사용자 mobile Remote → 연결된 desktop SSH project → HAOS `/config` E2E 확인.
+- [x] 실제 `/config` write/rollback, Core REST 조회, Supervisor 조회/direct log/config-check: PASS — `/config` 임시 변경 정리, `/config`·`/states`·`/services`, Core/App direct logs, self/info, `/core/check` 확인.
+- [ ] `0.1.3-dev`의 `ha-core-logs`/`ha-addon-logs`: NOT RUN — 원인 수정과 Linux/mock 검증 PASS, HAOS 일반 업데이트 뒤 재검증 필요.
+- [ ] 실제 Core service call 및 Supervisor start/stop/restart: NOT RUN — 안전한 테스트 entity와 명시적 운영 시험 필요.
+- [x] 실제 HAOS의 기본 전역 `AGENTS.md`: PASS — 0644, 이미지 기본본과 byte 동일, 사용자 override 비파괴 정책 확인.
+- [ ] SSH host key 업데이트 전후 fingerprint 동일성: NOT RUN — 파일/키 존재와 로컬 persistence는 PASS이나 HAOS 전후 fingerprint 미기록.
+- Known issues: 공식 명시 Linux 지원은 Ubuntu/Debian 중심이지만 amd64 Alpine/musl remote app server는 사용자 E2E에서 동작했다. aarch64, 향후 Codex 버전 변경과 HAOS lifecycle 영향은 별도 검증 대상이다.
 
 ## M1 — 동작 가능한 amd64 MVP
 
@@ -136,7 +152,7 @@
 - [x] 기본 host port `2223` 노출
 - [x] login shell에서 `codex`, `CODEX_HOME`, `/config` 확인
 - [x] Windows OpenSSH 접속 검증 (local Docker port; HA Network는 M2)
-- [ ] Codex Desktop Remote SSH bootstrap 검증
+- [x] Desktop SSH remote app-server bootstrap 검증 — mobile Remote 경유 사용자 E2E
 
 ### 6. Home Assistant API 운영 기능
 
@@ -147,7 +163,7 @@
 - [x] Core 로그 조회 helper 구현
 - [x] App 로그 조회 helper 구현
 - [x] REST/WebSocket 사용 예시 문서화
-- [x] manager 역할 endpoint 검증표 작성 (실제 결과는 모두 M2 NOT RUN)
+- [x] manager 역할 endpoint 검증표 작성 및 정보/direct log/config-check HAOS 실기 확인
 
 ### 7. 품질 및 문서
 
@@ -172,15 +188,18 @@
 
 - [x] public App repository 설치와 App 시작
 - [x] Ingress 웹 터미널과 인증된 Codex 실행
-- [ ] 장치 코드 로그인 및 인증 재시작 유지
-- [ ] SSH/Remote SSH 테스트
-- [ ] `/config` 파일 수정·롤백 테스트
-- [ ] Core API 상태 조회 및 안전한 테스트 엔티티 서비스 호출
+- [ ] 장치 코드 로그인 방식 확인
+- [x] App 업데이트 후 Codex 인증 유지
+- [x] SSH/Remote SSH 테스트 — mobile Remote 경유 desktop SSH project
+- [x] `/config` 파일 수정·롤백 테스트
+- [x] Core API 상태·서비스 목록 조회
+- [ ] 안전한 테스트 엔티티 서비스 호출
 - [x] Supervisor 정보·로그와 Core 설정 검사
 - [ ] Supervisor/Core/App start/stop/restart 테스트
 - [ ] 브라우저 끊김 후 tmux 재접속
-- [ ] App 업데이트 후 host key와 Codex 인증 유지
-- [ ] `0.1.2-dev` 기본 전역 운영 지침 생성·새 Codex 세션 적용·사용자 override 보존
+- [ ] App 업데이트 후 host key fingerprint 유지
+- [x] `0.1.2-dev` 기본 전역 운영 지침 생성·기본본 일치·사용자 override 보존
+- [ ] `0.1.3-dev` Core/App 로그 helper HAOS 회귀 확인
 - [ ] 0.1.0 release/tag/GHCR publish
 
 ## M3 — aarch64 및 안정화
@@ -201,7 +220,7 @@
 | Q-003 | Codex `workspace-write` sandbox가 HAOS App 컨테이너에서 정상 작동하는가? | MVP는 container 내부 `danger-full-access`; 이후 비교 테스트 |
 | Q-004 | `manager` 역할에서 필요한 Supervisor 엔드포인트가 모두 허용되는가? | endpoint별 통합 테스트로 확인; admin 자동 승격 금지 |
 | Q-005 | 실제 사용자 HAOS 아키텍처는 무엇인가? | 최초 MVP는 amd64; 확인·검증 후 aarch64 추가 |
-| Q-006 | Codex Desktop Remote SSH가 Alpine/musl 원격에서 요구하는 app-server를 정상 시작하는가? | CLI `app-server --help`만 PASS; Desktop E2E는 M2 |
+| Q-006 | Desktop SSH project가 Alpine/musl 원격 app-server를 정상 시작하는가? | 사용자 mobile Remote 경유 E2E PASS; Codex/아키텍처 변경 시 재검증 |
 
 ## 최근 완료 기록
 

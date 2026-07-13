@@ -100,10 +100,12 @@
 - Supervisor API는 `http://supervisor/`와 `SUPERVISOR_TOKEN`을 사용한다.
 - `hassio_role` 값에는 `manager`와 `admin`이 별도로 존재한다.
 - Codex Remote SSH는 원격 login shell의 PATH에서 `codex`를 찾고 원격 인증을 요구한다.
+- ChatGPT mobile Remote는 SSH host에 직접 연결하지 않고 페어링된 desktop app을 제어하며, desktop app이 SSH remote project와 app server를 담당한다.
 - Headless Codex는 `codex login --device-auth` 또는 local `auth.json` 복사를 지원한다.
 - Codex config는 `approval_policy`, `sandbox_mode`, file credential store를 지원한다.
 - Supervisor 2026.04부터 legacy `build.yaml`과 자동 `BUILD_FROM` 주입을 사용하지 않으며 Dockerfile이 build source of truth다.
 - 현재 generic Home Assistant Alpine base는 `3.24`, builder composite actions는 `2026.06.0`이다.
 - Codex CLI는 `0.144.1` amd64 musl release artifact와 GitHub asset digest를 사용한다.
 - Codex Remote SSH는 remote login shell의 PATH에서 `codex`를 찾고 remote host 자체의 인증을 요구한다.
+- Supervisor Core/App 로그 endpoint는 `Accept: text/plain` 또는 `text/x-log`를 사용하며 JSON Accept만 보내면 협상이 실패할 수 있다.
 - Codex는 `CODEX_HOME`의 `AGENTS.md`를 전역 지침으로 읽고 프로젝트 root부터 현재 디렉터리까지 더 가까운 지침을 뒤에 결합한다.
