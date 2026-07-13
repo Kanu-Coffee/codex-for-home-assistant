@@ -1,0 +1,5 @@
+---
+failure-threshold: warning
+ignored:
+  # Alpine package versions are locked by the pinned Home Assistant base image.
+  - DL3018

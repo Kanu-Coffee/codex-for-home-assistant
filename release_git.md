@@ -3,10 +3,10 @@
 ## 1. 저장소 정책
 
 - 권장 이름: `codex-for-home-assistant`
-- 초기 visibility: private
+- visibility: public
 - 기본 branch: `main`
 - 기능 branch: `feat/*`, 수정 branch: `fix/*`
-- 0.1.0 검증 후 public 전환 여부는 사용자가 결정
+- HAOS 설치 테스트용 전달은 CI 통과 후 반드시 기본 branch에 병합
 
 ## 2. 첫 GitHub 연결
 
@@ -26,7 +26,7 @@ gh auth status
 
 ```bash
 git init -b main
-gh repo create codex-for-home-assistant --private --source . --remote origin
+gh repo create codex-for-home-assistant --public --source . --remote origin
 ```
 
 문서 baseline을 main에 커밋하거나 현재 사용자가 원하는 초기 상태를 보존한 뒤 기능 branch를 만든다.
@@ -66,6 +66,8 @@ PR 본문에 반드시 포함:
 - HAOS 실기 완료/미완료 항목
 - 알려진 위험과 롤백 방법
 - `progress.md`의 다음 단계
+
+HAOS에서 저장소 URL을 연결해 설치·검증하도록 전달하는 작업은 기능 브랜치 push나 draft PR에서 멈추지 않는다. CI 통과, 미검증 항목 기록, `main` 병합, public 저장소 접근 확인까지 완료한다.
 
 ## 5. CI 구성
 

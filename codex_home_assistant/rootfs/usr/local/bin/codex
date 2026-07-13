@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+# Keep config.toml user-owned while applying the current App options to every
+# CLI/app-server invocation, including commands launched by Remote SSH.
+# shellcheck source=/dev/null
+. /usr/local/lib/codex-ha/environment.sh
+# shellcheck source=/dev/null
+. /usr/local/lib/codex-ha/config.sh
+
+approval_policy=on-request
+sandbox_mode=danger-full-access
+if codex_ha_config_validate; then
+  approval_policy=$(codex_ha_config_string 'codex_approval_policy' 'on-request')
+  sandbox_mode=$(codex_ha_config_string 'codex_sandbox_mode' 'danger-full-access')
+fi
+
+case "${approval_policy}" in
+  untrusted | on-request | never) ;;
+  *)
+    printf 'codex: invalid App approval policy\n' >&2
+    exit 78
+    ;;
+esac
+case "${sandbox_mode}" in
+  workspace-write | danger-full-access) ;;
+  *)
+    printf 'codex: invalid App sandbox mode\n' >&2
+    exit 78
+    ;;
+esac
+
+exec /usr/local/libexec/codex-real \
+  -c "approval_policy=\"${approval_policy}\"" \
+  -c "sandbox_mode=\"${sandbox_mode}\"" \
+  "$@"

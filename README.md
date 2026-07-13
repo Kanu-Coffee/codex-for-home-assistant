@@ -1,68 +1,100 @@
-# Codex for Home Assistant — 문서 주도 개발 패키지
+# Codex for Home Assistant
 
-이 디렉터리는 **Home Assistant OS용 `Codex for Home Assistant` App(구 Add-on)** 을 구현하기 위한 단일 문서 기준점이다.
+Home Assistant OS 안에서 OpenAI Codex CLI를 운영하기 위한 amd64 Home Assistant App MVP입니다.
 
-프로젝트의 핵심은 다음 세 기능을 하나의 Home Assistant App에 제공하는 것이다.
+- Home Assistant Ingress 웹 터미널: nginx ACL → ttyd → 공유 tmux 세션
+- 공개키 전용 OpenSSH와 Codex Desktop SSH 연결 기반
+- Home Assistant `/config` 전체 read-write
+- Home Assistant Core REST/WebSocket 접근
+- Supervisor API `manager` 운영 helper
+- Codex 인증, 설정, SSH host key의 `/data` 영속화
 
-1. 컨테이너 내부의 **Codex CLI**
-2. Home Assistant Ingress 기반 **웹 터미널**
-3. 일반 SSH 및 Codex Desktop용 **Remote SSH**
+현재 버전은 `0.1.0-dev`, `stage: experimental`, amd64 전용입니다. AppArmor는 활성화되어 있고 Supervisor `admin`, Docker API, App `full_access`, host network는 사용하지 않습니다.
 
-App은 별도 설정 없이 Home Assistant의 `/config` 전체를 읽고 쓸 수 있으며, Home Assistant Core API와 Supervisor API의 `manager` 역할을 사용해 상태 조회, 서비스 호출, 실제 기기 테스트, 로그 확인, 설정 검사, Core/App 운영을 수행한다.
+> 이 App은 `/config`의 비밀과 `SUPERVISOR_TOKEN`을 사용할 수 있는 강한 관리자 도구입니다. 신뢰하는 관리자만 사용하고 TCP 2223을 인터넷으로 직접 port-forward하지 마세요.
 
-## 문서 읽기 순서
+## Home Assistant에서 설치
 
-AI 에이전트와 사람 모두 아래 순서를 따른다.
+이 저장소는 Home Assistant App Store에 추가할 수 있는 public App 저장소입니다.
 
-1. `AGENTS.md` — 에이전트 진입점
-2. `rules.md` — 최상위 작업 규칙
-3. `progress.md` — 현재 상태와 다음 할 일
-4. `product_spec.md` — 제품 요구사항과 수용 기준
-5. `architecture.md` — 런타임 및 데이터 흐름
-6. `addon_spec.md` — Home Assistant App 계약과 파일 구조
-7. `security.md` — 권한·위험·운영 가드레일
-8. `implementation_plan.md` — 구현 순서와 완료 정의
-9. `test_plan.md` — 검증 매트릭스
-10. `release_git.md` — GitHub 및 릴리스 절차
-11. `decisions.md` — 확정된 설계 결정
-12. `references.md` — 최신 공식 근거
+```text
+https://github.com/Kanu-Coffee/codex-for-home-assistant
+```
 
-## 문서 간 우선순위
+1. Home Assistant에서 **설정 → Apps → App store**를 엽니다.
+2. 우측 상단 메뉴의 **Repositories**에 위 URL을 추가합니다.
+3. 목록을 새로고침한 뒤 **Codex for Home Assistant**를 선택해 설치합니다.
+4. 공개키와 Network 포트를 설정하고 App을 시작합니다.
 
-충돌이 있으면 다음 순서로 해석한다.
+현재 `config.yaml`에는 registry `image`가 없으므로 Supervisor가 저장소의 Dockerfile을 amd64 장치에서 빌드합니다. 첫 설치는 Home Assistant base image, Alpine 패키지와 Codex release 다운로드 때문에 시간이 걸릴 수 있습니다. `0.1.0-dev` experimental 버전이며 실제 HAOS 설치 결과는 아직 사용자가 검증할 M2 항목입니다.
 
-1. 사용자의 현재 명시적 지시
-2. `rules.md`
-3. `decisions.md`의 Accepted 결정
-4. `product_spec.md`
-5. `architecture.md` 및 `addon_spec.md`
-6. 나머지 문서
+설치, Codex device login, Windows SSH config, Remote SSH, API helper, 안전한 서비스 호출과 복구 절차는 [App 사용 설명서](codex_home_assistant/DOCS.md)를 따르세요.
 
-충돌을 발견한 에이전트는 임의로 조용히 선택하지 말고, 결정을 내린 뒤 관련 문서와 `progress.md`를 같은 작업에서 갱신한다.
+## 로컬 빌드
 
-## 현재 상태
+```bash
+docker build \
+  --platform linux/amd64 \
+  --build-arg BUILD_ARCH=amd64 \
+  --tag codex-for-home-assistant:test \
+  codex_home_assistant
+```
 
-- 요구사항 및 구조 문서화: 완료
-- 구현 코드: 미작성
-- 첫 목표: 동작 가능한 amd64 MVP 구현, 검증, GitHub push 및 PR 생성
+Docker가 있는 Linux 개발 환경에서는 전체 컨테이너 smoke test를 실행할 수 있습니다.
 
-상세 상태는 `progress.md`가 유일한 기준이다.
+```bash
+tests/docker-smoke.sh codex-for-home-assistant:test
+```
 
-## 첫 실행
+정적·단위 검사:
 
-`master_prompt.md`의 프롬프트를 Codex Desktop에 붙여 넣는다. Codex는 이 문서 세트를 프로젝트 루트로 옮기거나 현재 저장소에 병합한 뒤 구현을 시작해야 한다.
+```bash
+python -m pip install -r requirements-dev.txt
+python -m pytest -ra
+yamllint -c .yamllint .
+shellcheck <scripts...>
+npx --yes markdownlint-cli2@0.23.0
+```
 
-## 프로젝트 이름
+GitHub Actions도 같은 amd64 build/smoke와 Home Assistant App linter를 실행합니다.
 
-- 표시명: `Codex for Home Assistant`
-- 권장 GitHub 저장소명: `codex-for-home-assistant`
-- 권장 App 디렉터리: `codex_home_assistant`
-- 권장 App slug: `codex_home_assistant`
+## 주요 명령
 
-## 중요한 구현 사실
+| 명령 | 기능 |
+| --- | --- |
+| `ha-codex` | `/config`에서 Codex 실행 |
+| `ha-codex-login` | `codex login --device-auth` 실행 |
+| `ha-api` | Core REST API proxy 호출 |
+| `supervisor-api` | Supervisor API 호출 및 `result` 검사 |
+| `ha-config-check` | Home Assistant 설정 검사 |
+| `ha-core-logs` | Core 로그 조회 |
+| `ha-addon-logs` | 지정 App 로그 조회 |
 
-- 2026년 Home Assistant 공식 문서의 명칭은 **App**이며, 과거 명칭은 Add-on이다.
-- SSH **외부 포트**는 `options` JSON 값이 아니라 Home Assistant App의 **Network 설정**에서 변경한다.
-- `SUPERVISOR_TOKEN`은 이 프로젝트의 의도상 웹 터미널과 SSH/Codex 세션에서 사용 가능하게 한다.
-- `hassio_role`은 `manager`로 고정하며 `admin`, `docker_api`, `full_access`, `host_network`는 사용하지 않는다.
-- App 자체는 강력한 관리자 도구이므로 기본적으로 `stage: experimental`, 관리자 전용 패널, 공개키 SSH만 허용한다.
+## 저장소 구조
+
+```text
+codex_home_assistant/  Home Assistant App manifest, image, rootfs, docs
+tests/                 policy/unit/container smoke tests
+.github/workflows/     lint, amd64 build, container smoke CI
+AGENTS.md              에이전트 작업 진입점
+rules.md               최상위 개발·보안·검증 규칙
+progress.md            실제 완료/미검증 상태의 단일 기준
+```
+
+문서 우선순위와 전체 설계는 `AGENTS.md`의 읽기 순서를 따릅니다. 구현 상태는 [progress.md](progress.md), 권한과 위험은 [security.md](security.md), 검증 시나리오는 [test_plan.md](test_plan.md)를 기준으로 합니다.
+
+## 검증 경계
+
+로컬 Docker 검증은 image build, Codex 실행, S6 서비스, ttyd/nginx, 공개키 sshd, 영속 데이터와 helper 오류 처리를 다룹니다. 다음은 실제 HAOS amd64/Supervisor 환경에서 통과하기 전까지 완료가 아닙니다.
+
+- Home Assistant Local App 설치와 Ingress/WebSocket/resize
+- device code 인증 및 App update 뒤 인증 유지
+- Home Assistant Network mapping을 통한 Windows SSH
+- Codex Desktop Remote SSH app server on Alpine/musl
+- 실제 `/config`, Core 서비스 호출, Supervisor `manager` endpoint
+
+자세한 최신 결과와 명령 증거는 `progress.md`에 기록합니다.
+
+## License
+
+Project source is licensed under Apache License 2.0. Runtime dependency notices are in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

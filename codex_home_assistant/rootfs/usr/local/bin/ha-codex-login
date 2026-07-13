@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+# shellcheck source=/dev/null
+. /usr/local/lib/codex-ha/environment.sh
+install -d -m 0700 "${CODEX_HOME}"
+cd /config
+exec codex login --device-auth "$@"

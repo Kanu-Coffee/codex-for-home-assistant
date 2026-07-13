@@ -1,0 +1,48 @@
+---
+name: Codex for Home Assistant
+version: "0.1.0-dev"
+slug: codex_home_assistant
+description: Codex CLI, Ingress web terminal, and Remote SSH for Home Assistant
+url: https://github.com/Kanu-Coffee/codex-for-home-assistant
+stage: experimental
+boot: manual
+init: false
+arch:
+  - amd64
+
+ingress: true
+ingress_port: 7681
+ingress_stream: true
+panel_icon: mdi:console
+panel_title: Codex
+
+ports:
+  22/tcp: 2223
+ports_description:
+  22/tcp: SSH and Codex Remote SSH (public key only)
+
+map:
+  - type: homeassistant_config
+    path: /config
+    read_only: false
+
+homeassistant_api: true
+hassio_api: true
+hassio_role: manager
+
+options:
+  authorized_keys: []
+  web_terminal_auto_start_codex: false
+  tmux_session_name: codex-ha
+  codex_approval_policy: on-request
+  codex_sandbox_mode: danger-full-access
+  log_level: info
+
+schema:
+  authorized_keys:
+    - str
+  web_terminal_auto_start_codex: bool
+  tmux_session_name: "match(^[A-Za-z0-9._-]{1,64}$)"
+  codex_approval_policy: "list(untrusted|on-request|never)"
+  codex_sandbox_mode: "list(workspace-write|danger-full-access)"
+  log_level: "list(trace|debug|info|notice|warning|error|fatal)"

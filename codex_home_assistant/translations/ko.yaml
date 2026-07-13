@@ -1,0 +1,22 @@
+---
+configuration:
+  authorized_keys:
+    name: SSH 허용 공개키
+    description: root 로그인을 허용할 OpenSSH 공개키입니다. 비밀번호 로그인은 항상 차단됩니다.
+  web_terminal_auto_start_codex:
+    name: 웹 터미널에서 Codex 자동 시작
+    description: 새 tmux 세션을 만들 때 Codex를 한 번 실행하고, 종료되면 일반 셸로 돌아갑니다.
+  tmux_session_name:
+    name: tmux 세션 이름
+    description: 브라우저 재접속 후 터미널을 복원하는 공유 세션 이름입니다.
+  codex_approval_policy:
+    name: Codex 승인 정책
+    description: 대화형 Codex가 명령 실행 전에 승인을 요청하는 시점을 정합니다.
+  codex_sandbox_mode:
+    name: Codex 샌드박스 모드
+    description: danger-full-access는 이 App 컨테이너 내부에만 적용되며 HAOS 호스트 권한이 아닙니다.
+  log_level:
+    name: 웹 터미널 로그 수준
+    description: trace 또는 debug에서 ttyd 상세 로그를 켭니다. 비밀값과 Authorization 헤더는 기록하지 않습니다.
+network:
+  22/tcp: 공개키 SSH 및 Codex Remote SSH 포트입니다. 여기서 호스트 포트를 변경하거나 비활성화합니다.

@@ -1,0 +1,21 @@
+#!/command/with-contenv bashio
+# shellcheck shell=bash
+set -Eeuo pipefail
+
+# shellcheck source=/dev/null
+. /usr/local/lib/codex-ha/environment.sh
+# shellcheck source=/dev/null
+. /usr/local/lib/codex-ha/config.sh
+cd /config
+
+if codex_ha_config_true 'web_terminal_auto_start_codex'; then
+  printf '\nStarting Codex in /config. Exit Codex to return to this shell.\n\n'
+  if ha-codex; then
+    :
+  else
+    exit_code=$?
+    printf '\nCodex exited with status %d; returning to the shell.\n' "${exit_code}" >&2
+  fi
+fi
+
+exec /bin/bash -l

@@ -1,0 +1,94 @@
+---
+name: CI
+
+"on":
+  push:
+    branches:
+      - main
+      - "feat/**"
+      - "fix/**"
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint-and-test:
+    name: Lint and unit tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7.0.0
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: requirements-dev.txt
+
+      - name: Install test and lint dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-dev.txt
+          sudo apt-get update
+          sudo apt-get install --yes jq shellcheck
+
+      - name: Run Python policy and helper tests
+        run: python -m pytest -ra
+
+      - name: Run YAML lint
+        run: yamllint -c .yamllint .
+
+      - name: Run ShellCheck
+        run: |
+          git grep -Il '^#!' -- codex_home_assistant/rootfs tests \
+            | xargs --no-run-if-empty shellcheck
+
+      - name: Run Markdown lint
+        run: npx --yes markdownlint-cli2@0.23.0 "**/*.md" "#**/.pytest_cache/**"
+
+      - name: Run Dockerfile lint
+        run: |
+          docker run --rm \
+            --volume "${PWD}:/src:ro" \
+            --workdir /src \
+            hadolint/hadolint:v2.14.0-alpine \
+            hadolint --config .hadolint.yaml codex_home_assistant/Dockerfile
+
+  home-assistant-addon-lint:
+    name: Home Assistant App config
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7.0.0
+
+      - name: Run Home Assistant add-on linter
+        uses: frenck/action-addon-linter@v2.21
+        with:
+          path: ./codex_home_assistant
+
+  amd64-build-and-smoke:
+    name: linux/amd64 build and smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7.0.0
+
+      - name: Build local Home Assistant App image
+        run: |
+          docker build \
+            --platform linux/amd64 \
+            --tag codex-for-home-assistant:test \
+            codex_home_assistant
+
+      - name: Run container smoke tests
+        run: bash tests/docker-smoke.sh codex-for-home-assistant:test

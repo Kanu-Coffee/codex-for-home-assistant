@@ -94,3 +94,28 @@ hassio_role: manager
 - 상태: Accepted
 - 결정: Codex가 구현 후 branch commit, origin push, 가능하면 PR 생성까지 수행한다.
 - 이유: 사용자 Windows/Codex 환경에 GitHub 연동이 되어 있으며 완결된 자동 개발 흐름이 목표다.
+
+## ADR-015 2026.06 Home Assistant BuildKit 구조 사용
+
+- 상태: Accepted
+- 결정: `ghcr.io/home-assistant/base:3.24`와 S6 Overlay v3 native `s6-rc.d` 서비스 그래프를 사용한다. legacy `build.yaml`은 만들지 않으며 Dockerfile에 base image 기본값을 둔다.
+- 이유: Supervisor 2026.04부터 `BUILD_FROM` 자동 주입과 legacy builder가 폐기됐고, 현재 공식 base는 S6 Overlay 3.2.3.0을 포함한다.
+
+## ADR-016 Codex CLI 0.144.1 standalone musl artifact
+
+- 상태: Accepted
+- 결정: 공식 release `rust-v0.144.1`의 `codex-x86_64-unknown-linux-musl.tar.gz`를 SHA-256 `84091ae20c65fcc7d4120db97d1bd57d7ff8df9c7609fb781c78c2ebbd4f5a28`로 검증해 설치한다.
+- 이유: amd64 Alpine base와 맞는 공식 standalone target이며 Node runtime 없이 버전과 공급망 입력을 재현 가능하게 고정할 수 있다.
+- 제약: OpenAI가 명시한 Linux 지원 OS는 Ubuntu/Debian 중심이다. Alpine/HAOS와 Codex Desktop Remote SSH 호환성은 M2 실기 검증 전까지 완료로 표시하지 않는다.
+
+## ADR-017 Ingress ACL reverse proxy
+
+- 상태: Accepted
+- 결정: Supervisor Ingress port 7681의 nginx가 `172.30.32.2`와 loopback만 허용하고, loopback port 7682의 ttyd로 WebSocket을 전달한다. ttyd는 tmux 공유 세션을 실행한다.
+- 이유: `host_network` 없이 ttyd를 사용할 때 다른 내부 App이 인증 없이 터미널에 직접 접근하지 못하도록 공식 Ingress source ACL을 적용한다.
+
+## ADR-018 public 저장소의 소스 빌드 배포
+
+- 상태: Accepted
+- 결정: public 저장소 MVP의 `config.yaml`에는 GHCR `image` 필드를 넣지 않고, 저장소 URL로 추가한 Home Assistant가 Dockerfile을 amd64 장치에서 소스 빌드하게 한다.
+- 이유: 사용자가 App Store에서 즉시 설치·HAOS 검증할 수 있게 하면서 아직 실기 검증하지 않은 registry image를 릴리스하지 않기 위해서다. 0.1.0 배포 전에 공식 builder workflow와 generic image name을 별도로 활성화한다.

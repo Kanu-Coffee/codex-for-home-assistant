@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+# These variables are consumed by the sourced client library.
+# shellcheck disable=SC2034
+API_PROGRAM_NAME=ha-api
+# shellcheck disable=SC2034
+API_BASE_URL=${HA_URL:-http://supervisor/core/api}
+# shellcheck disable=SC2034
+API_CHECK_RESULT=false
+# shellcheck source=/dev/null
+. /usr/local/lib/codex-ha/api-client.sh
+api_main "$@"
