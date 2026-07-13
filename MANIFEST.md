@@ -1,0 +1,18 @@
+# File Manifest
+
+SHA-256 checksums:
+
+- `9345a628a5354ffec3e301659d8aef459a0b8e67e5ff720fa0a8e973a2eae0df`  `AGENTS.md`
+- `f205c42e6927722944a185e7daa9d5d7176cadf4dbe9db9162c497901214d82f`  `README.md`
+- `b29b62b7d4e0e64cca1d46c06aaa3a679f31fddf40e5fbc9bf7c44a7d81fab24`  `addon_spec.md`
+- `bfa9f4d9cba693eb10f8fb747cfd4cb5d936a4abeeb70eb2ab7cedce5b67be35`  `architecture.md`
+- `0c70af2eaee037568d754866e46b5de8c499934db4d3601063963b0ce5665ebd`  `decisions.md`
+- `de5a956d913dca43cadb88218d3c03361d5f350f712fdaab690dbb65ae586f34`  `implementation_plan.md`
+- `a589c169be49d8084bcc4707618bb4a5dae73608094b064a9159e1eabde59698`  `master_prompt.md`
+- `72b4ca62de269ec979586521c7d74d9e16ac4e5668e1cb93a7ab94720ca0bfd4`  `product_spec.md`
+- `3469225ad27933586a61c5817ed905a5c6e02212e112cf288c6cbd2410871be2`  `progress.md`
+- `f00b000944a4c557251c5955f534982141d98669f1c484ec8276a63a30759fe3`  `references.md`
+- `47d0d94125f71b920bbb8d6719a628ee7f782094f1f068226357a7358d7352a0`  `release_git.md`
+- `72874006bebf355582676934636704ad59a2774c3f998dc438dfba10061fafa3`  `rules.md`
+- `4778d696e7ec47b674d71035376a09c7bddd21755894f1705ca48e15f9ba23d8`  `security.md`
+- `c0a5de40fcd5e7fdcf49ce17b1f676c7bcf06961c6fa09ebcb509dcfa6e2063e`  `test_plan.md`
