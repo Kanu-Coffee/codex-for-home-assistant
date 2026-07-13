@@ -72,6 +72,7 @@ Supervisor가 없어도 검증 가능한 항목:
 | AT-016 | API 4xx/5xx | non-zero exit와 body 요약 |
 | AT-017 | shellcheck | 오류 없음 |
 | AT-018 | secret scan | 실제 credential 없음 |
+| AT-019 | 실제 ttyd WebSocket shell | 101 handshake 후 `/config`, non-dumb TERM으로 명령 실행 |
 
 ## 3. HAOS 수동/E2E 시나리오
 
@@ -92,7 +93,7 @@ Supervisor가 없어도 검증 가능한 항목:
 
 1. auto-start false
 2. Web UI 열기
-3. `pwd`, `command -v codex`, `echo $CODEX_HOME`
+3. `pwd`, `command -v codex`, `echo $CODEX_HOME`, `echo $TERM`
 
 성공 기준:
 
@@ -100,6 +101,7 @@ Supervisor가 없어도 검증 가능한 항목:
 /config
 /usr/local/bin/codex
 /data/codex
+tmux-256color
 ```
 
 ### E2E-003 웹 터미널 자동 Codex

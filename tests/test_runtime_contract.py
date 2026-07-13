@@ -121,7 +121,9 @@ def test_web_terminal_uses_tmux_and_returns_to_shell(rootfs: Path) -> None:
         encoding="utf-8"
     )
 
+    assert "export TERM=xterm-256color" in entrypoint
     assert 'new-session -A -s "${session_name}" -c /config' in entrypoint
+    assert session_shell.startswith("#!/usr/bin/env bash\n")
     assert "codex_ha_config_true" in session_shell
     assert "web_terminal_auto_start_codex" in session_shell
     assert "if ha-codex; then" in session_shell

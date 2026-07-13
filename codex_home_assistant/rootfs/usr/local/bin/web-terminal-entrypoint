@@ -7,6 +7,11 @@ set -Eeuo pipefail
 # shellcheck source=/dev/null
 . /usr/local/lib/codex-ha/config.sh
 
+# ttyd sets TERM for each PTY, but S6 with-contenv rebuilds the child
+# environment and drops that connection-specific value. Restore the terminal
+# contract before tmux validates the outer terminal capabilities.
+export TERM=xterm-256color
+
 session_name=$(codex_ha_config_string 'tmux_session_name' 'codex-ha')
 if [[ ! "${session_name}" =~ ^[A-Za-z0-9._-]{1,64}$ ]]; then
   bashio::log.fatal 'Invalid tmux session name'

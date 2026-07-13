@@ -2,15 +2,19 @@
 
 Codex CLI, Home Assistant Ingress 웹 터미널, 공개키 SSH를 하나의 실험용 Home Assistant App에 제공합니다. Codex는 `/config` 전체를 read-write로 사용하고 Core API와 Supervisor `manager` API를 호출할 수 있습니다.
 
-> 현재 버전은 `0.1.0-dev`, amd64 전용입니다. HAOS, Ingress, 실제 API, Windows/Codex Desktop Remote SSH는 아직 M2 실기 검증 전입니다.
+> 현재 버전은 `0.1.1-dev`, amd64 전용입니다. HAOS 설치·시작은 확인됐고 Ingress TERM 수정의 HAOS 재검증, 실제 API, Windows/Codex Desktop Remote SSH는 M2 실기 항목입니다.
 
 로컬 M1에서는 amd64 image build, Codex archive SHA-256/버전, S6 init과 ttyd/nginx 기동, `/config` RW probe, 공개키 SSH와 비밀번호 거부, host key/config 재시작 영속성, API helper mock·token redaction, 전체 lint를 확인했습니다. 정확한 최신 결과는 저장소 `progress.md`를 기준으로 합니다.
 
-## 설치 상태
+## 설치
 
-이 private 개발 저장소에는 배포용 `image`가 지정되어 있지 않습니다. `codex_home_assistant` 폴더를 HAOS의 `/addons/codex_home_assistant`에 복사해 **Local Apps**에서 로컬 빌드하세요. 일반 App Store 저장소 설치와 GHCR image 배포는 0.1.0 실기 검증 뒤 제공할 예정입니다.
+Home Assistant App Store의 **Repositories**에 다음 public URL을 추가하고 **Codex for Home Assistant**를 설치하세요.
 
-Home Assistant 공식 절차: [Local app testing](https://developers.home-assistant.io/docs/apps/testing/)
+```text
+https://github.com/Kanu-Coffee/codex-for-home-assistant
+```
+
+registry `image`는 아직 없으므로 amd64 Home Assistant 장치가 Dockerfile을 소스 빌드합니다.
 
 ## 핵심 동작
 

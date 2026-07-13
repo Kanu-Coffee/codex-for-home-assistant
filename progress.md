@@ -4,8 +4,8 @@
 
 ## Project Status
 
-- 상태: **M1 public App repository merged and ready for HAOS install / M2 HAOS validation pending**
-- 현재 마일스톤: **M1 — 동작 가능한 amd64 MVP**
+- 상태: **M2 HAOS install PASS / Ingress TERM fix 0.1.1-dev locally verified, HAOS retest pending**
+- 현재 마일스톤: **M2 — HAOS 실기 검증 및 0.1.0**
 - 마지막 문서 기준일: **2026-07-13**
 - 저장소: public `Kanu-Coffee/codex-for-home-assistant`, default branch `main`
 
@@ -23,6 +23,18 @@
 - [x] 문서 주도 개발 파일 세트 작성
 
 ## Current Work
+
+### 2026-07-13 — HAOS Ingress terminal TERM 회귀 수정
+
+- HAOS 실기 결과: public repository 설치와 App 시작은 성공했다. Ingress는 `/` 200, `/token` 200, `/ws` 101까지 성공했지만 ttyd child에서 `open terminal failed: terminal does not support clear`가 발생해 Web UI가 재연결 상태가 됐다.
+- 로컬 재현: S6로 부팅한 amd64 이미지의 실제 ttyd WebSocket을 Chrome으로 열어 같은 오류를 재현했다. ttyd는 `TERM=xterm-256color`를 주지만 `/command/with-contenv`가 child 환경에서 `TERM`을 제거하는 것이 원인이다.
+- [x] HAOS 로그의 Ingress/nginx/WebSocket 성공과 ttyd/tmux 실패 경계를 확인한다.
+- [x] S6 + ttyd + Chrome에서 같은 오류를 재현하고 TERM 전달 손실을 증명한다.
+- [x] web entrypoint에서 `TERM=xterm-256color`를 복원하고 tmux 내부 TERM을 보존한다.
+- [x] 실제 ttyd WebSocket shell 회귀 테스트를 Docker smoke에 추가했다.
+- [x] `0.1.1-dev` amd64 build, 25 unit/policy tests, full smoke, Chrome 렌더·명령 입력을 검증했다.
+- [x] changelog, 사용 설명서, 아키텍처, 테스트 계획을 실제 결과에 맞췄다.
+- [ ] PR/CI 후 public `main`에 병합하고 사용자의 HAOS 업데이트 재검증을 기다린다.
 
 ### 2026-07-13 — public App Store 설치 전달
 
@@ -52,8 +64,9 @@
 - [x] Windows OpenSSH → local Docker sshd: PASS — `/config`, `/data/codex`, `codex --version`, `codex app-server --help`, fake token presence without output.
 - [x] GitHub Actions push/PR CI at `a09301a`: PASS — unit/lint, Home Assistant App config, amd64 build/smoke 각 2회, 총 6 jobs.
 - [x] Public repository/main delivery: PASS — visibility PUBLIC, PR #1 MERGED, anonymous repository/App source reads, final main CI.
-- [ ] HAOS App repository install/start: NOT RUN — HAOS/Supervisor 환경 없음.
-- [ ] 실제 Ingress/WebSocket/resize/browser tmux reattach: NOT RUN — HAOS 필요.
+- [x] Local Ingress terminal regression: PASS — actual ttyd WebSocket handshake and command returned `/config`, `TERM=tmux-256color`; Chrome rendered the shell with no console warning/error.
+- [x] HAOS App repository install/start: PASS — public 저장소 설치와 App/S6 서비스 시작 로그 확인.
+- [ ] 실제 Ingress/WebSocket/resize/browser tmux reattach: `0.1.0-dev` FAIL — transport 200/101 성공 후 TERM 손실; `0.1.1-dev` 로컬 수정 PASS, HAOS 재검증 필요.
 - [ ] 실제 device auth 및 App update 인증 영속성: NOT RUN — 사용자 인증/HAOS 필요.
 - [ ] Home Assistant Network 2223 및 Codex Desktop Remote SSH: NOT RUN — HAOS/desktop E2E 필요.
 - [ ] 실제 Core API/service call 및 Supervisor manager endpoint: NOT RUN — 실제 HA/안전한 테스트 entity 필요.
@@ -140,7 +153,7 @@
 
 ## M2 — HAOS 실기 검증 및 0.1.0
 
-- [ ] 로컬 App 설치
+- [x] public App repository 설치와 App 시작
 - [ ] Ingress 웹 터미널 테스트
 - [ ] 장치 코드 로그인 및 인증 재시작 유지
 - [ ] SSH/Remote SSH 테스트
@@ -172,6 +185,14 @@
 | Q-006 | Codex Desktop Remote SSH가 Alpine/musl 원격에서 요구하는 app-server를 정상 시작하는가? | CLI `app-server --help`만 PASS; Desktop E2E는 M2 |
 
 ## 최근 완료 기록
+
+### 2026-07-13 — Ingress terminal TERM 수정 후보
+
+- HAOS 증거: repository 설치/App 시작과 Ingress `/` 200, `/token` 200, `/ws` 101은 성공했다. tmux는 `terminal does not support clear`로 실패했다.
+- 원인: ttyd의 연결별 `TERM=xterm-256color`가 S6 `with-contenv`에서 제거됐다.
+- 수정: web entrypoint의 외부 TERM 복원, tmux pane TERM 보존, App `0.1.1-dev` version bump, rootfs LF 강제.
+- 로컬 검증: 실패 재현 후 actual WebSocket shell `/config:tmux-256color`, Chrome 입력·출력, amd64 build/full smoke PASS.
+- 남음: public `main` 병합 후 사용자가 App Store를 새로고침해 `0.1.1-dev`로 업데이트하고 HAOS Ingress를 재검증한다.
 
 ### 2026-07-13 — public App repository main 배포
 

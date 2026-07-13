@@ -1,5 +1,4 @@
-#!/command/with-contenv bashio
-# shellcheck shell=bash
+#!/usr/bin/env bash
 set -Eeuo pipefail
 
 # shellcheck source=/dev/null
