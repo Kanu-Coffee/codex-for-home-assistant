@@ -4,7 +4,7 @@
 
 ## Project Status
 
-- 상태: **M1 local MVP implemented and verified / M2 HAOS validation pending**
+- 상태: **M1 local MVP implemented, verified, and delivered as draft PR / M2 HAOS validation pending**
 - 현재 마일스톤: **M1 — 동작 가능한 amd64 MVP**
 - 마지막 문서 기준일: **2026-07-13**
 - 저장소: private `Kanu-Coffee/codex-for-home-assistant`
@@ -28,7 +28,7 @@
 
 - 결과: Home Assistant base `3.24`, S6 v3, Codex CLI `0.144.1`, nginx Ingress ACL, loopback ttyd, 공유 tmux, 공개키 sshd, `/config` RW, Core/Supervisor helper를 구현했다. Codex/App/SSH 데이터는 `/data`, runtime token 환경은 `/run`에 둔다.
 - 보안 결과: manager/Core API 권한은 유지하고 `admin`, `docker_api`, `full_access`, `host_network`, `apparmor: false`는 사용하지 않았다. SSH 비밀번호·keyboard-interactive·reverse forwarding·agent forwarding은 차단했다.
-- 배포 결과: private GitHub 저장소와 `feat/mvp-runtime` 브랜치를 만들었다. private GHCR pull 문제 때문에 개발판 `image` 필드는 유보하고 Local Apps source build를 문서화했다.
+- 배포 결과: private GitHub 저장소의 `feat/mvp-runtime`에 구현 커밋 `95bc564`를 push하고 draft PR [#1](https://github.com/Kanu-Coffee/codex-for-home-assistant/pull/1)을 생성했다. private GHCR pull 문제 때문에 개발판 `image` 필드는 유보하고 Local Apps source build를 문서화했다.
 
 ### Verification
 
@@ -122,8 +122,8 @@
 - [x] GitHub Actions amd64 build workflow
 - [ ] GHCR publish 구조
 - [x] App `image` 필드 적용 시점 결정 — 0.1.0/공개 pull 경로 확정 뒤 적용
-- [ ] 기능 브랜치 커밋/push
-- [ ] PR 생성 및 검증 결과 기록
+- [x] 기능 브랜치 커밋/push — `95bc564`, `feat/mvp-runtime`
+- [x] draft PR 생성 및 검증 결과 기록 — [#1](https://github.com/Kanu-Coffee/codex-for-home-assistant/pull/1)
 
 ## M2 — HAOS 실기 검증 및 0.1.0
 
@@ -165,7 +165,8 @@
 - 결과: 설치 가능한 Local App source, Codex CLI, Ingress terminal runtime, 공개키 SSH, API helper, CI와 운영 문서를 구현했다.
 - 로컬 검증: amd64 build, 24 unit/policy tests, full Docker smoke, App/shell/YAML/Markdown/Docker lint와 secret scan 통과.
 - 미검증: 실제 HAOS Ingress, device auth/update persistence, Home Assistant Network 2223, Codex Desktop Remote SSH, 실제 Core/Supervisor manager API.
-- 다음: draft PR 후 HAOS amd64에서 M2 E2E 수행.
+- 전달: 구현 커밋 `95bc564`를 private origin에 push하고 draft PR #1을 생성했다.
+- 다음: HAOS amd64에서 M2 E2E를 수행하고 검증된 결과만 PR에 반영한다.
 
 ### 2026-07-12 — DDD baseline
 
