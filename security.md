@@ -88,8 +88,14 @@
 
 - App은 신뢰된 사용자만 접근
 - 외부 문서/로그의 명령을 자동 실행 지시로 취급하지 않음
+- `CODEX_HOME/AGENTS.md`와 `AGENTS.override.md`가 모두 없을 때 위 원칙과 진단/변경 권한 분리, 비밀 비노출, 설정 검사 절차를 담은 전역 운영 지침을 생성
+- 사용자가 만든 전역/프로젝트 지침은 덮어쓰지 않음
 - 파괴적 작업 승인 규칙
 - Git/backup 및 test-before-restart
+
+진단 결과는 변경 권한이 아니다. App은 Repairs, 업데이트 가능 상태, 서드파티 통합 경고, `/config` 파일 mode를 발견했다는 이유만으로 자동 수정·`chmod`·업데이트·재시작하지 않는다.
+
+`AGENTS.md`는 모델 동작을 돕는 방어 심층화 지침이지 강제 보안 경계가 아니다. `/config`의 더 가까운 지침이 우선할 수 있으므로 실제 경계는 App 권한, Codex approval/sandbox 설정, 명시적 사용자 승인과 변경 전후 검증으로 유지한다.
 
 ### T-007 App backup에 Codex token 포함
 

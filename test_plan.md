@@ -73,6 +73,7 @@ Supervisor가 없어도 검증 가능한 항목:
 | AT-017 | shellcheck | 오류 없음 |
 | AT-018 | secret scan | 실제 credential 없음 |
 | AT-019 | 실제 ttyd WebSocket shell | 101 handshake 후 `/config`, non-dumb TERM으로 명령 실행 |
+| AT-020 | 기본 전역 `AGENTS.md` | 생성·0644, 핵심 안전 규칙 포함, 재초기화 시 사용자 수정/override 보존 |
 
 ## 3. HAOS 수동/E2E 시나리오
 
@@ -211,6 +212,15 @@ ha-api GET /states
 
 성공 기준: 인증과 host key 유지
 
+### E2E-013 Codex 운영 지침
+
+1. App 업데이트/재시작 뒤 `/data/codex/AGENTS.md` 존재 확인
+2. 새 Codex 세션에서 적용된 지침 요약 요청
+3. 파일에 식별 가능한 사용자 문장을 추가하고 App 재시작
+4. 사용자 문장 보존 확인
+
+성공 기준: 기본 안전 지침이 새 세션에 적용되고 기존 `AGENTS.md` 또는 `AGENTS.override.md`를 덮어쓰지 않음
+
 ## 4. 회귀 테스트 우선순위
 
 P0:
@@ -227,6 +237,7 @@ P1:
 - auto-start 옵션 오동작
 - tmux 재접속 실패
 - manager API helper 실패
+- 사용자 `AGENTS.md` 덮어쓰기
 - 한글/resize 문제
 
 P2:

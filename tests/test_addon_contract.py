@@ -1,3 +1,4 @@
+import re
 from pathlib import Path
 
 import yaml
@@ -27,6 +28,11 @@ def test_app_and_dockerfile_versions_match(
 ) -> None:
     dockerfile = (addon_root / "Dockerfile").read_text(encoding="utf-8")
     assert f'ARG BUILD_VERSION={addon_config["version"]}' in dockerfile
+
+    changelog = (addon_root / "CHANGELOG.md").read_text(encoding="utf-8")
+    newest_heading = re.search(r"^## \[([^]]+)]", changelog, re.MULTILINE)
+    assert newest_heading
+    assert newest_heading.group(1) == addon_config["version"]
 
 
 def test_ingress_and_network_contract(addon_config: dict) -> None:

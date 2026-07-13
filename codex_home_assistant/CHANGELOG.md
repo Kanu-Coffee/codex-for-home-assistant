@@ -2,7 +2,25 @@
 
 All notable changes to this App are documented in this file.
 
-## [0.1.1-dev] - Unreleased
+## [0.1.2-dev] - Unreleased
+
+### Added
+
+- Add default global Home Assistant operating guidance at `/data/codex/AGENTS.md` when neither a global base nor override file exists.
+- Separate diagnostic findings from authorization to modify automations, permissions, integrations, updates, restarts, or devices.
+
+### Security
+
+- Guide Codex to protect secrets, prefer supported APIs over direct `.storage` edits, open Recorder databases read-only, run `ha-config-check` after configuration changes, and require explicit authorization for high-risk operations.
+- Preserve existing `AGENTS.md`, `AGENTS.override.md`, empty files, and symbolic links without changing their content or permissions.
+- Document that model guidance is defense in depth rather than an enforcement boundary.
+
+### Testing
+
+- Verify default guidance creation, mode, safety content, init/restart persistence, and existing override preservation in policy and amd64 container smoke tests.
+- Record the user's successful HAOS Web UI and authenticated Codex execution, `/config` write, and selected Supervisor information/log/config-check endpoints without overstating untested service calls or restart operations.
+
+## [0.1.1-dev] - 2026-07-13
 
 ### Fixed
 

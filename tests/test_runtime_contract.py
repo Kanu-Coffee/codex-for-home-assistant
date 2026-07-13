@@ -104,6 +104,9 @@ def test_init_has_idempotent_and_degraded_mode_guards(rootfs: Path) -> None:
     sshd_run = (rootfs / S6_ROOT / "sshd/run").read_text(encoding="utf-8")
 
     assert 'if [[ ! -e "${CODEX_DATA}/config.toml" ]]' in init_script
+    assert '! -e "${CODEX_AGENTS}" && ! -L "${CODEX_AGENTS}"' in init_script
+    assert '! -e "${CODEX_AGENTS_OVERRIDE}" && ! -L "${CODEX_AGENTS_OVERRIDE}"' in init_script
+    assert 'install -m 0644 "${DEFAULT_AGENTS}" "${agents_tmp}"' in init_script
     assert 'if [[ ! -s "${host_key}" ]]' in init_script
     assert 'rm -f "${host_key}" "${host_key}.pub"' in init_script
     assert 'ssh-keygen -y -f "${host_key}"' in init_script
@@ -111,6 +114,19 @@ def test_init_has_idempotent_and_degraded_mode_guards(rootfs: Path) -> None:
     assert 'mv -f "${authorized_keys_tmp}" "${SSH_DATA}/authorized_keys"' in init_script
     assert '"${RUNTIME_DIR}/ssh-disabled"' in init_script
     assert "exec /command/s6-pause" in sshd_run
+
+
+def test_default_codex_guidance_has_home_assistant_safety_rules(rootfs: Path) -> None:
+    guidance = (
+        rootfs / "usr/local/share/codex-ha/AGENTS.md"
+    ).read_text(encoding="utf-8")
+
+    assert "live Home Assistant App" in guidance
+    assert "A diagnostic finding alone does not authorize" in guidance
+    assert "defense-in-depth guidance, not an enforcement boundary" in guidance
+    assert "Run `ha-config-check`" in guidance
+    assert "SUPERVISOR_TOKEN" in guidance
+    assert "Never describe an unverified" in guidance
 
 
 def test_web_terminal_uses_tmux_and_returns_to_shell(rootfs: Path) -> None:

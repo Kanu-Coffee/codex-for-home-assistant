@@ -222,6 +222,8 @@ nano 또는 vim
 
 - 디렉터리가 이미 있으면 데이터 보존
 - `config.toml` 기존 사용자 변경 보존
+- `CODEX_HOME/AGENTS.md`와 `AGENTS.override.md`가 모두 없을 때만 기본 운영 지침을 원자적으로 생성
+- 기존 전역 지침은 빈 파일과 심볼릭 링크를 포함해 내용과 권한 보존
 - host key가 있으면 재생성하지 않음
 - authorized_keys는 App 옵션에서 원자적으로 렌더링
 - 빈/잘못된 키는 로그로 알려주되 토큰/키 전체를 출력하지 않음

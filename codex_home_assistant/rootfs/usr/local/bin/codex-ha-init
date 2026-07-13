@@ -9,6 +9,9 @@ readonly DATA_HOME=/data/home
 readonly CODEX_DATA=/data/codex
 readonly SSH_DATA=/data/ssh
 readonly TMUX_DATA=/data/tmux
+readonly DEFAULT_AGENTS=/usr/local/share/codex-ha/AGENTS.md
+readonly CODEX_AGENTS=${CODEX_DATA}/AGENTS.md
+readonly CODEX_AGENTS_OVERRIDE=${CODEX_DATA}/AGENTS.override.md
 
 install -d -m 0700 \
   "${RUNTIME_DIR}" \
@@ -73,6 +76,16 @@ if [[ ! -e "${CODEX_DATA}/config.toml" ]]; then
 else
   chmod 0600 "${CODEX_DATA}/config.toml"
   bashio::log.info 'Preserved existing Codex configuration'
+fi
+
+if [[ ! -e "${CODEX_AGENTS}" && ! -L "${CODEX_AGENTS}" \
+  && ! -e "${CODEX_AGENTS_OVERRIDE}" && ! -L "${CODEX_AGENTS_OVERRIDE}" ]]; then
+  agents_tmp=$(mktemp "${CODEX_DATA}/.AGENTS.md.XXXXXX")
+  install -m 0644 "${DEFAULT_AGENTS}" "${agents_tmp}"
+  mv -f "${agents_tmp}" "${CODEX_AGENTS}"
+  bashio::log.info 'Created persistent Home Assistant operating guidance for Codex'
+else
+  bashio::log.info 'Preserved existing Codex operating guidance'
 fi
 
 if [[ -e "${CODEX_DATA}/auth.json" ]]; then
