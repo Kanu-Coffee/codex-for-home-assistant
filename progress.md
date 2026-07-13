@@ -28,7 +28,7 @@
 
 - 결과: Home Assistant base `3.24`, S6 v3, Codex CLI `0.144.1`, nginx Ingress ACL, loopback ttyd, 공유 tmux, 공개키 sshd, `/config` RW, Core/Supervisor helper를 구현했다. Codex/App/SSH 데이터는 `/data`, runtime token 환경은 `/run`에 둔다.
 - 보안 결과: manager/Core API 권한은 유지하고 `admin`, `docker_api`, `full_access`, `host_network`, `apparmor: false`는 사용하지 않았다. SSH 비밀번호·keyboard-interactive·reverse forwarding·agent forwarding은 차단했다.
-- 배포 결과: private GitHub 저장소의 `feat/mvp-runtime`에 구현 커밋 `95bc564`를 push하고 draft PR [#1](https://github.com/Kanu-Coffee/codex-for-home-assistant/pull/1)을 생성했다. private GHCR pull 문제 때문에 개발판 `image` 필드는 유보하고 Local Apps source build를 문서화했다.
+- 배포 결과: private GitHub 저장소의 `feat/mvp-runtime`에 구현 커밋 `95bc564`를 push하고 draft PR [#1](https://github.com/Kanu-Coffee/codex-for-home-assistant/pull/1)을 생성했다. `actions/setup-python`의 cache dependency 경로 누락은 `a09301a`에서 수정했으며 해당 head의 push/PR CI 6개 job이 모두 통과했다. private GHCR pull 문제 때문에 개발판 `image` 필드는 유보하고 Local Apps source build를 문서화했다.
 
 ### Verification
 
@@ -40,6 +40,7 @@
 - [x] Home Assistant App linter 2.21.0: PASS.
 - [x] `git diff --check`: PASS.
 - [x] Windows OpenSSH → local Docker sshd: PASS — `/config`, `/data/codex`, `codex --version`, `codex app-server --help`, fake token presence without output.
+- [x] GitHub Actions push/PR CI at `a09301a`: PASS — unit/lint, Home Assistant App config, amd64 build/smoke 각 2회, 총 6 jobs.
 - [ ] HAOS Local App install/start: NOT RUN — HAOS/Supervisor 환경 없음.
 - [ ] 실제 Ingress/WebSocket/resize/browser tmux reattach: NOT RUN — HAOS 필요.
 - [ ] 실제 device auth 및 App update 인증 영속성: NOT RUN — 사용자 인증/HAOS 필요.
@@ -165,7 +166,7 @@
 - 결과: 설치 가능한 Local App source, Codex CLI, Ingress terminal runtime, 공개키 SSH, API helper, CI와 운영 문서를 구현했다.
 - 로컬 검증: amd64 build, 24 unit/policy tests, full Docker smoke, App/shell/YAML/Markdown/Docker lint와 secret scan 통과.
 - 미검증: 실제 HAOS Ingress, device auth/update persistence, Home Assistant Network 2223, Codex Desktop Remote SSH, 실제 Core/Supervisor manager API.
-- 전달: 구현 커밋 `95bc564`를 private origin에 push하고 draft PR #1을 생성했다.
+- 전달: 구현 커밋 `95bc564`, 전달 기록 `29c67b5`, CI 수정 `a09301a`를 private origin에 push하고 draft PR #1을 생성했다. `a09301a`의 원격 CI 6 jobs는 모두 PASS했다.
 - 다음: HAOS amd64에서 M2 E2E를 수행하고 검증된 결과만 PR에 반영한다.
 
 ### 2026-07-12 — DDD baseline
