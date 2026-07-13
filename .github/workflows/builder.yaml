@@ -48,6 +48,17 @@ jobs:
             exit 1
           fi
 
+          if [[ "${GITHUB_EVENT_NAME}" == "push" ]]; then
+            if [[ ! "${RELEASE_TAG}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              echo "Release tag must be a non-dev semantic version" >&2
+              exit 1
+            fi
+            if [[ "${RELEASE_TAG}" != "${APP_VERSION}" ]]; then
+              echo "Release tag and App version differ" >&2
+              exit 1
+            fi
+          fi
+
   release-guard:
     name: Reject an existing version tag
     if: github.event_name == 'push'
@@ -79,17 +90,6 @@ jobs:
             fi
             rm -f "$error_file"
           done
-
-          if [[ "${GITHUB_EVENT_NAME}" == "push" ]]; then
-            if [[ ! "${RELEASE_TAG}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-              echo "Release tag must be a non-dev semantic version" >&2
-              exit 1
-            fi
-            if [[ "${RELEASE_TAG}" != "${APP_VERSION}" ]]; then
-              echo "Release tag and App version differ" >&2
-              exit 1
-            fi
-          fi
 
   build-app:
     name: Build codex_home_assistant without publishing

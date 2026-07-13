@@ -50,6 +50,12 @@ def test_registry_release_workflow_is_tag_gated(repository_root: Path) -> None:
 
     builder_text = builder_path.read_text(encoding="utf-8")
     build_app_text = build_app_path.read_text(encoding="utf-8")
+    validate_section, release_guard_section = builder_text.split(
+        "  release-guard:\n", maxsplit=1
+    )
+    assert "RELEASE_TAG: ${{ github.ref_name }}" in validate_section
+    assert "Release tag and App version differ" in validate_section
+    assert "Release tag and App version differ" not in release_guard_section
     assert "publish: false" in builder_text
     assert "publish: true" in builder_text
     assert "secrets: inherit" not in builder_text
