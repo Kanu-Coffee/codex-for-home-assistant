@@ -69,6 +69,7 @@
 - curl verbose/debug 기본 비활성
 - runtime env 파일 0600
 - `auth.json` 0600
+- API helper의 동적 `Accept` 값은 JSON/plain/x-log allowlist로 제한해 header injection 차단
 - CI secret scan
 
 ### T-005 SSH 노출
@@ -81,6 +82,7 @@
 - 외부 접근은 VPN/mesh network 권장
 - host key 영속화
 - 로그인 시도 로그
+- mobile Remote는 HAOS에 직접 SSH하지 않고 신뢰한 desktop app의 SSH 연결을 제어하므로 desktop 계정·device pairing도 접근 경계로 취급
 
 ### T-006 Prompt injection 또는 잘못된 에이전트 판단
 
@@ -137,6 +139,7 @@ manager가 특정 필요한 endpoint를 거부하면:
 - 빈 authorized_keys 시 로그인 불가
 - `auth.json` 및 token이 `docker history`, App logs, CI artifacts에 없음
 - API helper 오류 출력에 Authorization header 없음
+- API helper가 허용하지 않은 media type과 CR/LF header injection을 요청 전에 거부
 - 패널 `panel_admin: true`
 - `hassio_role`이 manager인지 검사
 - 금지 config key가 없는지 정책 테스트

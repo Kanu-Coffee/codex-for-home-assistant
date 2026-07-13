@@ -24,7 +24,9 @@ Supervisor가 없어도 검증 가능한 항목:
 - config rendering
 - SSH config syntax
 - ttyd/tmux process startup
+- 실제 ttyd WebSocket resize와 동일 tmux pane 재접속
 - helper argument validation
+- API response media type 협상과 header injection 거부
 - token redaction
 - `/data` persistence fixture
 
@@ -74,6 +76,8 @@ Supervisor가 없어도 검증 가능한 항목:
 | AT-018 | secret scan | 실제 credential 없음 |
 | AT-019 | 실제 ttyd WebSocket shell | 101 handshake 후 `/config`, non-dumb TERM으로 명령 실행 |
 | AT-020 | 기본 전역 `AGENTS.md` | 생성·0644, 핵심 안전 규칙 포함, 재초기화 시 사용자 수정/override 보존 |
+| AT-021 | API `Accept` 협상 | 기본 JSON, 로그 x-log, 비허용/CRLF 값 요청 전 거부 |
+| AT-022 | ttyd resize/reconnect | resize 반영 후 WebSocket 재연결에도 session/pane/pid 동일 |
 
 ## 3. HAOS 수동/E2E 시나리오
 
@@ -120,12 +124,18 @@ tmux-256color
 
 ### E2E-004 tmux 재접속
 
-1. Codex 실행 중 Web UI 닫기
-2. 다시 열기
+1. Web UI를 열고 별도 SSH에서 `session_id`, `pane_id`, `pane_pid`, client/pane 크기 기록
+2. App을 재시작하지 않고 Web UI만 닫기
+3. tmux session/pane process가 유지되는지 확인
+4. Web UI를 다시 열어 같은 ID인지 비교
+5. 브라우저 크기를 바꾸고 tmux client/pane 크기 변화 확인
 
 성공 기준:
 
-- 기존 session과 화면 복원
+- 기존 session/pane/process와 화면 복원
+- resize가 실제 tmux client에 반영
+
+App 업데이트·재시작은 컨테이너 프로세스를 종료하므로 이 시나리오 사이에 실행하지 않는다.
 
 ### E2E-005 헤드리스 인증
 
@@ -154,15 +164,16 @@ ssh -p 2223 root@<ha-host>
 - `/config` 시작
 - `codex --version` 성공
 
-### E2E-007 Remote SSH
+### E2E-007 Desktop SSH 프로젝트와 mobile Remote
 
 1. Windows `~/.ssh/config` alias 생성
 2. 일반 `ssh <alias>` 성공
 3. Codex Desktop Connections에 host 추가
 4. `/config` 선택
 5. 파일 읽기/테스트 파일 생성/삭제
+6. 선택적으로 mobile Remote에서 연결된 desktop host의 같은 SSH 프로젝트 작업 계속
 
-성공 기준: remote app server가 시작되고 작업 완료
+성공 기준: remote app server가 시작되고 desktop 또는 mobile Remote를 통해 작업 완료
 
 ### E2E-008 Core API
 
@@ -187,7 +198,8 @@ ha-api GET /states
 ### E2E-010 Supervisor manager
 
 - Core info
-- Core logs
+- Core/App logs를 먼저 직접 `Accept: text/x-log`로 조회
+- `ha-core-logs`, `ha-addon-logs` 결과를 직접 요청과 비교
 - config check
 - 테스트 App info/logs
 - 허용되는 경우 테스트 App restart
@@ -205,12 +217,14 @@ ha-api GET /states
 
 ### E2E-012 업데이트 영속성
 
-1. auth/host key fingerprint 기록
+1. auth 상태와 host key fingerprint 기록
 2. 새 App image로 update
 3. 재시작
 4. 인증/SSH known_hosts 확인
 
 성공 기준: 인증과 host key 유지
+
+이 시나리오는 App 삭제나 `/data` 초기화 없이 일반 업데이트로 실행한다.
 
 ### E2E-013 Codex 운영 지침
 

@@ -1,7 +1,16 @@
 import re
+import struct
 from pathlib import Path
 
 import yaml
+
+
+def _png_header(path: Path) -> tuple[int, int, int]:
+    header = path.read_bytes()[:26]
+    assert header[:8] == b"\x89PNG\r\n\x1a\n"
+    assert header[12:16] == b"IHDR"
+    width, height = struct.unpack(">II", header[16:24])
+    return width, height, header[25]
 
 
 def test_all_yaml_files_parse(repository_root: Path) -> None:
@@ -21,6 +30,11 @@ def test_mvp_is_amd64_local_build(addon_config: dict) -> None:
     assert addon_config["arch"] == ["amd64"]
     assert "image" not in addon_config
     assert addon_config["stage"] == "experimental"
+
+
+def test_home_assistant_brand_assets(addon_root: Path) -> None:
+    assert _png_header(addon_root / "icon.png") == (128, 128, 6)
+    assert _png_header(addon_root / "logo.png") == (250, 250, 6)
 
 
 def test_app_and_dockerfile_versions_match(

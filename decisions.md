@@ -106,7 +106,7 @@ hassio_role: manager
 - 상태: Accepted
 - 결정: 공식 release `rust-v0.144.1`의 `codex-x86_64-unknown-linux-musl.tar.gz`를 SHA-256 `84091ae20c65fcc7d4120db97d1bd57d7ff8df9c7609fb781c78c2ebbd4f5a28`로 검증해 설치한다.
 - 이유: amd64 Alpine base와 맞는 공식 standalone target이며 Node runtime 없이 버전과 공급망 입력을 재현 가능하게 고정할 수 있다.
-- 제약: OpenAI가 명시한 Linux 지원 OS는 Ubuntu/Debian 중심이다. Alpine/HAOS와 Codex Desktop Remote SSH 호환성은 M2 실기 검증 전까지 완료로 표시하지 않는다.
+- 제약: OpenAI가 명시한 Linux 지원 OS는 Ubuntu/Debian 중심이다. 사용자가 이 amd64 Alpine/HAOS 이미지의 remote app server를 mobile Remote → desktop SSH project 경로에서 확인했지만, Codex 버전 또는 아키텍처를 바꾸면 다시 실기 검증한다.
 
 ## ADR-017 Ingress ACL reverse proxy
 
@@ -126,3 +126,9 @@ hassio_role: manager
 - 결정: 이미지에 기본 운영 가드레일 템플릿을 포함하고 `/data/codex/AGENTS.md`와 `AGENTS.override.md`가 모두 없을 때 복사한다. 기존 파일은 빈 파일과 심볼릭 링크를 포함해 덮어쓰거나 mode를 변경하지 않는다.
 - 이유: Codex는 의도적으로 `/config` RW와 Core/Supervisor 운영 권한을 가지므로 진단과 변경 권한을 분리하고, 비밀값·`.storage`·DB·고위험 기기 동작에 대한 반복 안전 규칙이 모든 새 세션에 필요하다. 공식 Codex는 `CODEX_HOME/AGENTS.md`를 전역 지침으로 읽고 `/config`의 더 가까운 프로젝트 지침을 뒤에 결합한다.
 - 제외: 이 지침을 강제 보안 경계로 간주하지 않는다. `/config/AGENTS.md` 자동 생성, 기존 사용자 지침 덮어쓰기, Repairs/파일 권한/업데이트 자동 수정은 하지 않는다.
+
+## ADR-020 로그 endpoint media type 명시
+
+- 상태: Accepted
+- 결정: 공용 API helper의 기본 `Accept`는 `application/json`으로 유지하고, `application/json`, `text/plain`, `text/x-log`만 명시적으로 선택할 수 있게 한다. Core/App 로그 wrapper는 `text/x-log`를 사용한다.
+- 이유: Supervisor 로그 endpoint는 JSON이 아닌 log media type을 요구한다. `--raw` 출력 모드 전체의 요청 의미를 바꾸지 않으면서 실제 HAOS 실패를 수정하고, allowlist로 header injection을 막는다.

@@ -1,4 +1,4 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-exec supervisor-api --raw GET /core/logs
+exec supervisor-api --raw --accept text/x-log GET /core/logs

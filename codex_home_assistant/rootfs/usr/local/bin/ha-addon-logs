@@ -6,4 +6,4 @@ if (( $# != 1 )) || [[ ! "$1" =~ ^[a-z0-9_-]+$ ]]; then
   exit 64
 fi
 
-exec supervisor-api --raw GET "/addons/$1/logs"
+exec supervisor-api --raw --accept text/x-log GET "/addons/$1/logs"

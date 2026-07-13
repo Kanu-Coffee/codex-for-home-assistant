@@ -53,6 +53,7 @@ api_main "$@"
 set -Eeuo pipefail
 output=''
 authorization_file=''
+accept_header=''
 response_body=${MOCK_BODY-}
 if [[ -z "${response_body}" ]]; then
   response_body='{}'
@@ -66,6 +67,8 @@ while (( $# > 0 )); do
     --header)
       if [[ "$2" == @* ]]; then
         authorization_file=${2#@}
+      elif [[ "$2" == 'Accept: '* ]]; then
+        accept_header=$2
       fi
       shift 2
       ;;
@@ -80,6 +83,9 @@ done
 if [[ -z "${authorization_file}" ]] \
   || ! grep -Fqx "Authorization: Bearer ${SUPERVISOR_TOKEN}" "${authorization_file}"; then
   exit 90
+fi
+if [[ "${accept_header}" != "Accept: ${MOCK_EXPECT_ACCEPT}" ]]; then
+  exit 91
 fi
 if [[ -n "${output}" ]]; then
   printf '%s' "${response_body}" > "${output}"
@@ -103,6 +109,7 @@ def run_api(
     check_result: bool = False,
     token: str | None = TOKEN,
     curl_exit: str = "0",
+    expected_accept: str = "application/json",
 ) -> subprocess.CompletedProcess[str]:
     bash, harness, library = api_harness
     env = os.environ.copy()
@@ -112,6 +119,7 @@ def run_api(
             "MOCK_BODY": body,
             "MOCK_STATUS": status,
             "MOCK_CURL_EXIT": curl_exit,
+            "MOCK_EXPECT_ACCEPT": expected_accept,
             "TEST_API_CHECK_RESULT": "true" if check_result else "false",
         }
     )
@@ -195,14 +203,32 @@ def test_supervisor_raw_response_may_omit_result(
     result = run_api(
         api_harness,
         "--raw",
+        "--accept",
+        "text/x-log",
         "GET",
         "/core/logs",
         body="plain log line",
         check_result=True,
+        expected_accept="text/x-log",
     )
 
     assert result.returncode == 0
     assert result.stdout == "plain log line\n"
+
+
+def test_accept_option_rejects_header_injection_without_request(
+    api_harness: tuple[str, Path, Path]
+) -> None:
+    result = run_api(
+        api_harness,
+        "--accept",
+        "text/x-log\r\nX-Injected: true",
+        "GET",
+        "/core/logs",
+    )
+
+    assert result.returncode == 64
+    assert "unsupported Accept media type" in result.stderr
 
 
 def test_missing_token_fails_without_invoking_request(
@@ -234,3 +260,14 @@ def test_api_helper_wrappers_select_expected_result_policy(rootfs: Path) -> None
     assert "API_CHECK_RESULT=true" in supervisor_api
     assert "api_main \"$@\"" in ha_api
     assert "api_main \"$@\"" in supervisor_api
+
+
+def test_log_helpers_request_supported_log_media_type(rootfs: Path) -> None:
+    core_logs = (rootfs / "usr/local/bin/ha-core-logs").read_text(encoding="utf-8")
+    addon_logs = (rootfs / "usr/local/bin/ha-addon-logs").read_text(
+        encoding="utf-8"
+    )
+
+    expected_options = "supervisor-api --raw --accept text/x-log"
+    assert f"{expected_options} GET /core/logs" in core_logs
+    assert f'{expected_options} GET "/addons/$1/logs"' in addon_logs

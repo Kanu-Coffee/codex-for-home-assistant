@@ -2,7 +2,8 @@
 set -Eeuo pipefail
 
 api_usage() {
-  printf 'Usage: %s [--raw] METHOD /path [JSON_BODY|-]\n' "${API_PROGRAM_NAME}" >&2
+  printf 'Usage: %s [--raw] [--accept MEDIA_TYPE] METHOD /path [JSON_BODY|-]\n' \
+    "${API_PROGRAM_NAME}" >&2
 }
 
 redact_stream() {
@@ -27,6 +28,7 @@ render_body() {
 
 api_main() {
   local raw=false
+  local accept='application/json'
   local method
   local path
   local body=''
@@ -39,10 +41,41 @@ api_main() {
   local curl_bin=${CURL_BIN:-curl}
   local -a curl_args
 
-  if [[ "${1:-}" == --raw ]]; then
-    raw=true
-    shift
-  fi
+  while (( $# > 0 )); do
+    case "$1" in
+      --raw)
+        raw=true
+        shift
+        ;;
+      --accept)
+        if (( $# < 2 )); then
+          api_usage
+          return 64
+        fi
+        accept=$2
+        shift 2
+        ;;
+      --)
+        shift
+        break
+        ;;
+      -*)
+        printf '%s: unknown option: %s\n' "${API_PROGRAM_NAME}" "$1" >&2
+        return 64
+        ;;
+      *)
+        break
+        ;;
+    esac
+  done
+
+  case "${accept}" in
+    application/json | text/plain | text/x-log) ;;
+    *)
+      printf '%s: unsupported Accept media type\n' "${API_PROGRAM_NAME}" >&2
+      return 64
+      ;;
+  esac
 
   if (( $# < 2 || $# > 3 )); then
     api_usage
@@ -91,7 +124,7 @@ api_main() {
     --show-error
     --request "${method}"
     --header "@${header_file}"
-    --header 'Accept: application/json'
+    --header "Accept: ${accept}"
     --output "${response_file}"
     --write-out '%{http_code}'
     --connect-timeout 10

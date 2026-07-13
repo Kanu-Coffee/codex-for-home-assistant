@@ -1,16 +1,22 @@
+<p align="center">
+  <img src="codex_home_assistant/logo.png" alt="Codex for Home Assistant logo" width="180">
+</p>
+
 # Codex for Home Assistant
 
 Home Assistant OS 안에서 OpenAI Codex CLI를 운영하기 위한 amd64 Home Assistant App MVP입니다.
 
+> 비공식 커뮤니티 프로젝트이며 OpenAI 또는 Home Assistant/Nabu Casa와 제휴하거나 이들의 보증을 받는 제품이 아닙니다.
+
 - Home Assistant Ingress 웹 터미널: nginx ACL → ttyd → 공유 tmux 세션
-- 공개키 전용 OpenSSH와 Codex Desktop SSH 연결 기반
+- 공개키 전용 OpenSSH, desktop SSH 프로젝트와 mobile Remote 연결 기반
 - Home Assistant `/config` 전체 read-write
 - Home Assistant Core REST/WebSocket 접근
 - Supervisor API `manager` 운영 helper
 - Codex 인증, 설정, SSH host key의 `/data` 영속화
 - 기존 사용자 파일을 보존하는 전역 Home Assistant 운영 가드레일
 
-현재 버전은 `0.1.2-dev`, `stage: experimental`, amd64 전용입니다. AppArmor는 활성화되어 있고 Supervisor `admin`, Docker API, App `full_access`, host network는 사용하지 않습니다.
+현재 버전은 `0.1.3-dev`, `stage: experimental`, amd64 전용입니다. AppArmor는 활성화되어 있고 Supervisor `admin`, Docker API, App `full_access`, host network는 사용하지 않습니다.
 
 > 이 App은 `/config`의 비밀과 `SUPERVISOR_TOKEN`을 사용할 수 있는 강한 관리자 도구입니다. 신뢰하는 관리자만 사용하고 TCP 2223을 인터넷으로 직접 port-forward하지 마세요.
 
@@ -27,7 +33,9 @@ https://github.com/Kanu-Coffee/codex-for-home-assistant
 3. 목록을 새로고침한 뒤 **Codex for Home Assistant**를 선택해 설치합니다.
 4. 공개키와 Network 포트를 설정하고 App을 시작합니다.
 
-현재 `config.yaml`에는 registry `image`가 없으므로 Supervisor가 저장소의 Dockerfile을 amd64 장치에서 빌드합니다. 첫 설치는 Home Assistant base image, Alpine 패키지와 Codex release 다운로드 때문에 시간이 걸릴 수 있습니다. `0.1.2-dev` experimental 버전이며 실제 HAOS 기능 결과는 `progress.md`의 M2 항목별 증거를 기준으로 합니다.
+현재 `config.yaml`에는 registry `image`가 없으므로 Supervisor가 저장소의 Dockerfile을 amd64 장치에서 빌드합니다. 첫 설치는 Home Assistant base image, Alpine 패키지와 Codex release 다운로드 때문에 시간이 걸릴 수 있습니다. `0.1.3-dev` experimental 버전이며 실제 HAOS 기능 결과는 `progress.md`의 M2 항목별 증거를 기준으로 합니다.
+
+기존 App은 삭제하지 말고 일반 업데이트하세요. `0.1.3-dev`는 `/data` 형식이나 영구 파일을 변경·초기화하지 않으므로 완전 삭제나 재설치가 필요하지 않습니다.
 
 설치, Codex device login, Windows SSH config, Remote SSH, API helper, 안전한 서비스 호출과 복구 절차는 [App 사용 설명서](codex_home_assistant/DOCS.md)를 따르세요.
 
@@ -86,13 +94,13 @@ progress.md            실제 완료/미검증 상태의 단일 기준
 
 ## 검증 경계
 
-로컬 Docker 검증은 image build, Codex 실행, S6 서비스, ttyd/nginx, 공개키 sshd, 영속 데이터와 helper 오류 처리를 다룹니다. 실제 HAOS에서는 public 설치·시작, Web UI 터미널과 인증된 Codex 실행, `/config` 쓰기, 일부 Supervisor 조회·로그·설정 검사를 확인했습니다. 다음은 아직 완료가 아닙니다.
+로컬 Docker 검증은 image build, Codex 실행, S6 서비스, ttyd/nginx, 동일 tmux pane 재접속·resize, 공개키 sshd, 영속 데이터와 helper 오류 처리를 다룹니다. 실제 HAOS에서는 public 설치·시작, Web UI와 인증된 Codex, `/config` 쓰기, Core REST 조회, Supervisor 정보·직접 로그·설정 검사, 업데이트 후 Codex 인증 보존, mobile Remote를 통한 SSH 프로젝트 작업을 확인했습니다. 다음은 아직 완료가 아닙니다.
 
 - Ingress resize와 브라우저 종료 뒤 tmux 재접속
-- Codex 인증의 App 재시작/update 영속성
-- Home Assistant Network mapping을 통한 Windows SSH
-- Codex Desktop Remote SSH app server on Alpine/musl
-- Core 상태 조회·실제 서비스 호출과 Supervisor start/stop/restart endpoint
+- `0.1.3-dev`의 `ha-core-logs`/`ha-addon-logs` HAOS 회귀 확인
+- 업데이트 전후 SSH host key fingerprint 동일성
+- 장치 코드 로그인 UI 흐름
+- 실제 Core 서비스 호출과 Supervisor start/stop/restart endpoint
 
 자세한 최신 결과와 명령 증거는 `progress.md`에 기록합니다.
 

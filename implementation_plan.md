@@ -118,6 +118,7 @@ HAOS Web UI에서 shell/Codex가 사용 가능하고 재접속 시 세션이 유
 
 - fake token fixture로 header redaction
 - mock HTTP success/error
+- 기본 JSON과 로그 `text/x-log` 협상, 잘못된 media type/header injection 거부
 - Core `/config` 또는 `/states` 조회
 - safe test entity service call
 - Supervisor `/core/check` 및 logs
