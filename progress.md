@@ -4,8 +4,8 @@
 
 ## Project Status
 
-- 상태: **amd64 M2 실기 수용 PASS / 0.1.3 non-dev 릴리스 진행 중**
-- 현재 마일스톤: **M2 — HAOS 실기 검증 및 첫 non-dev 릴리스**
+- 상태: **amd64 MVP/M2 PASS / 0.1.3 public prerelease 완료 / HAOS 일반 업데이트 확인 대기**
+- 현재 마일스톤: **M2 릴리스 전달 완료 — post-release HAOS 업데이트 확인**
 - 마지막 문서 기준일: **2026-07-13**
 - 저장소: public `Kanu-Coffee/codex-for-home-assistant`, default branch `main`
 
@@ -35,8 +35,10 @@
 - [x] 사용자 실기 PASS를 Verification/M2와 사용자 문서에 반영했다.
 - [x] 0.1.3 version, generic GHCR image, 공식 builder workflows와 계약 테스트를 구현했다. PR 빌드는 read-only이고 numeric version tag만 package write/OIDC 권한으로 게시한다.
 - [x] 로컬 amd64 image build/full smoke, Linux pytest 31개, ShellCheck/Hadolint/YAML/Markdown/actionlint와 Git diff 검사를 통과했다. image의 `io.hass.version=0.1.3`, `io.hass.arch=amd64` label도 확인했다.
-- [ ] PR CI와 게시 뒤 public GHCR anonymous linux/amd64 pull/full smoke를 검증한다.
-- [ ] public `main` 병합, `0.1.3` tag와 GitHub Release를 완료한다.
+- [x] PR [#10](https://github.com/Kanu-Coffee/codex-for-home-assistant/pull/10)의 CI run `29244843174` 3개 job과 builder PR run `29244843342`의 metadata/prepare/amd64 build를 통과했다. merge commit은 `014de31`이고 main CI run `29244989052` 3개 job도 통과했다.
+- [x] tag `0.1.3`의 builder run `29245085795`로 amd64 image와 generic manifest를 게시했다. 빈 Docker 인증 설정에서 generic/per-arch를 모두 조회하고 generic image를 pull했으며 manifest digest `sha256:298add07ce5d1d5fd68b867fc7b9a0c4b03e3f909d2b887c680d24ddbbd75615`, `linux/amd64`, App version/arch/source label, mutable `latest` 부재와 pulled-image full smoke를 확인했다.
+- [x] public `main` 병합, annotated `0.1.3` tag와 GitHub [prerelease](https://github.com/Kanu-Coffee/codex-for-home-assistant/releases/tag/0.1.3)를 완료했다.
+- [ ] 사용자 HAOS에서 App Store repository를 새로고침하고 기존 `0.1.3-dev`를 `0.1.3`으로 일반 업데이트한 뒤 Web UI, Codex 인증 유지와 SSH host identity를 확인한다. App 삭제, `/data` reset, 재로그인은 요구하지 않는다.
 
 ### 2026-07-13 — 0.1.3-dev 최종 HAOS 회귀·완료 판정
 
@@ -208,7 +210,7 @@
 
 - [x] GitHub Actions lint workflow
 - [x] GitHub Actions amd64 build workflow
-- [ ] GHCR publish 구조
+- [x] GHCR publish 구조 — tag-gated official builder, generic/per-arch public packages, overwrite guard
 - [x] App `image` 필드 적용 시점 결정 — 첫 non-dev/public GHCR pull 경로 확정 뒤 적용
 - [x] 기능 브랜치 커밋/push — `95bc564`, `feat/mvp-runtime`
 - [x] draft PR 생성 및 검증 결과 기록 — [#1](https://github.com/Kanu-Coffee/codex-for-home-assistant/pull/1)
@@ -231,7 +233,8 @@
 - [x] App 업데이트/재시작 후 host key fingerprint 유지
 - [x] `0.1.2-dev` 기본 전역 운영 지침 생성·기본본 일치·사용자 override 보존
 - [x] `0.1.3-dev` Core/App 로그 helper HAOS 회귀 확인
-- [ ] 첫 non-dev release/tag/GHCR publish — 이미 배포된 `0.1.3-dev`보다 낮은 `0.1.0`으로 내리지 않음
+- [x] 첫 non-dev release/tag/GHCR publish — `0.1.3`, public anonymous linux/amd64 pull/full smoke PASS
+- [ ] 기존 `0.1.3-dev` HAOS 설치의 `0.1.3` 일반 업데이트 경로 — 사용자 확인 대기, 삭제/reset 불필요
 
 ## M3 — aarch64 및 안정화
 

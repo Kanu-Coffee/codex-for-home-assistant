@@ -137,7 +137,7 @@ hassio_role: manager
 
 - 상태: Accepted
 - 결정: `0.1.3`부터 `ghcr.io/kanu-coffee/codex-for-home-assistant` generic manifest를 사용한다. 공식 Home Assistant builder actions `2026.06.0`이 amd64 image와 manifest를 숫자 Git tag에서만 게시하며 tag는 App version과 정확히 같아야 한다.
-- 이유: pre-built image는 HAOS의 느리고 실패 가능성이 높은 소스 빌드를 제거한다. tag-only publish와 immutable version tag는 이후 문서 변경이나 version bump 누락이 기존 release image를 덮어쓰는 것을 막는다.
+- 이유: pre-built image는 HAOS의 느리고 실패 가능성이 높은 소스 빌드를 제거한다. tag-only publish, App version 일치 검사와 기존 generic/per-arch GHCR tag preflight는 이후 문서 변경이나 version bump 누락이 기존 release image를 덮어쓰는 것을 막는다.
 - 제약: generic/per-arch GHCR package를 public으로 제공하고 인증 없는 linux/amd64 pull을 확인한다. `stage: experimental`과 amd64-only 지원은 유지한다.
 
 ## ADR-022 HACS 대신 Home Assistant App repository
