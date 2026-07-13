@@ -34,8 +34,8 @@
 - [x] 제공된 원본을 왜곡 없이 투명 RGBA `icon.png` 128x128과 `logo.png` 250x250으로 변환하고 README 표시·자산 계약 테스트를 추가했다.
 - [x] 실제 ttyd WebSocket에서 resize와 연결 종료/재접속 뒤 동일 tmux session/pane/pid를 확인했다. 이는 같은 App 실행 중 보장이며 업데이트를 넘는 영속성 주장이 아니다.
 - [x] 버전을 `0.1.3-dev`로 올리고 README, changelog, 설계·보안·테스트·운영 문서를 실제 실기 증거에 맞췄으며 `MANIFEST.md` 문서 checksum을 현재 내용으로 재생성했다.
-- [x] amd64 이미지 build/full smoke, Linux 29 tests, ShellCheck/Hadolint/YAML/Markdown/App lint, secret scan과 Git diff를 검증했다.
-- [ ] commit `2b145e4`를 `fix/live-log-logo`에 push하고 draft PR [#7](https://github.com/Kanu-Coffee/codex-for-home-assistant/pull/7)을 생성했다. CI 확인 후 public `main`에 병합해 HA App Store 업데이트 경로에 전달한다.
+- [x] amd64 이미지 build/full smoke, Linux 30 tests, ShellCheck/Hadolint/YAML/Markdown/App lint, secret scan과 Git diff를 검증했다.
+- [x] commits `2b145e4`, `d93889d`를 `fix/live-log-logo`에 push했다. PR [#7](https://github.com/Kanu-Coffee/codex-for-home-assistant/pull/7)의 push/PR CI 6개 job이 통과했고 merge commit `e1de443`으로 public `main`에 병합했다. final main CI run `29237205318`의 3개 job도 통과했다.
 
 ### 2026-07-13 — HAOS 실기 진단 검토와 Codex 운영 가드레일
 
@@ -80,7 +80,7 @@
 ### Verification
 
 - [x] `docker buildx build --platform linux/amd64 --load --tag codex-ha:0.1.3-dev ...`: PASS — base `3.24`, 공식 Codex SHA-256, `codex-cli 0.144.1`, image label `0.1.3-dev`.
-- [x] Linux `python -m pytest -ra`: PASS — 29 passed, 0 skipped; 자산 계약, S6/runtime, API JSON/x-log 협상·header injection 거부, token redaction, secret scan.
+- [x] Linux `python -m pytest -ra`: PASS — 30 passed, 0 skipped; 문서 manifest, 자산 계약, S6/runtime, API JSON/x-log 협상·header injection 거부, token redaction, secret scan.
 - [x] `tests/docker-smoke.sh codex-ha:0.1.3-dev`: PASS — S6, `/config` RW, permissions, nginx/ttyd, 동일 tmux session/pane/pid 재접속과 96x32 resize, auto-start false/true, Codex 후 Bash 복귀, 공개키 SSH, 비밀번호 거부, UTF-8 env, host-key/config 영속성, invalid/no-key degraded recovery.
 - [x] `shellcheck` 0.11.0: PASS — runtime/test shell scripts, warning 이상 없음.
 - [x] `hadolint` 2.14.0, `yamllint`, `markdownlint-cli2` 0.23.0: PASS.

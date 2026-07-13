@@ -2,6 +2,7 @@
 .gitattributes text eol=lf
 .yamllint text eol=lf
 *.sh text eol=lf
+*.md text eol=lf
 Dockerfile text eol=lf
 codex_home_assistant/rootfs/** text eol=lf
 *.yaml text eol=lf
