@@ -12,13 +12,18 @@ readonly TMUX_DATA=/data/tmux
 readonly DEFAULT_AGENTS=/usr/local/share/codex-ha/AGENTS.md
 readonly CODEX_AGENTS=${CODEX_DATA}/AGENTS.md
 readonly CODEX_AGENTS_OVERRIDE=${CODEX_DATA}/AGENTS.override.md
+readonly PLAYWRIGHT_SECRETS=${RUNTIME_DIR}/playwright-secrets.env
+readonly PLAYWRIGHT_OUTPUT=${RUNTIME_DIR}/playwright-output
+readonly HA_RENDER_UPSTREAM=${RUNTIME_DIR}/home-assistant-render-upstream.conf
 
+rm -rf -- /run/codex-ha/playwright-output
 install -d -m 0700 \
   "${RUNTIME_DIR}" \
   "${DATA_HOME}" \
   "${CODEX_DATA}" \
   "${SSH_DATA}" \
   "${TMUX_DATA}" \
+  "${PLAYWRIGHT_OUTPUT}" \
   /root/.ssh
 install -d -m 0755 /run/sshd
 
@@ -123,10 +128,55 @@ chmod 0600 "${ssh_environment_tmp}"
 mv -f "${ssh_environment_tmp}" /root/.ssh/environment
 
 if [[ -z "${SUPERVISOR_TOKEN:-}" ]]; then
+  rm -f "${PLAYWRIGHT_SECRETS}"
   bashio::log.warning 'SUPERVISOR_TOKEN is unavailable; API helpers will remain disabled'
 else
+  playwright_secrets_tmp=$(mktemp "${RUNTIME_DIR}/.playwright-secrets.XXXXXX")
+  printf 'SUPERVISOR_TOKEN=%s\n' \
+    "$(jq --null-input --arg value "${SUPERVISOR_TOKEN}" '$value')" \
+    > "${playwright_secrets_tmp}"
+  chmod 0600 "${playwright_secrets_tmp}"
+  mv -f "${playwright_secrets_tmp}" "${PLAYWRIGHT_SECRETS}"
   bashio::log.info 'Core and Supervisor API runtime environment configured'
 fi
+
+ha_frontend_scheme=http
+ha_frontend_port=8123
+if [[ -n "${SUPERVISOR_TOKEN:-}" ]]; then
+  core_info_tmp=$(mktemp "${RUNTIME_DIR}/.core-info.XXXXXX")
+  if curl --fail --silent \
+    --connect-timeout 1 \
+    --max-time 2 \
+    --header "Authorization: Bearer ${SUPERVISOR_TOKEN}" \
+    --output "${core_info_tmp}" \
+    http://supervisor/core/info; then
+    candidate_port=$(jq --exit-status --raw-output \
+      'select(.result == "ok") | .data.port // 8123 | tostring' \
+      "${core_info_tmp}" 2>/dev/null || true)
+    candidate_scheme=$(jq --exit-status --raw-output \
+      'select(.result == "ok") | if (.data.ssl // false) then "https" else "http" end' \
+      "${core_info_tmp}" 2>/dev/null || true)
+    if [[ "${candidate_port}" =~ ^[0-9]+$ ]] \
+      && (( candidate_port >= 1 && candidate_port <= 65535 )) \
+      && [[ "${candidate_scheme}" == http || "${candidate_scheme}" == https ]]; then
+      ha_frontend_port=${candidate_port}
+      ha_frontend_scheme=${candidate_scheme}
+    else
+      bashio::log.warning 'Supervisor Core info did not contain a valid frontend endpoint; using the internal default'
+    fi
+  else
+    bashio::log.warning 'Supervisor Core info is unavailable; using the internal Home Assistant frontend default'
+  fi
+  rm -f "${core_info_tmp}"
+fi
+
+ha_render_upstream_tmp=$(mktemp "${RUNTIME_DIR}/.home-assistant-render-upstream.XXXXXX")
+printf 'set %s "%s://homeassistant:%s";\n' \
+  "\$ha_frontend_upstream" "${ha_frontend_scheme}" "${ha_frontend_port}" \
+  > "${ha_render_upstream_tmp}"
+chmod 0600 "${ha_render_upstream_tmp}"
+mv -f "${ha_render_upstream_tmp}" "${HA_RENDER_UPSTREAM}"
+bashio::log.info 'Configured the loopback Home Assistant browser gateway'
 
 for key_type in ed25519 rsa; do
   host_key="${SSH_DATA}/ssh_host_${key_type}_key"

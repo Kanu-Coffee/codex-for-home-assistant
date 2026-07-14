@@ -92,3 +92,9 @@ jobs:
 
       - name: Run container smoke tests
         run: bash tests/docker-smoke.sh codex-for-home-assistant:test
+
+      - name: Verify update from released 0.1.3 preserves persistent data
+        run: |
+          bash tests/update-smoke.sh \
+            ghcr.io/kanu-coffee/codex-for-home-assistant:0.1.3 \
+            codex-for-home-assistant:test

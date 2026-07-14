@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+readonly RUNTIME_DIR=/run/codex-ha
+readonly PLAYWRIGHT_PROXY=/usr/local/share/codex-ha/playwright-mcp-proxy.mjs
+
+umask 077
+install -d -m 0700 "${RUNTIME_DIR}/playwright-output"
+
+if (( $# != 0 )); then
+  printf 'ha-playwright-mcp does not accept command-line arguments\n' >&2
+  exit 64
+fi
+
+exec node "${PLAYWRIGHT_PROXY}"

@@ -29,6 +29,9 @@
 | 자동화/스크립트 실행 | Core API | 높음 | 허용 |
 | Core/App 로그 | Supervisor API | 중간 | 허용 |
 | Core/App 재시작 | manager API | 높음 | 허용 |
+| 개발 Web UI 실제 브라우저 검증 | Playwright MCP + headless Chromium | 높음 | 컨테이너 안에서 허용 |
+| HA 대시보드 브라우저 인증 | loopback gateway + 현재 App token | 매우 높음 | 정확한 loopback origin에 한해 허용 |
+| 브라우저 디버그/VNC 외부 공개 | 새 host/Ingress port | 매우 높음 | 불허 |
 | 보호 모드 변경/무제한 Supervisor | admin | 매우 높음 | 불허 |
 | Docker container 직접 제어 | docker_api | 치명적 | 불허 |
 | HAOS host 전체 권한 | full_access/privileged | 치명적 | 불허 |
@@ -119,6 +122,44 @@
 - generic/per-arch GHCR package public visibility와 인증 없는 amd64 pull 확인
 - pull한 image의 `io.hass.version`, `io.hass.arch`, source label과 container smoke 검증
 
+### T-009 브라우저/MCP 공격 표면과 prompt injection
+
+브라우저가 여는 페이지의 DOM, 접근성 snapshot, console, network 응답은 신뢰할 수 없는 입력이다. 페이지에 적힌 지시를 사용자 또는 프로젝트 지시로 승격하지 않는다.
+
+완화:
+
+- Codex의 MCP 경로는 container-local stdio로 연결하고 App service가 HTTP/SSE listener를 열지 않음. wrapper는 command-line 인수를 거부하고 enforcement proxy만 실행
+- headless·isolated context를 사용하고 세션/profile을 `/data`에 저장하지 않음
+- navigation, snapshot, viewport resize, screenshot, console/network 관찰과 기본 UI 조작만 명시적으로 허용
+- 임의 JavaScript/code 실행, code generation, unrestricted file access/upload 도구는 제공하지 않음
+- screenshot/browser output은 `/run/codex-ha`의 비영속 private 디렉터리에 두고 총량을 50 MiB로 제한. enforcement proxy가 tool call의 `filename`을 거부해 `/config`·`/data` 우회를 차단
+- `chromium-headless-shell --no-sandbox`는 App container 안에서만 사용하며 이를 이유로 `privileged`, 새 capability, `full_access`, `host_network`를 추가하지 않음
+
+### T-010 renderer를 통한 Supervisor token·민감 화면 유출
+
+HA 대시보드는 브라우저에서 Core API/WebSocket 인증이 필요하지만 token을 MCP 입력, URL, process argv 또는 영속 browser profile에 전달하면 안 된다.
+
+완화:
+
+- gateway는 container loopback `127.0.0.1:8099`에서만 수신하고 새 App Network/Ingress port를 만들지 않음
+- 현재 container의 `SUPERVISOR_TOKEN`은 Codex `env_vars`로 MCP Node process에 전달한다. `/run/codex-ha` 아래 mode 0600 임시 secrets 파일은 `--secrets` exact-value masking용으로만 사용하고 `/data`에 저장하지 않음
+- token은 `http://127.0.0.1:8099` 또는 `http://localhost:8099`의 정확한 origin에서만 `hassTokens` localStorage에 주입
+- token을 명령행 인수, URL query, console, MCP 응답, network request 목록, screenshot metadata, App log에 출력하지 않음
+- MCP secret masking은 방어 심층화일 뿐 보안 경계로 간주하지 않으며 인코딩·분할된 비밀이나 이미지까지 구조적으로 정화한다고 가정하지 않음
+- screenshot과 console/network 결과는 민감자료로 취급하고 Git, CI artifact, `/data`에 자동 보존하지 않음
+
+### T-011 브라우저의 내부망 요청과 인증 오용
+
+브라우저는 일반 Web UI 검증을 위해 네트워크에 접근할 수 있으므로 사용자가 요청하지 않은 내부 주소 탐색이나 loopback 인증을 다른 origin으로 전달하지 않는다.
+
+완화:
+
+- 인증 주입은 두 개의 명시된 loopback origin으로 제한
+- gateway는 HA frontend와 전체 Core API/WebSocket proxy만 제공하고 범용 target forward proxy로 동작하지 않음. endpoint/method 제한은 기존 App의 전체 Core API 권한과 사용자 승인 규칙에 맡김
+- HTTPS frontend upstream은 `proxy_ssl_verify off`이므로 container 내부 `homeassistant` DNS/네트워크를 신뢰 경계로 취급하고 외부 TLS proxy에 재사용하지 않음
+- 외부 페이지에서 얻은 링크나 script 지시만으로 새 내부 endpoint를 탐색하지 않음
+- navigation target과 관찰 결과를 작업 보고에 명시
+
 ## 4. `manager` 선택 근거
 
 `manager`는 CLI형 관리 App에 필요한 Supervisor 운영 권한을 제공하면서 `admin`보다 제한적이다. Core 기기 제어는 `homeassistant_api: true`로 별도 제공되므로 실제 서비스 호출을 위해 `admin`이 필요하지 않다.
@@ -151,6 +192,14 @@ manager가 특정 필요한 endpoint를 거부하면:
 - `auth.json` 및 token이 `docker history`, App logs, CI artifacts에 없음
 - API helper 오류 출력에 Authorization header 없음
 - API helper가 허용하지 않은 media type과 CR/LF header injection을 요청 전에 거부
+- Playwright MCP가 stdio로만 실행되고 외부 listener/새 App port를 만들지 않음
+- 브라우저 도구 allowlist에 임의 code 실행, unrestricted file access/upload, codegen이 없음
+- browser context가 isolated이고 profile, screenshot, trace, network 결과를 `/data`에 쓰지 않음
+- fixture token이 process argv, App/MCP log, console/network 결과, screenshot metadata, `/run` 외 artifact에 없음
+- loopback gateway가 container 외부에서 접근 불가하고 정확한 두 origin 외에는 token을 주입하지 않음
+- gateway의 `/api/`가 전체 Core API 권한을 전달한다는 사실을 검증하고 범용 target proxy가 아님을 확인
+- `proxy_ssl_verify off`가 loopback gateway의 내부 `homeassistant` frontend upstream에만 한정됨
+- Playwright 추가 후에도 `privileged`, `full_access`, `host_network`, 추가 Linux capability, AppArmor 비활성화가 없음
 - 패널 `panel_admin: true`
 - `hassio_role`이 manager인지 검사
 - 금지 config key가 없는지 정책 테스트
@@ -173,6 +222,8 @@ manager가 특정 필요한 endpoint를 거부하면:
 3. Home Assistant 관리자 세션과 관련 credentials 점검
 4. 원인 수정 전 App 재사용 금지
 
+브라우저 renderer 경로에서 노출이 의심되면 MCP/App을 먼저 중지하고 App container 재생성 뒤 `/run/codex-ha/playwright-output`, 임시 secrets와 browser context가 폐기됐는지 확인한다. 저장하거나 공유한 screenshot·console/network 자료도 credential과 동일하게 회수·삭제한다.
+
 ### 설정 손상
 
 1. App 또는 Codex 작업 중지
@@ -180,3 +231,7 @@ manager가 특정 필요한 endpoint를 거부하면:
 3. 설정 검사
 4. 필요 시 Home Assistant backup 복원
 5. 회귀 테스트 추가
+
+## 8. 실기 검증 경계
+
+Alpine의 system `chromium-headless-shell` 조합은 upstream Playwright의 공식 Ubuntu/Debian browser bundle 대상과 다르다. 로컬 container fixture 통과만으로 HAOS 지원을 확정하지 않는다. 실제 HAOS에서 AppArmor 활성 상태의 browser 시작, loopback gateway, dashboard WebSocket, 한글 font, desktop/mobile screenshot, token 비노출을 확인할 때까지 이 경로는 **HAOS unverified**로 기록한다.

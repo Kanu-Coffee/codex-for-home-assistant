@@ -1,0 +1,49 @@
+{
+  "browser": {
+    "browserName": "chromium",
+    "isolated": true,
+    "launchOptions": {
+      "headless": true,
+      "executablePath": "/usr/bin/chromium-headless-shell",
+      "chromiumSandbox": false,
+      "args": [
+        "--disable-dev-shm-usage",
+        "--no-sandbox"
+      ]
+    },
+    "contextOptions": {
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "locale": "ko-KR",
+      "colorScheme": "dark"
+    },
+    "initPage": [
+      "/usr/local/share/codex-ha/playwright-init-page.ts"
+    ]
+  },
+  "capabilities": [
+    "core",
+    "network"
+  ],
+  "console": {
+    "level": "warning"
+  },
+  "outputDir": "/run/codex-ha/playwright-output",
+  "outputMaxSize": 52428800,
+  "outputMode": "stdout",
+  "saveSession": false,
+  "sharedBrowserContext": false,
+  "snapshot": {
+    "mode": "full"
+  },
+  "timeouts": {
+    "action": 10000,
+    "navigation": 60000,
+    "expect": 10000
+  },
+  "imageResponses": "allow",
+  "allowUnrestrictedFileAccess": false,
+  "codegen": "none"
+}
