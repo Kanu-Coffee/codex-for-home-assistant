@@ -3,11 +3,12 @@ ARG BUILD_FROM=ghcr.io/home-assistant/base:3.24
 FROM ${BUILD_FROM}
 
 ARG BUILD_ARCH=amd64
-ARG BUILD_VERSION=0.2.1
+ARG BUILD_VERSION=0.2.2
 ARG TARGETARCH
 ARG CODEX_VERSION=0.144.1
 ARG CODEX_SHA256=84091ae20c65fcc7d4120db97d1bd57d7ff8df9c7609fb781c78c2ebbd4f5a28
 ARG PLAYWRIGHT_MCP_VERSION=0.0.78
+ARG WS_VERSION=8.18.3
 
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
@@ -57,6 +58,7 @@ RUN apk add --no-cache \
       npm ci --prefix /usr/local/lib/codex-ha/playwright \
         --omit=dev --ignore-scripts --no-audit --no-fund \
     && [[ "$(node -p "require('/usr/local/lib/codex-ha/playwright/node_modules/@playwright/mcp/package.json').version")" == "${PLAYWRIGHT_MCP_VERSION}" ]] \
+    && [[ "$(node -p "require('/usr/local/lib/codex-ha/playwright/node_modules/ws/package.json').version")" == "${WS_VERSION}" ]] \
     && node -e "require('/usr/local/lib/codex-ha/playwright/node_modules/playwright-core')" \
     && chromium-headless-shell --version \
     && rm -rf /tmp/npm-cache \

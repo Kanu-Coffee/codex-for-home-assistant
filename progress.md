@@ -4,8 +4,8 @@
 
 ## Project Status
 
-- 상태: **amd64 MVP/M2 PASS / 0.2.0 public / 0.2.1 최소권한 브라우저 인증 후보 local smoke PASS / HAOS 실기 대기**
-- 현재 마일스톤: **0.2.1 최소권한 Home Assistant 대시보드 브라우저 인증 후보 검증**
+- 상태: **amd64 MVP/M2 PASS / 0.2.1 public / 0.2.2 관리형 브라우저 인증 후보 최종 local regression PASS / HAOS 실기 대기**
+- 현재 마일스톤: **0.2.2 관리형 Home Assistant 대시보드 브라우저 인증 후보 검증**
 - 마지막 문서 기준일: **2026-07-14**
 - 저장소: public `Kanu-Coffee/codex-for-home-assistant`, default branch `main`
 
@@ -23,6 +23,24 @@
 - [x] 문서 주도 개발 파일 세트 작성
 
 ## Current Work
+
+### 2026-07-14 — 브라우저 최소권한 인증 자동 설정
+
+- 목표: 사용자가 별도 Home Assistant 사용자로 로그인해 long-lived token을 발급하고 App 옵션에 복사하는 과정을 없애고, Web terminal에서 명시적인 1회 setup 뒤 일반 재시작·업데이트에는 안전하게 재사용되는 dashboard browser 인증을 제공한다.
+- 구현 원칙: `trusted_networks`, `trusted_proxies`, 관리자/Supervisor browser token과 Home Assistant 설정 파일은 사용하지 않는다. 공식 `config/auth/*`, `config/auth_provider/homeassistant/*`, `/auth/login_flow`, `/auth/token`, `/auth/revoke`, `auth/long_lived_access_token` API만 사용하고 기존 수동 token option은 명시적 override로 보존한다.
+- 수명주기 계획: App이 active·local-only·sole `system-read-only` managed user를 만들고 무작위 임시 password로 자기 자신을 인증한 뒤 10년 LLAT를 발급한다. 임시 password credential과 OAuth refresh token을 제거하고, managed token/user ID만 `/data`의 root-only 파일에 원자적으로 보존한다. 기존 managed user의 정책이 바뀌면 자동 수정하지 않고 fail closed한다.
+- UX 결정: 별도 setup HTTP service와 Ingress action button은 관리자 identity 검증·CSRF 방어·새 화면 수명주기를 추가하므로 이번 변경에 넣지 않는다. 관리자 전용 기존 Web terminal에서 인자 없이 `ha-browser-auth-setup`을 한 번 실행하면 전체 transaction과 runtime 활성화가 끝나게 한다. 이후 App update/restart는 managed token을 자동 재사용하고, 기존 수동 `home_assistant_browser_token`은 명시적 override/fallback으로 유지한다.
+- mutation/TLS 결정: 설치·업데이트·재시작만으로 Home Assistant user/token이나 provider 설정을 만들거나 바꾸지 않는다. 내부 Core가 HTTPS이면 image CA bundle과 `homeassistant` hostname을 엄격히 검증하고 인증서 오류를 우회하지 않는다.
+- [x] Home Assistant Core 2026.7.1 source에서 필요한 admin/user WebSocket command와 login/token/revoke HTTP flow를 확인한다.
+- [x] crash/retry/rollback 가능한 managed user·token bootstrap, 즉시 runtime activation과 명시적 제거 helper를 구현한다.
+- [x] fixture에서 임시 credential·OAuth refresh token 제거, LLAT 소유자/정책 검증, token 비노출과 자동 복구 회귀를 구현하고 중간 managed-auth smoke를 통과한다.
+- [x] config/번역/문서/changelog/version과 update persistence 계약을 `0.2.2` 후보로 갱신한다.
+- [x] unit/lint, amd64 image/full smoke, rendered desktop/mobile gateway와 public `0.2.1` image update smoke를 통과한다.
+- [x] 기능 commit `8a1e0a4`를 `feat/automatic-browser-auth-setup`에 push하고 draft PR [#15](https://github.com/Kanu-Coffee/codex-for-home-assistant/pull/15)에 로컬 검증과 실제 HAOS 미검증 항목을 기록했다. 원격 CI 최종 결과는 PR에서 확인한다.
+- 최종 정적 증거: Linux Python 3.13 + jq에서 pytest **49 passed**, YAML, ShellCheck 0.11.0, Hadolint 2.14.0, Markdown 20개와 `git diff --check`가 PASS했다.
+- 최종 image 증거: local image ID `sha256:24227a7c1e4ae97b1ff3b922d9b4cc6794bcbac50da7564058379f6c8c5abb6b`, label version `0.2.2`/arch `amd64`, size 533,413,124 bytes다.
+- 최종 managed-auth smoke: 생성·재사용·App replacement·회전·제거, nonblocking kernel lock, Supervisor 없는 crash-temp cleanup, unsafe symlink 거부, provider/Core 장애, token 응답 유실, 지속 cleanup 실패 journal 복구와 정책 변조 fail-closed가 PASS했다.
+- 최종 browser/update smoke: 내부 `8099` desktop `1440x900`(전송 PNG 1389x868)·mobile `390x844`, console/network, direct Core REST/WebSocket와 public `0.2.1` → local `0.2.2`의 `/data`·`/config` 보존이 PASS했다. 실제 HAOS/AppArmor dashboard E2E는 별도 **NOT RUN**이다.
 
 ### 2026-07-14 — HA browser 요청 IP와 최소권한 인증 재설계
 

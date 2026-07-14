@@ -16,10 +16,11 @@ configuration:
     name: Codex sandbox mode
     description: danger-full-access applies only inside this App container, not to the HAOS host.
   home_assistant_browser_token:
-    name: Read-only Home Assistant browser token
+    name: Manual Home Assistant browser token override
     description: >-
-      Optional long-lived token for one active, local-only user whose only group
-      is system-read-only. Invalid or over-privileged tokens are rejected.
+      Optional manual long-lived token for one active, local-only user whose only
+      group is system-read-only. Leave empty to use ha-browser-auth-setup managed
+      authentication. Invalid or over-privileged tokens are rejected.
   log_level:
     name: Web terminal log level
     description: Enables detailed ttyd logs for trace or debug. Secrets and authorization headers are never logged.

@@ -112,6 +112,9 @@ Supervisor가 없어도 검증 가능한 항목:
 | AT-034 | transport/file enforcement | wrapper의 모든 command-line 인수와 proxy의 모든 tool `filename` 거부, `/config`·`/data` artifact 우회 없음 |
 | AT-035 | browser user 최소권한 | browser token의 current user와 admin user list를 교차검증하고 active·local-only·non-system·non-admin·sole `system-read-only`일 때만 ready. system-users/admin/복수 group/비활성 token은 fail closed |
 | AT-036 | source IP와 재사용 negative | Docker inspect App IP, `curl %{local_ip}`, Core가 관측한 peer가 일치. container 제거 뒤 다른 App이 같은 IP를 받을 수 있음을 재현하고 production 파일에 Docker CIDR·`trusted_networks`·synthetic XFF 설정이 없음을 확인 |
+| AT-037 | managed browser auth lifecycle | provider preflight 후 exact local-only/read-only user, temporary login, LLAT 생성, password/OAuth cleanup, exact single token, restart reuse, revoke rotation과 policy-checked remove가 동작하고 비밀값을 출력하지 않음 |
+| AT-038 | managed auth crash/concurrency/fail-closed | kernel lock 충돌, partial credential create, pending LLAT, provider/Core/DNS/TLS failure, ambiguous local-only rejection, policy/credential mutation과 current-token self-revoke connection close에서 journal/token을 고아화하지 않고 runtime만 비활성화 |
+| AT-039 | HTTPS Core trust | Node HTTP/WebSocket과 nginx gateway가 image CA·SNI·`homeassistant` hostname을 검증하고 `proxy_ssl_verify off`가 없으며 invalid chain/hostname에서 fail closed |
 
 ## 3. HAOS 수동/E2E 시나리오
 
@@ -298,13 +301,14 @@ ha-api GET /states
 
 1. AppArmor를 활성 상태로 유지하고 App을 시작한다.
 2. `ha-browser-network-info`의 Supervisor self IP와 socket source IP가 같음을 확인하되 이 `/32`를 Home Assistant 설정에 추가하지 않는다.
-3. 전용 사용자가 active·local-only·sole `system-read-only`인지 확인하고 그 long-lived token을 마스킹된 App option에 저장한 뒤 재시작한다. `ha-browser-auth-status`가 ready인지 확인한다.
+3. App Web terminal에서 `ha-browser-auth-setup`을 인수 없이 실행하고 `ha-browser-auth-status`가 `source: managed`, ready, active·local-only·sole `system-read-only`, credential-free 상태인지 확인한다. 사용자가 token을 수동 복사하지 않는다.
 4. 새 외부 port 없이 container 안의 `http://127.0.0.1:8099`를 열고 raw token URL이나 password 입력 없이 HA frontend가 로드되는지 확인한다.
 5. desktop 1440x900과 mobile 390x844에서 사용자가 지정한 dashboard/view를 연다.
-6. direct Core API와 WebSocket 연결, 정적 resource, 한글/emoji font, console/page error를 확인한다. HTTPS frontend이면 container 내부 endpoint로 한정된 `proxy_ssl_verify off` 경로도 기록한다.
+6. direct Core API와 WebSocket 연결, 정적 resource, 한글/emoji font, console/page error를 확인한다. HTTPS frontend이면 CA chain과 `homeassistant` hostname 검증이 켜지고 invalid certificate를 우회하지 않는지 확인한다.
 7. process list, App/MCP log, network/console 보고와 screenshot metadata에서 Supervisor token과 browser token 문자열을 검색한다.
 8. image와 process argument에 Playwright `--secrets`가 없고 hostile `PLAYWRIGHT_MCP_*`, `NODE_OPTIONS`, `NODE_PATH`가 무시되며 token reflection fixture의 MCP text가 관리 proxy에서 exact-value redaction되는지 확인한다.
 9. App을 재시작해 init이 이전 `/run` browser output을 지우고 user policy를 다시 검증하며 runtime token file/context를 다시 만드는지 확인한다.
+10. App update/recreate 뒤 같은 managed user/token이 재사용되는지 확인하고, 마지막에 `ha-browser-auth-remove`가 identity를 제거하며 수동 `home_assistant_browser_token` fallback은 별도 opt-in일 때만 우선하는지 확인한다.
 
 성공 기준:
 

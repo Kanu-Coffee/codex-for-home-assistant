@@ -16,10 +16,11 @@ configuration:
     name: Codex 샌드박스 모드
     description: danger-full-access는 이 App 컨테이너 내부에만 적용되며 HAOS 호스트 권한이 아닙니다.
   home_assistant_browser_token:
-    name: Home Assistant 읽기 전용 브라우저 토큰
+    name: Home Assistant 수동 브라우저 토큰 재정의
     description: >-
       system-read-only 그룹만 가진 활성·로컬 전용 사용자의 장기 토큰을
-      선택적으로 입력합니다. 유효하지 않거나 권한이 큰 토큰은 거부됩니다.
+      수동으로 재정의할 때만 입력합니다. 비워 두면 ha-browser-auth-setup의
+      관리형 인증을 사용하며, 유효하지 않거나 권한이 큰 토큰은 거부됩니다.
   log_level:
     name: 웹 터미널 로그 수준
     description: trace 또는 debug에서 ttyd 상세 로그를 켭니다. 비밀값과 Authorization 헤더는 기록하지 않습니다.

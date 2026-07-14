@@ -1,6 +1,6 @@
 ---
 name: Codex for Home Assistant
-version: "0.2.1"
+version: "0.2.2"
 slug: codex_home_assistant
 description: Codex CLI, Playwright browser, Ingress terminal, and SSH for Home Assistant
 url: https://github.com/Kanu-Coffee/codex-for-home-assistant

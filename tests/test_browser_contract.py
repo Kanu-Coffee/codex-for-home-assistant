@@ -119,6 +119,11 @@ def test_playwright_wrapper_uses_only_the_image_managed_stdio_server(
     assert 'for variable in "${!PLAYWRIGHT_MCP_@}"' in wrapper
     assert "CODEX_HA_BROWSER_TOKEN_VALIDATED=1" in wrapper
     assert '"${NODE_BINARY}" "${BROWSER_AUTH_CHECK}"' in wrapper
+    refresh_call = "/usr/local/bin/ha-browser-auth-refresh --quiet || true"
+    assert refresh_call in wrapper
+    assert wrapper.index(refresh_call) < wrapper.index(
+        'if [[ -r "${BROWSER_TOKEN_FILE}" ]]'
+    )
     assert '"$@"' not in wrapper
     assert "npx" not in wrapper
     assert "npm" not in wrapper
@@ -208,12 +213,22 @@ def test_home_assistant_browser_auth_is_limited_to_loopback_gateway(
     assert nginx.count('proxy_set_header X-Forwarded-For "";') == 3
     assert nginx.count('proxy_set_header X-Real-IP "";') == 3
     assert nginx.count('proxy_set_header Forwarded "";') == 3
+    assert nginx.count("proxy_ssl_server_name on;") == 3
+    assert nginx.count("proxy_ssl_name homeassistant;") == 3
+    assert nginx.count(
+        "proxy_ssl_trusted_certificate /etc/ssl/certs/ca-certificates.crt;"
+    ) == 3
+    assert nginx.count("proxy_ssl_verify on;") == 3
+    assert "proxy_ssl_verify off;" not in nginx
 
 
-def test_playwright_secrets_and_gateway_config_are_runtime_only_and_private(
+def test_browser_auth_refresh_is_private_fail_closed_and_called_at_init(
     rootfs: Path,
 ) -> None:
     init_script = (rootfs / "usr/local/bin/codex-ha-init").read_text(
+        encoding="utf-8"
+    )
+    refresh = (rootfs / "usr/local/bin/ha-browser-auth-refresh").read_text(
         encoding="utf-8"
     )
 
@@ -221,7 +236,6 @@ def test_playwright_secrets_and_gateway_config_are_runtime_only_and_private(
         "LEGACY_PLAYWRIGHT_SECRETS=${RUNTIME_DIR}/playwright-secrets.env"
         in init_script
     )
-    assert "HA_BROWSER_TOKEN_FILE=${RUNTIME_DIR}/home-assistant-browser.token" in init_script
     assert "HA_BROWSER_AUTH_STATUS=${RUNTIME_DIR}/browser-auth-status.json" in init_script
     assert 'install -d -m 0700' in init_script
     assert "PLAYWRIGHT_OUTPUT=${RUNTIME_DIR}/playwright-output" in init_script
@@ -229,19 +243,95 @@ def test_playwright_secrets_and_gateway_config_are_runtime_only_and_private(
     assert 'rm -f "${LEGACY_PLAYWRIGHT_SECRETS}"' in init_script
     assert "playwright_secrets_tmp" not in init_script
     assert 'printf \'HA_BROWSER_TOKEN=%s\\n\'' not in init_script
-    assert (
-        'HA_BROWSER_TOKEN="${browser_token}" "${NODE_BINARY}" '
-        '"${HA_BROWSER_AUTH_CHECK}"'
-        in init_script
-    )
     assert "unset NODE_OPTIONS NODE_PATH" in init_script
     assert 'for variable in "${!PLAYWRIGHT_MCP_@}"' in init_script
-    assert "user_or_token_validation_failed" in init_script
+    init_refresh = "/usr/local/bin/ha-browser-auth-refresh --quiet"
+    assert init_refresh in init_script
+    assert init_script.index(init_refresh) < init_script.index(
+        "browser_auth_source=$(jq"
+    )
+    assert "home_assistant_browser_token" not in init_script
+    assert 'HA_BROWSER_TOKEN="${browser_token}"' not in init_script
+    assert "run ha-browser-auth-setup once" in init_script
     assert "system-read-only" in (
         rootfs / "usr/local/share/codex-ha/browser-auth-check.mjs"
     ).read_text(encoding="utf-8")
     assert 'chmod 0600 "${ha_render_upstream_tmp}"' in init_script
     assert 'mv -f "${ha_render_upstream_tmp}" "${HA_RENDER_UPSTREAM}"' in init_script
+
+    assert "RUNTIME_TOKEN=${RUNTIME_DIR}/home-assistant-browser.token" in refresh
+    assert "RUNTIME_STATUS=${RUNTIME_DIR}/browser-auth-status.json" in refresh
+    assert "MANAGED_TOKEN=/data/browser-auth/managed-token" in refresh
+    assert 'install -d -m 0700 "${RUNTIME_DIR}"' in refresh
+    remove_runtime_token = 'rm -f "${RUNTIME_TOKEN}"'
+    assert remove_runtime_token in refresh
+    assert refresh.index(remove_runtime_token) < refresh.index(
+        "codex_ha_config_validate"
+    )
+    assert 'status_tmp=$(mktemp "${RUNTIME_DIR}/.browser-auth-status.XXXXXX")' in (
+        refresh
+    )
+    assert 'check_tmp=$(mktemp "${RUNTIME_DIR}/.browser-auth-check.XXXXXX")' in (
+        refresh
+    )
+    assert 'chmod 0600 "${status_tmp}"' in refresh
+    assert 'mv -f "${status_tmp}" "${RUNTIME_STATUS}"' in refresh
+    assert "write_status rejected invalid_options" in refresh
+    assert "write_status rejected invalid_token_format" in refresh
+    assert "write_status rejected supervisor_validation_unavailable" in refresh
+    assert "write_status rejected user_or_token_validation_failed" in refresh
+    assert "2>/dev/null" in refresh
+
+    assert 'token_tmp=$(mktemp "${RUNTIME_DIR}/.home-assistant-browser-token.XXXXXX")' in (
+        refresh
+    )
+    assert 'printf \'%s\' "${browser_token}" > "${token_tmp}"' in refresh
+    assert 'chmod 0600 "${token_tmp}"' in refresh
+    assert 'mv -f "${token_tmp}" "${RUNTIME_TOKEN}"' in refresh
+    assert 'echo "${browser_token}"' not in refresh
+    assert '"${AUTH_CHECK}" "${browser_token}"' not in refresh
+
+
+def test_browser_auth_refresh_prefers_manual_override_without_fallback(
+    rootfs: Path,
+) -> None:
+    refresh = (rootfs / "usr/local/bin/ha-browser-auth-refresh").read_text(
+        encoding="utf-8"
+    )
+
+    manual_read = (
+        "browser_token=$(codex_ha_config_string "
+        "home_assistant_browser_token '')"
+    )
+    managed_branch = 'if [[ -z "${browser_token}" ]]; then'
+    validation = 'if ! HA_BROWSER_TOKEN="${browser_token}"'
+    assert manual_read in refresh
+    assert "source_name=manual" in refresh
+    assert managed_branch in refresh
+    assert "source_name=managed" in refresh
+    assert '-L "${MANAGED_TOKEN}"' in refresh
+    assert '-L "${MANAGED_STATE}"' in refresh
+    assert '! -f "${MANAGED_TOKEN}"' in refresh
+    assert '! -r "${MANAGED_TOKEN}"' in refresh
+    assert '! -f "${MANAGED_STATE}"' in refresh
+    assert '! -r "${MANAGED_STATE}"' in refresh
+    assert "write_status unconfigured" in refresh
+    assert '.phase == "ready"' in refresh
+    assert '(has("temporary_username") | not)' in refresh
+    assert '.operation_id[0:16]' in refresh
+    assert "write_status rejected managed_state_invalid" in refresh
+    assert validation in refresh
+    assert (
+        'HA_BROWSER_EXPECTED_USER_ID="${expected_managed_user_id:-}"' in refresh
+    )
+    assert (
+        'HA_BROWSER_EXPECTED_CLIENT_NAME="${expected_managed_client_name:-}"'
+        in refresh
+    )
+    assert "write_status rejected managed_state_user_mismatch" in refresh
+    assert "select(.status == \"ready\") | . + {source: $source}" in refresh
+    assert refresh.index(manual_read) < refresh.index(managed_branch)
+    assert refresh.index(managed_branch) < refresh.index(validation)
 
 
 def test_browser_network_diagnostic_is_read_only_and_rejects_ip_trust(
@@ -267,7 +357,15 @@ def test_browser_auth_checker_requires_exact_least_privilege_user(
     ).read_text(encoding="utf-8")
 
     assert 'browserSession.request("auth/current_user")' in checker
-    assert 'const websocketUrl = "ws://supervisor/core/websocket"' in checker
+    assert (
+        'const supervisorWebsocketUrl = "ws://supervisor/core/websocket"'
+        in checker
+    )
+    assert 'fetch("http://supervisor/core/info"' in checker
+    assert '://homeassistant:${port}/api/websocket`' in checker
+    assert "browserToken, coreWebsocketUrl" in checker
+    assert "supervisorToken," in checker
+    assert "supervisorWebsocketUrl," in checker
     assert "HA_BROWSER_AUTH_WEBSOCKET_URL" not in checker
     assert 'supervisorSession.request("config/auth/list")' in checker
     assert 'currentUser.is_admin === false' in checker
@@ -275,11 +373,23 @@ def test_browser_auth_checker_requires_exact_least_privilege_user(
     assert 'user.system_generated === false' in checker
     assert 'groupIds.length === 1' in checker
     assert 'groupIds[0] === "system-read-only"' in checker
-    assert "access_token" not in re.sub(
-        r'JSON\.stringify\(\{ type: "auth", access_token: accessToken \}\)',
-        "",
-        checker,
+    assert checker.count("access_token: accessToken") == 1
+    assert (
+        'socket.send(JSON.stringify({ type: "auth", access_token: accessToken }))'
+        in checker
     )
+    assert "process.env.HA_BROWSER_EXPECTED_USER_ID" in checker
+    assert "process.env.HA_BROWSER_EXPECTED_CLIENT_NAME" in checker
+    assert 'browserSession.request("auth/refresh_tokens")' in checker
+    assert 'currentRefreshToken?.type !== "long_lived_access_token"' in checker
+    assert (
+        "currentRefreshToken?.client_name !== expectedManagedClientName" in checker
+    )
+    status_output = checker.split("process.stdout.write", 1)[1].split(
+        "} catch (error)", 1
+    )[0]
+    for secret_name in ("browserToken", "supervisorToken", "accessToken"):
+        assert secret_name not in status_output
 
 
 def test_real_playwright_mcp_smoke_is_part_of_container_validation(
@@ -322,7 +432,7 @@ def test_released_image_update_smoke_is_wired_into_ci(
     )
 
     assert update_smoke.startswith("#!/usr/bin/env bash\nset -Eeuo pipefail\n")
-    assert "ghcr.io/kanu-coffee/codex-for-home-assistant:0.2.0" in update_smoke
+    assert "ghcr.io/kanu-coffee/codex-for-home-assistant:0.2.1" in update_smoke
     assert '"${DATA_VOLUME}:/data"' in update_smoke
     assert '"${CONFIG_VOLUME}:/config"' in update_smoke
     assert "/data/codex/config.toml" in update_smoke
@@ -342,10 +452,10 @@ def test_released_image_update_smoke_is_wired_into_ci(
     assert "tests/playwright_mcp_smoke.mjs" in update_smoke
 
     assert "Run container smoke tests" in ci
-    assert "Verify update from released 0.2.0" in ci
+    assert "Verify update from released 0.2.1" in ci
     assert ci.index("Run container smoke tests") < ci.index(
-        "Verify update from released 0.2.0"
+        "Verify update from released 0.2.1"
     )
     assert "bash tests/update-smoke.sh" in ci
-    assert "ghcr.io/kanu-coffee/codex-for-home-assistant:0.2.0" in ci
+    assert "ghcr.io/kanu-coffee/codex-for-home-assistant:0.2.1" in ci
     assert "codex-for-home-assistant:test" in ci

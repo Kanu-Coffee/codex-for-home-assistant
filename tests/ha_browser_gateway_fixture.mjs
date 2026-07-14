@@ -276,7 +276,7 @@ function dedicatedUser() {
 function acceptWebSocket(
   request,
   socket,
-  { browserToken, supervisorToken, allowSupervisor, label },
+  { browserToken, supervisorToken, allowBrowser, allowSupervisor, label },
 ) {
   const key = request.headers["sec-websocket-key"];
   if (typeof key !== "string") {
@@ -344,7 +344,7 @@ function acceptWebSocket(
           send({ type: "auth_invalid", message: "Authentication required" });
           continue;
         }
-        if (message.access_token === browserToken) {
+        if (allowBrowser && message.access_token === browserToken) {
           authenticatedAs = "browser";
         } else if (
           allowSupervisor &&
@@ -433,6 +433,7 @@ async function serveFixture() {
       return;
     }
     acceptWebSocket(request, socket, {
+      allowBrowser: false,
       allowSupervisor: true,
       browserToken,
       label: "Supervisor WebSocket fixture",
@@ -493,6 +494,7 @@ async function serveFixture() {
       return;
     }
     acceptWebSocket(request, socket, {
+      allowBrowser: true,
       allowSupervisor: false,
       browserToken,
       label: "Core WebSocket fixture",

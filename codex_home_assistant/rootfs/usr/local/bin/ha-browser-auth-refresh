@@ -1,0 +1,198 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+umask 077
+
+readonly RUNTIME_DIR=/run/codex-ha
+readonly RUNTIME_TOKEN=${RUNTIME_DIR}/home-assistant-browser.token
+readonly RUNTIME_STATUS=${RUNTIME_DIR}/browser-auth-status.json
+readonly MANAGED_TOKEN=/data/browser-auth/managed-token
+readonly MANAGED_STATE=/data/browser-auth/managed-user.json
+readonly MANAGED_AUTH_DIRECTORY=/data/browser-auth
+readonly MANAGED_LOCK=${MANAGED_AUTH_DIRECTORY}/operation.lock
+readonly ADMIN_HELPER=/usr/local/share/codex-ha/browser-user-admin.mjs
+readonly AUTH_CHECK=/usr/local/share/codex-ha/browser-auth-check.mjs
+readonly RUNTIME_ENV=${RUNTIME_DIR}/runtime.env
+readonly NODE_BINARY=/usr/bin/node
+
+quiet=0
+if (( $# == 1 )) && [[ $1 == --quiet ]]; then
+  quiet=1
+elif (( $# != 0 )); then
+  echo 'Usage: ha-browser-auth-refresh [--quiet]' >&2
+  exit 2
+fi
+
+unset \
+  BASH_ENV \
+  ENV \
+  HA_BROWSER_EXPECTED_CLIENT_NAME \
+  HA_BROWSER_EXPECTED_DISPLAY_NAME \
+  HA_BROWSER_EXPECTED_USER_ID \
+  HA_BROWSER_TOKEN \
+  NODE_OPTIONS \
+  NODE_PATH
+if [[ -z "${SUPERVISOR_TOKEN:-}" && -r "${RUNTIME_ENV}" ]]; then
+  # shellcheck source=/dev/null
+  . "${RUNTIME_ENV}"
+fi
+
+# shellcheck source=/dev/null
+. /usr/local/lib/codex-ha/config.sh
+
+install -d -m 0700 "${RUNTIME_DIR}"
+rm -f "${RUNTIME_TOKEN}"
+status_tmp=$(mktemp "${RUNTIME_DIR}/.browser-auth-status.XXXXXX")
+check_tmp=$(mktemp "${RUNTIME_DIR}/.browser-auth-check.XXXXXX")
+token_tmp=''
+cleanup() {
+  rm -f "${status_tmp}" "${check_tmp}"
+  [[ -z "${token_tmp}" ]] || rm -f "${token_tmp}"
+  unset \
+    browser_token \
+    expected_managed_client_name \
+    expected_managed_display_name \
+    expected_managed_user_id
+}
+trap cleanup EXIT
+
+write_status() {
+  local status=$1
+  local reason=${2:-}
+  if [[ -n "${reason}" ]]; then
+    jq --null-input --arg status "${status}" --arg reason "${reason}" \
+      '{status: $status, reason: $reason}' > "${status_tmp}"
+  else
+    jq --null-input --arg status "${status}" '{status: $status}' > "${status_tmp}"
+  fi
+  chmod 0600 "${status_tmp}"
+  mv -f "${status_tmp}" "${RUNTIME_STATUS}"
+}
+
+cleanup_managed_temps() {
+  [[ -e "${MANAGED_AUTH_DIRECTORY}" ]] || return 0
+  if [[ -L "${MANAGED_AUTH_DIRECTORY}" \
+    || ! -d "${MANAGED_AUTH_DIRECTORY}" \
+    || $(stat -c '%u' "${MANAGED_AUTH_DIRECTORY}") != "$(id -u)" ]]; then
+    return 1
+  fi
+  if [[ -L "${MANAGED_LOCK}" \
+    || ( -e "${MANAGED_LOCK}" && ! -f "${MANAGED_LOCK}" ) ]]; then
+    return 1
+  fi
+  exec 8>> "${MANAGED_LOCK}"
+  chmod 0600 "${MANAGED_LOCK}"
+  if ! flock -n 8; then
+    exec 8>&-
+    return 0
+  fi
+  local cleanup_rc=0
+  "${NODE_BINARY}" "${ADMIN_HELPER}" cleanup-temp || cleanup_rc=$?
+  flock -u 8
+  exec 8>&-
+  return "${cleanup_rc}"
+}
+
+if ! codex_ha_config_validate; then
+  write_status rejected invalid_options
+  (( quiet )) || echo 'Browser authentication is disabled because App options are invalid' >&2
+  exit 1
+fi
+
+if ! browser_token=$(codex_ha_config_string home_assistant_browser_token ''); then
+  write_status rejected invalid_options
+  (( quiet )) || echo 'Browser authentication is disabled because the manual token option is invalid' >&2
+  exit 1
+fi
+
+if ! cleanup_managed_temps; then
+  write_status rejected managed_storage_unsafe
+  (( quiet )) || echo 'Managed browser authentication temporary storage is unsafe' >&2
+  exit 1
+fi
+
+source_name=manual
+if [[ -z "${browser_token}" ]]; then
+  source_name=managed
+  if [[ -L "${MANAGED_TOKEN}" || -L "${MANAGED_STATE}" ]]; then
+    write_status rejected managed_storage_unsafe
+    (( quiet )) || echo 'Managed browser authentication storage is unsafe' >&2
+    exit 1
+  fi
+  if [[ ! -f "${MANAGED_TOKEN}" || ! -r "${MANAGED_TOKEN}" \
+    || ! -f "${MANAGED_STATE}" || ! -r "${MANAGED_STATE}" ]]; then
+    write_status unconfigured
+    (( quiet )) || echo 'Dedicated Home Assistant browser authentication is not configured' >&2
+    exit 1
+  fi
+  managed_metadata=$(jq --exit-status --compact-output '
+    select(
+      .version == 1
+      and .phase == "ready"
+      and (.operation_id | type == "string" and test("^[A-Za-z0-9_-]{20,128}$"))
+      and (.user_id | type == "string" and length >= 8 and length <= 128)
+      and .display_name == ("Codex Browser (managed) " + (.operation_id[0:16]))
+      and .client_name == ("Codex for Home Assistant browser " + .operation_id)
+      and (has("temporary_username") | not)
+    )
+    | {user_id, client_name, display_name}
+  ' "${MANAGED_STATE}" 2>/dev/null) || {
+    write_status rejected managed_state_invalid
+    (( quiet )) || echo 'Managed browser authentication state is invalid' >&2
+    exit 1
+  }
+  expected_managed_user_id=$(jq --raw-output '.user_id' <<< "${managed_metadata}")
+  expected_managed_client_name=$(jq --raw-output '.client_name' <<< "${managed_metadata}")
+  expected_managed_display_name=$(jq --raw-output '.display_name' <<< "${managed_metadata}")
+  unset managed_metadata
+  browser_token=$(< "${MANAGED_TOKEN}")
+fi
+
+if [[ ! "${browser_token}" =~ ^[A-Za-z0-9._~-]{20,}$ ]]; then
+  write_status rejected invalid_token_format
+  (( quiet )) || echo 'Dedicated Home Assistant browser credential has an invalid format' >&2
+  exit 1
+fi
+if [[ -z "${SUPERVISOR_TOKEN:-}" ]]; then
+  write_status rejected supervisor_validation_unavailable
+  (( quiet )) || echo 'Supervisor validation is unavailable; browser auto-login remains disabled' >&2
+  exit 1
+fi
+
+if ! HA_BROWSER_TOKEN="${browser_token}" \
+  HA_BROWSER_EXPECTED_USER_ID="${expected_managed_user_id:-}" \
+  HA_BROWSER_EXPECTED_CLIENT_NAME="${expected_managed_client_name:-}" \
+  HA_BROWSER_EXPECTED_DISPLAY_NAME="${expected_managed_display_name:-}" \
+  "${NODE_BINARY}" "${AUTH_CHECK}" > "${check_tmp}" 2>/dev/null; then
+  write_status rejected user_or_token_validation_failed
+  (( quiet )) || echo 'Dedicated browser user or credential validation failed' >&2
+  exit 1
+fi
+
+if [[ "${source_name}" == managed ]] \
+  && [[ $(jq --raw-output '.user.id // ""' "${check_tmp}") != "${expected_managed_user_id}" ]]; then
+  write_status rejected managed_state_user_mismatch
+  (( quiet )) || echo 'Managed browser user does not match its private state' >&2
+  exit 1
+fi
+
+if ! jq --exit-status --arg source "${source_name}" \
+  'select(.status == "ready") | . + {source: $source}' \
+  "${check_tmp}" > "${status_tmp}"; then
+  write_status rejected validation_result_invalid
+  (( quiet )) || echo 'Dedicated browser validation returned an invalid result' >&2
+  exit 1
+fi
+
+token_tmp=$(mktemp "${RUNTIME_DIR}/.home-assistant-browser-token.XXXXXX")
+printf '%s' "${browser_token}" > "${token_tmp}"
+chmod 0600 "${token_tmp}"
+mv -f "${token_tmp}" "${RUNTIME_TOKEN}"
+token_tmp=''
+chmod 0600 "${status_tmp}"
+mv -f "${status_tmp}" "${RUNTIME_STATUS}"
+unset browser_token
+
+if (( ! quiet )); then
+  jq . "${RUNTIME_STATUS}"
+fi
