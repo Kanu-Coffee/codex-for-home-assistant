@@ -36,7 +36,7 @@
 - [x] fixture에서 임시 credential·OAuth refresh token 제거, LLAT 소유자/정책 검증, token 비노출과 자동 복구 회귀를 구현하고 중간 managed-auth smoke를 통과한다.
 - [x] config/번역/문서/changelog/version과 update persistence 계약을 `0.2.2` 후보로 갱신한다.
 - [x] unit/lint, amd64 image/full smoke, rendered desktop/mobile gateway와 public `0.2.1` image update smoke를 통과한다.
-- [ ] 기능 브랜치를 push하고 draft PR에서 CI 결과와 실제 HAOS 미검증 항목을 기록한다.
+- [x] 기능 commit `8a1e0a4`를 `feat/automatic-browser-auth-setup`에 push하고 draft PR [#15](https://github.com/Kanu-Coffee/codex-for-home-assistant/pull/15)에 로컬 검증과 실제 HAOS 미검증 항목을 기록했다. 원격 CI 최종 결과는 PR에서 확인한다.
 - 최종 정적 증거: Linux Python 3.13 + jq에서 pytest **49 passed**, YAML, ShellCheck 0.11.0, Hadolint 2.14.0, Markdown 20개와 `git diff --check`가 PASS했다.
 - 최종 image 증거: local image ID `sha256:24227a7c1e4ae97b1ff3b922d9b4cc6794bcbac50da7564058379f6c8c5abb6b`, label version `0.2.2`/arch `amd64`, size 533,413,124 bytes다.
 - 최종 managed-auth smoke: 생성·재사용·App replacement·회전·제거, nonblocking kernel lock, Supervisor 없는 crash-temp cleanup, unsafe symlink 거부, provider/Core 장애, token 응답 유실, 지속 cleanup 실패 journal 복구와 정책 변조 fail-closed가 PASS했다.
