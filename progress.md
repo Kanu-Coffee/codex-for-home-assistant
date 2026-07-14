@@ -4,7 +4,7 @@
 
 ## Project Status
 
-- 상태: **amd64 MVP/M2 PASS / 0.2.0 브라우저 렌더러 local candidate PASS / HAOS 실기 대기**
+- 상태: **amd64 MVP/M2 PASS / 0.2.0 public prerelease·브라우저 렌더러 smoke PASS / HAOS 브라우저 실기 대기**
 - 현재 마일스톤: **Playwright 기반 Codex 브라우저 도구와 HA 대시보드 렌더 경로 전달**
 - 마지막 문서 기준일: **2026-07-14**
 - 저장소: public `Kanu-Coffee/codex-for-home-assistant`, default branch `main`
@@ -39,7 +39,9 @@
 - [x] App 업데이트 비파괴 계약, 보안 문서, 사용자 사용법과 changelog를 갱신한다.
 - [x] amd64 image build와 최종 full Docker smoke를 통과한다.
 - [x] Linux unit/policy test와 YAML/Shell/Dockerfile/Markdown/GitHub Actions lint를 통과한다.
-- [x] 기능 commit `e26d31a`을 `feat/playwright-browser-renderer`에 push하고 PR [#12](https://github.com/Kanu-Coffee/codex-for-home-assistant/pull/12)를 생성했다. push CI `29298529437`, PR CI `29298538753`의 lint/unit, App config, amd64 build/full/update smoke와 비게시 builder run `29298538882`의 metadata/amd64 image build가 모두 PASS다.
+- [x] 기능 commit `e26d31a`과 검증 기록 `b56263b`의 PR [#12](https://github.com/Kanu-Coffee/codex-for-home-assistant/pull/12)를 merge commit `a4afde6`으로 `main`에 병합했다. 병합 후 CI run `29299843452`의 lint/unit, App config, amd64 build/full/update smoke가 모두 PASS다.
+- [x] annotated tag `0.2.0`의 공식 builder run [`29299863049`](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/29299863049)로 amd64 image와 generic manifest를 게시했다. generic/per-architecture tag의 인증 없는 resolve·pull, `linux/amd64`, version/arch/source label, mutable `latest` 부재를 확인했다. generic OCI digest는 `sha256:2920cabd22969b8b8ce84048bba4d42398d633500de9576f6f493464af64e769`다.
+- [x] 인증 없이 pull한 정확한 public `0.2.0` image에서 Playwright MCP desktop/mobile·console·network, 모의 인증 gateway/WebSocket, ttyd/SSH/영속성 전체 Docker smoke를 통과하고 GitHub [`0.2.0` prerelease](https://github.com/Kanu-Coffee/codex-for-home-assistant/releases/tag/0.2.0)를 게시했다.
 - [ ] 실제 HAOS에서 일반 업데이트 후 인증된 대시보드와 AppArmor Chromium 실행을 확인한다.
 
 ### 2026-07-13 — 0.1.3 amd64 GHCR non-dev 릴리스와 HACS 검토
