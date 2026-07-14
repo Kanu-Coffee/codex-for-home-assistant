@@ -15,11 +15,8 @@ readonly CODEX_AGENTS_OVERRIDE=${CODEX_DATA}/AGENTS.override.md
 readonly LEGACY_PLAYWRIGHT_SECRETS=${RUNTIME_DIR}/playwright-secrets.env
 readonly PLAYWRIGHT_OUTPUT=${RUNTIME_DIR}/playwright-output
 readonly HA_RENDER_UPSTREAM=${RUNTIME_DIR}/home-assistant-render-upstream.conf
-readonly HA_BROWSER_TOKEN_FILE=${RUNTIME_DIR}/home-assistant-browser.token
 readonly HA_BROWSER_AUTH_STATUS=${RUNTIME_DIR}/browser-auth-status.json
 readonly HA_BROWSER_NETWORK_STATUS=${RUNTIME_DIR}/browser-network-info.json
-readonly HA_BROWSER_AUTH_CHECK=/usr/local/share/codex-ha/browser-auth-check.mjs
-readonly NODE_BINARY=/usr/bin/node
 
 rm -rf -- /run/codex-ha/playwright-output
 install -d -m 0700 \
@@ -142,33 +139,23 @@ unset NODE_OPTIONS NODE_PATH
 for variable in "${!PLAYWRIGHT_MCP_@}"; do
   unset "${variable}"
 done
-rm -f "${LEGACY_PLAYWRIGHT_SECRETS}" "${HA_BROWSER_TOKEN_FILE}" "${HA_BROWSER_AUTH_STATUS}"
-browser_token=$(codex_ha_config_string 'home_assistant_browser_token' '')
-auth_status_tmp=$(mktemp "${RUNTIME_DIR}/.browser-auth-status.XXXXXX")
-if [[ -z "${browser_token}" ]]; then
-  jq --null-input '{status: "unconfigured"}' > "${auth_status_tmp}"
-  bashio::log.warning 'Dedicated read-only Home Assistant browser token is not configured; dashboard auto-login is disabled'
-elif [[ ! "${browser_token}" =~ ^[A-Za-z0-9._~-]{20,}$ ]]; then
-  jq --null-input '{status: "rejected", reason: "invalid_token_format"}' > "${auth_status_tmp}"
-  bashio::log.warning 'Dedicated Home Assistant browser token has an invalid format; dashboard auto-login is disabled'
-elif [[ -z "${SUPERVISOR_TOKEN:-}" ]]; then
-  jq --null-input '{status: "rejected", reason: "supervisor_validation_unavailable"}' > "${auth_status_tmp}"
-  bashio::log.warning 'Dedicated Home Assistant browser user cannot be verified without the Supervisor credential; dashboard auto-login is disabled'
-elif HA_BROWSER_TOKEN="${browser_token}" "${NODE_BINARY}" "${HA_BROWSER_AUTH_CHECK}" \
-  > "${auth_status_tmp}" 2>/dev/null; then
-  browser_token_tmp=$(mktemp "${RUNTIME_DIR}/.home-assistant-browser-token.XXXXXX")
-  printf '%s' "${browser_token}" > "${browser_token_tmp}"
-  chmod 0600 "${browser_token_tmp}"
-  mv -f "${browser_token_tmp}" "${HA_BROWSER_TOKEN_FILE}"
-
-  bashio::log.info 'Validated the dedicated local-only, read-only Home Assistant browser user'
+rm -f "${LEGACY_PLAYWRIGHT_SECRETS}"
+if /usr/local/bin/ha-browser-auth-refresh --quiet; then
+  browser_auth_source=$(jq --raw-output '.source' "${HA_BROWSER_AUTH_STATUS}")
+  bashio::log.info "Validated dedicated local-only, read-only Home Assistant browser authentication (${browser_auth_source})"
+  unset browser_auth_source
 else
-  jq --null-input '{status: "rejected", reason: "user_or_token_validation_failed"}' > "${auth_status_tmp}"
-  bashio::log.warning 'Dedicated Home Assistant browser token or user policy validation failed; dashboard auto-login is disabled'
+  browser_auth_status=$(jq --raw-output '.status // "unavailable"' \
+    "${HA_BROWSER_AUTH_STATUS}" 2>/dev/null || printf 'unavailable')
+  browser_auth_reason=$(jq --raw-output '.reason // "not_configured"' \
+    "${HA_BROWSER_AUTH_STATUS}" 2>/dev/null || printf 'not_configured')
+  if [[ "${browser_auth_status}" == unconfigured ]]; then
+    bashio::log.warning 'Dashboard auto-login is disabled; run ha-browser-auth-setup once to configure managed read-only access'
+  else
+    bashio::log.warning "Dashboard auto-login is disabled because browser authentication was rejected (${browser_auth_reason})"
+  fi
+  unset browser_auth_status browser_auth_reason
 fi
-chmod 0600 "${auth_status_tmp}"
-mv -f "${auth_status_tmp}" "${HA_BROWSER_AUTH_STATUS}"
-unset browser_token
 
 ha_frontend_scheme=http
 ha_frontend_port=8123

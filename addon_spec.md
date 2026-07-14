@@ -303,10 +303,13 @@ default_tools_approval_mode = "writes"
 - `127.0.0.1:8099`에만 bind하고 host `ports`, Ingress port 또는 `host_network`를 추가하지 않는다.
 - `/`, frontend asset, `/auth`, 전체 Core `/api`와 WebSocket은 Supervisor Core info에서 얻은 scheme/port의 internal `homeassistant` Core로 직접 전달하고, 조회 실패 시 `http://homeassistant:8123`을 사용한다. client identity forwarding header는 제거한다.
 - init page는 `127.0.0.1:8099`와 `localhost:8099` origin에서만 검증된 dedicated browser token을 local storage에 주입한다.
-- `SUPERVISOR_TOKEN`은 Playwright MCP `env_vars`에서 제외한다. system launch는 `env -i`를 사용하고 wrapper는 검증 전에 `PLAYWRIGHT_MCP_*`, `NODE_OPTIONS`, `NODE_PATH`, `BASH_ENV`, `ENV`를 제거한다. launcher는 App init과 각 MCP 시작의 user policy 재검증에만 Supervisor credential을 사용한다. proxy/browser child는 상속 환경이 아니라 고정 allowlist만 받으며, browser token은 active·local-only·non-admin·non-system·sole `system-read-only` user 검증을 통과한 경우에만 `/run/codex-ha`의 `0600` token 파일에서 init script 환경으로 전달한다.
+- `SUPERVISOR_TOKEN`은 Playwright MCP `env_vars`에서 제외한다. system launch는 `env -i`를 사용하고 wrapper는 검증 전에 `PLAYWRIGHT_MCP_*`, `NODE_OPTIONS`, `NODE_PATH`, `BASH_ENV`, `ENV`를 제거한다. launcher는 App init과 각 MCP 시작의 user policy 재검증에만 Supervisor credential을 사용한다. proxy/browser child는 상속 환경이 아니라 고정 allowlist만 받으며, browser token은 active·local-only·non-admin·non-system·sole `system-read-only` user, credential 부재와 exact single managed LLAT 검증을 통과한 경우에만 `/run/codex-ha`의 `0600` token 파일에서 init script 환경으로 전달한다.
 - App의 dynamic IP나 Docker 대역을 `trusted_networks`/`trusted_proxies`에 넣지 않고 Home Assistant auth provider/configuration을 수정하지 않는다.
-- Playwright `--secrets`의 입력값 치환은 사용하지 않는다. 관리 proxy의 stdout/stderr exact-value masking은 인코딩·분할된 비밀의 구조적 sanitizer가 아니다. console/network/screenshot과 dashboard 화면은 민감자료로 취급하고 token 원문을 의도적으로 기록·영속화하지 않는다.
-- HTTPS frontend upstream은 자체 서명/사용자 인증서 호환 때문에 현재 `proxy_ssl_verify off`이며 container 내부 `homeassistant` endpoint에만 한정한다.
+- `ha-browser-auth-setup`은 인수 없이 명시적으로 실행하며 `/auth/providers` preflight 뒤 지원되는 admin/user WebSocket과 login/token/revoke HTTP flow로 전용 user/LLAT를 만든다. 임시 password credential과 OAuth token은 제거하고, non-ready state/token은 `/data/browser-auth`의 `0700`/`0600` private storage에 crash recovery용으로 보존한다. `ha-browser-auth-remove`는 exact identity를 확인한 뒤 제거한다.
+- 관리형 setup/remove는 persistent regular lock file의 kernel `flock`으로 직렬화한다. self-revoke는 재접속 거부로 확인하고, ambiguous local-only rejection·TLS/DNS/Core failure·unexpected policy/credential에서는 runtime만 제거하며 recovery material을 보존한다.
+- optional `home_assistant_browser_token`은 수동 override로 관리형 token보다 우선한다. 이 option이 설정된 동안 자동 setup은 거부해 두 identity source를 혼합하지 않는다.
+- Playwright `--secrets`의 입력값 치환은 사용하지 않는다. 관리 proxy의 stdout/stderr exact-value masking은 인코딩·분할된 비밀의 구조적 sanitizer가 아니다. console/network/screenshot과 dashboard 화면, `/data/browser-auth`와 App backup은 민감자료로 취급한다.
+- HTTPS frontend upstream과 자동 auth bootstrap은 image CA bundle, SNI와 `homeassistant` hostname을 검증한다. 자체 서명·hostname 불일치·신뢰할 수 없는 chain을 자동 우회하지 않는다.
 - browser/gateway 오류, token 부재 또는 user policy 검증 실패는 terminal, SSH와 Codex를 중단시키지 않는다. HA login 화면과 `ha-browser-auth-status`의 fail-closed 상태를 보고한다.
 
 ## 11. SSH 계약

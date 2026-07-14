@@ -1,7 +1,13 @@
-const websocketUrl = "ws://supervisor/core/websocket";
+import WebSocket from "/usr/local/lib/codex-ha/playwright/node_modules/ws/wrapper.mjs";
+
+const supervisorWebsocketUrl = "ws://supervisor/core/websocket";
 const browserToken = process.env.HA_BROWSER_TOKEN;
 const supervisorToken = process.env.SUPERVISOR_TOKEN;
+const expectedManagedUserId = process.env.HA_BROWSER_EXPECTED_USER_ID;
+const expectedManagedClientName = process.env.HA_BROWSER_EXPECTED_CLIENT_NAME;
+const expectedManagedDisplayName = process.env.HA_BROWSER_EXPECTED_DISPLAY_NAME;
 const timeoutMs = 5_000;
+const maxResponseBytes = 1024 * 1024;
 
 if (!browserToken || !supervisorToken) {
   process.stderr.write(
@@ -9,14 +15,63 @@ if (!browserToken || !supervisorToken) {
   );
   process.exit(1);
 }
+if (
+  new Set([
+    Boolean(expectedManagedUserId),
+    Boolean(expectedManagedClientName),
+    Boolean(expectedManagedDisplayName),
+  ]).size !== 1 ||
+  (expectedManagedUserId && /[\r\n\0]/u.test(expectedManagedUserId)) ||
+  (expectedManagedClientName && /[\r\n\0]/u.test(expectedManagedClientName)) ||
+  (expectedManagedDisplayName && /[\r\n\0]/u.test(expectedManagedDisplayName))
+) {
+  process.stderr.write("Managed browser authentication metadata is invalid\n");
+  process.exit(1);
+}
 
 function timeoutError(label) {
   return new Error(`Timed out while ${label}`);
 }
 
-function openSession(accessToken) {
+async function discoverCoreWebsocketUrl() {
+  const response = await fetch("http://supervisor/core/info", {
+    headers: { Authorization: `Bearer ${supervisorToken}` },
+    redirect: "error",
+    signal: AbortSignal.timeout(timeoutMs),
+  });
+  if (!response.ok) {
+    throw new Error(`Supervisor Core info returned HTTP ${response.status}`);
+  }
+  const raw = await response.text();
+  if (Buffer.byteLength(raw) > maxResponseBytes) {
+    throw new Error("Supervisor Core info response was too large");
+  }
+  let info;
+  try {
+    info = JSON.parse(raw);
+  } catch {
+    throw new Error("Supervisor Core info returned invalid JSON");
+  }
+  const port = Number(info?.data?.port ?? 8123);
+  if (
+    info?.result !== "ok" ||
+    !Number.isInteger(port) ||
+    port < 1 ||
+    port > 65535
+  ) {
+    throw new Error("Supervisor Core info returned an invalid endpoint");
+  }
+  return `${info?.data?.ssl === true ? "wss" : "ws"}://homeassistant:${port}/api/websocket`;
+}
+
+function openSession(accessToken, websocketUrl) {
   return new Promise((resolve, reject) => {
-    const socket = new WebSocket(websocketUrl);
+    const socket = new WebSocket(websocketUrl, {
+      handshakeTimeout: timeoutMs,
+      maxPayload: maxResponseBytes,
+      perMessageDeflate: false,
+      rejectUnauthorized: websocketUrl.startsWith("wss:") ? true : undefined,
+    });
     const queue = [];
     const waiters = [];
     let closed = false;
@@ -123,12 +178,24 @@ function openSession(accessToken) {
 let browserSession;
 let supervisorSession;
 try {
-  browserSession = await openSession(browserToken);
+  const coreWebsocketUrl = await discoverCoreWebsocketUrl();
+  browserSession = await openSession(browserToken, coreWebsocketUrl);
   const currentUser = await browserSession.request("auth/current_user");
+  let refreshTokens;
+  let currentRefreshToken;
+  if (expectedManagedUserId) {
+    refreshTokens = await browserSession.request("auth/refresh_tokens");
+    currentRefreshToken = Array.isArray(refreshTokens)
+      ? refreshTokens.find((candidate) => candidate?.is_current === true)
+      : undefined;
+  }
   browserSession.close();
   browserSession = undefined;
 
-  supervisorSession = await openSession(supervisorToken);
+  supervisorSession = await openSession(
+    supervisorToken,
+    supervisorWebsocketUrl,
+  );
   const users = await supervisorSession.request("config/auth/list");
   supervisorSession.close();
   supervisorSession = undefined;
@@ -150,6 +217,20 @@ try {
     throw new Error(
       "Dedicated browser user must be active, local-only, non-system, and in only system-read-only",
     );
+  }
+  if (
+    expectedManagedUserId &&
+    (currentUser.id !== expectedManagedUserId ||
+      user.name !== expectedManagedDisplayName ||
+      user.username !== null ||
+      !Array.isArray(user.credentials) ||
+      user.credentials.length !== 0 ||
+      !Array.isArray(refreshTokens) ||
+      refreshTokens.length !== 1 ||
+      currentRefreshToken?.type !== "long_lived_access_token" ||
+      currentRefreshToken?.client_name !== expectedManagedClientName)
+  ) {
+    throw new Error("Managed browser credential metadata did not match its private state");
   }
 
   process.stdout.write(

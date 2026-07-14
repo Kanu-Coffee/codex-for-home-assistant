@@ -23,11 +23,15 @@ unset \
   CODEX_HA_BROWSER_TOKEN_VALIDATED \
   ENV \
   HA_BROWSER_AUTH_WEBSOCKET_URL \
+  HA_BROWSER_EXPECTED_CLIENT_NAME \
+  HA_BROWSER_EXPECTED_DISPLAY_NAME \
+  HA_BROWSER_EXPECTED_USER_ID \
   NODE_OPTIONS \
   NODE_PATH
 for variable in "${!PLAYWRIGHT_MCP_@}"; do
   unset "${variable}"
 done
+/usr/local/bin/ha-browser-auth-refresh --quiet || true
 if [[ -r "${BROWSER_TOKEN_FILE}" ]]; then
   browser_token=$(< "${BROWSER_TOKEN_FILE}")
   if [[ -z "${SUPERVISOR_TOKEN:-}" && -r "${RUNTIME_ENV}" ]]; then
@@ -50,6 +54,9 @@ unset \
   SUPERVISOR_TOKEN \
   HA_BROWSER_TOKEN \
   HA_BROWSER_AUTH_WEBSOCKET_URL \
+  HA_BROWSER_EXPECTED_CLIENT_NAME \
+  HA_BROWSER_EXPECTED_DISPLAY_NAME \
+  HA_BROWSER_EXPECTED_USER_ID \
   BASH_ENV \
   ENV \
   NODE_OPTIONS \

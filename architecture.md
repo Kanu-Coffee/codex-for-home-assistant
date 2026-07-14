@@ -55,7 +55,7 @@ Codex ── STDIO MCP ── Playwright ── Chromium
 3. Codex 전역 운영 지침 생성(기존 `AGENTS.md` 보존)
 4. SSH host key 생성 또는 기존 key 로드
 5. App 옵션에서 `authorized_keys` 렌더링
-6. 공통 runtime environment를 만들고 optional browser token의 user/group policy를 검증해 통과한 경우에만 runtime token 파일을 `/run`에 `0600`으로 생성
+6. 공통 runtime environment를 만들고 수동 override 또는 `/data/browser-auth` 관리형 token의 user/group/credential/single-token policy를 검증해 통과한 경우에만 runtime token 파일을 `/run`에 `0600`으로 생성
 7. 이전 기본 Playwright output을 지우고 runtime directory를 `/run` 아래 `0700`으로 재생성
 8. `/config` 존재 및 RW 여부 검사
 9. `sshd -t`, `nginx -t`, 옵션 형식 검사
@@ -139,10 +139,16 @@ Chromium
 - `8099`는 컨테이너 loopback 전용 internal listener이며 `config.yaml`의 `ports`, Ingress 또는 host network에 추가하지 않는다.
 - browser init page는 origin이 정확히 `http://127.0.0.1:8099` 또는 `http://localhost:8099`일 때만 active·local-only·non-system·non-admin·sole `system-read-only` user로 검증된 token을 Home Assistant frontend local storage에 넣는다.
 - browser가 보내는 전체 Core REST/WebSocket 인증은 direct Core로 전달하며 X-Forwarded-For, X-Real-IP와 Forwarded를 제거한다. gateway는 Core endpoint/method를 별도 allowlist하지 않지만 arbitrary target origin에는 token이나 header를 추가하지 않는다.
-- Supervisor token은 MCP `env_vars`에서 제외한다. Codex는 `env -i`의 고정 최소 환경에서 wrapper를 시작하고 wrapper는 검증 전에 `PLAYWRIGHT_MCP_*`, `NODE_OPTIONS`, `NODE_PATH`, `BASH_ENV`, `ENV`를 제거한다. launcher는 App init과 각 MCP 시작 시 user policy 재검증에만 runtime credential을 사용한다. Node proxy/browser child는 상속 환경이 아니라 고정 allowlist만 받으며 dedicated browser token은 Supervisor-managed App option에 영속되고 재검증 후 `/run/codex-ha`의 임시 `0600` token 파일에서 Playwright init script 환경으로만 전달된다.
+- Supervisor token은 MCP `env_vars`에서 제외한다. Codex는 `env -i`의 고정 최소 환경에서 wrapper를 시작하고 wrapper는 검증 전에 `PLAYWRIGHT_MCP_*`, `NODE_OPTIONS`, `NODE_PATH`, `BASH_ENV`, `ENV`를 제거한다. launcher는 App init과 각 MCP 시작 시 user policy 재검증에만 runtime credential을 사용한다. Node proxy/browser child는 상속 환경이 아니라 고정 allowlist만 받는다. dedicated browser token은 명시적 App option override 또는 `/data/browser-auth`의 관리형 root-only storage에서 읽어 재검증한 뒤 `/run/codex-ha`의 임시 `0600` token 파일로만 전달한다.
 - Chromium→gateway peer는 loopback이고 gateway→Core source는 현재 App container IP다. 일반 App IP는 update/recreate 후 재할당될 수 있으므로 `/32`나 Docker pool을 `trusted_networks`/`trusted_proxies`에 저장하지 않고 기존 `homeassistant` provider를 유지한다.
 - Playwright `--secrets`는 입력 도구에서 실제 값을 치환하므로 사용하지 않는다. 관리 proxy가 stdout/stderr의 exact token 문자열을 방어 심층화로 마스킹하되, token을 URL query나 command argument에 넣지 않고 screenshot·console/network 결과를 민감자료로 취급한다. 인코딩되거나 분할된 비밀까지 구조적으로 정화한다고 가정하지 않는다.
-- Core info가 HTTPS frontend를 보고하면 gateway는 내부 `homeassistant` upstream에 TLS로 연결하지만 자체 서명·사용자 인증서 호환을 위해 현재 `proxy_ssl_verify off`다. 이 내부 신뢰 가정과 위험은 실제 HAOS에서 검증하며 외부 origin용 범용 TLS proxy로 사용하지 않는다.
+- Core info가 HTTPS frontend를 보고하면 setup/check WebSocket·HTTP와 nginx gateway 모두 image CA bundle, SNI와 `homeassistant` hostname을 검증한다. 자체 서명·hostname 불일치·신뢰할 수 없는 chain은 자동 우회하지 않고 dashboard 자동 인증을 fail closed한다.
+
+### 3.6.1 관리형 browser identity lifecycle
+
+`ha-browser-auth-setup`은 terminal에서 명시적으로 한 번 실행한다. Supervisor admin WebSocket으로 exact read-only/local-only user와 임시 local credential을 만들고, direct Core의 명시적 `homeassistant` login flow로 해당 user session을 얻어 LLAT를 만든다. LLAT ownership/type/client를 확인한 직후 non-ready state로 먼저 원자 저장하므로 hard crash에서도 raw revocation material을 잃지 않는다. OAuth refresh와 임시 password credential을 제거하고 exact single-token/credential-free 상태를 재검증한 뒤에만 state를 `ready`로 전환한다.
+
+setup/remove는 `/data/browser-auth/operation.lock`의 kernel `flock`으로 직렬화한다. state와 token은 `O_NOFOLLOW`, owner·regular-file·single-link 검증, file/directory fsync와 atomic rename을 사용한다. token self-revoke는 current refresh token 삭제 뒤 같은 credential 재접속이 확정적으로 거부되는지 확인한다. `local_only` source policy처럼 의미가 모호한 `auth_invalid`, DNS/TLS/Core transport failure 또는 policy/credential mismatch는 `/run`만 비활성화하고 안전한 재시도에 필요한 영구 state/token을 보존한다.
 
 ### 3.7 Browser 검사 흐름
 
@@ -174,10 +180,14 @@ Home Assistant dashboard는 persistent WebSocket을 사용하므로 무조건적
 │  ├─ authorized_keys   # 0600
 │  ├─ ssh_host_*_key    # 0600
 │  └─ *.pub             # 0644
+├─ browser-auth/        # 관리형 dashboard identity, 0700
+│  ├─ managed-user.json # credential-free lifecycle journal, 0600
+│  ├─ managed-token     # 관리형 LLAT, 0600
+│  └─ operation.lock    # persistent inode + kernel flock, 0600
 └─ tmux/
 ```
 
-`/data`는 Supervisor가 App 데이터와 `options.json`을 영속화한다. `auth.json`과 optional `home_assistant_browser_token`이 App backup에 포함될 가능성이 있으므로 backup은 비밀정보로 취급한다. Playwright 기능 추가는 기존 user config를 migration하거나 browser profile을 새 영속 상태로 만들지 않는다.
+`/data`는 Supervisor가 App 데이터와 `options.json`을 영속화한다. `auth.json`, optional `home_assistant_browser_token`과 `browser-auth/managed-token`이 App backup에 포함될 가능성이 있으므로 backup은 비밀정보로 취급한다. browser context/profile/screenshot은 영속 상태로 만들지 않는다.
 
 이미지·runtime 전용 경로는 다음처럼 분리한다.
 
@@ -335,6 +345,8 @@ SSH host key가 재시작마다 바뀌면 Remote SSH가 깨지므로 `/data` 영
 | 브라우저 연결 끊김 | tmux/Codex 세션 유지 |
 | Playwright MCP/Chromium 시작 실패 | Codex·shell은 유지, browser tool만 degraded 오류 |
 | dedicated browser token 없음/검증 실패 또는 `SUPERVISOR_TOKEN` 없음 | 일반 URL 렌더 유지, HA dashboard는 fail-closed login 화면과 auth status 표시 |
+| 관리형 setup 중 Core/provider/TLS 실패 | non-ready journal/token 보존, runtime 제거, 명시적 재실행으로 수렴 |
+| 관리형 user policy/credential 변경 | 자동 수리·삭제 거부, owned token revocation 확인 또는 recovery material 보존 |
 | loopback gateway upstream 실패 | status와 sanitized 원인 보고, token 원문 미출력 |
 | browser output 한도 도달 | MCP 한도 오류/정리 정책을 보고하고 `/data` 사용자 파일은 건드리지 않음 |
 

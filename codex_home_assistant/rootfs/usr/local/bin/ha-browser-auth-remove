@@ -1,0 +1,66 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+umask 077
+
+readonly HELPER=/usr/local/share/codex-ha/browser-user-admin.mjs
+readonly RUNTIME_ENV=/run/codex-ha/runtime.env
+readonly MANAGED_AUTH_DIRECTORY=/data/browser-auth
+readonly MANAGED_LOCK=${MANAGED_AUTH_DIRECTORY}/operation.lock
+
+if (( $# != 0 )); then
+  echo 'Usage: ha-browser-auth-remove' >&2
+  exit 2
+fi
+
+unset \
+  BASH_ENV \
+  ENV \
+  HA_BROWSER_EXPECTED_CLIENT_NAME \
+  HA_BROWSER_EXPECTED_DISPLAY_NAME \
+  HA_BROWSER_EXPECTED_USER_ID \
+  HA_BROWSER_TOKEN \
+  NODE_OPTIONS \
+  NODE_PATH
+if [[ -z "${SUPERVISOR_TOKEN:-}" && -r "${RUNTIME_ENV}" ]]; then
+  # shellcheck source=/dev/null
+  . "${RUNTIME_ENV}"
+fi
+if [[ -z "${SUPERVISOR_TOKEN:-}" ]]; then
+  echo 'SUPERVISOR_TOKEN is unavailable; managed browser authentication cannot be removed safely' >&2
+  exit 1
+fi
+
+if [[ -L "${MANAGED_AUTH_DIRECTORY}" ]]; then
+  echo 'Managed browser authentication storage is unsafe' >&2
+  exit 1
+fi
+install -d -m 0700 "${MANAGED_AUTH_DIRECTORY}"
+if [[ ! -d "${MANAGED_AUTH_DIRECTORY}" \
+  || $(stat -c '%u' "${MANAGED_AUTH_DIRECTORY}") != "$(id -u)" ]]; then
+  echo 'Managed browser authentication storage is unsafe' >&2
+  exit 1
+fi
+if [[ -L "${MANAGED_LOCK}" \
+  || ( -e "${MANAGED_LOCK}" && ! -f "${MANAGED_LOCK}" ) ]]; then
+  echo 'Managed browser authentication lock is unsafe' >&2
+  exit 1
+fi
+exec 9>> "${MANAGED_LOCK}"
+chmod 0600 "${MANAGED_LOCK}"
+if ! flock -n 9; then
+  echo 'Another managed browser authentication operation is running' >&2
+  exit 1
+fi
+
+if result=$(node "${HELPER}" auto-remove); then
+  :
+else
+  remove_rc=$?
+  /usr/local/bin/ha-browser-auth-refresh --quiet || true
+  exit "${remove_rc}"
+fi
+/usr/local/bin/ha-browser-auth-refresh --quiet || true
+status=$(jq --exit-status --raw-output '.status' <<< "${result}")
+printf 'Managed browser authentication status: %s\n' "${status}"
+/usr/local/bin/ha-browser-auth-status || true

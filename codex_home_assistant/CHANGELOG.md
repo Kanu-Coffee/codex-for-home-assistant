@@ -2,6 +2,31 @@
 
 All notable changes to this App are documented in this file.
 
+## [0.2.2] - 2026-07-14
+
+### Added
+
+- Add `ha-browser-auth-setup` to create a dedicated active, local-only `system-read-only` Home Assistant browser user, complete the official local login flow, mint its long-lived token, and activate it without asking the user to copy a token.
+- Add `ha-browser-auth-remove` for policy-checked identity cleanup and `ha-browser-auth-refresh` for automatic revalidation and reuse after App restart or update.
+
+### Changed
+
+- Prefer a validated manual `home_assistant_browser_token` when explicitly configured; otherwise reuse the App-managed credential stored privately under `/data/browser-auth`.
+- Revalidate the managed identity, exact single-token invariant, and credential-free user at App initialization and before every Playwright MCP launch.
+- Verify the internal Home Assistant HTTPS upstream against the image CA bundle and the `homeassistant` hostname; certificate, DNS, TLS, or Core outages now disable runtime auto-login without destroying recovery state.
+
+### Security
+
+- Use only official Home Assistant admin/user WebSocket commands and login/token/revoke HTTP endpoints; do not edit `configuration.yaml`, `.storage`, auth-provider order, `trusted_networks`, or `trusted_proxies`.
+- Journal setup state and the managed LLAT in root-only `0700`/`0600` storage, remove the temporary password credential and OAuth refresh token automatically, and keep non-ready state unavailable to Chromium.
+- Serialize setup/removal with a kernel `flock`, verify self-revocation by reconnecting, preserve ambiguous `local_only` rejections, and fail closed on policy, credential, ownership, TLS, or transport mismatches.
+
+### Testing
+
+- Add a Home Assistant 2026.7.1-compatible auth fixture covering setup, reuse, App replacement, token rotation, exact token cleanup, ambiguous source rejection, concurrent operations, Core/provider failures, policy mutation, removal, and rollback without logging credentials.
+- Run managed-auth smoke in CI alongside the existing real Chromium desktop/mobile screenshot, console, network, Core REST/WebSocket, loopback isolation, SSH, ttyd, and persistence smoke suite.
+- Verify update replacement from public `0.2.1` to the `0.2.2` candidate while preserving `/data`, `/config`, Codex credentials/configuration, App options, operating guidance, and SSH identity.
+
 ## [0.2.1] - 2026-07-14
 
 ### Added

@@ -186,7 +186,7 @@ wait_for_log "${PUBLIC_CONTAINER}" 'Codex runtime ready:'
 wait_for_log "${GATEWAY_FIXTURE}" \
   'Gateway fixture accepted authenticated /core/info'
 wait_for_log "${GATEWAY_FIXTURE}" \
-  'Supervisor WebSocket fixture accepted browser auth/current_user'
+  'Core WebSocket fixture accepted browser auth/current_user'
 wait_for_log "${GATEWAY_FIXTURE}" \
   'Supervisor WebSocket fixture accepted Supervisor config/auth/list'
 wait_for_process "${PUBLIC_CONTAINER}" '/usr/sbin/sshd'
