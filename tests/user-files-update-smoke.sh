@@ -298,6 +298,57 @@ run_volume "${MAIN_VOLUME}" -c \
 [[ $(backup_count "${MAIN_VOLUME}") == "${BACKUP_COUNT_AFTER_ALL}" ]] \
   || fail 'same-version refresh_all created another backup'
 
+# A retained refresh_all selection is intentionally eligible once again when
+# the App version advances. Simulate state written by public 0.2.3, then prove
+# that the current image refreshes both targets exactly once and records both
+# the previous and current versions.
+PREVIOUS_APP_VERSION=0.2.3
+[[ "${APP_VERSION}" != "${PREVIOUS_APP_VERSION}" ]] \
+  || fail 'cross-version fixture must use a previous App version'
+run_volume "${MAIN_VOLUME}" -c '
+  previous=$1
+  jq --arg previous "${previous}" '\''
+    .applied.config = [$previous]
+    | .applied.agents = [$previous]
+  '\'' /data/codex/.user-files-update-state.json \
+    > /data/codex/.user-files-update-state.json.tmp
+  chmod 0600 /data/codex/.user-files-update-state.json.tmp
+  mv /data/codex/.user-files-update-state.json.tmp \
+    /data/codex/.user-files-update-state.json
+' sh "${PREVIOUS_APP_VERSION}"
+CROSS_VERSION_OUTPUT=$(run_helper "${MAIN_VOLUME}") \
+  || fail 'retained refresh_all did not apply for the new App version'
+assert_json "${CROSS_VERSION_OUTPUT}" '
+  (.refreshed | sort) == ["agents", "config"]
+  and (.backup_directory | type == "string")
+'
+run_volume "${MAIN_VOLUME}" -c '
+  previous=$1
+  current=$2
+  cmp -s /usr/local/share/codex-ha/AGENTS.md /data/codex/AGENTS.md
+  printf '\''approval_policy = "never"\nsandbox_mode = "workspace-write"\ncli_auth_credentials_store = "file"\ncheck_for_update_on_startup = false\n'\'' \
+    | cmp -s - /data/codex/config.toml
+  jq --exit-status --arg previous "${previous}" --arg current "${current}" '\''
+    (.applied.agents | index($previous) != null)
+    and (.applied.agents | index($current) != null)
+    and (.applied.config | index($previous) != null)
+    and (.applied.config | index($current) != null)
+  '\'' /data/codex/.user-files-update-state.json >/dev/null
+' sh "${PREVIOUS_APP_VERSION}" "${APP_VERSION}"
+[[ $(backup_count "${MAIN_VOLUME}") -eq $((BACKUP_COUNT_AFTER_ALL + 1)) ]] \
+  || fail 'cross-version refresh did not create exactly one new backup'
+run_volume "${MAIN_VOLUME}" -c \
+  'printf "\n# %s\n" "$1" >> /data/codex/config.toml' \
+  sh "${POST_CONFIG_MARKER}"
+CROSS_VERSION_REPEAT_OUTPUT=$(run_helper "${MAIN_VOLUME}") \
+  || fail 'same-version repeat after cross-version refresh failed'
+assert_json "${CROSS_VERSION_REPEAT_OUTPUT}" \
+  '.refreshed == [] and .backup_directory == null'
+run_volume "${MAIN_VOLUME}" -c \
+  'grep -Fq -- "$1" /data/codex/config.toml' sh "${POST_CONFIG_MARKER}"
+[[ $(backup_count "${MAIN_VOLUME}") -eq $((BACKUP_COUNT_AFTER_ALL + 1)) ]] \
+  || fail 'same-version repeat after cross-version refresh created a backup'
+
 # Recreate journals from a real completed transaction. A committed stale
 # journal is cleanup-only and preserves a later user edit. The same generated
 # transaction with its state marker removed is uncommitted and rolls back to

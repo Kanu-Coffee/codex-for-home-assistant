@@ -294,4 +294,4 @@ MVP에서는 다음을 만들지 않는다.
 7. 기존 설치를 삭제하거나 `/data`를 reset하지 않은 일반 App 업데이트 뒤 Codex 인증·사용자 config·SSH host identity와 Playwright system MCP가 함께 동작한다.
 8. 실제 HAOS amd64에서 Chromium이 기본 AppArmor 아래 시작되고 loopback gateway로 인증된 Home Assistant dashboard를 desktop/mobile 양쪽에서 렌더링한다.
 
-8번은 HAOS 전용이며 로컬 Docker 성공으로 대체하지 않는다. 실기 증거가 기록되기 전 상태는 **NOT RUN / HAOS unverified**다.
+8번은 HAOS 전용이며 로컬 Docker 성공으로 대체하지 않는다. Public `0.2.3`의 실제 HAOS에서 기본 AppArmor를 유지한 dashboard desktop/mobile 경로가 동작했다고 사용자가 확인해 **PASS**로 기록한다. 원본 진단 자료가 저장소에 포함된 자동 증거라는 뜻은 아니며 Chromium·Playwright package revision이 바뀌면 다시 검증한다.

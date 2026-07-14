@@ -269,4 +269,4 @@ manager가 특정 필요한 endpoint를 거부하면:
 
 ## 8. 실기 검증 경계
 
-Alpine의 system `chromium-headless-shell` 조합은 upstream Playwright의 공식 Ubuntu/Debian browser bundle 대상과 다르다. 로컬 container fixture 통과만으로 HAOS 지원을 확정하지 않는다. 실제 HAOS에서 AppArmor 활성 상태의 browser 시작, loopback gateway, dashboard WebSocket, 한글 font, desktop/mobile screenshot, token 비노출을 확인할 때까지 이 경로는 **HAOS unverified**로 기록한다.
+Alpine의 system `chromium-headless-shell` 조합은 upstream Playwright의 공식 Ubuntu/Debian browser bundle 대상과 다르다. 로컬 container fixture 통과만으로 HAOS 지원을 확정하지 않는다. Public `0.2.3`의 실제 HAOS에서 AppArmor 활성 상태의 browser 시작, loopback gateway, dashboard resource/WebSocket과 desktop/mobile 화면·console·network 경로가 동작했다고 사용자가 확인해 이 실기 항목은 **PASS**로 기록한다. 이는 upstream Alpine 지원 계약이나 모든 장치 보장을 뜻하지 않으며 Chromium·Playwright package revision이 바뀌면 재검증한다. token 원문 비노출은 자동 fixture/redaction smoke 증거와 계속 함께 판단한다.

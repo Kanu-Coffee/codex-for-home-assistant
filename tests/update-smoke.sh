@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-RELEASE_IMAGE=${1:-ghcr.io/kanu-coffee/codex-for-home-assistant:0.2.2}
+RELEASE_IMAGE=${1:-ghcr.io/kanu-coffee/codex-for-home-assistant:0.2.3}
 CANDIDATE_IMAGE=${2:-codex-for-home-assistant:test}
 TEST_ID="codex-ha-update-${RANDOM}-$$"
 RELEASE_CONTAINER="${TEST_ID}-release"
@@ -120,7 +120,7 @@ docker volume create "${DATA_VOLUME}" >/dev/null
 docker volume create "${CONFIG_VOLUME}" >/dev/null
 
 printf '%s' \
-  "{\"authorized_keys\":[],\"web_terminal_auto_start_codex\":false,\"tmux_session_name\":\"codex-ha-update-smoke\",\"codex_approval_policy\":\"on-request\",\"codex_sandbox_mode\":\"danger-full-access\",\"home_assistant_browser_token\":\"${BROWSER_OPTION_MARKER}\",\"log_level\":\"info\"}" \
+  "{\"authorized_keys\":[],\"web_terminal_auto_start_codex\":false,\"tmux_session_name\":\"codex-ha-update-smoke\",\"codex_approval_policy\":\"on-request\",\"codex_sandbox_mode\":\"danger-full-access\",\"codex_user_files_update_mode\":\"preserve\",\"home_assistant_browser_auto_auth\":true,\"home_assistant_browser_token\":\"${BROWSER_OPTION_MARKER}\",\"log_level\":\"info\"}" \
   | docker run --rm --interactive \
     --platform linux/amd64 \
     --entrypoint /bin/sh \
@@ -218,7 +218,7 @@ docker exec "${CANDIDATE_CONTAINER}" grep -Fxq \
   "${AGENTS_OVERRIDE_MARKER}" /data/codex/AGENTS.override.md
 docker exec "${CANDIDATE_CONTAINER}" test ! -e \
   /data/codex/.user-files-update-state.json \
-  || fail 'missing update option did not default to preserve'
+  || fail 'explicit preserve mode unexpectedly recorded user-file state'
 docker exec "${CANDIDATE_CONTAINER}" test ! -e \
   /data/codex/.user-files-update-journal.json
 docker exec "${CANDIDATE_CONTAINER}" test ! -e \
@@ -283,8 +283,8 @@ docker exec --workdir /config "${CANDIDATE_CONTAINER}" \
   || fail 'Playwright MCP failed after released-image update'
 
 # Model saving refresh_all in the Home Assistant App configuration and then
-# restarting the App. The old release could not persist this option, so the
-# first candidate start above must always be preserve-before-opt-in.
+# restarting the App. The first candidate start above must preserve the
+# explicit 0.2.3 setting before the user opts into a 0.2.4 refresh.
 docker exec "${CANDIDATE_CONTAINER}" /bin/sh -c '
   jq ".codex_user_files_update_mode = \"refresh_all\"" \
     /data/options.json > /data/options.json.tmp
