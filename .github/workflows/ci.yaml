@@ -96,6 +96,9 @@ jobs:
       - name: Run managed browser authentication smoke tests
         run: bash tests/managed-auth-smoke.sh codex-for-home-assistant:test
 
+      - name: Run user-file update policy smoke tests
+        run: bash tests/user-files-update-smoke.sh codex-for-home-assistant:test
+
       - name: Verify update from released 0.2.2 preserves persistent data
         run: |
           bash tests/update-smoke.sh \

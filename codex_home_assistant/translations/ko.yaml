@@ -15,6 +15,15 @@ configuration:
   codex_sandbox_mode:
     name: Codex 샌드박스 모드
     description: danger-full-access는 이 App 컨테이너 내부에만 적용되며 HAOS 호스트 권한이 아닙니다.
+  codex_user_files_update_mode:
+    name: Codex 사용자 파일 업데이트 방식
+    description: >-
+      preserve는 기존 config.toml과 base AGENTS.md를 보존합니다.
+      refresh_agents는 base AGENTS.md만 교체하고, refresh_all은 config.toml도
+      현재 App 옵션 기반 기본값으로 초기화합니다. 선택한 파일은 App 버전마다
+      최대 한 번만 교체되며 이전 파일은 root 전용 민감 백업으로 저장됩니다.
+      한 번만 갱신하려면 완료 후 preserve로 되돌리세요. 그대로 두면 다음 App
+      버전에서 선택한 갱신이 다시 한 번 실행됩니다.
   home_assistant_browser_auto_auth:
     name: 헤드리스 브라우저 자동 인증
     description: >-

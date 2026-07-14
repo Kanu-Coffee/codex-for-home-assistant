@@ -4,8 +4,8 @@
 
 ## Project Status
 
-- 상태: **amd64 MVP/M2 PASS / 0.2.2 public / 0.2.3 기본 ON 브라우저 자동 인증·8099 라우팅 후보 최종 local regression PASS / HAOS 실기 대기**
-- 현재 마일스톤: **0.2.3 자동 인증 옵션과 Codex Home Assistant 브라우저 기본 경로 검증**
+- 상태: **amd64 MVP/M2 PASS / 0.2.2 public / 0.2.3 자동 인증·8099 라우팅·선택형 사용자 파일 갱신 후보 최종 local regression PASS / 릴리스 진행 / HAOS 실기 대기**
+- 현재 마일스톤: **0.2.3 선택형 사용자 파일 갱신 병합·공개 릴리스**
 - 마지막 문서 기준일: **2026-07-14**
 - 저장소: public `Kanu-Coffee/codex-for-home-assistant`, default branch `main`
 
@@ -23,6 +23,18 @@
 - [x] 문서 주도 개발 파일 세트 작성
 
 ## Current Work
+
+### 2026-07-14 — Home Assistant UI 선택형 Codex 사용자 파일 갱신과 0.2.3 릴리스
+
+- 목표: Home Assistant App 구성 화면에서 사용자가 `/data/codex/config.toml`과 `AGENTS.md`의 image 기본본 갱신 범위를 선택하고, 기본값은 기존 파일 보존으로 유지한다. 선택한 정책은 새 App version의 첫 시작에 한 번만 실행하며 같은 version의 일반 재시작에서는 반복하지 않는다.
+- 안전 원칙: overwrite 전에 기존 파일을 `/data/codex/backups`의 root-only 고유 디렉터리에 보존하고 새 기본본은 같은 filesystem의 임시 파일에서 원자 교체한다. refresh 대상으로 선택한 symlink·비정상 file·다중 hardlink는 따라가지 않고 fail closed한다. `auth.json`, session, `AGENTS.override.md`, SSH/browser identity, App options와 Home Assistant `/config`는 건드리지 않는다.
+- [x] `codex_user_files_update_mode`의 `preserve` default와 `refresh_agents`/`refresh_all` enum, en/ko 설명, image version 표식과 init 연동을 구현했다. option이 없는 public `0.2.2`의 첫 `0.2.3` 시작은 기존 파일을 보존하고, 사용자가 구성에서 선택해 재시작한 뒤 같은 version의 target을 반복 갱신하지 않는다.
+- [x] root-owned regular single-link preflight, 열린 FD 기반 mode/lock 검증, `0700` transaction과 `0600` backup/state/journal, atomic replace와 commit 전 rollback/commit 후 journal cleanup을 구현했다. runtime lock hardlink 피해 파일의 mode 불변과 symlink/hardlink/FIFO 거부를 동적 회귀로 확인했다.
+- [x] 최종 local image `sha256:719f56a58c0f0dbaa4bb2967750c5dae3f95a6b89bd143de372e3b13f540e485`는 label version `0.2.3`, arch `amd64`, size 533,424,911 bytes다. user-file update smoke, managed browser-auth lifecycle smoke, full Docker browser/gateway smoke와 public `0.2.2` → local `0.2.3` preserve→opt-in refresh→same-version restart update smoke가 PASS했다.
+- [x] 정적 검증은 Windows Python 3.14에서 MANIFEST를 포함한 pytest **46 passed / 8 jq-dependent skipped**, YAML, ShellCheck 0.11.0, Hadolint 2.14.0, Markdown 20개, actionlint 1.7.7, Node/Bash syntax와 `git diff --check`가 PASS했다. Linux PR CI에서 jq-dependent 8개를 포함해 다시 확인한다.
+- [ ] PR #16의 새 head에서 CI와 Builder dry-run을 통과하고 merge commit으로 `main`에 병합한다.
+- [ ] merge SHA에 annotated `0.2.3` tag를 한 번 게시하고 공식 Builder의 generic/per-arch GHCR image, anonymous pull, public smoke와 GitHub prerelease를 검증한다.
+- [ ] 실제 Home Assistant 구성 UI/Supervisor update와 HAOS/AppArmor의 인증된 dashboard desktop/mobile·console·network는 **NOT RUN — HAOS unverified**로 유지한다.
 
 ### 2026-07-14 — 기본 ON 브라우저 자동 인증과 8099 Codex 라우팅
 

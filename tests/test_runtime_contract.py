@@ -103,10 +103,11 @@ def test_init_has_idempotent_and_degraded_mode_guards(rootfs: Path) -> None:
     )
     sshd_run = (rootfs / S6_ROOT / "sshd/run").read_text(encoding="utf-8")
 
-    assert 'if [[ ! -e "${CODEX_DATA}/config.toml" ]]' in init_script
-    assert '! -e "${CODEX_AGENTS}" && ! -L "${CODEX_AGENTS}"' in init_script
-    assert '! -e "${CODEX_AGENTS_OVERRIDE}" && ! -L "${CODEX_AGENTS_OVERRIDE}"' in init_script
-    assert 'install -m 0644 "${DEFAULT_AGENTS}" "${agents_tmp}"' in init_script
+    assert "/usr/local/bin/codex-user-files-update" in init_script
+    assert "user_files_update_status == 30" in init_script
+    assert "existing files were preserved" in init_script
+    assert 'if [[ ! -e "${CODEX_DATA}/config.toml" ]]' not in init_script
+    assert 'install -m 0644 "${DEFAULT_AGENTS}" "${agents_tmp}"' not in init_script
     assert 'if [[ ! -s "${host_key}" ]]' in init_script
     assert 'rm -f "${host_key}" "${host_key}.pub"' in init_script
     assert 'ssh-keygen -y -f "${host_key}"' in init_script

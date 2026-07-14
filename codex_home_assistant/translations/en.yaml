@@ -15,6 +15,15 @@ configuration:
   codex_sandbox_mode:
     name: Codex sandbox mode
     description: danger-full-access applies only inside this App container, not to the HAOS host.
+  codex_user_files_update_mode:
+    name: Codex user-file update mode
+    description: >-
+      preserve keeps the existing config.toml and base AGENTS.md.
+      refresh_agents replaces only the base AGENTS.md; refresh_all also resets
+      config.toml to the current App-option defaults. Each selected file is
+      replaced at most once per App version and its previous copy is stored in
+      a root-only sensitive backup. Choose preserve again after a one-time
+      refresh, or the selected refresh will run once on the next App version.
   home_assistant_browser_auto_auth:
     name: Headless browser automatic authentication
     description: >-

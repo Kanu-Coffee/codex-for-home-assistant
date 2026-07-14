@@ -51,8 +51,8 @@ Codex ── STDIO MCP ── Playwright ── Chromium
 컨테이너 시작 시 한 번 실행한다.
 
 1. `/data` 디렉터리 생성 및 권한 설정
-2. Codex 기본 config 생성(기존 파일 보존)
-3. Codex 전역 운영 지침 생성(기존 `AGENTS.md` 보존)
+2. `codex_user_files_update_mode`와 image App version을 읽고 기본 `preserve`에서는 기존 Codex config/지침을 보존한다. 사용자가 명시한 refresh target만 안전성 preflight, root-only backup과 원자 교체를 거쳐 target별로 해당 version에 한 번 갱신한다.
+3. 빠진 Codex 기본 config와 전역 운영 지침을 최초 생성한다.
 4. SSH host key 생성 또는 기존 key 로드
 5. App 옵션에서 `authorized_keys` 렌더링
 6. 공통 runtime environment를 만들고 기본 ON 자동 인증 option에 따라 수동 override를 검증하거나 `/data/browser-auth` 관리형 identity를 생성·재사용한다. user/group/credential/single-token policy를 통과한 경우에만 runtime token 파일을 `/run`에 `0600`으로 생성하며 OFF이면 persistent identity를 보존하고 runtime token을 만들지 않음
@@ -104,12 +104,14 @@ cli_auth_credentials_store = "file"
 check_for_update_on_startup = false
 ```
 
-기존 `config.toml`이 있으면 전체 덮어쓰지 않는다. 누락된 필수 키만 안전하게 초기화하거나 샘플을 별도 제공한다.
+기존 `config.toml`은 기본 `preserve`에서 전체 덮어쓰지 않는다. 파일이 없을 때만 현재 App approval/sandbox option 기반 기본본을 생성하며, 사용자가 `refresh_all`을 명시한 경우에만 안전한 backup 뒤 같은 App 기본본으로 교체한다.
 wrapper는 현재 App의 approval/sandbox 옵션을 `-c` override로 주입해 파일을 덮어쓰지 않고 웹·SSH·Remote app-server에 같은 정책을 적용한다.
 
-Playwright MCP는 user config에 append하지 않고 system config에서 제공한다. 같은 `/etc/codex/config.toml`의 top-level `developer_instructions`가 Home Assistant dashboard 작업에는 image-managed Playwright와 `http://127.0.0.1:8099/`를 첫 경로로 지정한다. enforcement proxy도 `browser_navigate` 도구 설명에 같은 안내를 추가해 일반 browser skill 탐색보다 현재 MCP를 바로 선택하게 한다. 공식 Codex config 우선순위에 따라 `/data/codex/config.toml`과 신뢰된 `/config/.codex/config.toml`이 `/etc/codex/config.toml`보다 우선하므로 사용자는 App 기본 server나 instruction을 재정의하거나 끌 수 있다. App 업데이트는 image의 system config만 교체하고 `/data` user config와 기존 `AGENTS.md` 내용은 건드리지 않는다.
+Playwright MCP는 user config에 append하지 않고 system config에서 제공한다. 같은 `/etc/codex/config.toml`의 top-level `developer_instructions`가 Home Assistant dashboard 작업에는 image-managed Playwright와 `http://127.0.0.1:8099/`를 첫 경로로 지정한다. enforcement proxy도 `browser_navigate` 도구 설명에 같은 안내를 추가해 일반 browser skill 탐색보다 현재 MCP를 바로 선택하게 한다. 공식 Codex config 우선순위에 따라 `/data/codex/config.toml`과 신뢰된 `/config/.codex/config.toml`이 `/etc/codex/config.toml`보다 우선하므로 사용자는 App 기본 server나 instruction을 재정의하거나 끌 수 있다. App 업데이트는 기본적으로 image의 system config만 교체한다. `/data` user config 또는 base `AGENTS.md` 교체는 사용자가 user-file refresh mode를 명시한 경우에만 일어난다.
 
-`/data/codex/AGENTS.md`와 `AGENTS.override.md`가 모두 없으면 이미지에 포함된 Home Assistant 운영 가드레일을 원자적으로 복사한다. 이 전역 지침은 진단 결과를 자동 변경 권한으로 해석하지 않고, 비밀값·`.storage`·Recorder DB·고위험 기기 동작을 보호하며, 설정 변경 후 `ha-config-check`를 요구한다. 기존 파일·빈 파일·심볼릭 링크는 그대로 보존하므로 사용자가 비활성화하거나 교체할 수 있다. `/config` 아래의 프로젝트별 지침은 Codex 공식 계층 규칙에 따라 나중에 적용되므로 이 파일은 방어 심층화이지 강제 보안 경계가 아니다.
+`/data/codex/AGENTS.md`와 `AGENTS.override.md`가 모두 없으면 이미지에 포함된 Home Assistant 운영 가드레일을 원자적으로 복사한다. 이 전역 지침은 진단 결과를 자동 변경 권한으로 해석하지 않고, 비밀값·`.storage`·Recorder DB·고위험 기기 동작을 보호하며, 설정 변경 후 `ha-config-check`를 요구한다. 기본 `preserve`는 기존 파일·빈 파일·심볼릭 링크를 그대로 보존하므로 사용자가 비활성화하거나 교체할 수 있다. `refresh_agents`와 `refresh_all`은 안전한 일반 파일인 base `AGENTS.md`만 교체하며, `AGENTS.override.md`는 건드리지 않아 더 높은 우선순위 지침을 유지한다. `/config` 아래의 프로젝트별 지침은 Codex 공식 계층 규칙에 따라 나중에 적용되므로 이 파일은 방어 심층화이지 강제 보안 경계가 아니다.
+
+User-file refresh는 `preserve`, `refresh_agents`, `refresh_all`의 닫힌 enum이다. 갱신할 모든 target을 먼저 검사하고 symbolic link, 다중 hardlink, 비정상 file 또는 신뢰할 수 없는 소유권이 하나라도 있으면 링크를 따라가지 않고 갱신 전체를 중단한다. 안전한 경우 기존 bytes와 App candidate, mode/hash metadata를 `/data/codex/backups/user-files/refresh-<UTC>-<random>`의 `0700` transaction directory와 `0600` 파일에 보존한 뒤 같은 filesystem에서 atomic rename한다. journal을 먼저 기록하고 선택된 target 설치 뒤 target별 App version state를 durable commit record로 쓴다. state commit 전 중단은 다음 시작에서 검증된 backup으로 rollback하고, commit 후 남은 journal은 이후 사용자 편집을 되돌리지 않고 정리한다. 같은 version에서 이미 기록된 target은 일반 재시작이나 mode 변경으로 다시 덮어쓰지 않으며, option을 유지하면 다음 version에서 한 번 다시 적용한다.
 
 ### 3.5 Playwright MCP와 Chromium
 
@@ -175,8 +177,12 @@ Home Assistant dashboard는 persistent WebSocket을 사용하므로 무조건적
 │  └─ 사용자 shell 관련 영속 파일
 ├─ codex/
 │  ├─ auth.json          # 비밀, 0600
-│  ├─ AGENTS.md          # 영속 전역 운영 지침, 기존 파일 보존
+│  ├─ AGENTS.md          # 영속 전역 운영 지침, 기본 preserve
 │  ├─ config.toml
+│  ├─ .user-files-update-state.json   # target별 적용 App version, 0600
+│  ├─ .user-files-update-journal.json # crash recovery 중에만 존재, 0600
+│  ├─ .user-files-update.lock         # persistent inode + kernel flock, 0600
+│  ├─ backups/user-files/             # refresh 전 원본·candidate·metadata, root-only
 │  └─ sessions/...
 ├─ ssh/
 │  ├─ authorized_keys   # 0600
@@ -189,7 +195,7 @@ Home Assistant dashboard는 persistent WebSocket을 사용하므로 무조건적
 └─ tmux/
 ```
 
-`/data`는 Supervisor가 App 데이터와 `options.json`을 영속화한다. `auth.json`, optional `home_assistant_browser_token`과 `browser-auth/managed-token`이 App backup에 포함될 가능성이 있으므로 backup은 비밀정보로 취급한다. browser context/profile/screenshot은 영속 상태로 만들지 않는다.
+`/data`는 Supervisor가 App 데이터와 `options.json`을 영속화한다. `auth.json`, optional `home_assistant_browser_token`, `browser-auth/managed-token`과 user-file refresh backup이 App backup에 포함될 가능성이 있으므로 backup은 비밀정보로 취급한다. 특히 이전 `config.toml`에는 MCP/API credential이나 내부 endpoint가 있을 수 있다. browser context/profile/screenshot은 영속 상태로 만들지 않는다.
 
 이미지·runtime 전용 경로는 다음처럼 분리한다.
 
@@ -338,7 +344,9 @@ SSH host key가 재시작마다 바뀌면 Remote SSH가 깨지므로 `/data` 영
 |---|---|
 | authorized_keys 비어 있음 | Web UI는 정상, SSH는 비활성/경고 |
 | Codex 미인증 | shell은 정상, `ha-codex-login` 안내 |
-| 사용자 `AGENTS.md`/`AGENTS.override.md` 존재 | 기본 지침으로 덮어쓰지 않고 그대로 보존 |
+| 사용자 `AGENTS.md`/`AGENTS.override.md` 존재 | 기본 `preserve`는 그대로 보존. 명시적 refresh는 안전한 base `AGENTS.md`만 version당 한 번 교체하고 override는 보존 |
+| user-file refresh target이 symlink/hardlink/non-regular 또는 안전하지 않은 소유권 | 링크를 따라가지 않고 선택한 갱신 전체를 중단하며 기존 파일로 계속 시작 |
+| user-file refresh 중 종료 | private journal과 검증된 backup으로 rollback하거나 이미 commit된 target을 확인한 뒤 같은 version에서 반복하지 않음 |
 | Codex 다운로드/실행 실패 | build 또는 startup 실패를 명확히 표시 |
 | `/config` RW 아님 | 치명적 startup 오류 |
 | Core/Supervisor API 일시 실패 | shell 유지, helper가 오류 반환 |

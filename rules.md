@@ -157,7 +157,10 @@ HOME=/data/home
 CODEX_HOME=/data/codex
 ```
 
-`cli_auth_credentials_store = "file"`을 기본으로 생성하되 기존 사용자 설정은 덮어쓰지 않는다.
+`cli_auth_credentials_store = "file"`을 기본으로 생성한다. 일반 업데이트와 기본
+`preserve` 정책은 기존 사용자 설정을 덮어쓰지 않는다. 사용자가 Home Assistant
+구성에서 명시적으로 user-file refresh를 선택한 경우에만 root-only backup과
+target별 version 1회 기록을 만든 뒤 허용된 파일을 기본본으로 교체한다.
 
 ### R-402 헤드리스 로그인 경로를 제공한다
 

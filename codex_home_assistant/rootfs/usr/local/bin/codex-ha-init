@@ -9,9 +9,6 @@ readonly DATA_HOME=/data/home
 readonly CODEX_DATA=/data/codex
 readonly SSH_DATA=/data/ssh
 readonly TMUX_DATA=/data/tmux
-readonly DEFAULT_AGENTS=/usr/local/share/codex-ha/AGENTS.md
-readonly CODEX_AGENTS=${CODEX_DATA}/AGENTS.md
-readonly CODEX_AGENTS_OVERRIDE=${CODEX_DATA}/AGENTS.override.md
 readonly LEGACY_PLAYWRIGHT_SECRETS=${RUNTIME_DIR}/playwright-secrets.env
 readonly PLAYWRIGHT_OUTPUT=${RUNTIME_DIR}/playwright-output
 readonly HA_RENDER_UPSTREAM=${RUNTIME_DIR}/home-assistant-render-upstream.conf
@@ -69,31 +66,64 @@ case "${sandbox_mode}" in
     ;;
 esac
 
-if [[ ! -e "${CODEX_DATA}/config.toml" ]]; then
-  config_tmp=$(mktemp "${CODEX_DATA}/.config.toml.XXXXXX")
-  {
-    printf 'approval_policy = "%s"\n' "${approval_policy}"
-    printf 'sandbox_mode = "%s"\n' "${sandbox_mode}"
-    printf 'cli_auth_credentials_store = "file"\n'
-    printf 'check_for_update_on_startup = false\n'
-  } > "${config_tmp}"
-  chmod 0600 "${config_tmp}"
-  mv -f "${config_tmp}" "${CODEX_DATA}/config.toml"
-  bashio::log.info 'Created persistent Codex configuration'
-else
-  chmod 0600 "${CODEX_DATA}/config.toml"
-  bashio::log.info 'Preserved existing Codex configuration'
-fi
+unset approval_policy sandbox_mode
 
-if [[ ! -e "${CODEX_AGENTS}" && ! -L "${CODEX_AGENTS}" \
-  && ! -e "${CODEX_AGENTS_OVERRIDE}" && ! -L "${CODEX_AGENTS_OVERRIDE}" ]]; then
-  agents_tmp=$(mktemp "${CODEX_DATA}/.AGENTS.md.XXXXXX")
-  install -m 0644 "${DEFAULT_AGENTS}" "${agents_tmp}"
-  mv -f "${agents_tmp}" "${CODEX_AGENTS}"
-  bashio::log.info 'Created persistent Home Assistant operating guidance for Codex'
+user_files_update_result=''
+if user_files_update_result=$(/usr/local/bin/codex-user-files-update); then
+  if ! jq --exit-status \
+    '(.created | type == "array")
+      and (.refreshed | type == "array")
+      and (.warnings | type == "array")
+      and (.recovered | type == "boolean")
+      and (.mode | type == "string")' \
+    <<< "${user_files_update_result}" >/dev/null; then
+    bashio::log.fatal 'Codex user-file update helper returned an invalid result'
+    exit 1
+  fi
+
+  if jq --exit-status '.created | index("config") != null' \
+    <<< "${user_files_update_result}" >/dev/null; then
+    bashio::log.info 'Created persistent Codex configuration'
+  elif jq --exit-status '.refreshed | index("config") != null' \
+    <<< "${user_files_update_result}" >/dev/null; then
+    bashio::log.notice 'Refreshed persistent Codex configuration from this App version'
+  else
+    bashio::log.info 'Preserved existing Codex configuration'
+  fi
+
+  if jq --exit-status '.created | index("agents") != null' \
+    <<< "${user_files_update_result}" >/dev/null; then
+    bashio::log.info 'Created persistent Home Assistant operating guidance for Codex'
+  elif jq --exit-status '.refreshed | index("agents") != null' \
+    <<< "${user_files_update_result}" >/dev/null; then
+    bashio::log.notice 'Refreshed persistent Codex operating guidance from this App version'
+  else
+    bashio::log.info 'Preserved existing Codex operating guidance'
+  fi
+
+  if jq --exit-status '.recovered' \
+    <<< "${user_files_update_result}" >/dev/null; then
+    bashio::log.warning 'Recovered an interrupted Codex user-file update transaction'
+  fi
+  user_files_backup=$(jq --raw-output '.backup_directory // empty' \
+    <<< "${user_files_update_result}")
+  if [[ -n "${user_files_backup}" ]]; then
+    bashio::log.notice "Stored the Codex user-file refresh transaction in ${user_files_backup}"
+  fi
+  while IFS= read -r user_files_warning; do
+    bashio::log.warning "${user_files_warning}"
+  done < <(jq --raw-output '.warnings[]' <<< "${user_files_update_result}")
+  unset user_files_backup user_files_warning
 else
-  bashio::log.info 'Preserved existing Codex operating guidance'
+  user_files_update_status=$?
+  if (( user_files_update_status == 30 )); then
+    bashio::log.fatal 'An interrupted or unsafe Codex user-file update could not be recovered; refusing to continue'
+    exit 1
+  fi
+  bashio::log.error 'The optional Codex user-file refresh was not applied; existing files were preserved'
+  unset user_files_update_status
 fi
+unset user_files_update_result
 
 if [[ -e "${CODEX_DATA}/auth.json" ]]; then
   chmod 0600 "${CODEX_DATA}/auth.json"

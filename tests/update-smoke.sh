@@ -10,9 +10,12 @@ DATA_VOLUME="${TEST_ID}-data"
 CONFIG_VOLUME="${TEST_ID}-config"
 CONFIG_MARKER="# ${TEST_ID}-user-config-marker"
 AGENTS_MARKER="<!-- ${TEST_ID}-agents-marker -->"
+AGENTS_OVERRIDE_MARKER="<!-- ${TEST_ID}-agents-override-marker -->"
 AUTH_MARKER="${TEST_ID}-auth-marker-not-a-credential"
 HA_CONFIG_MARKER="${TEST_ID}-home-assistant-config-marker"
 BROWSER_OPTION_MARKER="${TEST_ID}-browser-option-not-a-credential"
+POST_REFRESH_CONFIG_MARKER="# ${TEST_ID}-post-refresh-config-marker"
+POST_REFRESH_AGENTS_MARKER="<!-- ${TEST_ID}-post-refresh-agents-marker -->"
 
 # Git Bash rewrites Linux container paths before invoking native Windows programs.
 if [[ "${OSTYPE:-}" == msys* || "${OSTYPE:-}" == cygwin* ]]; then
@@ -142,6 +145,9 @@ docker exec "${RELEASE_CONTAINER}" /bin/sh -c \
   'printf "\n%s\n" "$1" >> /data/codex/config.toml' sh "${CONFIG_MARKER}"
 docker exec "${RELEASE_CONTAINER}" /bin/sh -c \
   'printf "\n%s\n" "$1" >> /data/codex/AGENTS.md' sh "${AGENTS_MARKER}"
+docker exec "${RELEASE_CONTAINER}" /bin/sh -c \
+  'umask 077; printf "%s\n" "$1" > /data/codex/AGENTS.override.md' \
+  sh "${AGENTS_OVERRIDE_MARKER}"
 printf '%s\n' "${HA_CONFIG_MARKER}" \
   | docker exec --interactive "${RELEASE_CONTAINER}" /bin/sh -c \
     'umask 077; cat > /config/.codex-ha-update-smoke-marker'
@@ -154,6 +160,8 @@ docker exec "${RELEASE_CONTAINER}" grep -Fxq \
   "${CONFIG_MARKER}" /data/codex/config.toml
 docker exec "${RELEASE_CONTAINER}" grep -Fxq \
   "${AGENTS_MARKER}" /data/codex/AGENTS.md
+docker exec "${RELEASE_CONTAINER}" grep -Fxq \
+  "${AGENTS_OVERRIDE_MARKER}" /data/codex/AGENTS.override.md
 
 CONFIG_HASH_BEFORE=$(container_hash \
   "${RELEASE_CONTAINER}" /data/codex/config.toml)
@@ -161,6 +169,8 @@ AUTH_HASH_BEFORE=$(container_hash \
   "${RELEASE_CONTAINER}" /data/codex/auth.json)
 AGENTS_HASH_BEFORE=$(container_hash \
   "${RELEASE_CONTAINER}" /data/codex/AGENTS.md)
+AGENTS_OVERRIDE_HASH_BEFORE=$(container_hash \
+  "${RELEASE_CONTAINER}" /data/codex/AGENTS.override.md)
 HA_CONFIG_HASH_BEFORE=$(container_hash \
   "${RELEASE_CONTAINER}" /config/.codex-ha-update-smoke-marker)
 HOST_KEY_BEFORE=$(host_key_fingerprint "${RELEASE_CONTAINER}")
@@ -182,6 +192,10 @@ start_app "${CANDIDATE_CONTAINER}" "${CANDIDATE_IMAGE}"
   == "${AGENTS_HASH_BEFORE}" ]] \
   || fail 'persistent AGENTS.md changed during image update'
 [[ $(container_hash \
+    "${CANDIDATE_CONTAINER}" /data/codex/AGENTS.override.md) \
+  == "${AGENTS_OVERRIDE_HASH_BEFORE}" ]] \
+  || fail 'AGENTS.override.md changed during image update'
+[[ $(container_hash \
     "${CANDIDATE_CONTAINER}" /config/.codex-ha-update-smoke-marker) \
   == "${HA_CONFIG_HASH_BEFORE}" ]] \
   || fail '/config content changed during image update'
@@ -200,6 +214,16 @@ docker exec "${CANDIDATE_CONTAINER}" grep -Fxq \
   "${CONFIG_MARKER}" /data/codex/config.toml
 docker exec "${CANDIDATE_CONTAINER}" grep -Fxq \
   "${AGENTS_MARKER}" /data/codex/AGENTS.md
+docker exec "${CANDIDATE_CONTAINER}" grep -Fxq \
+  "${AGENTS_OVERRIDE_MARKER}" /data/codex/AGENTS.override.md
+docker exec "${CANDIDATE_CONTAINER}" test ! -e \
+  /data/codex/.user-files-update-state.json \
+  || fail 'missing update option did not default to preserve'
+docker exec "${CANDIDATE_CONTAINER}" test ! -e \
+  /data/codex/.user-files-update-journal.json
+docker exec "${CANDIDATE_CONTAINER}" test ! -e \
+  /data/codex/backups/user-files \
+  || fail 'default preserve unexpectedly created a user-file backup'
 docker exec --workdir /config "${CANDIDATE_CONTAINER}" \
   codex debug prompt-input 'verify the Home Assistant dashboard' \
   | docker exec --interactive "${CANDIDATE_CONTAINER}" jq --exit-status '
@@ -257,6 +281,117 @@ docker exec --workdir /config "${CANDIDATE_CONTAINER}" \
     PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
     /usr/local/bin/ha-playwright-mcp \
   || fail 'Playwright MCP failed after released-image update'
+
+# Model saving refresh_all in the Home Assistant App configuration and then
+# restarting the App. The old release could not persist this option, so the
+# first candidate start above must always be preserve-before-opt-in.
+docker exec "${CANDIDATE_CONTAINER}" /bin/sh -c '
+  jq ".codex_user_files_update_mode = \"refresh_all\"" \
+    /data/options.json > /data/options.json.tmp
+  chmod 0600 /data/options.json.tmp
+  mv /data/options.json.tmp /data/options.json
+'
+docker rm -f "${CANDIDATE_CONTAINER}" >/dev/null
+start_app "${CANDIDATE_CONTAINER}" "${CANDIDATE_IMAGE}"
+
+CANDIDATE_VERSION=$(docker image inspect --format \
+  '{{index .Config.Labels "io.hass.version"}}' "${CANDIDATE_IMAGE}")
+docker exec "${CANDIDATE_CONTAINER}" /bin/sh -c '
+  printf '\''approval_policy = "on-request"\nsandbox_mode = "danger-full-access"\ncli_auth_credentials_store = "file"\ncheck_for_update_on_startup = false\n'\'' \
+    | cmp -s - /data/codex/config.toml
+' || fail 'refresh_all did not install the image default Codex config'
+docker exec "${CANDIDATE_CONTAINER}" cmp -s \
+  /usr/local/share/codex-ha/AGENTS.md /data/codex/AGENTS.md \
+  || fail 'refresh_all did not install the image default AGENTS.md'
+docker exec "${CANDIDATE_CONTAINER}" jq --exit-status \
+  --arg version "${CANDIDATE_VERSION}" '
+    .schema == 1
+    and (.applied.config | index($version) != null)
+    and (.applied.agents | index($version) != null)
+  ' /data/codex/.user-files-update-state.json >/dev/null \
+  || fail 'refresh_all did not record both scopes for the candidate version'
+
+BACKUP_DIRS=$(docker exec "${CANDIDATE_CONTAINER}" find \
+  /data/codex/backups/user-files \
+  -mindepth 1 -maxdepth 1 -type d -name 'refresh-*')
+[[ $(wc -l <<< "${BACKUP_DIRS}") -eq 1 ]] \
+  || fail 'refresh_all did not create exactly one transaction backup'
+BACKUP_DIR=${BACKUP_DIRS}
+[[ $(container_hash "${CANDIDATE_CONTAINER}" \
+    "${BACKUP_DIR}/config.before") == "${CONFIG_HASH_BEFORE}" ]] \
+  || fail 'refresh_all config backup was not byte-exact'
+[[ $(container_hash "${CANDIDATE_CONTAINER}" \
+    "${BACKUP_DIR}/agents.before") == "${AGENTS_HASH_BEFORE}" ]] \
+  || fail 'refresh_all AGENTS backup was not byte-exact'
+docker exec "${CANDIDATE_CONTAINER}" /bin/sh -c '
+  backup=$1
+  test "$(stat -c "%a:%U:%G" /data/codex/backups)" = 700:root:root
+  test "$(stat -c "%a:%U:%G" /data/codex/backups/user-files)" \
+    = 700:root:root
+  test "$(stat -c "%a:%U:%G" "${backup}")" = 700:root:root
+  for file in \
+    config.before \
+    config.image-default \
+    agents.before \
+    agents.image-default \
+    metadata.json; do
+    test "$(stat -c "%a:%U:%G" "${backup}/${file}")" = 600:root:root
+  done
+  test "$(stat -c "%a:%U:%G" /data/codex/.user-files-update-state.json)" \
+    = 600:root:root
+  test "$(stat -c "%a:%U:%G" /run/codex-ha/user-files-update.lock)" \
+    = 600:root:root
+  test ! -e /data/codex/.user-files-update-journal.json
+' sh "${BACKUP_DIR}"
+[[ $(container_hash "${CANDIDATE_CONTAINER}" /data/codex/auth.json) \
+  == "${AUTH_HASH_BEFORE}" ]] \
+  || fail 'refresh_all changed auth.json'
+[[ $(container_hash \
+    "${CANDIDATE_CONTAINER}" /data/codex/AGENTS.override.md) \
+  == "${AGENTS_OVERRIDE_HASH_BEFORE}" ]] \
+  || fail 'refresh_all changed AGENTS.override.md'
+[[ $(container_hash \
+    "${CANDIDATE_CONTAINER}" /config/.codex-ha-update-smoke-marker) \
+  == "${HA_CONFIG_HASH_BEFORE}" ]] \
+  || fail 'refresh_all changed Home Assistant configuration data'
+[[ $(host_key_fingerprint "${CANDIDATE_CONTAINER}") \
+  == "${HOST_KEY_BEFORE}" ]] \
+  || fail 'refresh_all changed the SSH host identity'
+docker exec "${CANDIDATE_CONTAINER}" jq --exit-status \
+  --arg marker "${BROWSER_OPTION_MARKER}" '
+    .codex_user_files_update_mode == "refresh_all"
+    and .home_assistant_browser_token == $marker
+  ' /data/options.json >/dev/null \
+  || fail 'refresh_all changed an unrelated Home Assistant App option'
+
+# A normal restart in the same App version must not repeat a persisted refresh.
+docker exec "${CANDIDATE_CONTAINER}" /bin/sh -c \
+  'printf "\n%s\n" "$1" >> /data/codex/config.toml' \
+  sh "${POST_REFRESH_CONFIG_MARKER}"
+docker exec "${CANDIDATE_CONTAINER}" /bin/sh -c \
+  'printf "\n%s\n" "$1" >> /data/codex/AGENTS.md' \
+  sh "${POST_REFRESH_AGENTS_MARKER}"
+BACKUP_COUNT_BEFORE_RESTART=$(docker exec "${CANDIDATE_CONTAINER}" find \
+  /data/codex/backups/user-files \
+  -mindepth 1 -maxdepth 1 -type d -name 'refresh-*' | wc -l)
+docker rm -f "${CANDIDATE_CONTAINER}" >/dev/null
+start_app "${CANDIDATE_CONTAINER}" "${CANDIDATE_IMAGE}"
+docker exec "${CANDIDATE_CONTAINER}" grep -Fxq \
+  "${POST_REFRESH_CONFIG_MARKER}" /data/codex/config.toml \
+  || fail 'same-version restart repeated the config refresh'
+docker exec "${CANDIDATE_CONTAINER}" grep -Fxq \
+  "${POST_REFRESH_AGENTS_MARKER}" /data/codex/AGENTS.md \
+  || fail 'same-version restart repeated the AGENTS refresh'
+BACKUP_COUNT_AFTER_RESTART=$(docker exec "${CANDIDATE_CONTAINER}" find \
+  /data/codex/backups/user-files \
+  -mindepth 1 -maxdepth 1 -type d -name 'refresh-*' | wc -l)
+[[ "${BACKUP_COUNT_AFTER_RESTART}" -eq "${BACKUP_COUNT_BEFORE_RESTART}" ]] \
+  || fail 'same-version restart created a second refresh backup'
+[[ $(container_hash "${CANDIDATE_CONTAINER}" /data/codex/auth.json) \
+  == "${AUTH_HASH_BEFORE}" ]]
+[[ $(container_hash \
+    "${CANDIDATE_CONTAINER}" /data/codex/AGENTS.override.md) \
+  == "${AGENTS_OVERRIDE_HASH_BEFORE}" ]]
 
 printf 'Update smoke passed: %s -> %s\n' \
   "${RELEASE_IMAGE}" "${CANDIDATE_IMAGE}"

@@ -112,6 +112,7 @@ options:
   tmux_session_name: codex-ha
   codex_approval_policy: on-request
   codex_sandbox_mode: danger-full-access
+  codex_user_files_update_mode: preserve
   home_assistant_browser_auto_auth: true
   log_level: info
 
@@ -122,6 +123,7 @@ schema:
   tmux_session_name: "match(^[A-Za-z0-9._-]{1,64}$)"
   codex_approval_policy: "list(untrusted|on-request|never)"
   codex_sandbox_mode: "list(workspace-write|danger-full-access)"
+  codex_user_files_update_mode: "list(preserve|refresh_agents|refresh_all)"
   home_assistant_browser_auto_auth: bool
   home_assistant_browser_token: password?
   log_level: "list(trace|debug|info|notice|warning|error|fatal)"
@@ -186,6 +188,16 @@ Settings → Apps → Codex for Home Assistant → Configuration/Network
 - App 컨테이너 내부의 Codex 실행 정책
 - Home Assistant `full_access`와 다른 개념임을 문서화
 
+### `codex_user_files_update_mode`
+
+- 타입: `list(preserve|refresh_agents|refresh_all)`
+- 기본: `preserve`; 이전 version의 option에 key가 없어도 `preserve`로 해석
+- `preserve`: 기존 `/data/codex/config.toml`과 base `AGENTS.md`를 변경하지 않음
+- `refresh_agents`: 현재 App version에서 아직 갱신하지 않은 base `AGENTS.md`만 image 기본 지침으로 한 번 교체
+- `refresh_all`: 같은 target별 one-shot 규칙으로 base 지침과 현재 approval/sandbox option 기반 기본 `config.toml`로 교체
+- 선택값을 유지하면 다음 App version에서 해당 target을 한 번 다시 갱신한다. 특정 update에만 쓰려면 성공 확인 뒤 `preserve`로 되돌린다.
+- `AGENTS.override.md`, 인증/session, SSH/browser identity와 Home Assistant `/config`는 대상이 아니다.
+
 ### `log_level`
 
 - bashio 표준 로그 수준
@@ -249,11 +261,13 @@ nano 또는 vim
 초기화 스크립트는 idempotent해야 한다.
 
 - 디렉터리가 이미 있으면 데이터 보존
-- `config.toml` 기존 사용자 변경 보존
+- 기본 `codex_user_files_update_mode: preserve`에서는 `config.toml`과 base `AGENTS.md`의 기존 사용자 변경 보존
+- user-file refresh는 target별 App version one-shot state를 사용한다. 갱신할 모든 target을 먼저 검사하고 root-owned regular single-link file만 허용하며 symlink, 다중 hardlink와 비정상 file은 따라가지 않고 전체 선택을 fail closed한다.
+- refresh 전에 `/data/codex/backups/user-files` 아래 고유 `0700` transaction directory에 기존 파일과 metadata를 `0600`으로 보존하고, journal → same-filesystem atomic replacement → version state commit 순서로 처리한다. 진단용 backup 경로는 보고할 수 있지만 credential을 포함할 수 있는 파일 내용은 로그에 출력하지 않는다.
 - `/etc/codex/config.toml`은 image-managed system default로 설치하고 `/data/codex/config.toml`에 MCP table을 append하지 않음
 - system config의 `developer_instructions`는 Home Assistant dashboard에서 image-managed Playwright와 `http://127.0.0.1:8099/`를 먼저 사용하게 하며, MCP proxy의 navigation tool 설명에도 같은 route를 제공함
 - `CODEX_HOME/AGENTS.md`와 `AGENTS.override.md`가 모두 없을 때만 기본 운영 지침을 원자적으로 생성
-- 기존 전역 지침은 빈 파일과 심볼릭 링크를 포함해 내용과 권한 보존
+- 기존 전역 지침은 기본 `preserve`에서 빈 파일과 심볼릭 링크를 포함해 내용과 권한 보존. 명시적 refresh에서도 `AGENTS.override.md`는 항상 보존
 - host key가 있으면 재생성하지 않음
 - authorized_keys는 App 옵션에서 원자적으로 렌더링
 - 빈/잘못된 키는 로그로 알려주되 토큰/키 전체를 출력하지 않음
@@ -361,4 +375,4 @@ Playwright MCP child는 Supervisor token을 받지 않는다. 검증된 dedicate
 
 ## 14. Release image
 
-로컬 개발 단계에서는 `image`를 주석 처리한 local build를 허용한다. `0.1.3`부터 공식 Home Assistant builder actions `2026.06.0`으로 amd64 image와 generic manifest를 미리 빌드하고 `config.yaml`의 `image`에 `ghcr.io/kanu-coffee/codex-for-home-assistant`를 사용한다. Playwright renderer는 `0.2.0`, 최소권한 browser 경로는 `0.2.1`, 관리형 인증은 `0.2.2`, 기본 ON 자동 인증과 Codex `8099` 라우팅은 `0.2.3`이다. 숫자 Git tag와 App version이 정확히 같을 때만 게시하고 기존 tag는 덮어쓰지 않는다. Home Assistant `stage`는 HAOS browser/AppArmor 실기와 M3 평가 전까지 `experimental`을 유지한다.
+로컬 개발 단계에서는 `image`를 주석 처리한 local build를 허용한다. `0.1.3`부터 공식 Home Assistant builder actions `2026.06.0`으로 amd64 image와 generic manifest를 미리 빌드하고 `config.yaml`의 `image`에 `ghcr.io/kanu-coffee/codex-for-home-assistant`를 사용한다. Playwright renderer는 `0.2.0`, 최소권한 browser 경로는 `0.2.1`, 관리형 인증은 `0.2.2`, 기본 ON 자동 인증·Codex `8099` 라우팅과 선택형 user-file refresh는 `0.2.3`이다. `0.2.3`의 사용자 기능 포함은 이미 고정된 후보의 검증·배포 연속성을 위한 ADR-030의 1회 SemVer 예외이며, 이후 사용자 기능은 다시 MINOR 규칙을 따른다. 숫자 Git tag와 App version이 정확히 같을 때만 게시하고 기존 tag는 덮어쓰지 않는다. Home Assistant `stage`는 HAOS browser/AppArmor 실기와 M3 평가 전까지 `experimental`을 유지한다.

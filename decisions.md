@@ -123,9 +123,9 @@ hassio_role: manager
 ## ADR-019 비파괴 전역 Home Assistant 운영 지침
 
 - 상태: Accepted
-- 결정: 이미지에 기본 운영 가드레일 템플릿을 포함하고 `/data/codex/AGENTS.md`와 `AGENTS.override.md`가 모두 없을 때 복사한다. 기존 파일은 빈 파일과 심볼릭 링크를 포함해 덮어쓰거나 mode를 변경하지 않는다.
+- 결정: 이미지에 기본 운영 가드레일 템플릿을 포함하고 `/data/codex/AGENTS.md`와 `AGENTS.override.md`가 모두 없을 때 복사한다. 기본 `preserve` 경로에서는 기존 파일을 빈 파일과 심볼릭 링크를 포함해 덮어쓰거나 mode를 변경하지 않는다. ADR-030의 명시적·백업형 base 파일 refresh만 예외다.
 - 이유: Codex는 의도적으로 `/config` RW와 Core/Supervisor 운영 권한을 가지므로 진단과 변경 권한을 분리하고, 비밀값·`.storage`·DB·고위험 기기 동작에 대한 반복 안전 규칙이 모든 새 세션에 필요하다. 공식 Codex는 `CODEX_HOME/AGENTS.md`를 전역 지침으로 읽고 `/config`의 더 가까운 프로젝트 지침을 뒤에 결합한다.
-- 제외: 이 지침을 강제 보안 경계로 간주하지 않는다. `/config/AGENTS.md` 자동 생성, 기존 사용자 지침 덮어쓰기, Repairs/파일 권한/업데이트 자동 수정은 하지 않는다.
+- 제외: 이 지침을 강제 보안 경계로 간주하지 않는다. `/config/AGENTS.md` 자동 생성, 무선택 사용자 지침 덮어쓰기, Repairs/파일 권한/업데이트 자동 수정은 하지 않는다.
 
 ## ADR-020 로그 endpoint media type 명시
 
@@ -205,6 +205,19 @@ hassio_role: manager
 - 상태: Accepted for 0.2.3; ADR-028의 identity·저장·검증·폐기 경계는 유지하고 activation trigger만 대체
 - 사용자 결정: `home_assistant_browser_auto_auth` boolean option을 기본 ON으로 제공하고 신규 설치와 option이 없는 기존 설치 모두 true로 해석한다. App init과 새 Playwright MCP 시작의 idempotent `ha-browser-auth-ensure`가 ADR-028 transaction을 자동 시작 또는 복구하므로 정상 경로에서 terminal setup이나 token 복사·붙여넣기를 요구하지 않는다.
 - OFF 의미: 다음 App/MCP browser session부터 `/run` token 주입과 자동 mutation을 중지하되 `/data/browser-auth`와 Home Assistant identity는 보존한다. 이미 열린 context는 소급 로그아웃하지 않으므로 App/Codex session 재시작을 요구한다. ON 재시작은 같은 identity를 재사용하며 완전 삭제는 OFF 상태의 explicit `ha-browser-auth-remove`만 수행한다. ON에서는 다음 ensure의 즉시 재생성 경쟁을 막기 위해 remove를 거부한다. 수동 token은 ON에서만 override이고 invalid manual source에서 managed source로 fallback하지 않는다.
-- Codex route: `/etc/codex/config.toml`의 공식 `developer_instructions`와 enforcement proxy의 `browser_navigate` description에 Home Assistant dashboard의 canonical first route를 image-managed Playwright MCP의 `http://127.0.0.1:8099/`로 명시한다. global Vercel/다른 browser skill disable은 일반 Web UI 작업까지 막으므로 사용하지 않는다. `/data/codex/config.toml`과 사용자 `AGENTS.md`는 갱신·병합하지 않는다.
+- Codex route: `/etc/codex/config.toml`의 공식 `developer_instructions`와 enforcement proxy의 `browser_navigate` description에 Home Assistant dashboard의 canonical first route를 image-managed Playwright MCP의 `http://127.0.0.1:8099/`로 명시한다. global Vercel/다른 browser skill disable은 일반 Web UI 작업까지 막으므로 사용하지 않는다. 이 route 배포 자체는 `/data/codex/config.toml`과 사용자 `AGENTS.md`를 갱신·병합하지 않는다. 별도 사용자 선택에 따른 reset은 ADR-030의 명시적 예외다.
 - 보안 유지: 자동화는 기존 exact local-only/read-only/single-LLAT 검증, provider preflight, TLS 검증, crash journal과 fail-closed 정책 안에서만 동작한다. `configuration.yaml`, `.storage`, provider order, `trusted_networks`, `trusted_proxies`, App privilege와 external port는 바꾸지 않는다.
 - 검증: option 누락/default ON 생성, restart reuse, OFF/ON 보존·재활성화, OFF-state remove, manual override ON/OFF와 failure no-fallback을 fixture로 확인한다. 기존 user config/AGENTS가 있는 update container의 `codex debug prompt-input`과 filtered MCP `tools/list`에서 8099 instruction을 확인하고 desktop/mobile browser smoke를 재실행한다.
+
+## ADR-030 Home Assistant UI에서 선택하는 version별 Codex 사용자 파일 갱신
+
+- 상태: Accepted for 0.2.3
+- 배경: Home Assistant App 웹 업데이트에는 CLI flag를 전달할 수 없다. 기존 사용자 `config.toml`과 `AGENTS.md`를 무조건 교체하면 인증·MCP·model/provider·운영 지침을 손상하지만, image의 최신 기본본을 선택적으로 받아야 하는 사용자는 수동 복사 없이 구성 탭에서 정책을 정할 수 있어야 한다.
+- 사용자 결정: `codex_user_files_update_mode`를 `preserve`, `refresh_agents`, `refresh_all`의 enum으로 제공한다. 누락/default는 `preserve`다. `refresh_agents`는 base `AGENTS.md`만 image 기본 지침으로, `refresh_all`은 base 지침과 user `config.toml`을 각각 image/current App option 기반 기본본으로 되돌린다. `AGENTS.override.md`는 항상 보존되고 Codex 공식 계층에서 더 높은 우선순위를 유지한다.
+- 기존 설치 전환: `0.2.2` 사용자가 `0.2.3`으로 일반 업데이트할 때 첫 시작은 option key가 없으므로 `preserve`다. 새 구성 UI를 확인한 뒤 mode를 선택하고 App을 재시작해야 refresh가 실행된다. 선택값은 영속되므로 그대로 두면 이후 각 App version의 첫 시작에 target별 한 번 다시 적용된다. 특정 update에만 쓰려면 적용 확인 뒤 `preserve`로 되돌린다.
+- 반복 방지: App image version과 target별 적용 이력을 `/data/codex`의 private state에 기록한다. 같은 version에서 `refresh_agents` 뒤 `refresh_all`로 바꾸면 이미 처리한 agents는 다시 쓰지 않고 config만 처리한다. 일반 재시작도 같은 target을 반복하지 않는다.
+- 손실 경고: `refresh_all`은 user `config.toml`의 MCP server, model, provider, 내부 endpoint, trust와 기타 사용자 설정을 제거하고 current App option에서 만든 기본본으로 되돌린다. Codex 인증/session은 config target과 분리해 보존한다.
+- transaction: 선택된 모든 target을 mutation 전에 검사하고 root-owned regular single-link file만 허용한다. symbolic link, 다중 hardlink, 비정상 file 또는 신뢰할 수 없는 ownership이면 링크를 따라가지 않고 선택 refresh 전체를 fail closed한다. 기존 bytes와 candidate/metadata는 `/data/codex/backups/user-files` 아래 root-only backup에 먼저 기록하며 journal → atomic replacement → target별 version state commit 순서로 crash recovery한다.
+- 범위 제한: refresh allowlist는 `/data/codex/config.toml`과 `/data/codex/AGENTS.md`뿐이다. `AGENTS.override.md`, `auth.json`, session, SSH identity, browser identity, App options와 Home Assistant `/config`는 변경하지 않는다. backup 자체는 기존 config의 credential을 포함할 수 있으므로 Home Assistant App backup과 함께 비밀정보로 취급한다.
+- SemVer 예외: 저장소 원칙상 사용자 기능은 MINOR지만 `0.2.3`은 기본 ON browser 인증/8099 route 후보로 이미 버전·업데이트 회귀·릴리스 전달이 고정된 상태에서 이 안전한 선택 UI를 같은 미공개 후보에 포함한다. 검증된 update 경로를 다시 번호 변경하지 않기 위한 1회 예외이며, public `0.2.2`와의 기본 동작은 `preserve`로 호환된다. 이후 새 사용자 기능은 다시 MINOR 규칙을 따른다.
+- 검증 경계: enum/default, 기존 update 첫 preserve, 두 refresh scope, target별 version one-shot, private backup, crash recovery와 unsafe link fail-closed를 local container에서 검증한다. 실제 Home Assistant 구성 UI/Supervisor update와 HAOS/AppArmor dashboard E2E는 별도 **NOT RUN**으로 기록한다.

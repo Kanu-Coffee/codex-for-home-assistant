@@ -33,7 +33,7 @@ Supervisor가 없어도 검증 가능한 항목:
 - API response media type 협상과 header injection 거부
 - token redaction
 - `/data` persistence fixture
-- image의 `/etc/codex/config.toml`과 사용자 `/data/codex/config.toml` precedence/비변경
+- image의 `/etc/codex/config.toml`과 사용자 `/data/codex/config.toml` precedence, 기본 preserve 및 명시적 refresh
 - pinned Playwright MCP stdio handshake, enforcement proxy와 Codex system config의 동일 allowlist 검사
 - Alpine `chromium-headless-shell` headless launch
 - desktop 1440x900, mobile 390x844 DOM viewport와 screenshot 이미지/종횡비
@@ -43,6 +43,7 @@ Supervisor가 없어도 검증 가능한 항목:
 - fixture Supervisor token의 argv/log/MCP 응답/browser artifact 비노출과 `/run` 정리
 - browser auto-auth option 누락/default ON 자동 생성, restart 재사용, OFF/ON identity 보존과 manual override 억제
 - model-visible Codex developer instruction과 filtered navigation tool 설명의 `127.0.0.1:8099` 우선 route
+- user-file refresh의 closed enum/default preserve, target별 App-version 1회, private byte-exact backup, journal recovery와 unsafe path/lock 거부
 - pulled GHCR image의 labels/platform 및 full smoke
 
 ### L3 Supervisor/App 개발 환경
@@ -84,7 +85,7 @@ Supervisor가 없어도 검증 가능한 항목:
 | AT-004 | API 권한 | homeassistant_api, hassio_api true / manager |
 | AT-005 | Codex version | pin된 버전 출력 |
 | AT-006 | init 두 번 실행 | 데이터 손실/중복 없음 |
-| AT-007 | 기존 config.toml | 사용자 값 보존 |
+| AT-007 | 기존 config.toml | 기본 `preserve`에서 사용자 값 보존 |
 | AT-008 | authorized_keys 렌더링 | 정확한 줄/0600 |
 | AT-009 | empty keys | SSH 로그인 비활성, Web service 정상 |
 | AT-010 | host keys | 재시작 fixture에서 동일 fingerprint |
@@ -97,7 +98,7 @@ Supervisor가 없어도 검증 가능한 항목:
 | AT-017 | shellcheck | 오류 없음 |
 | AT-018 | secret scan | 실제 credential 없음 |
 | AT-019 | 실제 ttyd WebSocket shell | 101 handshake 후 `/config`, non-dumb TERM으로 명령 실행 |
-| AT-020 | 기본 전역 `AGENTS.md` | 생성·0644, 핵심 안전 규칙 포함, 재초기화 시 사용자 수정/override 보존 |
+| AT-020 | 기본 전역 `AGENTS.md` | 생성·0644, 핵심 안전 규칙 포함, 기본 `preserve` 재초기화 시 사용자 수정/override 보존 |
 | AT-021 | API `Accept` 협상 | 기본 JSON, 로그 x-log, 비허용/CRLF 값 요청 전 거부 |
 | AT-022 | ttyd resize/reconnect | resize 반영 후 WebSocket 재연결에도 session/pane/pid 동일 |
 | AT-023 | registry release contract | generic image, numeric tag gate, version 일치, package write 권한 |
@@ -110,7 +111,7 @@ Supervisor가 없어도 검증 가능한 항목:
 | AT-030 | renderer 기본 output 격리 | init/start가 기존 기본 output을 삭제하고 `/run/codex-ha/playwright-output` mode 0700으로 재생성, 50 MiB 제한, `/data`에 profile/artifact 없음 |
 | AT-031 | gateway와 token 비노출 | `127.0.0.1:8099`의 frontend/auth/API/WebSocket이 direct Core fixture로 성공, 검증된 read-only token만 정확한 local origin에 주입되고 Supervisor/browser token은 argv/log/MCP/console/network/artifact에 없음. token 부재·검증 실패 시 일반 login page 동작 |
 | AT-032 | 권한/port 회귀 | renderer 추가 전후 `config.yaml`의 port/Ingress/role/AppArmor/privilege 계약이 동일 |
-| AT-033 | 업데이트 config 보존 | image 교체로 `/etc` browser 기본값은 갱신되고 marker를 넣은 `/data/codex/config.toml`, auth, SSH host key, 운영 지침은 byte-for-byte 보존 |
+| AT-033 | 업데이트 config 보존 | option이 없거나 `preserve`인 image 교체에서 `/etc` browser 기본값만 갱신되고 marker를 넣은 `/data/codex/config.toml`, auth, SSH host key, 운영 지침은 byte-for-byte 보존 |
 | AT-034 | transport/file enforcement | wrapper의 모든 command-line 인수와 proxy의 모든 tool `filename` 거부, `/config`·`/data` artifact 우회 없음 |
 | AT-035 | browser user 최소권한 | browser token의 current user와 admin user list를 교차검증하고 active·local-only·non-system·non-admin·sole `system-read-only`일 때만 ready. system-users/admin/복수 group/비활성 token은 fail closed |
 | AT-036 | source IP와 재사용 negative | Docker inspect App IP, `curl %{local_ip}`, Core가 관측한 peer가 일치. container 제거 뒤 다른 App이 같은 IP를 받을 수 있음을 재현하고 production 파일에 Docker CIDR·`trusted_networks`·synthetic XFF 설정이 없음을 확인 |
@@ -119,6 +120,8 @@ Supervisor가 없어도 검증 가능한 항목:
 | AT-039 | browser 자동 인증 option | schema/default true, 누락 option도 ON, startup 자동 생성, restart 동일 identity 재사용, OFF에서 `/run` token 차단·`/data`/HA identity 보존·명시적 remove 허용, ON remove 거부, ON 재활성화, manual override ON 우선/OFF 억제 |
 | AT-040 | Codex 기본 HA browser route | 기존 사용자 config/AGENTS를 보존한 update container의 `codex debug prompt-input`과 `browser_navigate` description이 image-managed Playwright와 `http://127.0.0.1:8099/`를 첫 경로로 지정하고 다른 browser skill/8123/external URL 선탐색을 금지 |
 | AT-041 | HTTPS Core trust | Node HTTP/WebSocket과 nginx gateway가 image CA·SNI·`homeassistant` hostname을 검증하고 `proxy_ssl_verify off`가 없으며 invalid chain/hostname에서 fail closed |
+| AT-042 | 선택형 user-file refresh | missing/default preserve, agents-only, all-target, 같은 version 1회, 다음 target만 후속 적용, private byte-exact backup과 config reset을 검증하고 auth/override/SSH/browser identity/`/config`는 보존 |
+| AT-043 | user-file refresh 안전·복구 | symlink/hardlink/FIFO와 unsafe runtime lock을 mutation 전에 거부하고 hardlink 피해 파일 mode를 바꾸지 않으며, commit 전 journal은 rollback하고 commit 후 stale journal은 이후 사용자 편집을 보존한 채 정리 |
 
 ## 3. HAOS 수동/E2E 시나리오
 
@@ -326,6 +329,20 @@ ha-api GET /states
 
 이 시나리오는 실제 HAOS에서 아직 실행하지 않았다. 로컬 Docker fixture 결과로 대체하지 않고 **NOT RUN — HAOS unverified**로 기록한다.
 
+### E2E-017 Home Assistant 구성의 선택형 사용자 파일 갱신
+
+1. 공개 `0.2.2`의 user `config.toml`, base `AGENTS.md`, `AGENTS.override.md`, auth와 SSH fingerprint에 서로 다른 marker를 기록한다.
+2. App을 `0.2.3`으로 일반 업데이트하고 첫 시작에서 기존 파일과 identity가 모두 보존되며 user-file backup/state가 생기지 않았는지 확인한다.
+3. App **구성**에서 `refresh_agents`를 선택하고 저장·재시작해 base `AGENTS.md`만 image 기본본이 되고 이전 bytes가 root-only backup에 있는지 확인한다.
+4. 같은 version에서 사용자 문장을 다시 추가하고 재시작해 반복 덮어쓰지 않는지 확인한다.
+5. `refresh_all`로 바꾸고 저장·재시작해 이미 처리한 agents는 유지되고 config만 현재 App option 기반 기본본이 되며 별도 private backup/state가 생기는지 확인한다.
+6. `auth.json`, session, `AGENTS.override.md`, SSH/browser identity, App options와 Home Assistant `/config` marker가 유지되는지 확인한다.
+7. 일회성 갱신이면 `preserve`로 되돌린다. refresh mode를 유지하는 시험은 다음 App version에서 해당 target이 한 번 다시 적용된다는 파괴 범위를 먼저 승인받고 수행한다.
+
+성공 기준: CLI option 없이 HA 웹 구성만으로 선택한 범위가 target별/version별 한 번 적용되고, 기본 업데이트와 비대상 자료는 보존되며 backup과 로그에 대한 비밀 취급 경고가 실제 동작과 일치한다.
+
+이 시나리오의 실제 Home Assistant 구성 UI와 Supervisor update 동작은 아직 **NOT RUN — HAOS unverified**다.
+
 ## 4. 회귀 테스트 우선순위
 
 P0:
@@ -338,13 +355,14 @@ P0:
 - token 로그 노출
 - loopback gateway 외부 노출 또는 renderer token/artifact 유출
 - browser 추가로 AppArmor/port/privilege 경계 약화
+- 기본 업데이트의 사용자 config/AGENTS 손상 또는 refresh 대상 밖 identity/`/config` 변경
 
 P1:
 
 - auto-start 옵션 오동작
 - tmux 재접속 실패
 - manager API helper 실패
-- 사용자 `AGENTS.md` 덮어쓰기
+- 기본 `preserve`에서 사용자 `AGENTS.md` 덮어쓰기 또는 선택 refresh의 반복 적용
 - 한글/resize 문제
 - Playwright MCP/Chromium 시작 실패
 - desktop/mobile layout, console 또는 resource 오류 수집 실패

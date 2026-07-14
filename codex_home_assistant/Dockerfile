@@ -66,7 +66,8 @@ RUN apk add --no-cache \
 
 COPY rootfs /
 
-RUN chmod 0755 \
+RUN printf '%s\n' "${BUILD_VERSION}" > /usr/local/share/codex-ha/app-version \
+    && chmod 0755 \
       /etc/s6-overlay/s6-rc.d/codex-ha-init/run \
       /etc/s6-overlay/s6-rc.d/ingress/finish \
       /etc/s6-overlay/s6-rc.d/ingress/run \
@@ -83,7 +84,9 @@ RUN chmod 0755 \
       /usr/local/share/codex-ha/browser-user-admin.mjs \
       /usr/local/share/codex-ha/playwright-init-page.ts \
       /usr/local/share/codex-ha/playwright-mcp-proxy.mjs \
-      /usr/local/share/codex-ha/playwright-mcp.json
+      /usr/local/share/codex-ha/playwright-mcp.json \
+      /usr/local/share/codex-ha/user-files-update.mjs \
+      /usr/local/share/codex-ha/app-version
 
 RUN install -d -m 0700 /data/home /data/codex \
     && codex_version_output="$(codex --version)" \

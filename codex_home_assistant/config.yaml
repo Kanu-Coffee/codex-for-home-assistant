@@ -37,6 +37,7 @@ options:
   tmux_session_name: codex-ha
   codex_approval_policy: on-request
   codex_sandbox_mode: danger-full-access
+  codex_user_files_update_mode: preserve
   home_assistant_browser_auto_auth: true
   log_level: info
 
@@ -47,6 +48,7 @@ schema:
   tmux_session_name: "match(^[A-Za-z0-9._-]{1,64}$)"
   codex_approval_policy: "list(untrusted|on-request|never)"
   codex_sandbox_mode: "list(workspace-write|danger-full-access)"
+  codex_user_files_update_mode: "list(preserve|refresh_agents|refresh_all)"
   home_assistant_browser_auto_auth: bool
   home_assistant_browser_token: password?
   log_level: "list(trace|debug|info|notice|warning|error|fatal)"
