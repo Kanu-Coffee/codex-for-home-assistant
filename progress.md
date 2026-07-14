@@ -36,6 +36,7 @@
 - 최종 local image 증거: image ID `sha256:a774b98e7b60852e9b005736ee52debea6ff67b140b2e9fae8cad20b6979329e`, label version `0.2.3`/arch `amd64`, size 533,414,320 bytes다.
 - 최종 인증/browser/update 증거: managed-auth smoke, full Docker smoke와 public `0.2.2` → local `0.2.3` update smoke가 PASS했다. `8099` fixture는 desktop `1440x900`(전송 PNG 1389x868)·mobile `390x844`, console/network, direct Core REST/WebSocket, exact token redaction을 확인했다. 실제 HAOS/AppArmor dashboard E2E는 별도 **NOT RUN**이다.
 - 최종 정적 증거: Linux Python 3.13 + bash/jq에서 pytest **50 passed**, YAML, ShellCheck 0.11.0, Hadolint 2.14.0, Markdown 20개, actionlint 1.7.7, Node/Bash syntax와 `git diff --check`가 PASS했다.
+- [x] 기능 commit `7709e24`를 `feat/browser-auto-auth-default-route`에 push하고 draft PR [#16](https://github.com/Kanu-Coffee/codex-for-home-assistant/pull/16)을 생성했다. feature head의 push/PR CI run `29331087866`·`29331104007`에서 lint/unit, App config, amd64 build/full/managed/update smoke가 모두 PASS했고 builder run `29331104185`의 metadata와 amd64 image build도 PASS했다.
 
 ### 2026-07-14 — 브라우저 최소권한 인증 자동 설정
 
