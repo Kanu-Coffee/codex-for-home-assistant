@@ -4,8 +4,8 @@
 
 ## Project Status
 
-- 상태: **amd64 MVP/M2 PASS / 0.2.3 public·자동 회귀 PASS / 0.2.4 validation·evidence 릴리스 후보 / Home Assistant UI·Supervisor update·HAOS AppArmor dashboard 사용자 확인 PASS**
-- 현재 마일스톤: **런타임 기능 변경 없는 0.2.4 실기 증거 패치 병합·릴리스**
+- 상태: **amd64 MVP/M2 PASS / 0.2.4 public·자동 회귀 PASS / Home Assistant UI·Supervisor update·HAOS AppArmor dashboard는 public 0.2.3 사용자 확인 PASS**
+- 현재 마일스톤: **0.2.4 validation/evidence patch 공개 검증 완료 / M3 대기**
 - 마지막 문서 기준일: **2026-07-14**
 - 저장소: public `Kanu-Coffee/codex-for-home-assistant`, default branch `main`
 
@@ -24,9 +24,9 @@
 
 ## Current Work
 
-### 2026-07-14 — HAOS UI/AppArmor 실기 완료 기록과 0.2.4 후보
+### 2026-07-14 — HAOS UI/AppArmor 실기 완료 기록과 0.2.4 릴리스
 
-- 목표: public `0.2.3`을 실제 HAOS에서 검증한 사용자 확인을 문서화하고, 런타임 기능 변경 없는 validation/evidence patch `0.2.4` 릴리스 후보로 올린다.
+- 목표: public `0.2.3`을 실제 HAOS에서 검증한 사용자 확인을 문서화하고, 런타임 기능 변경 없는 validation/evidence patch `0.2.4`를 공개한다.
 - [x] Home Assistant 구성 UI와 Supervisor 일반 App 업데이트 경로: **PASS — 사용자 실기 확인**.
 - [x] AppArmor 활성 상태의 인증된 `http://127.0.0.1:8099` dashboard desktop/mobile 렌더링, console, network/정적 resource와 Core WebSocket 경로: **PASS — 사용자 실기 확인**.
 - 증거 한계: 사용자가 상세 실행 로그, screenshot, HAOS 버전을 제공하지 않아 이를 추정하거나 저장소 증거로 기록하지 않는다. token 음성 검색, 적대적 환경변수, 자동 인증 OFF/ON·삭제 lifecycle의 세부 음성 테스트는 자동 fixture 증거와 구분하며 이번 HAOS 확인으로 확대하지 않는다.
@@ -34,8 +34,9 @@
 - [x] App/Docker/Playwright version 표식을 `0.2.4`로 맞추고 CI update 기준을 public `0.2.3`으로 올렸다. retained `refresh_all`의 이전-version state를 동적으로 만들어 새 version에서 두 target을 정확히 한 번 다시 갱신하고 같은-version 반복은 멱등임을 검증한다.
 - [x] local amd64 image `sha256:b6badb83879799e9bb7c576751b370ef7e4600e208ca72028dafbfc3c2d2272d`는 version `0.2.4`, arch `amd64`, size 533,425,228 bytes다. user-file update, managed browser-auth와 public `0.2.3` → local `0.2.4` update smoke는 PASS했다. nested Docker driver의 full smoke는 browser/gateway/Core WebSocket까지 PASS한 뒤 Windows host-loopback ttyd에 접근할 수 없어 중단됐으므로 전체 PASS로 기록하지 않고 native Linux PR CI를 병합 게이트로 사용한다.
 - [x] Windows Python 3.14에서 pytest **46 passed / 8 jq-dependent skipped**, Markdown 20개, YAML, ShellCheck/Bash syntax, Hadolint와 `git diff --check`가 PASS했다. jq-dependent 계약과 full Docker smoke는 Linux PR CI에서 다시 실행한다.
-- [ ] PR CI와 Builder dry-run을 통과하고 merge commit으로 `main`에 병합한다.
-- [ ] merge SHA에 annotated `0.2.4` tag를 한 번 게시하고 공식 Builder image, anonymous pull, public smoke와 GitHub prerelease를 검증한다.
+- [x] PR [#18](https://github.com/Kanu-Coffee/codex-for-home-assistant/pull/18)의 head `3b302cb`에서 push CI `29338992164`, PR CI `29339016206`와 Builder dry-run `29339012850`을 통과했고 merge commit `9a2b2298cac235c8230f7c173ad188a55b855f3e`로 `main`에 병합했다. main CI `29339330253`도 통과했다.
+- [x] merge SHA `9a2b2298cac235c8230f7c173ad188a55b855f3e`에 annotated `0.2.4` tag를 게시하고 공식 Builder run [`29339603324`](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/29339603324)으로 generic/per-arch GHCR image와 [GitHub prerelease](https://github.com/Kanu-Coffee/codex-for-home-assistant/releases/tag/0.2.4)를 발행했다. 두 index digest는 `sha256:3f9d70943ad68f2b7177826546227fa00c68068b57bdf7b1686edf1c3de90f26`, runtime manifest digest는 `sha256:e435844c06d7813ad527e3897dd647cc313a03d7c7c833301953b253a57658a8`이며 익명 pull, amd64/version/source label과 mutable `latest` 부재를 확인했다.
+- [x] public `0.2.4` image에서 managed-auth, user-file update와 public `0.2.3` → public `0.2.4` update/MCP smoke가 PASS했다. exact public image의 Docker Desktop nested full smoke는 browser/gateway/Core WebSocket까지 PASS한 뒤 ttyd host-loopback timeout으로 전체 PASS 처리하지 않았으며, 동일 merge SHA의 native Linux main CI `29339330253`에서 전체 Docker browser/gateway/ttyd/SSH smoke가 PASS했다.
 
 ### 2026-07-14 — Home Assistant UI 선택형 Codex 사용자 파일 갱신과 0.2.3 릴리스
 
@@ -340,6 +341,7 @@
 - [ ] 기존 `0.1.3-dev` HAOS 설치의 `0.1.3` 일반 업데이트 경로 — 사용자 확인 대기, 삭제/reset 불필요
 - [x] Public `0.2.3` Home Assistant 구성 UI/Supervisor 일반 업데이트 경로 — 사용자 확인 PASS
 - [x] Public `0.2.3` AppArmor 활성 상태의 인증된 `8099` dashboard desktop/mobile·console·network/resource·WebSocket — 사용자 확인 PASS
+- [x] `0.2.4` validation/evidence tag/GHCR/prerelease — 익명 linux/amd64 pull, 공개 이미지 회귀와 동일 merge SHA native Linux 전체 smoke PASS
 
 ## M3 — aarch64 및 안정화
 
