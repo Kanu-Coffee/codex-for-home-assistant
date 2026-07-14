@@ -27,7 +27,7 @@
 ### 2026-07-14 — HA browser 요청 IP와 최소권한 인증 재설계
 
 - 목표: 실제 App browser→Core 요청 source를 확인하고, Docker 전체 대역이나 재할당 가능한 App `/32`를 신뢰하지 않으면서 비밀번호 없는 dashboard 검토 경로를 제공한다.
-- 네트워크 판정: 최종 local Docker smoke에서 App inspect IP, App→Core socket source, Supervisor fixture self IP와 Chromium이 직접 Core API에서 받은 관측 peer가 모두 `172.19.0.3`으로 일치했다. App 제거 뒤 같은 `172.19.0.3`을 replacement container에 재할당할 수 있었고 무토큰·Supervisor token 요청은 모두 거부됐다. Supervisor 일반 App도 `172.30.33.0/24`에서 고정 예약 없이 연결되므로 persistent `/32` allowlist는 다른 App 사칭으로 이어질 수 있다.
+- 네트워크 판정: 최종 local Docker smoke의 사용자 지정 private test subnet에서 App inspect IP, App→Core socket source, Supervisor fixture self IP와 Chromium이 직접 Core API에서 받은 관측 peer가 모두 `10.253.214.3`으로 일치했다. App 제거 뒤 같은 `10.253.214.3`을 replacement container에 재할당할 수 있었고 무토큰·Supervisor token 요청은 모두 거부됐다. 이 주소는 fixture 전용이며 실제 HAOS 주소가 아니다. Supervisor 일반 App은 `172.30.33.0/24`에서 고정 예약 없이 연결되므로 persistent `/32` allowlist는 다른 App 사칭으로 이어질 수 있다.
 - live 읽기 전용 확인: LAN Core `2026.7.1`의 `/auth/providers`에는 기존 `homeassistant` provider 하나만 있었다. live App 내부 주소의 정확한 마지막 octet과 `8099` screenshot은 현재 Windows 작업공간에 App SSH/Ingress session이 없어 확인하지 못했으며 PASS로 표시하지 않는다.
 - 보안 결정: `configuration.yaml`, `auth_providers`, `trusted_networks`, `trusted_proxies`, `.storage`를 자동 변경하지 않는다. 기존 `homeassistant` fallback을 유지한다. App IP와 Docker 대역을 trusted proxy/network로 추가하거나 synthetic X-Forwarded-For를 사용하지 않는다.
 - 대안 구현: optional password option으로 전용 long-lived token을 받고, App init과 각 MCP launch에서 `auth/current_user`와 `config/auth/list`를 교차검증해 active·local-only·non-system·non-admin·sole `system-read-only` user만 허용한다. inherited `HA_BROWSER_TOKEN`, `BASH_ENV`, `ENV`는 제거하고 실패하면 login page로 fail closed하며 Supervisor token은 Node proxy/browser child에 전달하지 않는다.

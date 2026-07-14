@@ -114,7 +114,22 @@ for volume in \
   docker volume create "${volume}" >/dev/null
 done
 
-docker network create "${GATEWAY_NETWORK}" >/dev/null
+GATEWAY_SUBNET=''
+for (( attempt = 0; attempt < 32; attempt += 1 )); do
+  if (( attempt == 0 )); then
+    candidate_subnet='10.253.214.0/24'
+  else
+    candidate_subnet="10.253.$((1 + RANDOM % 254)).0/24"
+  fi
+  if docker network create \
+    --subnet "${candidate_subnet}" \
+    "${GATEWAY_NETWORK}" >/dev/null 2>&1; then
+    GATEWAY_SUBNET=${candidate_subnet}
+    break
+  fi
+done
+[[ -n "${GATEWAY_SUBNET}" ]] \
+  || fail 'Unable to allocate a user-configured private subnet for IP reuse testing'
 docker create \
   --platform linux/amd64 \
   --name "${GATEWAY_FIXTURE}" \
