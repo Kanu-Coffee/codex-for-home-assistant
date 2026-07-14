@@ -6,6 +6,7 @@ TEST_ID="codex-ha-smoke-${RANDOM}-$$"
 PUBLIC_CONTAINER="${TEST_ID}-public"
 DEGRADED_CONTAINER="${TEST_ID}-degraded"
 GATEWAY_FIXTURE="${TEST_ID}-gateway-fixture"
+IP_REUSE_CONTAINER="${TEST_ID}-ip-reuse"
 GATEWAY_NETWORK="${TEST_ID}-gateway-network"
 PUBLIC_DATA="${TEST_ID}-public-data"
 PUBLIC_CONFIG="${TEST_ID}-public-config"
@@ -13,6 +14,7 @@ DEGRADED_DATA="${TEST_ID}-degraded-data"
 DEGRADED_CONFIG="${TEST_ID}-degraded-config"
 WORK_DIR=$(mktemp -d)
 SUPERVISOR_TOKEN=smoke-supervisor-token-do-not-use
+BROWSER_TOKEN=smoke-browser-token-read-only-do-not-use
 GATEWAY_MARKER='HA_BROWSER_GATEWAY_AUTHENTICATED:Codex HA fixture'
 
 # Git Bash rewrites Linux container paths before invoking native Windows programs.
@@ -32,6 +34,7 @@ cleanup() {
   docker rm -f \
     "${PUBLIC_CONTAINER}" \
     "${DEGRADED_CONTAINER}" \
+    "${IP_REUSE_CONTAINER}" \
     "${GATEWAY_FIXTURE}" >/dev/null 2>&1 || true
   docker volume rm -f \
     "${PUBLIC_DATA}" \
@@ -45,9 +48,16 @@ trap cleanup EXIT
 
 fail() {
   printf 'docker smoke: %s\n' "$*" >&2
-  docker logs "${PUBLIC_CONTAINER}" 2>/dev/null || true
-  docker logs "${DEGRADED_CONTAINER}" 2>/dev/null || true
-  docker logs "${GATEWAY_FIXTURE}" 2>/dev/null || true
+  for container in \
+    "${PUBLIC_CONTAINER}" \
+    "${DEGRADED_CONTAINER}" \
+    "${GATEWAY_FIXTURE}"; do
+    docker logs "${container}" 2>/dev/null \
+      | sed \
+        -e "s/${SUPERVISOR_TOKEN}/[REDACTED_HOME_ASSISTANT_TOKEN]/g" \
+        -e "s/${BROWSER_TOKEN}/[REDACTED_HOME_ASSISTANT_TOKEN]/g" \
+      || true
+  done
   exit 1
 }
 
@@ -112,6 +122,7 @@ docker create \
   --network-alias supervisor \
   --network-alias homeassistant \
   --env GATEWAY_FIXTURE_TOKEN="${SUPERVISOR_TOKEN}" \
+  --env GATEWAY_FIXTURE_BROWSER_TOKEN="${BROWSER_TOKEN}" \
   --entrypoint node \
   "${IMAGE}" \
   /tmp/ha_browser_gateway_fixture.mjs >/dev/null
@@ -130,9 +141,10 @@ print(json.dumps({
     "tmux_session_name": "codex-ha-smoke",
     "codex_approval_policy": "on-request",
     "codex_sandbox_mode": "danger-full-access",
+    "home_assistant_browser_token": sys.argv[2],
     "log_level": "info",
 }))
-' "${PUBLIC_KEY}")
+' "${PUBLIC_KEY}" "${BROWSER_TOKEN}")
 DEGRADED_OPTIONS='{"authorized_keys":["ssh-ed25519 AAAA invalid-fixture"],"web_terminal_auto_start_codex":false,"tmux_session_name":"codex-ha-degraded","codex_approval_policy":"on-request","codex_sandbox_mode":"danger-full-access","log_level":"info"}'
 
 seed_options "${PUBLIC_DATA}" "${PUBLIC_OPTIONS}"
@@ -158,9 +170,66 @@ docker run --detach \
 wait_for_log "${PUBLIC_CONTAINER}" 'Codex runtime ready:'
 wait_for_log "${GATEWAY_FIXTURE}" \
   'Gateway fixture accepted authenticated /core/info'
+wait_for_log "${GATEWAY_FIXTURE}" \
+  'Supervisor WebSocket fixture accepted browser auth/current_user'
+wait_for_log "${GATEWAY_FIXTURE}" \
+  'Supervisor WebSocket fixture accepted Supervisor config/auth/list'
 wait_for_process "${PUBLIC_CONTAINER}" '/usr/sbin/sshd'
 wait_for_process "${PUBLIC_CONTAINER}" 'ttyd'
 wait_for_process "${PUBLIC_CONTAINER}" 'nginx'
+
+docker exec "${PUBLIC_CONTAINER}" /bin/sh -c '
+  ha-browser-auth-status | jq --exit-status '\''
+    .status == "ready"
+    and .user.group_ids == ["system-read-only"]
+    and .user.local_only == true
+    and .user.is_admin == false
+  '\'' >/dev/null
+' || fail 'Dedicated Home Assistant browser user validation was not ready'
+
+NETWORK_INFO=$(docker exec "${PUBLIC_CONTAINER}" ha-browser-network-info) \
+  || fail 'Home Assistant browser network diagnostics failed'
+PUBLIC_APP_IP=$(docker inspect --format \
+  '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' \
+  "${PUBLIC_CONTAINER}")
+SOCKET_SOURCE_IP=$("${PYTHON_BIN}" -c \
+  'import json, sys; print(json.load(sys.stdin)["socket_source_ip"])' \
+  <<< "${NETWORK_INFO}")
+SUPERVISOR_REPORTED_IP=$("${PYTHON_BIN}" -c \
+  'import json, sys; print(json.load(sys.stdin)["supervisor_reported_app_ip"])' \
+  <<< "${NETWORK_INFO}")
+NETWORK_POLICY=$("${PYTHON_BIN}" -c \
+  'import json, sys; value=json.load(sys.stdin); print(str(value["safe_for_persistent_trusted_networks"]).lower())' \
+  <<< "${NETWORK_INFO}")
+[[ -n "${PUBLIC_APP_IP}" && "${PUBLIC_APP_IP}" == "${SOCKET_SOURCE_IP}" ]] \
+  || fail "Docker App IP ${PUBLIC_APP_IP} did not match socket source ${SOCKET_SOURCE_IP}"
+[[ "${PUBLIC_APP_IP}" == "${SUPERVISOR_REPORTED_IP}" ]] \
+  || fail "Supervisor-reported App IP ${SUPERVISOR_REPORTED_IP} did not match ${PUBLIC_APP_IP}"
+[[ "${NETWORK_POLICY}" == false ]] \
+  || fail 'Dynamic App address was incorrectly declared safe for persistent trusted_networks'
+wait_for_log "${GATEWAY_FIXTURE}" \
+  "Core fixture observed /auth/providers from ${PUBLIC_APP_IP}"
+
+CORE_CONFIG=$(docker exec "${PUBLIC_CONTAINER}" curl \
+  --fail \
+  --silent \
+  --show-error \
+  --header "Authorization: Bearer ${BROWSER_TOKEN}" \
+  http://homeassistant:8123/api/config) \
+  || fail 'Dedicated browser token could not call Core /api/config directly'
+CORE_OBSERVED_IP=$("${PYTHON_BIN}" -c \
+  'import json, sys; print(json.load(sys.stdin)["request_source_ip"])' \
+  <<< "${CORE_CONFIG}")
+[[ "${CORE_OBSERVED_IP}" == "${PUBLIC_APP_IP}" ]] \
+  || fail "Core observed ${CORE_OBSERVED_IP}, expected App IP ${PUBLIC_APP_IP}"
+if docker exec "${PUBLIC_CONTAINER}" curl \
+  --fail \
+  --silent \
+  --output /dev/null \
+  --header "Authorization: Bearer ${SUPERVISOR_TOKEN}" \
+  http://homeassistant:8123/api/config; then
+  fail 'Supervisor token unexpectedly authorized a direct Core browser request'
+fi
 
 docker exec "${PUBLIC_CONTAINER}" /bin/sh -c '
   codex mcp list --json | jq --exit-status '\''
@@ -168,9 +237,15 @@ docker exec "${PUBLIC_CONTAINER}" /bin/sh -c '
       .name == "playwright"
       and .enabled == true
       and .transport.type == "stdio"
-      and .transport.command == "/usr/local/bin/ha-playwright-mcp"
+      and .transport.command == "/usr/bin/env"
       and .transport.cwd == "/config"
-      and .transport.args == []
+      and .transport.args == [
+        "-i",
+        "HOME=/run/codex-ha/playwright-home",
+        "LANG=C.UTF-8",
+        "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+        "/usr/local/bin/ha-playwright-mcp"
+      ]
     )
   '\'' >/dev/null
 ' || fail 'Codex did not discover the image-managed Playwright stdio MCP'
@@ -183,19 +258,55 @@ docker cp tests/playwright_mcp_smoke.mjs \
   "${PUBLIC_CONTAINER}:/tmp/playwright_mcp_smoke.mjs"
 docker cp tests/ha_browser_gateway_fixture.mjs \
   "${PUBLIC_CONTAINER}:/tmp/ha_browser_gateway_fixture.mjs"
-docker exec \
+MCP_OUTPUT_FILE="${WORK_DIR}/playwright-mcp-smoke.log"
+if ! docker exec \
   --workdir /config \
   --env PLAYWRIGHT_MCP_SMOKE_URL=http://127.0.0.1:8099/ \
   --env PLAYWRIGHT_MCP_SMOKE_EXPECT_TEXT="${GATEWAY_MARKER}" \
+  --env PLAYWRIGHT_MCP_SMOKE_EXPECT_SOURCE_IP="${PUBLIC_APP_IP}" \
+  --env PLAYWRIGHT_MCP_SMOKE_SCREENSHOT_DIR=/tmp/codex-ha-browser-evidence \
+  --env PLAYWRIGHT_MCP_SMOKE_CHILD_ENV='{"NODE_OPTIONS":"--require=/tmp/codex-ha-missing-node-options.cjs","NODE_PATH":"/tmp/codex-ha-node-path","PLAYWRIGHT_MCP_INIT_PAGE":"/tmp/codex-ha-missing-init-page.mjs","PLAYWRIGHT_MCP_SECRETS_FILE":"/tmp/codex-ha-missing-secrets.env","PLAYWRIGHT_MCP_ALLOW_UNRESTRICTED_FILE_ACCESS":"true"}' \
   "${PUBLIC_CONTAINER}" \
-  node /tmp/playwright_mcp_smoke.mjs /usr/local/bin/ha-playwright-mcp \
-  || fail 'Playwright MCP browser smoke failed'
+  node /tmp/playwright_mcp_smoke.mjs \
+    /usr/bin/env -i \
+    HOME=/run/codex-ha/playwright-home \
+    LANG=C.UTF-8 \
+    PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
+    /usr/local/bin/ha-playwright-mcp \
+  > "${MCP_OUTPUT_FILE}" 2>&1; then
+  fail 'Playwright MCP browser smoke failed'
+fi
+if grep -Fq -- "${SUPERVISOR_TOKEN}" "${MCP_OUTPUT_FILE}" || \
+  grep -Fq -- "${BROWSER_TOKEN}" "${MCP_OUTPUT_FILE}"; then
+  fail 'Playwright MCP output disclosed a Home Assistant credential'
+fi
+cat "${MCP_OUTPUT_FILE}"
+for screenshot in \
+  home-assistant-internal-desktop.png \
+  home-assistant-internal-mobile.png; do
+  docker exec "${PUBLIC_CONTAINER}" test -s \
+    "/tmp/codex-ha-browser-evidence/${screenshot}" \
+    || fail "Internal Home Assistant screenshot was not captured: ${screenshot}"
+done
+if [[ -n "${CODEX_HA_SMOKE_ARTIFACT_DIR:-}" ]]; then
+  mkdir -p "${CODEX_HA_SMOKE_ARTIFACT_DIR}"
+  for screenshot in \
+    home-assistant-internal-desktop.png \
+    home-assistant-internal-mobile.png; do
+    docker exec "${PUBLIC_CONTAINER}" base64 \
+      "/tmp/codex-ha-browser-evidence/${screenshot}" \
+      | base64 --decode \
+      > "${CODEX_HA_SMOKE_ARTIFACT_DIR}/${screenshot}"
+  done
+fi
 wait_for_log "${GATEWAY_FIXTURE}" \
-  'Gateway fixture accepted authenticated /core/api/config'
+  "Core fixture accepted browser /api/config from ${PUBLIC_APP_IP}"
 docker exec "${PUBLIC_CONTAINER}" \
   node /tmp/ha_browser_gateway_fixture.mjs \
-  --probe-websocket ws://127.0.0.1:8099/api/websocket \
-  || fail 'Home Assistant gateway WebSocket upgrade failed'
+  --probe-websocket ws://127.0.0.1:8099/api/websocket "${BROWSER_TOKEN}" \
+  || fail 'Home Assistant gateway authenticated Core WebSocket failed'
+wait_for_log "${GATEWAY_FIXTURE}" \
+  'Core WebSocket fixture accepted browser auth/current_user'
 docker exec "${GATEWAY_FIXTURE}" curl \
   --silent \
   --connect-timeout 1 \
@@ -278,6 +389,8 @@ for executable in \
   /etc/s6-overlay/s6-rc.d/ttyd/run \
   /usr/local/bin/codex-ha-init \
   /usr/local/bin/ha-api \
+  /usr/local/bin/ha-browser-auth-status \
+  /usr/local/bin/ha-browser-network-info \
   /usr/local/bin/supervisor-api \
   /usr/local/bin/web-terminal-entrypoint; do
   docker exec "${PUBLIC_CONTAINER}" test -x "${executable}"
@@ -287,6 +400,9 @@ done
 [[ $(docker exec "${PUBLIC_CONTAINER}" stat -c '%a' /data/ssh/ssh_host_ed25519_key) == 600 ]]
 [[ $(docker exec "${PUBLIC_CONTAINER}" stat -c '%a' /data/ssh/ssh_host_ed25519_key.pub) == 644 ]]
 [[ $(docker exec "${PUBLIC_CONTAINER}" stat -c '%a' /run/codex-ha/runtime.env) == 600 ]]
+[[ $(docker exec "${PUBLIC_CONTAINER}" stat -c '%a' /run/codex-ha/browser-auth-status.json) == 600 ]]
+[[ $(docker exec "${PUBLIC_CONTAINER}" stat -c '%a' /run/codex-ha/browser-network-info.json) == 600 ]]
+[[ $(docker exec "${PUBLIC_CONTAINER}" stat -c '%a' /run/codex-ha/home-assistant-browser.token) == 600 ]]
 [[ $(docker exec "${PUBLIC_CONTAINER}" stat -c '%a' /root/.ssh/environment) == 600 ]]
 [[ $(docker exec "${PUBLIC_CONTAINER}" stat -c '%a' /data/codex/AGENTS.md) == 644 ]]
 [[ $(docker exec "${PUBLIC_CONTAINER}" stat -c '%U:%G' /data/codex/AGENTS.md) == root:root ]]
@@ -294,6 +410,12 @@ docker exec "${PUBLIC_CONTAINER}" test -f /data/codex/AGENTS.md
 docker exec "${PUBLIC_CONTAINER}" cmp -s \
   /usr/local/share/codex-ha/AGENTS.md /data/codex/AGENTS.md
 docker exec "${PUBLIC_CONTAINER}" grep -Fq 'Run `ha-config-check`' /data/codex/AGENTS.md
+docker exec "${PUBLIC_CONTAINER}" test ! -e \
+  /run/codex-ha/playwright-secrets.env
+if docker exec "${PUBLIC_CONTAINER}" grep -Fq -- '"--secrets"' \
+  /usr/local/share/codex-ha/playwright-mcp-proxy.mjs; then
+  fail 'Playwright MCP secret substitution remained enabled'
+fi
 
 PORT=$(docker port "${PUBLIC_CONTAINER}" 22/tcp | head -n1 | sed 's/.*://')
 SSH_OPTIONS=(
@@ -348,11 +470,50 @@ docker exec "${PUBLIC_CONTAINER}" grep -Fq '# preserved-agents-smoke-marker' /da
 docker exec "${PUBLIC_CONTAINER}" test -s /data/ssh/ssh_host_rsa_key.pub
 [[ $(docker exec "${PUBLIC_CONTAINER}" stat -c '%a' /data/codex/config.toml) == 600 ]]
 
-if docker logs "${PUBLIC_CONTAINER}" 2>&1 | grep -Fq 'smoke-supervisor-token-do-not-use'; then
-  fail 'Supervisor token appeared in container logs'
-fi
+RUNTIME_LOGS_FILE="${WORK_DIR}/runtime.log"
+{
+  docker logs "${PUBLIC_CONTAINER}"
+  docker logs "${GATEWAY_FIXTURE}"
+} > "${RUNTIME_LOGS_FILE}" 2>&1
+for secret in "${SUPERVISOR_TOKEN}" "${BROWSER_TOKEN}"; do
+  if grep -Fq -- "${secret}" "${RUNTIME_LOGS_FILE}"; then
+    fail 'A Home Assistant credential appeared in container logs'
+  fi
+done
 
 docker rm -f "${PUBLIC_CONTAINER}" >/dev/null
+docker create \
+  --platform linux/amd64 \
+  --name "${IP_REUSE_CONTAINER}" \
+  --network "${GATEWAY_NETWORK}" \
+  --ip "${PUBLIC_APP_IP}" \
+  --entrypoint /bin/sh \
+  "${IMAGE}" \
+  -c 'sleep 30' >/dev/null \
+  || fail "Docker could not reassign the released App address ${PUBLIC_APP_IP}"
+docker start "${IP_REUSE_CONTAINER}" >/dev/null
+REUSED_APP_IP=$(docker inspect --format \
+  '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' \
+  "${IP_REUSE_CONTAINER}")
+[[ "${REUSED_APP_IP}" == "${PUBLIC_APP_IP}" ]] \
+  || fail "Docker did not reuse the released App address ${PUBLIC_APP_IP}"
+if docker exec "${IP_REUSE_CONTAINER}" curl \
+  --fail \
+  --silent \
+  --output /dev/null \
+  http://homeassistant:8123/api/config; then
+  fail 'A replacement container inherited browser access from the stale App IP'
+fi
+if docker exec "${IP_REUSE_CONTAINER}" curl \
+  --fail \
+  --silent \
+  --output /dev/null \
+  --header "Authorization: Bearer ${SUPERVISOR_TOKEN}" \
+  http://homeassistant:8123/api/config; then
+  fail 'A replacement container used the Supervisor token as a browser credential'
+fi
+docker rm -f "${IP_REUSE_CONTAINER}" >/dev/null
+
 docker run --detach \
   --platform linux/amd64 \
   --name "${PUBLIC_CONTAINER}" \
@@ -362,6 +523,9 @@ docker run --detach \
   --volume "${PUBLIC_CONFIG}:/config" \
   "${IMAGE}" >/dev/null
 wait_for_log "${PUBLIC_CONTAINER}" 'Codex runtime ready:'
+docker exec "${PUBLIC_CONTAINER}" /bin/sh -c \
+  'ha-browser-auth-status | jq --exit-status '\''.status == "ready"'\'' >/dev/null' \
+  || fail 'Dedicated browser authentication was not restored after replacement'
 HOST_KEY_AFTER=$(docker exec "${PUBLIC_CONTAINER}" \
   ssh-keygen -lf /data/ssh/ssh_host_ed25519_key.pub)
 [[ "${HOST_KEY_BEFORE}" == "${HOST_KEY_AFTER}" ]] \
@@ -372,6 +536,7 @@ docker exec "${PUBLIC_CONTAINER}" grep -Fq '# preserved-agents-smoke-marker' /da
 docker run --detach \
   --platform linux/amd64 \
   --name "${DEGRADED_CONTAINER}" \
+  --network "${GATEWAY_NETWORK}" \
   --volume "${DEGRADED_DATA}:/data" \
   --volume "${DEGRADED_CONFIG}:/config" \
   "${IMAGE}" >/dev/null
@@ -383,6 +548,30 @@ wait_for_process "${DEGRADED_CONTAINER}" 'nginx'
 
 docker exec "${DEGRADED_CONTAINER}" test -e /run/codex-ha/ssh-disabled
 docker exec "${DEGRADED_CONTAINER}" test -s /data/ssh/ssh_host_ed25519_key
+docker exec "${DEGRADED_CONTAINER}" /bin/sh -c \
+  'ha-browser-auth-status | jq --exit-status '\''.status == "unconfigured"'\'' >/dev/null' \
+  || fail 'Missing browser token did not fail closed as unconfigured'
+docker exec "${DEGRADED_CONTAINER}" test ! -e \
+  /run/codex-ha/home-assistant-browser.token
+docker exec "${DEGRADED_CONTAINER}" test ! -e \
+  /run/codex-ha/playwright-secrets.env
+docker cp tests/playwright_mcp_smoke.mjs \
+  "${DEGRADED_CONTAINER}:/tmp/playwright_mcp_smoke.mjs"
+DEGRADED_MCP_OUTPUT_FILE="${WORK_DIR}/playwright-mcp-degraded.log"
+if ! docker exec \
+  --workdir /config \
+  --env HA_BROWSER_TOKEN="${BROWSER_TOKEN}" \
+  --env PLAYWRIGHT_MCP_SMOKE_URL=http://127.0.0.1:8099/ \
+  --env PLAYWRIGHT_MCP_SMOKE_EXPECT_TEXT=HA_BROWSER_GATEWAY_FAILED \
+  --env PLAYWRIGHT_MCP_SMOKE_EXPECT_UNAUTHENTICATED=1 \
+  "${DEGRADED_CONTAINER}" \
+  node /tmp/playwright_mcp_smoke.mjs /usr/local/bin/ha-playwright-mcp \
+  > "${DEGRADED_MCP_OUTPUT_FILE}" 2>&1; then
+  fail 'Inherited HA_BROWSER_TOKEN did not fail closed without a validated token file'
+fi
+if grep -Fq -- "${BROWSER_TOKEN}" "${DEGRADED_MCP_OUTPUT_FILE}"; then
+  fail 'Fail-closed Playwright MCP output disclosed the inherited browser token'
+fi
 docker exec "${DEGRADED_CONTAINER}" test ! -e /data/codex/AGENTS.md
 docker exec "${DEGRADED_CONTAINER}" grep -Fxq '# user override' /data/codex/AGENTS.override.md
 [[ $(docker exec "${DEGRADED_CONTAINER}" stat -c '%a' /data/codex/AGENTS.override.md) == 600 ]]
@@ -411,5 +600,16 @@ if docker exec "${DEGRADED_CONTAINER}" pgrep -f '/usr/sbin/sshd' >/dev/null 2>&1
 fi
 docker exec "${DEGRADED_CONTAINER}" curl --fail --silent --show-error \
   http://127.0.0.1:7681/ >/dev/null
+
+{
+  docker logs "${PUBLIC_CONTAINER}"
+  docker logs "${DEGRADED_CONTAINER}"
+  docker logs "${GATEWAY_FIXTURE}"
+} > "${RUNTIME_LOGS_FILE}" 2>&1
+for secret in "${SUPERVISOR_TOKEN}" "${BROWSER_TOKEN}"; do
+  if grep -Fq -- "${secret}" "${RUNTIME_LOGS_FILE}"; then
+    fail 'A Home Assistant credential appeared in final container logs'
+  fi
+done
 
 printf 'Docker smoke tests passed for %s (%s)\n' "${IMAGE}" "${CODEX_OUTPUT}"

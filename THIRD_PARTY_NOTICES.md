@@ -24,7 +24,7 @@ The release archive is downloaded during the image build and verified against th
 
 ### Playwright MCP runtime
 
-The locally built `0.2.0` amd64 image pins the npm dependency graph with `codex_home_assistant/playwright/package-lock.json`:
+The locally built `0.2.1` amd64 candidate image pins the npm dependency graph with `codex_home_assistant/playwright/package-lock.json`:
 
 | Package | Source | License in npm metadata |
 | --- | --- | --- |
@@ -38,7 +38,7 @@ Upstream Playwright does not list Alpine Linux/musl as a supported platform for 
 
 ## Direct Alpine packages
 
-The Dockerfile directly requests the runtime packages below. Versions and SPDX-style license identifiers were read from the locally built amd64 `0.2.0` image on 2026-07-14. A later rebuild can resolve newer package revisions. The installed image's `apk list --installed` and `apk info --license <package>` output is authoritative for that exact image.
+The Dockerfile directly requests the runtime packages below. Versions and SPDX-style license identifiers were read from the locally built amd64 `0.2.1` candidate image on 2026-07-14. A later rebuild can resolve newer package revisions. The installed image's `apk list --installed` and `apk info --license <package>` output is authoritative for that exact image.
 
 | Package/repository revision | Upstream | License reported by Alpine |
 | --- | --- | --- |

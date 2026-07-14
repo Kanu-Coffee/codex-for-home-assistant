@@ -17,7 +17,7 @@ Home Assistant OS 안에서 OpenAI Codex CLI를 운영하기 위한 amd64 Home A
 - Codex 인증, 설정, SSH host key의 `/data` 영속화
 - 기존 사용자 파일을 보존하는 전역 Home Assistant 운영 가드레일
 
-현재 공개 사전 릴리스는 [`0.2.0`](https://github.com/Kanu-Coffee/codex-for-home-assistant/releases/tag/0.2.0), `stage: experimental`, amd64 전용입니다. 브라우저 기능의 public image와 전체 컨테이너 smoke는 PASS지만 실제 HAOS/AppArmor dashboard E2E는 아직 검증 전입니다. AppArmor는 활성화되어 있고 Supervisor `admin`, Docker API, App `full_access`, host network는 사용하지 않습니다.
+현재 공개 사전 릴리스는 [`0.2.0`](https://github.com/Kanu-Coffee/codex-for-home-assistant/releases/tag/0.2.0)이고 이 소스의 다음 후보는 `0.2.1`입니다. `stage: experimental`, amd64 전용이며 실제 HAOS/AppArmor의 새 read-only dashboard 인증 E2E는 아직 검증 전입니다. AppArmor는 활성화되어 있고 Supervisor `admin`, Docker API, App `full_access`, host network는 사용하지 않습니다.
 
 > 이 App은 `/config`의 비밀과 `SUPERVISOR_TOKEN`을 사용할 수 있는 강한 관리자 도구입니다. 신뢰하는 관리자만 사용하고 TCP 2223을 인터넷으로 직접 port-forward하지 마세요.
 
@@ -59,15 +59,19 @@ Codex에 다음 URL 중 하나와 확인 항목을 자연어로 요청합니다.
 
 `8099`는 Headless Chromium 전용 loopback gateway이며 외부 브라우저나 Ingress에서 여는 주소가 아닙니다. 기본 desktop viewport는 `1440x900`입니다. desktop screenshot과 console error/warning, 정적 리소스를 포함한 network request를 먼저 확인한 다음 `browser_resize`로 `390x844`로 바꾸어 mobile screenshot과 같은 진단을 다시 확인하도록 요청하세요. `browser_take_screenshot`, `browser_console_messages`, `browser_network_requests`가 각각 화면, 콘솔, URL·method·status 중심의 로딩 상태를 담당합니다. 민감 정보 노출을 줄이기 위해 상세 request/response header와 body를 반환하는 도구는 제공하지 않습니다. viewport resize는 반응형 layout 검사이며 mobile User-Agent, touch, 실제 기기 성능까지 에뮬레이션하지는 않습니다.
 
+`0.2.1` 후보는 Supervisor/system token을 브라우저에 주입하지 않습니다. App 설정의 마스킹된 `home_assistant_browser_token`에는 활성·로컬 전용이며 유일한 group이 `system-read-only`인 전용 사용자의 long-lived token만 허용합니다. App 시작과 각 MCP 시작 시 실제 사용자와 group을 교차검증하고 조금이라도 다르면 자동 로그인을 끕니다. 검증에 쓰는 Supervisor credential은 Node proxy와 Chromium을 시작하기 전에 환경에서 제거합니다. App의 현재 Docker `/32`는 update/recreate 뒤 다른 App에 재할당될 수 있으므로 `trusted_networks`나 `trusted_proxies`에 추가하지 않으며, 기존 `homeassistant` 로그인 provider와 Home Assistant 설정 파일은 변경하지 않습니다. 상세한 1회 설정·password credential 제거 절차는 [App 사용 설명서](codex_home_assistant/DOCS.md)를 따르세요.
+
 ```text
 http://127.0.0.1:3000을 열어 1440x900 desktop 화면을 캡처하고,
 console error/warning과 정적 파일을 포함한 실패 network request를 확인해 줘.
 그다음 390x844로 resize해 mobile 화면을 다시 캡처하고 같은 항목을 비교해 줘.
 ```
 
-브라우저 context는 세션별로 격리되고 저장하지 않습니다. screenshot 등 파일 결과는 최대 50 MiB의 `/run/codex-ha/playwright-output`에만 두며 임의 `filename` 저장을 거부합니다. App 시작·재시작 때 기존 결과를 삭제하고 `/data`에는 보존하지 않습니다. Home Assistant gateway 인증에는 runtime token을 사용하고 MCP text output에서 exact token 문자열을 마스킹하지만, 인코딩되거나 분할된 비밀과 대시보드 화면·console·network 결과 전체를 정화하는 기능은 아닙니다. 결과에는 entity, 위치, 내부 URL 등 민감한 정보가 보일 수 있으므로 Git, 이슈, 채팅에 올리기 전에 반드시 검토하세요. 클릭·입력 도구는 실제 Home Assistant 상태를 바꿀 수 있으므로 단순 렌더링 요청을 제어 작업 승인으로 간주하지 않습니다.
+브라우저 context는 세션별로 격리되고 저장하지 않습니다. screenshot 등 파일 결과는 최대 50 MiB의 `/run/codex-ha/playwright-output`에만 두며 임의 `filename` 저장을 거부합니다. App 시작·재시작 때 기존 결과를 삭제하고 `/data`에는 보존하지 않습니다. 검증된 browser token의 exact 문자열은 MCP text output에서 마스킹하지만, 인코딩되거나 분할된 비밀과 대시보드 화면·console·network 결과 전체를 정화하는 기능은 아닙니다. 결과에는 entity, 위치, 내부 URL 등 민감한 정보가 보일 수 있으므로 Git, 이슈, 채팅에 올리기 전에 반드시 검토하세요. read-only user도 모든 entity state를 볼 수 있으며 custom integration의 권한 결함까지 막는 경계는 아니므로 단순 렌더링 요청을 제어 작업 승인으로 간주하지 않습니다.
 
 공개 `0.2.0` amd64 image의 인증 없는 pull과 전체 Docker smoke는 **PASS**입니다. generic manifest digest는 `sha256:2920cabd22969b8b8ce84048bba4d42398d633500de9576f6f493464af64e769`이며 mutable `latest` tag는 게시하지 않았습니다. 실제 MCP smoke에서 initialize와 제한된 `tools/list`, desktop `1440x900`·mobile `390x844` DOM viewport 및 PNG, console·uncaught error 수집, network 200/302/404/500 및 전송 실패 구분, 임의 `filename`·금지 도구 거부와 token 비노출을 확인했습니다. 모의 Supervisor/Core를 연결한 local gateway에서도 token bootstrap, 인증된 REST, frontend marker, WebSocket upgrade와 loopback 외부 차단이 통과했습니다. Public `0.1.3` container를 `0.2.0`으로 교체하는 update smoke는 동일 `/data`·`/config`에서 Codex 설정·인증 marker·운영 지침·SSH identity를 보존하면서 새 Playwright MCP가 동작함을 확인했습니다. 큰 desktop PNG는 MCP 응답 한도에 맞춰 같은 종횡비로 축소될 수 있습니다. 그러나 Playwright upstream은 Alpine/musl을 공식 browser 실행 플랫폼으로 지원하지 않으며, 이 구현은 Playwright 번들 browser 대신 Alpine Chromium을 사용합니다. AppArmor가 적용된 실제 HAOS의 `8099` dashboard 인증·WebSocket·resource loading과 실제 Supervisor update는 아직 **NOT RUN**입니다.
+
+Local `0.2.1` 후보 image도 build와 full Docker smoke를 통과했습니다. 내부 `8099` fixture를 desktop/mobile로 실제 캡처하고 console/network, direct Core REST/WebSocket, Docker/App/Core/Chromium source IP 일치, 해제된 IP 재사용 시 접근 거부, 상속 환경 token의 fail-closed를 확인했습니다. Public `0.2.0`에서 candidate로 container를 교체해 마스킹된 browser token option을 포함한 영속 데이터도 보존했습니다. 이 결과는 보안 경로의 container 통합 증거이며 실제 사용자 HAOS dashboard 실기 PASS를 뜻하지 않습니다.
 
 ## 로컬 빌드
 

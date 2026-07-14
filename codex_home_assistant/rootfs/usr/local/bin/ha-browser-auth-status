@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+readonly STATUS_FILE=/run/codex-ha/browser-auth-status.json
+
+if [[ ! -r "${STATUS_FILE}" ]]; then
+  jq --null-input '{status: "unavailable"}'
+  exit 1
+fi
+
+jq . "${STATUS_FILE}"

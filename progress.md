@@ -4,8 +4,8 @@
 
 ## Project Status
 
-- 상태: **amd64 MVP/M2 PASS / 0.2.0 public prerelease·브라우저 렌더러 smoke PASS / HAOS 브라우저 실기 대기**
-- 현재 마일스톤: **Playwright 기반 Codex 브라우저 도구와 HA 대시보드 렌더 경로 전달**
+- 상태: **amd64 MVP/M2 PASS / 0.2.0 public / 0.2.1 최소권한 브라우저 인증 후보 local smoke PASS / HAOS 실기 대기**
+- 현재 마일스톤: **0.2.1 최소권한 Home Assistant 대시보드 브라우저 인증 후보 검증**
 - 마지막 문서 기준일: **2026-07-14**
 - 저장소: public `Kanu-Coffee/codex-for-home-assistant`, default branch `main`
 
@@ -23,6 +23,25 @@
 - [x] 문서 주도 개발 파일 세트 작성
 
 ## Current Work
+
+### 2026-07-14 — HA browser 요청 IP와 최소권한 인증 재설계
+
+- 목표: 실제 App browser→Core 요청 source를 확인하고, Docker 전체 대역이나 재할당 가능한 App `/32`를 신뢰하지 않으면서 비밀번호 없는 dashboard 검토 경로를 제공한다.
+- 네트워크 판정: 최종 local Docker smoke에서 App inspect IP, App→Core socket source, Supervisor fixture self IP와 Chromium이 직접 Core API에서 받은 관측 peer가 모두 `172.19.0.3`으로 일치했다. App 제거 뒤 같은 `172.19.0.3`을 replacement container에 재할당할 수 있었고 무토큰·Supervisor token 요청은 모두 거부됐다. Supervisor 일반 App도 `172.30.33.0/24`에서 고정 예약 없이 연결되므로 persistent `/32` allowlist는 다른 App 사칭으로 이어질 수 있다.
+- live 읽기 전용 확인: LAN Core `2026.7.1`의 `/auth/providers`에는 기존 `homeassistant` provider 하나만 있었다. live App 내부 주소의 정확한 마지막 octet과 `8099` screenshot은 현재 Windows 작업공간에 App SSH/Ingress session이 없어 확인하지 못했으며 PASS로 표시하지 않는다.
+- 보안 결정: `configuration.yaml`, `auth_providers`, `trusted_networks`, `trusted_proxies`, `.storage`를 자동 변경하지 않는다. 기존 `homeassistant` fallback을 유지한다. App IP와 Docker 대역을 trusted proxy/network로 추가하거나 synthetic X-Forwarded-For를 사용하지 않는다.
+- 대안 구현: optional password option으로 전용 long-lived token을 받고, App init과 각 MCP launch에서 `auth/current_user`와 `config/auth/list`를 교차검증해 active·local-only·non-system·non-admin·sole `system-read-only` user만 허용한다. inherited `HA_BROWSER_TOKEN`, `BASH_ENV`, `ENV`는 제거하고 실패하면 login page로 fail closed하며 Supervisor token은 Node proxy/browser child에 전달하지 않는다.
+- gateway 변경: frontend/auth/API/WebSocket을 모두 direct `homeassistant:<port>`로 통일하고 X-Forwarded-For, X-Real-IP, Forwarded를 제거한다. `ha-browser-network-info`와 `ha-browser-auth-status`로 비밀 없는 runtime 진단을 제공한다.
+- secret 전달 판정: Playwright `--secrets`는 입력 도구에서 secret 이름을 실제 값으로 치환하므로 사용하지 않는다. system MCP는 `env -i`로 시작하고 wrapper는 `PLAYWRIGHT_MCP_*`, `NODE_OPTIONS`, `NODE_PATH`와 shell startup 변수를 검증 전에 제거한다. proxy/browser child에는 고정 allowlist 환경만 전달하며 재검증된 token은 loopback init script 환경에만 넣고 관리 proxy가 stdout/stderr의 exact 문자열을 직접 마스킹한다.
+- [x] 공식 Core/Supervisor source와 문서에서 provider order, proxy overlap, read-only group, dynamic App IP 계약을 확인한다.
+- [x] unsafe persistent trusted-network 구성을 거부하고 HA 설정을 변경하지 않는다.
+- [x] dedicated user/token 경로, source-IP fixture, Docker IP 재사용 negative test와 내부 `8099` desktop/mobile screenshot·console·network smoke를 완료한다.
+- [x] `0.2.1` amd64 local image build와 full Docker smoke를 통과한다. image ID는 `sha256:534330f107d4524a0c9d2abfa7b9c9b0dd8d50241cdd99d8da6e29170159cc19`, label은 version `0.2.1`/arch `amd64`, size는 533,356,868 bytes다.
+- [x] public `0.2.0` → local `0.2.1` replacement smoke에서 `/data`·`/config`, Codex auth/config, AGENTS, SSH identity와 마스킹된 browser token option을 보존하고 새 MCP를 실행했다.
+- [x] 최종 authenticated fixture smoke에서 `http://127.0.0.1:8099` desktop `1440x900`(전송 PNG 1389x868)과 mobile `390x844` PNG, Core REST/WebSocket, console/network와 source IP를 확인했다. token file 없이 환경변수로 browser token을 주입한 음성 fixture는 login 상태로 fail closed했다.
+- [x] `--secrets` 미사용, hostile `PLAYWRIGHT_MCP_*`/`NODE_OPTIONS` 무시와 loopback token reflection fixture의 MCP text exact-value redaction을 image에서 검증했다.
+- [x] Linux Python 3.13에서 pytest 44개를 모두 통과하고 YAML, ShellCheck 0.11, Hadolint 2.14, Markdown과 `git diff --check` lint를 통과했다.
+- [ ] 실제 HAOS update 뒤 App 내부 `8099` dashboard desktop/mobile·console·network를 확인한다.
 
 ### 2026-07-14 — Playwright Headless Chromium 브라우저 도구
 

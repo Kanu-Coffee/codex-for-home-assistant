@@ -28,7 +28,7 @@ Home Assistant Frontend ──── Ingress/WebSocket ┤
 Codex ── STDIO MCP ── Playwright ── Chromium
                                   ├─ arbitrary authorized Web UI URL
                                   └─ http://127.0.0.1:8099
-                                       └─ HA frontend + Core API/WebSocket proxy
+                                       └─ HA frontend/auth/API/WebSocket direct Core proxy
 ```
 
 ## 2. 신뢰 모델
@@ -37,7 +37,8 @@ Codex ── STDIO MCP ── Playwright ── Chromium
 
 - Codex shell은 `/config` 전체를 읽고 쓴다.
 - shell은 `SUPERVISOR_TOKEN`을 이용해 Core 및 Supervisor API를 호출한다.
-- isolated Chromium은 사용자가 요청한 Web UI와 loopback Home Assistant gateway에 접속한다.
+- isolated Chromium은 사용자가 요청한 Web UI와 loopback Home Assistant gateway에 접속하지만 Supervisor token은 받지 않는다.
+- Home Assistant 자동 로그인은 검증된 local-only `system-read-only` 전용 user token만 사용한다.
 - Codex는 실제 기기를 작동시킬 수 있다.
 - 컨테이너 밖의 Docker socket, host network, privileged hardware는 주지 않는다.
 
@@ -54,7 +55,7 @@ Codex ── STDIO MCP ── Playwright ── Chromium
 3. Codex 전역 운영 지침 생성(기존 `AGENTS.md` 보존)
 4. SSH host key 생성 또는 기존 key 로드
 5. App 옵션에서 `authorized_keys` 렌더링
-6. 공통 runtime environment를 만들고 token이 있으면 browser secret masking 파일을 `/run`에 `0600`으로 생성
+6. 공통 runtime environment를 만들고 optional browser token의 user/group policy를 검증해 통과한 경우에만 runtime token 파일을 `/run`에 `0600`으로 생성
 7. 이전 기본 Playwright output을 지우고 runtime directory를 `/run` 아래 `0700`으로 재생성
 8. `/config` 존재 및 RW 여부 검사
 9. `sshd -t`, `nginx -t`, 옵션 형식 검사
@@ -125,20 +126,22 @@ Alpine/musl 및 system Chromium 조합은 Playwright upstream의 공식 Ubuntu/D
 
 ### 3.6 Home Assistant dashboard gateway
 
-브라우저가 직접 `homeassistant:8123`을 열면 frontend와 App 전용 system token의 공식 Core proxy 경로가 갈라진다. loopback gateway는 다음을 하나의 browser origin으로 합친다.
+브라우저의 frontend, auth, API와 WebSocket이 서로 다른 identity 경로를 쓰지 않도록 loopback gateway가 다음을 하나의 direct Core browser origin으로 합친다.
 
 ```text
 Chromium
   → http://127.0.0.1:8099/              → <Core info의 scheme/port>/ frontend/assets
-  → http://127.0.0.1:8099/api/...       → http://supervisor/core/api/...
-  → ws://127.0.0.1:8099/api/websocket   → ws://supervisor/core/websocket
+  → http://127.0.0.1:8099/auth/...       → <같은 Core>/auth/...
+  → http://127.0.0.1:8099/api/...        → <같은 Core>/api/...
+  → ws://127.0.0.1:8099/api/websocket    → <같은 Core>/api/websocket
 ```
 
 - `8099`는 컨테이너 loopback 전용 internal listener이며 `config.yaml`의 `ports`, Ingress 또는 host network에 추가하지 않는다.
-- browser init page는 origin이 정확히 `http://127.0.0.1:8099` 또는 `http://localhost:8099`일 때만 현재 `SUPERVISOR_TOKEN`을 Home Assistant frontend가 사용하는 local storage에 넣는다.
-- browser가 보내는 전체 Core REST/WebSocket 인증은 Supervisor의 공식 proxy로만 전달한다. gateway는 Core endpoint나 method를 별도 allowlist하지 않으며 arbitrary target origin에는 token을 주입하거나 header를 추가하지 않는다.
-- token은 per-container runtime secret이다. Codex가 공식 `env_vars` 경로로 MCP Node process에 전달하고 init page가 읽는다. `/run/codex-ha/playwright-secrets.env` 임시 `0600` 파일은 `--secrets` exact-value response masking에만 사용하며 `/data`로 복제하지 않는다.
-- `--secrets` masking은 exact string 방어 심층화일 뿐 보안 경계가 아니다. token을 URL query나 command argument에 넣지 않고 screenshot·console/network 결과를 민감자료로 취급한다. 인코딩되거나 분할된 비밀까지 구조적으로 정화한다고 가정하지 않는다.
+- browser init page는 origin이 정확히 `http://127.0.0.1:8099` 또는 `http://localhost:8099`일 때만 active·local-only·non-system·non-admin·sole `system-read-only` user로 검증된 token을 Home Assistant frontend local storage에 넣는다.
+- browser가 보내는 전체 Core REST/WebSocket 인증은 direct Core로 전달하며 X-Forwarded-For, X-Real-IP와 Forwarded를 제거한다. gateway는 Core endpoint/method를 별도 allowlist하지 않지만 arbitrary target origin에는 token이나 header를 추가하지 않는다.
+- Supervisor token은 MCP `env_vars`에서 제외한다. Codex는 `env -i`의 고정 최소 환경에서 wrapper를 시작하고 wrapper는 검증 전에 `PLAYWRIGHT_MCP_*`, `NODE_OPTIONS`, `NODE_PATH`, `BASH_ENV`, `ENV`를 제거한다. launcher는 App init과 각 MCP 시작 시 user policy 재검증에만 runtime credential을 사용한다. Node proxy/browser child는 상속 환경이 아니라 고정 allowlist만 받으며 dedicated browser token은 Supervisor-managed App option에 영속되고 재검증 후 `/run/codex-ha`의 임시 `0600` token 파일에서 Playwright init script 환경으로만 전달된다.
+- Chromium→gateway peer는 loopback이고 gateway→Core source는 현재 App container IP다. 일반 App IP는 update/recreate 후 재할당될 수 있으므로 `/32`나 Docker pool을 `trusted_networks`/`trusted_proxies`에 저장하지 않고 기존 `homeassistant` provider를 유지한다.
+- Playwright `--secrets`는 입력 도구에서 실제 값을 치환하므로 사용하지 않는다. 관리 proxy가 stdout/stderr의 exact token 문자열을 방어 심층화로 마스킹하되, token을 URL query나 command argument에 넣지 않고 screenshot·console/network 결과를 민감자료로 취급한다. 인코딩되거나 분할된 비밀까지 구조적으로 정화한다고 가정하지 않는다.
 - Core info가 HTTPS frontend를 보고하면 gateway는 내부 `homeassistant` upstream에 TLS로 연결하지만 자체 서명·사용자 인증서 호환을 위해 현재 `proxy_ssl_verify off`다. 이 내부 신뢰 가정과 위험은 실제 HAOS에서 검증하며 외부 origin용 범용 TLS proxy로 사용하지 않는다.
 
 ### 3.7 Browser 검사 흐름
@@ -174,7 +177,7 @@ Home Assistant dashboard는 persistent WebSocket을 사용하므로 무조건적
 └─ tmux/
 ```
 
-`/data`는 Supervisor가 App 데이터로 영속화한다. `auth.json`이 App backup에 포함될 가능성이 있으므로 backup은 비밀정보로 취급한다. Playwright 기능 추가는 이 tree의 기존 파일을 migration하거나 browser profile을 새 영속 비밀로 추가하지 않는다.
+`/data`는 Supervisor가 App 데이터와 `options.json`을 영속화한다. `auth.json`과 optional `home_assistant_browser_token`이 App backup에 포함될 가능성이 있으므로 backup은 비밀정보로 취급한다. Playwright 기능 추가는 기존 user config를 migration하거나 browser profile을 새 영속 상태로 만들지 않는다.
 
 이미지·runtime 전용 경로는 다음처럼 분리한다.
 
@@ -182,7 +185,9 @@ Home Assistant dashboard는 persistent WebSocket을 사용하므로 무조건적
 /etc/codex/config.toml                    # image-managed system MCP config
 /usr/local/lib/codex-ha/playwright/       # pinned npm runtime
 /usr/local/share/codex-ha/playwright-*    # image-managed browser config/init
-/run/codex-ha/playwright-secrets.env      # ephemeral secret masking, 0600
+/run/codex-ha/home-assistant-browser.token # validated ephemeral credential, 0600
+/run/codex-ha/browser-auth-status.json    # credential-free validation status, 0600
+/run/codex-ha/browser-network-info.json   # credential-free current socket path, 0600
 /run/codex-ha/playwright-output/          # default ephemeral artifacts, 0700, 50 MiB cap
 ```
 
@@ -329,7 +334,7 @@ SSH host key가 재시작마다 바뀌면 Remote SSH가 깨지므로 `/data` 영
 | sshd 실패 | Web UI는 가능, SSH degraded 로그 |
 | 브라우저 연결 끊김 | tmux/Codex 세션 유지 |
 | Playwright MCP/Chromium 시작 실패 | Codex·shell은 유지, browser tool만 degraded 오류 |
-| `SUPERVISOR_TOKEN` 없음 | 일반 URL 렌더 유지, HA dashboard는 자동 인증 없이 login 화면 표시 가능 |
+| dedicated browser token 없음/검증 실패 또는 `SUPERVISOR_TOKEN` 없음 | 일반 URL 렌더 유지, HA dashboard는 fail-closed login 화면과 auth status 표시 |
 | loopback gateway upstream 실패 | status와 sanitized 원인 보고, token 원문 미출력 |
 | browser output 한도 도달 | MCP 한도 오류/정리 정책을 보고하고 `/data` 사용자 파일은 건드리지 않음 |
 

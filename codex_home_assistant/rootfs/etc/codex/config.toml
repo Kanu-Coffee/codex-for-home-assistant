@@ -1,7 +1,14 @@
 [mcp_servers.playwright]
-command = "/usr/local/bin/ha-playwright-mcp"
+command = "/usr/bin/env"
+args = [
+  "-i",
+  "HOME=/run/codex-ha/playwright-home",
+  "LANG=C.UTF-8",
+  "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+  "/usr/local/bin/ha-playwright-mcp",
+]
 cwd = "/config"
-env_vars = ["SUPERVISOR_TOKEN"]
+env_vars = []
 enabled = true
 required = false
 startup_timeout_sec = 30

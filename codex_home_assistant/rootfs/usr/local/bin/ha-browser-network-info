@@ -1,0 +1,72 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+readonly UPSTREAM_FILE=/run/codex-ha/home-assistant-render-upstream.conf
+
+if [[ ! -r "${UPSTREAM_FILE}" ]]; then
+  printf '%s\n' 'ha-browser-network-info: browser upstream is not configured' >&2
+  exit 1
+fi
+
+# The dollar sign is literal nginx syntax, not a shell variable.
+# shellcheck disable=SC2016
+upstream=$(sed -n 's/^set \$ha_frontend_upstream "\([^"]*\)";$/\1/p' "${UPSTREAM_FILE}")
+if [[ ! "${upstream}" =~ ^https?://homeassistant:[0-9]+$ ]]; then
+  printf '%s\n' 'ha-browser-network-info: browser upstream is invalid' >&2
+  exit 1
+fi
+
+curl_args=(
+  --silent
+  --show-error
+  --connect-timeout 2
+  --max-time 5
+  --noproxy '*'
+  --output /dev/null
+  --write-out '%{local_ip}\n%{remote_ip}\n%{http_code}\n'
+)
+if [[ "${upstream}" == https://* ]]; then
+  curl_args+=(--insecure)
+fi
+
+mapfile -t socket_info < <(curl "${curl_args[@]}" "${upstream}/auth/providers")
+if (( ${#socket_info[@]} != 3 )) || [[ -z "${socket_info[0]}" ]]; then
+  printf '%s\n' 'ha-browser-network-info: unable to determine the Home Assistant socket path' >&2
+  exit 1
+fi
+
+supervisor_ip=''
+if [[ -n "${SUPERVISOR_TOKEN:-}" ]]; then
+  for endpoint in /apps/self/info /addons/self/info; do
+    response=$(curl --silent --show-error --connect-timeout 2 --max-time 5 \
+      --noproxy '*' \
+      --header "Authorization: Bearer ${SUPERVISOR_TOKEN}" \
+      "http://supervisor${endpoint}" 2>/dev/null || true)
+    supervisor_ip=$(jq --raw-output \
+      'select(.result == "ok") | .data.ip_address // empty' \
+      <<< "${response}" 2>/dev/null || true)
+    if [[ -n "${supervisor_ip}" ]]; then
+      break
+    fi
+  done
+fi
+
+jq --null-input \
+  --arg browser_url 'http://127.0.0.1:8099/' \
+  --arg home_assistant_upstream "${upstream}" \
+  --arg socket_source_ip "${socket_info[0]}" \
+  --arg home_assistant_ip "${socket_info[1]}" \
+  --argjson http_status "${socket_info[2]}" \
+  --arg supervisor_reported_app_ip "${supervisor_ip}" \
+  '{
+    browser_url: $browser_url,
+    home_assistant_upstream: $home_assistant_upstream,
+    socket_source_ip: $socket_source_ip,
+    home_assistant_ip: $home_assistant_ip,
+    http_status: $http_status,
+    supervisor_reported_app_ip: (
+      if $supervisor_reported_app_ip == "" then null else $supervisor_reported_app_ip end
+    ),
+    address_lifetime: "dynamic_app_container",
+    safe_for_persistent_trusted_networks: false
+  }'

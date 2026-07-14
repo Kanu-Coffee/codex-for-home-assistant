@@ -1,5 +1,5 @@
 export default async ({ page }) => {
-  const token = process.env.SUPERVISOR_TOKEN;
+  const token = process.env.HA_BROWSER_TOKEN;
   if (!token) {
     return;
   }

@@ -1,6 +1,6 @@
 ---
 name: Codex for Home Assistant
-version: "0.2.0"
+version: "0.2.1"
 slug: codex_home_assistant
 description: Codex CLI, Playwright browser, Ingress terminal, and SSH for Home Assistant
 url: https://github.com/Kanu-Coffee/codex-for-home-assistant
@@ -46,4 +46,5 @@ schema:
   tmux_session_name: "match(^[A-Za-z0-9._-]{1,64}$)"
   codex_approval_policy: "list(untrusted|on-request|never)"
   codex_sandbox_mode: "list(workspace-write|danger-full-access)"
+  home_assistant_browser_token: password?
   log_level: "list(trace|debug|info|notice|warning|error|fatal)"

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-RELEASE_IMAGE=${1:-ghcr.io/kanu-coffee/codex-for-home-assistant:0.1.3}
+RELEASE_IMAGE=${1:-ghcr.io/kanu-coffee/codex-for-home-assistant:0.2.0}
 CANDIDATE_IMAGE=${2:-codex-for-home-assistant:test}
 TEST_ID="codex-ha-update-${RANDOM}-$$"
 RELEASE_CONTAINER="${TEST_ID}-release"
@@ -12,6 +12,7 @@ CONFIG_MARKER="# ${TEST_ID}-user-config-marker"
 AGENTS_MARKER="<!-- ${TEST_ID}-agents-marker -->"
 AUTH_MARKER="${TEST_ID}-auth-marker-not-a-credential"
 HA_CONFIG_MARKER="${TEST_ID}-home-assistant-config-marker"
+BROWSER_OPTION_MARKER="${TEST_ID}-browser-option-not-a-credential"
 
 # Git Bash rewrites Linux container paths before invoking native Windows programs.
 if [[ "${OSTYPE:-}" == msys* || "${OSTYPE:-}" == cygwin* ]]; then
@@ -116,7 +117,7 @@ docker volume create "${DATA_VOLUME}" >/dev/null
 docker volume create "${CONFIG_VOLUME}" >/dev/null
 
 printf '%s' \
-  '{"authorized_keys":[],"web_terminal_auto_start_codex":false,"tmux_session_name":"codex-ha-update-smoke","codex_approval_policy":"on-request","codex_sandbox_mode":"danger-full-access","log_level":"info"}' \
+  "{\"authorized_keys\":[],\"web_terminal_auto_start_codex\":false,\"tmux_session_name\":\"codex-ha-update-smoke\",\"codex_approval_policy\":\"on-request\",\"codex_sandbox_mode\":\"danger-full-access\",\"home_assistant_browser_token\":\"${BROWSER_OPTION_MARKER}\",\"log_level\":\"info\"}" \
   | docker run --rm --interactive \
     --platform linux/amd64 \
     --entrypoint /bin/sh \
@@ -163,6 +164,8 @@ AGENTS_HASH_BEFORE=$(container_hash \
 HA_CONFIG_HASH_BEFORE=$(container_hash \
   "${RELEASE_CONTAINER}" /config/.codex-ha-update-smoke-marker)
 HOST_KEY_BEFORE=$(host_key_fingerprint "${RELEASE_CONTAINER}")
+OPTIONS_HASH_BEFORE=$(container_hash \
+  "${RELEASE_CONTAINER}" /data/options.json)
 
 # Model a Home Assistant App update: replace only the container. The two named
 # volumes are not removed, reset, copied, or recreated between image versions.
@@ -185,6 +188,9 @@ start_app "${CANDIDATE_CONTAINER}" "${CANDIDATE_IMAGE}"
 [[ $(host_key_fingerprint "${CANDIDATE_CONTAINER}") \
   == "${HOST_KEY_BEFORE}" ]] \
   || fail 'SSH host key fingerprint changed during image update'
+[[ $(container_hash "${CANDIDATE_CONTAINER}" /data/options.json) \
+  == "${OPTIONS_HASH_BEFORE}" ]] \
+  || fail 'Home Assistant App options changed during image update'
 
 docker exec "${CANDIDATE_CONTAINER}" jq --exit-status \
   --arg marker "${AUTH_MARKER}" \
@@ -194,6 +200,10 @@ docker exec "${CANDIDATE_CONTAINER}" grep -Fxq \
   "${CONFIG_MARKER}" /data/codex/config.toml
 docker exec "${CANDIDATE_CONTAINER}" grep -Fxq \
   "${AGENTS_MARKER}" /data/codex/AGENTS.md
+docker exec "${CANDIDATE_CONTAINER}" jq --exit-status \
+  --arg marker "${BROWSER_OPTION_MARKER}" \
+  '.home_assistant_browser_token == $marker' /data/options.json >/dev/null \
+  || fail 'masked browser token option was not preserved'
 [[ $(docker exec "${CANDIDATE_CONTAINER}" stat -c '%a' \
   /data/codex/config.toml) == 600 ]]
 [[ $(docker exec "${CANDIDATE_CONTAINER}" stat -c '%a' \
@@ -207,8 +217,9 @@ docker exec "${CANDIDATE_CONTAINER}" /bin/sh -c '
       .name == "playwright"
       and .enabled == true
       and .transport.type == "stdio"
-      and .transport.command == "/usr/local/bin/ha-playwright-mcp"
+      and .transport.command == "/usr/bin/env"
       and .transport.cwd == "/config"
+      and .transport.args[-1] == "/usr/local/bin/ha-playwright-mcp"
     )
   '\'' >/dev/null
 ' || fail 'updated image did not expose the image-managed Playwright MCP'
@@ -216,7 +227,12 @@ docker exec "${CANDIDATE_CONTAINER}" /bin/sh -c '
 docker cp tests/playwright_mcp_smoke.mjs \
   "${CANDIDATE_CONTAINER}:/tmp/playwright_mcp_smoke.mjs"
 docker exec --workdir /config "${CANDIDATE_CONTAINER}" \
-  node /tmp/playwright_mcp_smoke.mjs /usr/local/bin/ha-playwright-mcp \
+  node /tmp/playwright_mcp_smoke.mjs \
+    /usr/bin/env -i \
+    HOME=/run/codex-ha/playwright-home \
+    LANG=C.UTF-8 \
+    PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
+    /usr/local/bin/ha-playwright-mcp \
   || fail 'Playwright MCP failed after released-image update'
 
 printf 'Update smoke passed: %s -> %s\n' \

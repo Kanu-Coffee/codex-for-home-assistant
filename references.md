@@ -36,6 +36,27 @@
 - Home Assistant WebSocket API  
   https://developers.home-assistant.io/docs/api/websocket/
 
+- Home Assistant authentication providers (`trusted_networks` order, trusted proxy overlap)
+  https://www.home-assistant.io/docs/authentication/providers/
+
+- Home Assistant HTTP forwarded-client and `trusted_proxies` configuration
+  https://www.home-assistant.io/integrations/http/
+
+- Home Assistant authentication permissions
+  https://developers.home-assistant.io/docs/auth_permissions/
+
+- Home Assistant Core `2026.7.1` trusted networks provider
+  https://github.com/home-assistant/core/blob/2026.7.1/homeassistant/auth/providers/trusted_networks.py
+
+- Home Assistant Core `2026.7.1` user administration WebSocket API
+  https://github.com/home-assistant/core/blob/2026.7.1/homeassistant/components/config/auth.py
+
+- Home Assistant Core `2026.7.1` built-in permission policies (`system-read-only`)
+  https://github.com/home-assistant/core/blob/2026.7.1/homeassistant/auth/permissions/system_policies.py
+
+- Home Assistant Supervisor App network implementation snapshot (`8821586`)
+  https://github.com/home-assistant/supervisor/tree/8821586aee2f1ab2c545626fb1c0f9a6d14885ce
+
 - 공식 example App repository  
   https://github.com/home-assistant/apps-example
 
@@ -109,3 +130,6 @@
 - Codex Remote SSH는 remote login shell의 PATH에서 `codex`를 찾고 remote host 자체의 인증을 요구한다.
 - Supervisor Core/App 로그 endpoint는 `Accept: text/plain` 또는 `text/x-log`를 사용하며 JSON Accept만 보내면 협상이 실패할 수 있다.
 - Codex는 `CODEX_HOME`의 `AGENTS.md`를 전역 지침으로 읽고 프로젝트 root부터 현재 디렉터리까지 더 가까운 지침을 뒤에 결합한다.
+- 일반 Supervisor App은 고정 IP를 요청하지 않고 App pool에 동적으로 연결되므로 현재 `/32`는 update/recreate 뒤 영구 신원이 아니다.
+- `trusted_networks` source가 `trusted_proxies`와 겹치면 Core가 provider login을 거부하며, Docker 전체 대역 신뢰나 synthetic X-Forwarded-For는 다른 App 사칭 범위를 넓힌다.
+- Core의 지원되는 admin WebSocket API는 `group_ids`와 `local_only`를 지정한 일반 user 생성과 Home Assistant credential 연결을 제공한다. `.storage` 직접 편집은 필요하지 않다.

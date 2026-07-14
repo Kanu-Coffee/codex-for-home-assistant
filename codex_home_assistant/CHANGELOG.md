@@ -2,6 +2,35 @@
 
 All notable changes to this App are documented in this file.
 
+## [0.2.1] - 2026-07-14
+
+### Added
+
+- Add `ha-browser-network-info` to report the current App socket source, Home Assistant peer and Supervisor-reported App address without exposing credentials or changing Home Assistant configuration.
+- Add a masked optional browser token setting, exact read-only/local-only user validation, and runtime authentication status diagnostics.
+- Add supported WebSocket-based helpers for creating a dedicated `system-read-only` user and removing its temporary password credential after a long-lived token is configured.
+
+### Changed
+
+- Send frontend, authentication, REST and WebSocket traffic through the same direct Core upstream so the dedicated user's permissions apply to the whole dashboard session.
+- Disable Home Assistant dashboard auto-login when the dedicated credential is absent, invalid, inactive, over-privileged, not local-only, or belongs to more than the read-only group.
+
+### Security
+
+- Do not add the dynamic App `/32`, the Docker App pool, or a synthetic forwarded address to `trusted_networks` or `trusted_proxies`; a released App address can be reassigned to another App after recreation.
+- Keep the existing `homeassistant` authentication provider untouched, never edit `configuration.yaml` or `.storage`, and fail closed instead of falling back to the Supervisor/system credential.
+- Exclude the Supervisor token from Codex MCP `env_vars`; use it only in the launcher to revalidate the dedicated user at App initialization and each MCP launch, then remove it before the Node proxy and browser child start.
+- Reject inherited browser token, WebSocket endpoint, `BASH_ENV`, and `ENV` values; hard-code policy checks to the internal Supervisor Core WebSocket, inject only the revalidated dedicated-user token at the two loopback browser origins, and clear forwarded-client identity headers on the Core gateway.
+- Do not enable Playwright `--secrets`, whose form-input substitution could disclose the browser token to a page; redact exact token text in the managed proxy instead and test the path with a reflection fixture.
+- Start the system MCP through a clean `env -i` boundary, remove inherited `PLAYWRIGHT_MCP_*`, `NODE_OPTIONS` and `NODE_PATH` before validation, and give the Playwright child only a fixed environment allowlist.
+
+### Testing
+
+- Cross-check Docker's App address, the browser gateway socket source, Supervisor self report and the Chromium/Core fixture's observed peer, and reproduce reuse of a released container address by another container.
+- Exercise direct Core REST/WebSocket authentication with a dedicated read-only token, reject broader user policies and inherited environment tokens, and capture the internal gateway itself at desktop/mobile sizes with console, network, loopback isolation and secret-redaction coverage.
+- Verify a public `0.2.0` to candidate update preserves `/data`, `/config`, SSH identity and the masked browser token option.
+- Keep live HAOS `8099` dashboard rendering explicitly unverified until the candidate is updated on the user's App and tested inside that container namespace.
+
 ## [0.2.0] - 2026-07-14
 
 ### Added
