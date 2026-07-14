@@ -1,5 +1,7 @@
 # test_plan.md — 검증 전략
 
+> 실제 HAOS 사용자 실기 대상은 public `0.2.3`이며, 이 소스는 그 결과를 기록하는 런타임 기능 변경 없는 `0.2.4` validation/evidence 릴리스 후보이다.
+
 ## 1. 테스트 계층
 
 ### L1 정적 검사
@@ -327,7 +329,7 @@ ha-api GET /states
 - `configuration.yaml`, `auth_providers`, `trusted_networks`, `trusted_proxies`, `.storage`가 App에 의해 바뀌지 않음
 - Network/Ingress/privilege/AppArmor 설정을 완화하지 않음
 
-이 시나리오는 실제 HAOS에서 아직 실행하지 않았다. 로컬 Docker fixture 결과로 대체하지 않고 **NOT RUN — HAOS unverified**로 기록한다.
+실행 결과: AppArmor를 활성 상태로 유지한 실제 HAOS에서 인증된 `8099` dashboard의 desktop/mobile 렌더링, console, network/정적 resource와 Core WebSocket 경로는 **PASS — public `0.2.3` 사용자 확인**이다. 상세 실행 로그와 HAOS 버전은 제공되지 않았다. 따라서 위 단계 중 token 문자열 음성 검색, hostile 환경변수, OFF/ON·완전 삭제 lifecycle의 모든 세부 음성 항목까지 실제 HAOS에서 재현했다고 확대하지 않으며, 해당 항목은 기존 자동 fixture 증거와 구분한다.
 
 ### E2E-017 Home Assistant 구성의 선택형 사용자 파일 갱신
 
@@ -341,7 +343,7 @@ ha-api GET /states
 
 성공 기준: CLI option 없이 HA 웹 구성만으로 선택한 범위가 target별/version별 한 번 적용되고, 기본 업데이트와 비대상 자료는 보존되며 backup과 로그에 대한 비밀 취급 경고가 실제 동작과 일치한다.
 
-이 시나리오의 실제 Home Assistant 구성 UI와 Supervisor update 동작은 아직 **NOT RUN — HAOS unverified**다.
+실행 결과: Home Assistant 구성 UI와 Supervisor 일반 App update 경로는 **PASS — public `0.2.3` 사용자 확인**이다. 상세 로그와 HAOS 버전은 제공되지 않았으므로 위 단계의 target별 byte/backup/state 세부 단언은 자동 회귀 증거와 구분한다. `0.2.4` 업데이트 전 `refresh_agents` 또는 `refresh_all`이 계속 선택돼 있다면 선택 target이 새 App version에서 한 번 다시 갱신된다. 재적용을 원하지 않는 경우 업데이트 전 `preserve`로 저장한다.
 
 ## 4. 회귀 테스트 우선순위
 
@@ -383,4 +385,4 @@ P2:
 - Known issues:
 ```
 
-CI 링크와 HAOS 버전, App 버전, 아키텍처를 기록한다.
+가능한 경우 CI 링크와 HAOS 버전, App 버전, 아키텍처를 기록한다. 사용자가 상세 환경이나 로그를 제공하지 않으면 이를 추정하지 않고 미제공으로 기록한다.

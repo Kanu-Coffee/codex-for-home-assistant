@@ -156,10 +156,10 @@ hassio_role: manager
 
 ## ADR-024 Alpine system Chromium headless shell 사용
 
-- 상태: Provisional Accepted for 0.2.0
+- 상태: Accepted after user-confirmed 0.2.3 HAOS validation
 - 결정: upstream browser bundle을 내려받지 않고 Alpine package의 `/usr/bin/chromium-headless-shell`을 pinned Playwright MCP가 headless·isolated mode로 실행한다. CJK/emoji font를 image에 포함한다.
 - 이유: 기존 `ghcr.io/home-assistant/base:3.24`/Alpine App 구조를 유지하고 browser runtime만 추가해 배포·업데이트 회귀 범위를 줄이기 위해서다.
-- 제약: upstream Playwright의 공식 Linux browser target은 Ubuntu/Debian 계열 중심이며 이 Alpine system Chromium 조합은 공식 bundle과 동일한 지원 계약이 아니다. 로컬 fixture와 image smoke 외에 실제 HAOS/AppArmor/dashboard 실기가 필요하며 완료 전에는 **HAOS unverified**다.
+- 제약: upstream Playwright의 공식 Linux browser target은 Ubuntu/Debian 계열 중심이며 이 Alpine system Chromium 조합은 공식 bundle과 동일한 지원 계약이 아니다. Public `0.2.3`의 실제 HAOS에서 AppArmor 활성 상태의 dashboard desktop/mobile 경로가 동작했다고 사용자가 확인했다. package revision이 바뀌면 local image smoke와 HAOS/AppArmor/dashboard 실기를 다시 수행한다.
 - 재검토 조건: Chromium/MCP 호환 실패가 반복되거나 보안 패치 cadence를 맞출 수 없으면 Debian/Ubuntu browser sidecar 또는 지원 base로의 전환을 별도 ADR로 평가한다.
 
 ## ADR-025 HA dashboard는 loopback gateway와 컨테이너 수명 App token으로 렌더링
@@ -177,7 +177,7 @@ hassio_role: manager
 - 결정: 기본 desktop viewport는 1440x900, mobile 회귀 viewport는 390x844로 정한다. navigation, accessibility snapshot, resize, screenshot, console/page error, network request 목록의 URL/status와 기본 UI 조작을 허용한다. 민감 header/body를 포함할 수 있는 단일 request 상세, 임의 code 실행, codegen, unrestricted file access/upload는 제외한다.
 - 이유: 사용자가 요구한 responsive 화면·console 오류·resource loading 검증에는 실제 Chromium과 관찰 도구가 필요하지만 범용 browser automation code와 영속 profile은 불필요한 공격 표면이다.
 - artifact: browser output은 mode 0700의 `/run/codex-ha/playwright-output`에 두고 50 MiB로 제한하며 init 때 이전 output을 제거한다. enforcement proxy가 tool call의 `filename`을 거부해 `/config`·`/data` 우회를 막는다. screenshot과 console/network 결과는 민감자료로 취급한다.
-- 완료 기준: local fixture에서 두 viewport와 오류/resource 수집을 자동 검증하고, 실제 HAOS에서 AppArmor 활성 상태의 dashboard와 token 비노출을 별도 E2E로 검증한다.
+- 완료 기준: local fixture에서 두 viewport와 오류/resource 수집을 자동 검증하고, 실제 HAOS에서 AppArmor 활성 상태의 dashboard를 별도 E2E로 검증한다. Public `0.2.3`의 실제 HAOS dashboard desktop/mobile·console·network 경로는 사용자 확인 PASS이며 token 원문 비노출은 자동 fixture/redaction smoke로 보완한다.
 
 ## ADR-027 동적 App IP를 인증 신원으로 사용하지 않고 전용 read-only token을 사용
 
@@ -220,4 +220,4 @@ hassio_role: manager
 - transaction: 선택된 모든 target을 mutation 전에 검사하고 root-owned regular single-link file만 허용한다. symbolic link, 다중 hardlink, 비정상 file 또는 신뢰할 수 없는 ownership이면 링크를 따라가지 않고 선택 refresh 전체를 fail closed한다. 기존 bytes와 candidate/metadata는 `/data/codex/backups/user-files` 아래 root-only backup에 먼저 기록하며 journal → atomic replacement → target별 version state commit 순서로 crash recovery한다.
 - 범위 제한: refresh allowlist는 `/data/codex/config.toml`과 `/data/codex/AGENTS.md`뿐이다. `AGENTS.override.md`, `auth.json`, session, SSH identity, browser identity, App options와 Home Assistant `/config`는 변경하지 않는다. backup 자체는 기존 config의 credential을 포함할 수 있으므로 Home Assistant App backup과 함께 비밀정보로 취급한다.
 - SemVer 예외: 저장소 원칙상 사용자 기능은 MINOR지만 `0.2.3`은 기본 ON browser 인증/8099 route 후보로 이미 버전·업데이트 회귀·릴리스 전달이 고정된 상태에서 이 안전한 선택 UI를 같은 미공개 후보에 포함한다. 검증된 update 경로를 다시 번호 변경하지 않기 위한 1회 예외이며, public `0.2.2`와의 기본 동작은 `preserve`로 호환된다. 이후 새 사용자 기능은 다시 MINOR 규칙을 따른다.
-- 검증 경계: enum/default, 기존 update 첫 preserve, 두 refresh scope, target별 version one-shot, private backup, crash recovery와 unsafe link fail-closed를 local container에서 검증한다. 실제 Home Assistant 구성 UI/Supervisor update와 HAOS/AppArmor dashboard E2E는 별도 **NOT RUN**으로 기록한다.
+- 검증 경계: enum/default, 기존 update 첫 preserve, 두 refresh scope, target별 version one-shot, private backup, crash recovery와 unsafe link fail-closed를 local container에서 검증한다. 실제 Home Assistant 구성 UI/Supervisor 일반 update와 HAOS/AppArmor dashboard E2E는 public `0.2.3`에서 사용자 확인 **PASS**로 기록하되 원본 진단 자료가 저장소의 자동 증거라는 뜻은 아니다.

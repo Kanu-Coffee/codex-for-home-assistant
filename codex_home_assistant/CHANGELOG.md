@@ -2,6 +2,24 @@
 
 All notable changes to this App are documented in this file.
 
+## [0.2.4] - 2026-07-14
+
+### Changed
+
+- Publish a validation/evidence patch with no runtime feature or security-policy changes relative to public `0.2.3`.
+- Record the user's successful Home Assistant Configuration UI/Supervisor normal update on public `0.2.3`.
+- Record the user's successful authenticated `http://127.0.0.1:8099` dashboard verification on real HAOS with AppArmor enabled, covering desktop/mobile rendering, console, network/static resources, and the Core WebSocket path.
+
+### Upgrade notes
+
+- The existing per-target App-version behavior still applies even though this is an evidence-only patch. Installations that leave `codex_user_files_update_mode` set to `refresh_agents` or `refresh_all` will refresh the selected target once again when the App version changes to `0.2.4`.
+- To avoid that reapplication, save `codex_user_files_update_mode: preserve` in the Home Assistant Configuration UI **before** updating to `0.2.4`.
+
+### Testing
+
+- Keep the public `0.2.3` HAOS user confirmation separate from the automated `0.2.4` candidate regression and release checks.
+- Do not infer or publish an HAOS version, screenshots, or detailed execution logs that the user did not provide. Existing automated negative tests continue to cover token redaction, hostile environment handling, managed-auth lifecycle, and unsafe user-file targets; those checks are not claimed as part of the new HAOS user confirmation.
+
 ## [0.2.3] - 2026-07-14
 
 ### Added

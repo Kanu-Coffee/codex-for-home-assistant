@@ -446,7 +446,8 @@ def test_released_image_update_smoke_is_wired_into_ci(
     )
 
     assert update_smoke.startswith("#!/usr/bin/env bash\nset -Eeuo pipefail\n")
-    assert "ghcr.io/kanu-coffee/codex-for-home-assistant:0.2.2" in update_smoke
+    assert "ghcr.io/kanu-coffee/codex-for-home-assistant:0.2.3" in update_smoke
+    assert '\\"codex_user_files_update_mode\\":\\"preserve\\"' in update_smoke
     assert '"${DATA_VOLUME}:/data"' in update_smoke
     assert '"${CONFIG_VOLUME}:/config"' in update_smoke
     assert "/data/codex/config.toml" in update_smoke
@@ -468,10 +469,10 @@ def test_released_image_update_smoke_is_wired_into_ci(
     assert "tests/playwright_mcp_smoke.mjs" in update_smoke
 
     assert "Run container smoke tests" in ci
-    assert "Verify update from released 0.2.2" in ci
+    assert "Verify update from released 0.2.3" in ci
     assert ci.index("Run container smoke tests") < ci.index(
-        "Verify update from released 0.2.2"
+        "Verify update from released 0.2.3"
     )
     assert "bash tests/update-smoke.sh" in ci
-    assert "ghcr.io/kanu-coffee/codex-for-home-assistant:0.2.2" in ci
+    assert "ghcr.io/kanu-coffee/codex-for-home-assistant:0.2.3" in ci
     assert "codex-for-home-assistant:test" in ci

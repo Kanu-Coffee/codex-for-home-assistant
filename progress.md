@@ -4,8 +4,8 @@
 
 ## Project Status
 
-- 상태: **amd64 MVP/M2 PASS / 0.2.3 public / 자동 인증·8099 라우팅·선택형 사용자 파일 갱신 local·public regression PASS / HAOS 실기 대기**
-- 현재 마일스톤: **0.2.3 실제 Home Assistant 구성 UI·Supervisor update와 HAOS/AppArmor dashboard 검증**
+- 상태: **amd64 MVP/M2 PASS / 0.2.3 public·자동 회귀 PASS / 0.2.4 validation·evidence 릴리스 후보 / Home Assistant UI·Supervisor update·HAOS AppArmor dashboard 사용자 확인 PASS**
+- 현재 마일스톤: **런타임 기능 변경 없는 0.2.4 실기 증거 패치 병합·릴리스**
 - 마지막 문서 기준일: **2026-07-14**
 - 저장소: public `Kanu-Coffee/codex-for-home-assistant`, default branch `main`
 
@@ -24,6 +24,19 @@
 
 ## Current Work
 
+### 2026-07-14 — HAOS UI/AppArmor 실기 완료 기록과 0.2.4 후보
+
+- 목표: public `0.2.3`을 실제 HAOS에서 검증한 사용자 확인을 문서화하고, 런타임 기능 변경 없는 validation/evidence patch `0.2.4` 릴리스 후보로 올린다.
+- [x] Home Assistant 구성 UI와 Supervisor 일반 App 업데이트 경로: **PASS — 사용자 실기 확인**.
+- [x] AppArmor 활성 상태의 인증된 `http://127.0.0.1:8099` dashboard desktop/mobile 렌더링, console, network/정적 resource와 Core WebSocket 경로: **PASS — 사용자 실기 확인**.
+- 증거 한계: 사용자가 상세 실행 로그, screenshot, HAOS 버전을 제공하지 않아 이를 추정하거나 저장소 증거로 기록하지 않는다. token 음성 검색, 적대적 환경변수, 자동 인증 OFF/ON·삭제 lifecycle의 세부 음성 테스트는 자동 fixture 증거와 구분하며 이번 HAOS 확인으로 확대하지 않는다.
+- 업데이트 주의: `refresh_agents` 또는 `refresh_all`을 계속 선택한 설치는 App version이 `0.2.4`로 바뀌면 선택한 target을 각각 한 번 다시 갱신한다. 재적용을 원하지 않으면 **업데이트 전** Home Assistant 구성에서 `preserve`로 저장해야 한다.
+- [x] App/Docker/Playwright version 표식을 `0.2.4`로 맞추고 CI update 기준을 public `0.2.3`으로 올렸다. retained `refresh_all`의 이전-version state를 동적으로 만들어 새 version에서 두 target을 정확히 한 번 다시 갱신하고 같은-version 반복은 멱등임을 검증한다.
+- [x] local amd64 image `sha256:b6badb83879799e9bb7c576751b370ef7e4600e208ca72028dafbfc3c2d2272d`는 version `0.2.4`, arch `amd64`, size 533,425,228 bytes다. user-file update, managed browser-auth와 public `0.2.3` → local `0.2.4` update smoke는 PASS했다. nested Docker driver의 full smoke는 browser/gateway/Core WebSocket까지 PASS한 뒤 Windows host-loopback ttyd에 접근할 수 없어 중단됐으므로 전체 PASS로 기록하지 않고 native Linux PR CI를 병합 게이트로 사용한다.
+- [x] Windows Python 3.14에서 pytest **46 passed / 8 jq-dependent skipped**, Markdown 20개, YAML, ShellCheck/Bash syntax, Hadolint와 `git diff --check`가 PASS했다. jq-dependent 계약과 full Docker smoke는 Linux PR CI에서 다시 실행한다.
+- [ ] PR CI와 Builder dry-run을 통과하고 merge commit으로 `main`에 병합한다.
+- [ ] merge SHA에 annotated `0.2.4` tag를 한 번 게시하고 공식 Builder image, anonymous pull, public smoke와 GitHub prerelease를 검증한다.
+
 ### 2026-07-14 — Home Assistant UI 선택형 Codex 사용자 파일 갱신과 0.2.3 릴리스
 
 - 목표: Home Assistant App 구성 화면에서 사용자가 `/data/codex/config.toml`과 `AGENTS.md`의 image 기본본 갱신 범위를 선택하고, 기본값은 기존 파일 보존으로 유지한다. 선택한 정책은 새 App version의 첫 시작에 한 번만 실행하며 같은 version의 일반 재시작에서는 반복하지 않는다.
@@ -35,19 +48,19 @@
 - [x] PR [#16](https://github.com/Kanu-Coffee/codex-for-home-assistant/pull/16)의 head `b92822f`에서 PR CI `29334410649`, push CI `29334406992`와 Builder dry-run `29334410864`을 통과했고 merge commit `370ffee`로 `main`에 병합했다. main CI `29334640150`도 통과했다.
 - [x] merge SHA `370ffee8bce5e3c5591fe9b4f732044d2ff59bdc`에 annotated `0.2.3` tag를 게시하고 공식 Builder run `29334867268`로 generic/per-arch GHCR image와 [GitHub prerelease](https://github.com/Kanu-Coffee/codex-for-home-assistant/releases/tag/0.2.3)를 발행했다. 두 index digest는 `sha256:a53c7b2006301826a52bc9d9dc3c3ec8fd5e99d73b59a028b16c78bf7628d2a1`, runtime manifest digest는 `sha256:f049e82cb3bef8b7a063dc98ea4209984a9716de566c241b1ccb0fb713f76b2e`이며 익명 pull, amd64/version/source label과 mutable `latest` 부재를 확인했다.
 - [x] public `0.2.3` image에서 managed-auth, user-file update, full browser/gateway smoke가 PASS했고 public `0.2.2` → public `0.2.3` update smoke로 기본 preserve, opt-in refresh_all과 동일 version 재시작 멱등성을 확인했다.
-- [ ] 실제 Home Assistant 구성 UI/Supervisor update와 HAOS/AppArmor의 인증된 dashboard desktop/mobile·console·network는 **NOT RUN — HAOS unverified**로 유지한다.
+- [x] 실제 Home Assistant 구성 UI/Supervisor 일반 update와 HAOS/AppArmor의 인증된 dashboard desktop/mobile·console·network/resource·WebSocket 경로는 **PASS — public `0.2.3` 사용자 실기 확인**.
 
 ### 2026-07-14 — 기본 ON 브라우저 자동 인증과 8099 Codex 라우팅
 
 - 목표: App 설정에서 Home Assistant 대시보드 브라우저 자동 인증을 켜고 끌 수 있게 하고 기본값을 `true`로 두어 신규 설치와 기존 설치의 다음 시작에서 관리형 최소권한 identity를 자동 생성·재사용한다. Codex는 Home Assistant 대시보드 검사 요청을 받으면 다른 browser skill 탐색보다 image-managed Playwright MCP와 `http://127.0.0.1:8099/`를 먼저 사용한다.
 - 수명주기 원칙: OFF는 다음 App/MCP 시작부터 runtime token 주입과 자동 생성을 비활성화하되 복구 가능한 `/data/browser-auth` identity는 삭제하지 않는다. 이미 열린 browser context에는 소급 적용하지 않으므로 option 저장 뒤 App을 재시작한다. 다시 ON이면 같은 identity를 재검증·재사용한다. 완전 삭제는 OFF 상태의 `ha-browser-auth-remove`로만 수행하고 ON에서는 즉시 재생성 경쟁을 막기 위해 거부한다. 수동 token option은 ON에서만 명시적 override로 유지한다.
 - Codex 지침 원칙: 기존 `/data/codex/config.toml`과 사용자 `AGENTS.md`는 변경하지 않는다. 업데이트 가능한 `/etc/codex/config.toml`의 `developer_instructions`, 신규 설치용 기본 `AGENTS.md`, Playwright MCP tool 설명에 8099 우선 경로를 명시한다.
-- 검증 계획: option/schema/번역 계약, default-ON 자동 생성·재시작 재사용·OFF/ON 전환·수동 override, system config와 MCP tool 설명을 unit/managed-auth/container smoke로 검증한다. desktop/mobile screenshot·console·network 회귀와 update persistence를 다시 실행하며 실제 HAOS/AppArmor는 별도 NOT RUN으로 유지한다.
+- 검증 계획: option/schema/번역 계약, default-ON 자동 생성·재시작 재사용·OFF/ON 전환·수동 override, system config와 MCP tool 설명을 unit/managed-auth/container smoke로 검증한다. desktop/mobile screenshot·console·network 회귀와 update persistence를 다시 실행하고, 실제 HAOS/AppArmor는 별도 수용 기준으로 둔다. 후자는 public `0.2.3`에서 사용자 확인 PASS로 완료됐다.
 - [x] `home_assistant_browser_auto_auth` default true와 option 누락 upgrade 동작, init/MCP 자동 ensure, OFF/ON 보존·재활성화, manual override no-fallback을 구현한다.
 - [x] `/etc/codex/config.toml`의 model-visible developer instruction, 신규 기본 `AGENTS.md`와 filtered `browser_navigate` 설명에 image-managed Playwright와 `http://127.0.0.1:8099/` 첫 경로를 제공하고 기존 사용자 config/AGENTS를 보존한다.
 - [x] ON 상태 remove를 Home Assistant mutation 전에 거부하고 OFF 상태에서만 exact identity를 완전 삭제해 다음 ensure의 즉시 재생성 경쟁을 차단한다.
 - 최종 local image 증거: image ID `sha256:a774b98e7b60852e9b005736ee52debea6ff67b140b2e9fae8cad20b6979329e`, label version `0.2.3`/arch `amd64`, size 533,414,320 bytes다.
-- 최종 인증/browser/update 증거: managed-auth smoke, full Docker smoke와 public `0.2.2` → local `0.2.3` update smoke가 PASS했다. `8099` fixture는 desktop `1440x900`(전송 PNG 1389x868)·mobile `390x844`, console/network, direct Core REST/WebSocket, exact token redaction을 확인했다. 실제 HAOS/AppArmor dashboard E2E는 별도 **NOT RUN**이다.
+- 최종 인증/browser/update 증거: managed-auth smoke, full Docker smoke와 public `0.2.2` → local `0.2.3` update smoke가 PASS했다. `8099` fixture는 desktop `1440x900`(전송 PNG 1389x868)·mobile `390x844`, console/network, direct Core REST/WebSocket, exact token redaction을 확인했다. 실제 HAOS/AppArmor dashboard desktop/mobile·console·network/resource·WebSocket E2E도 후속 public `0.2.3` 사용자 확인에서 **PASS**했다.
 - 최종 정적 증거: Linux Python 3.13 + bash/jq에서 pytest **50 passed**, YAML, ShellCheck 0.11.0, Hadolint 2.14.0, Markdown 20개, actionlint 1.7.7, Node/Bash syntax와 `git diff --check`가 PASS했다.
 - [x] 기능 commit `7709e24`를 `feat/browser-auto-auth-default-route`에 push하고 draft PR [#16](https://github.com/Kanu-Coffee/codex-for-home-assistant/pull/16)을 생성했다. feature head의 push/PR CI run `29331087866`·`29331104007`에서 lint/unit, App config, amd64 build/full/managed/update smoke가 모두 PASS했고 builder run `29331104185`의 metadata와 amd64 image build도 PASS했다.
 
@@ -67,7 +80,7 @@
 - 최종 정적 증거: Linux Python 3.13 + jq에서 pytest **49 passed**, YAML, ShellCheck 0.11.0, Hadolint 2.14.0, Markdown 20개와 `git diff --check`가 PASS했다.
 - 최종 image 증거: local image ID `sha256:24227a7c1e4ae97b1ff3b922d9b4cc6794bcbac50da7564058379f6c8c5abb6b`, label version `0.2.2`/arch `amd64`, size 533,413,124 bytes다.
 - 최종 managed-auth smoke: 생성·재사용·App replacement·회전·제거, nonblocking kernel lock, Supervisor 없는 crash-temp cleanup, unsafe symlink 거부, provider/Core 장애, token 응답 유실, 지속 cleanup 실패 journal 복구와 정책 변조 fail-closed가 PASS했다.
-- 최종 browser/update smoke: 내부 `8099` desktop `1440x900`(전송 PNG 1389x868)·mobile `390x844`, console/network, direct Core REST/WebSocket와 public `0.2.1` → local `0.2.2`의 `/data`·`/config` 보존이 PASS했다. 실제 HAOS/AppArmor dashboard E2E는 별도 **NOT RUN**이다.
+- 최종 browser/update smoke: 내부 `8099` desktop `1440x900`(전송 PNG 1389x868)·mobile `390x844`, console/network, direct Core REST/WebSocket와 public `0.2.1` → local `0.2.2`의 `/data`·`/config` 보존이 PASS했다. 당시 별도 수용 항목으로 남겨 둔 실제 HAOS/AppArmor dashboard E2E는 후속 public `0.2.3` 사용자 확인에서 **PASS**했다.
 
 ### 2026-07-14 — HA browser 요청 IP와 최소권한 인증 재설계
 
@@ -86,7 +99,7 @@
 - [x] 최종 authenticated fixture smoke에서 `http://127.0.0.1:8099` desktop `1440x900`(전송 PNG 1389x868)과 mobile `390x844` PNG, Core REST/WebSocket, console/network와 source IP를 확인했다. token file 없이 환경변수로 browser token을 주입한 음성 fixture는 login 상태로 fail closed했다.
 - [x] `--secrets` 미사용, hostile `PLAYWRIGHT_MCP_*`/`NODE_OPTIONS` 무시와 loopback token reflection fixture의 MCP text exact-value redaction을 image에서 검증했다.
 - [x] Linux Python 3.13에서 pytest 44개를 모두 통과하고 YAML, ShellCheck 0.11, Hadolint 2.14, Markdown과 `git diff --check` lint를 통과했다.
-- [ ] 실제 HAOS update 뒤 App 내부 `8099` dashboard desktop/mobile·console·network를 확인한다.
+- [x] 실제 HAOS update 뒤 App 내부 `8099` dashboard desktop/mobile·console·network/resource·WebSocket 경로를 확인했다 — public `0.2.3` 사용자 확인 PASS.
 
 ### 2026-07-14 — Playwright Headless Chromium 브라우저 도구
 
@@ -94,7 +107,7 @@
 - 구현 방향: App 이미지에 버전 고정한 Microsoft Playwright MCP와 Alpine `chromium-headless-shell`을 포함하고, `/etc/codex/config.toml` 시스템 계층에서 공식 STDIO MCP로 노출한다. `/data/codex/config.toml`은 수정하지 않아 기존 사용자 설정과 인증을 보존한다.
 - 보안 경계: 외부 포트와 host 권한을 추가하지 않고 브라우저는 headless/isolated/no-sandbox로 컨테이너 안에서만 실행한다. 위험한 임의 코드·파일 업로드 도구는 노출하지 않고, runtime Supervisor token은 임시 0600 secrets 파일로 마스킹한다.
 - HA 렌더 경로: loopback 전용 gateway가 Home Assistant frontend와 공식 Core API/WebSocket proxy를 결합하고, 현재 App token을 브라우저 localStorage에만 주입한다. token 원문은 MCP 응답·App 로그·artifact에 남기지 않는다.
-- 호환성 결정: Playwright의 공식 Linux 배포 대상은 Ubuntu/Debian이지만 기존 Home Assistant Alpine runtime의 회귀 폭을 줄이기 위해 시스템 Chromium 조합을 사용한다. 최종 local image는 `@playwright/mcp 0.0.78`, lockfile의 `playwright-core 1.62.0-alpha-1783623505000`, Alpine Chromium Headless Shell 150 조합으로 실제 MCP smoke를 통과했다. 이 결과와 HAOS/AppArmor 실기는 분리해 기록한다.
+- 호환성 결정: Playwright의 공식 Linux 배포 대상은 Ubuntu/Debian이지만 기존 Home Assistant Alpine runtime의 회귀 폭을 줄이기 위해 시스템 Chromium 조합을 사용한다. 최종 local image는 `@playwright/mcp 0.0.78`, lockfile의 `playwright-core 1.62.0-alpha-1783623505000`, Alpine Chromium Headless Shell 150 조합으로 실제 MCP smoke를 통과했다. 이 자동 결과와 HAOS/AppArmor 실기 증거는 분리해 기록했으며, 후자는 public `0.2.3` 사용자 확인에서 PASS했다.
 - 보안 보강: 고정 stdio proxy가 raw `tools/list`와 `tools/call` 양쪽에서 Codex system config와 같은 allowlist를 강제한다. 임의 code/file upload/단일 network 상세 도구와 모든 `filename` 인수를 거부하고 wrapper의 CLI 인수도 차단한다. browser 파일은 `/run`에만 두고 init 때 지운다.
 - local gateway 증거: 모의 Supervisor/Core를 전용 Docker network에 연결해 Core info, localStorage token bootstrap, 인증된 `/api/config`, frontend marker, `/api/websocket` 101 upgrade와 `8099`의 loopback 외부 접근 차단을 확인했다.
 - local update 증거: public `0.1.3` image의 container만 candidate로 교체하고 같은 named `/data`·`/config` volume을 사용해 사용자 Codex config, valid auth marker, 운영 지침, Home Assistant config marker와 SSH host fingerprint가 보존되며 새 Playwright MCP smoke가 동작함을 확인했다.
@@ -106,7 +119,7 @@
 - [x] 기능 commit `e26d31a`과 검증 기록 `b56263b`의 PR [#12](https://github.com/Kanu-Coffee/codex-for-home-assistant/pull/12)를 merge commit `a4afde6`으로 `main`에 병합했다. 병합 후 CI run `29299843452`의 lint/unit, App config, amd64 build/full/update smoke가 모두 PASS다.
 - [x] annotated tag `0.2.0`의 공식 builder run [`29299863049`](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/29299863049)로 amd64 image와 generic manifest를 게시했다. generic/per-architecture tag의 인증 없는 resolve·pull, `linux/amd64`, version/arch/source label, mutable `latest` 부재를 확인했다. generic OCI digest는 `sha256:2920cabd22969b8b8ce84048bba4d42398d633500de9576f6f493464af64e769`다.
 - [x] 인증 없이 pull한 정확한 public `0.2.0` image에서 Playwright MCP desktop/mobile·console·network, 모의 인증 gateway/WebSocket, ttyd/SSH/영속성 전체 Docker smoke를 통과하고 GitHub [`0.2.0` prerelease](https://github.com/Kanu-Coffee/codex-for-home-assistant/releases/tag/0.2.0)를 게시했다.
-- [ ] 실제 HAOS에서 일반 업데이트 후 인증된 대시보드와 AppArmor Chromium 실행을 확인한다.
+- [x] 실제 HAOS에서 일반 업데이트 후 인증된 대시보드와 AppArmor Chromium 실행을 확인했다 — public `0.2.3` 사용자 확인 PASS.
 
 ### 2026-07-13 — 0.1.3 amd64 GHCR non-dev 릴리스와 HACS 검토
 
@@ -198,7 +211,7 @@
 - [x] public `0.1.3` → local `0.2.0` update smoke: PASS — 같은 `/data`·`/config`에서 user config, valid auth marker, AGENTS, HA config marker와 SSH host fingerprint 보존 후 새 Playwright MCP smoke 통과.
 - [x] Linux Python 3.13 `pytest`: PASS — 39 passed, 0 skipped. browser supply-chain/config/proxy/gateway/update 계약, 기존 App/API/runtime/manifest/secret regression을 포함한다.
 - [x] `yamllint`, ShellCheck 0.11.0, Hadolint 2.14.0, markdownlint-cli2 0.23.0, actionlint 1.7.7, Node/Bash syntax와 `git diff --check`: PASS.
-- [ ] 실제 HAOS/AppArmor의 Chromium 시작, 실제 dashboard 인증/resource/WebSocket과 Supervisor/App Store 일반 update: NOT RUN — local Docker 결과로 대체하지 않는다.
+- [x] 실제 HAOS/AppArmor의 Chromium 시작, 인증된 dashboard desktop/mobile·console·network/resource·WebSocket와 Home Assistant 구성 UI/Supervisor 일반 update: PASS — public `0.2.3` 사용자 확인. 상세 로그와 HAOS 버전은 제공되지 않았다.
 - [x] `docker buildx build --platform linux/amd64 --load --tag codex-ha:0.1.3-dev ...`: PASS — base `3.24`, 공식 Codex SHA-256, `codex-cli 0.144.1`, image label `0.1.3-dev`.
 - [x] Linux `python -m pytest -ra`: PASS — 30 passed, 0 skipped; 문서 manifest, 자산 계약, S6/runtime, API JSON/x-log 협상·header injection 거부, token redaction, secret scan.
 - [x] `tests/docker-smoke.sh codex-ha:0.1.3-dev`: PASS — S6, `/config` RW, permissions, nginx/ttyd, 동일 tmux session/pane/pid 재접속과 96x32 resize, auto-start false/true, Codex 후 Bash 복귀, 공개키 SSH, 비밀번호 거부, UTF-8 env, host-key/config 영속성, invalid/no-key degraded recovery.
@@ -325,6 +338,8 @@
 - [x] `0.1.3-dev` Core/App 로그 helper HAOS 회귀 확인
 - [x] 첫 non-dev release/tag/GHCR publish — `0.1.3`, public anonymous linux/amd64 pull/full smoke PASS
 - [ ] 기존 `0.1.3-dev` HAOS 설치의 `0.1.3` 일반 업데이트 경로 — 사용자 확인 대기, 삭제/reset 불필요
+- [x] Public `0.2.3` Home Assistant 구성 UI/Supervisor 일반 업데이트 경로 — 사용자 확인 PASS
+- [x] Public `0.2.3` AppArmor 활성 상태의 인증된 `8099` dashboard desktop/mobile·console·network/resource·WebSocket — 사용자 확인 PASS
 
 ## M3 — aarch64 및 안정화
 
