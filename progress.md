@@ -39,7 +39,7 @@
 - [x] App 업데이트 비파괴 계약, 보안 문서, 사용자 사용법과 changelog를 갱신한다.
 - [x] amd64 image build와 최종 full Docker smoke를 통과한다.
 - [x] Linux unit/policy test와 YAML/Shell/Dockerfile/Markdown/GitHub Actions lint를 통과한다.
-- [ ] 기능 브랜치에 커밋·push한 뒤 PR/CI 결과를 기록한다.
+- [x] 기능 commit `e26d31a`을 `feat/playwright-browser-renderer`에 push하고 PR [#12](https://github.com/Kanu-Coffee/codex-for-home-assistant/pull/12)를 생성했다. push CI `29298529437`, PR CI `29298538753`의 lint/unit, App config, amd64 build/full/update smoke와 비게시 builder run `29298538882`의 metadata/amd64 image build가 모두 PASS다.
 - [ ] 실제 HAOS에서 일반 업데이트 후 인증된 대시보드와 AppArmor Chromium 실행을 확인한다.
 
 ### 2026-07-13 — 0.1.3 amd64 GHCR non-dev 릴리스와 HACS 검토
