@@ -164,7 +164,7 @@ hassio_role: manager
 
 ## ADR-025 HA dashboard는 loopback gateway와 컨테이너 수명 App token으로 렌더링
 
-- 상태: Provisional Accepted for 0.2.0
+- 상태: Superseded by ADR-027
 - 결정: container loopback `127.0.0.1:8099`의 gateway가 HA frontend resource와 전체 Core API/WebSocket을 전달한다. 현재 container의 `SUPERVISOR_TOKEN`은 MCP Node 환경에서 읽어 `http://127.0.0.1:8099` 또는 `http://localhost:8099`의 `hassTokens` localStorage에만 주입한다. `/run/codex-ha` mode 0600 secrets는 MCP exact-value masking에 사용한다.
 - 이유: 실제 dashboard를 browser에서 검증하려면 frontend와 authenticated API/WebSocket이 같은 origin 계약으로 동작해야 한다. token을 URL, MCP 인수, 사용자 config 또는 영속 profile에 저장하지 않고도 App 자신의 공식 Core 권한을 재사용할 수 있다.
 - 보안 경계: gateway는 범용 target forward proxy가 아니며 외부/Ingress listener, 새 `config.yaml` port, `host_network`, `full_access`, `privileged`, 추가 capability를 만들지 않는다. token은 argv, URL, 로그와 `/data` artifact에 의도적으로 기록하지 않는다. exact-value masking은 인코딩·분할된 출력의 구조적 sanitizer가 아니므로 결과 전체를 민감자료로 취급한다.
@@ -178,3 +178,15 @@ hassio_role: manager
 - 이유: 사용자가 요구한 responsive 화면·console 오류·resource loading 검증에는 실제 Chromium과 관찰 도구가 필요하지만 범용 browser automation code와 영속 profile은 불필요한 공격 표면이다.
 - artifact: browser output은 mode 0700의 `/run/codex-ha/playwright-output`에 두고 50 MiB로 제한하며 init 때 이전 output을 제거한다. enforcement proxy가 tool call의 `filename`을 거부해 `/config`·`/data` 우회를 막는다. screenshot과 console/network 결과는 민감자료로 취급한다.
 - 완료 기준: local fixture에서 두 viewport와 오류/resource 수집을 자동 검증하고, 실제 HAOS에서 AppArmor 활성 상태의 dashboard와 token 비노출을 별도 E2E로 검증한다.
+
+## ADR-027 동적 App IP를 인증 신원으로 사용하지 않고 전용 read-only token을 사용
+
+- 상태: Accepted
+- 판정: Chromium이 loopback gateway에 연결한 뒤 nginx가 Core에 만드는 socket의 source는 현재 App container IP다. Supervisor의 일반 App 주소는 `172.30.33.0/24`에서 동적 할당되고 update/recreate 뒤 유지·전용성이 보장되지 않는다. 현재 `/32`는 순간적으로 좁아도 나중에 다른 App에 재할당될 수 있고, 전체 대역은 즉시 모든 App을 신뢰한다. 둘 다 영구 `trusted_networks` 신원으로 사용하지 않는다.
+- proxy 판정: App IP 또는 Docker 대역이 `trusted_proxies`에도 포함되면 Home Assistant가 trusted-network 로그인을 거부한다. App을 proxy로 신뢰하고 합성 X-Forwarded-For를 보내는 우회는 같은 주소 재사용과 다른 App의 header spoofing 위험을 키우므로 사용하지 않는다.
+- 결정: Home Assistant의 `configuration.yaml`, `auth_providers`, `trusted_networks`, `trusted_proxies`와 `.storage`를 App이 편집하지 않는다. 기존 `homeassistant` provider를 그대로 유지한다. 선택적인 `home_assistant_browser_token`에는 활성·일반·`local_only` 사용자이면서 유일한 group이 `system-read-only`인 사용자의 long-lived token만 허용한다.
+- 검증: App init은 browser token으로 `auth/current_user`, Supervisor의 기존 runtime credential로 `config/auth/list`를 읽어 user ID와 정확한 group/local-only/non-admin 상태를 교차검증한다. 실패·미설정·과권한 상태에서는 token을 Chromium에 전달하지 않고 login page로 fail closed한다.
+- 전달 경계: 검증된 token은 Supervisor가 관리하는 App option에 영속되고, 실행 중에는 mode `0600`의 `/run` 파일에서 Playwright init script 환경으로만 전달된다. system MCP는 `env -i`로 wrapper를 시작하고 wrapper가 `PLAYWRIGHT_MCP_*`, `NODE_OPTIONS`, `NODE_PATH`와 shell startup 변수를 검증 전에 제거한다. Node proxy/browser child는 상속 환경이 아니라 고정 allowlist만 받으며 `SUPERVISOR_TOKEN`은 전달하지 않는다. token 주입 origin은 `127.0.0.1:8099`와 `localhost:8099`뿐이다. Playwright `--secrets`는 입력 도구에서 secret 이름을 실제 값으로 치환할 수 있으므로 사용하지 않고, 관리 proxy가 stdout/stderr의 exact 문자열만 직접 마스킹한다.
+- 권한 경계: gateway의 document, `/auth/`, `/api/`, `/api/websocket`은 모두 `homeassistant:<port>` Core로 직접 전달하고 X-Forwarded-For, X-Real-IP, Forwarded를 제거한다. Supervisor Core proxy를 섞지 않아 dedicated user의 Core permission이 전체 세션에 적용되게 한다.
+- 운영: `ha-browser-network-info`는 socket local IP와 Supervisor self IP를 읽기 전용으로 교차확인하고 이 주소가 persistent trusted-network identity가 아님을 명시한다. 전용 사용자 생성·password credential 제거는 Core의 지원되는 admin WebSocket API만 사용하며 `.storage`를 직접 수정하지 않는다.
+- 제한: `system-read-only`도 모든 entity state를 읽을 수 있으며 특정 dashboard 하나만으로 축소된 권한은 아니다. custom integration의 권한 검사 결함까지 보장하지 않으므로 화면·console·network 결과를 계속 민감자료로 취급한다.

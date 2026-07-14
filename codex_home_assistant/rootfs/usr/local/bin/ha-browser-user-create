@@ -1,0 +1,59 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+readonly HELPER=/usr/local/share/codex-ha/browser-user-admin.mjs
+
+if (( $# != 2 )); then
+  echo 'Usage: ha-browser-user-create <display-name> <username>' >&2
+  exit 2
+fi
+
+password=''
+password_confirm=''
+trap 'unset -v password password_confirm 2>/dev/null || true' EXIT
+
+if [[ "${HA_BROWSER_USER_PASSWORD_STDIN:-0}" == 1 ]]; then
+  IFS= read -r password || {
+    echo 'Unable to read the test password from standard input' >&2
+    exit 1
+  }
+  IFS= read -r password_confirm || {
+    echo 'Unable to read the test password confirmation from standard input' >&2
+    exit 1
+  }
+else
+  if [[ ! -r /dev/tty || ! -w /dev/tty ]]; then
+    echo 'An interactive terminal is required to read the password securely' >&2
+    exit 1
+  fi
+  printf 'Temporary password: ' > /dev/tty
+  IFS= read -r -s password < /dev/tty
+  printf '\nConfirm temporary password: ' > /dev/tty
+  IFS= read -r -s password_confirm < /dev/tty
+  printf '\n' > /dev/tty
+fi
+
+if [[ -z "${password}" ]]; then
+  echo 'Password must not be empty' >&2
+  exit 1
+fi
+if [[ "${password}" != "${password_confirm}" ]]; then
+  echo 'Passwords do not match' >&2
+  exit 1
+fi
+
+result=$(printf '%s' "${password}" | node "${HELPER}" create "$1" "$2")
+unset -v password password_confirm
+
+user_id=$(jq --exit-status --raw-output '.user.id' <<< "${result}")
+display_name=$(jq --exit-status --raw-output '.user.name' <<< "${result}")
+username=$(jq --exit-status --raw-output '.user.username' <<< "${result}")
+
+printf 'User ID: %s\n' "${user_id}"
+printf 'Display name: %s\n' "${display_name}"
+printf 'Username: %s\n' "${username}"
+printf 'Next steps:\n'
+printf '  1. Sign in once as this user and create a long-lived access token named Codex Browser.\n'
+printf '  2. Save that token in the App option home_assistant_browser_token and restart the App.\n'
+printf '  3. Confirm ha-browser-auth-status reports ready for user %s.\n' "${user_id}"
+printf '  4. Remove the temporary password with: ha-browser-user-remove-password %s\n' "${user_id}"

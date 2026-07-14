@@ -1,12 +1,14 @@
 import { spawn } from "node:child_process";
-import { statSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { createInterface } from "node:readline";
 
 const PLAYWRIGHT_CLI =
   "/usr/local/lib/codex-ha/playwright/node_modules/@playwright/mcp/cli.js";
 const PLAYWRIGHT_CONFIG =
   "/usr/local/share/codex-ha/playwright-mcp.json";
-const PLAYWRIGHT_SECRETS = "/run/codex-ha/playwright-secrets.env";
+const HOME_ASSISTANT_BROWSER_TOKEN =
+  "/run/codex-ha/home-assistant-browser.token";
+const REDACTED_BROWSER_TOKEN = "[REDACTED_HOME_ASSISTANT_TOKEN]";
 
 // Keep the raw MCP surface as narrow as the Codex system configuration. This
 // proxy is the enforcement point even when the wrapper is invoked directly.
@@ -30,16 +32,28 @@ const ALLOWED_TOOLS = new Set([
 ]);
 
 const childArgs = [PLAYWRIGHT_CLI, "--config", PLAYWRIGHT_CONFIG];
-try {
-  if (statSync(PLAYWRIGHT_SECRETS).size > 0) {
-    childArgs.push("--secrets", PLAYWRIGHT_SECRETS);
+const childEnvironment = {
+  HOME: "/run/codex-ha/playwright-home",
+  LANG: "C.UTF-8",
+  PATH: "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+  TMPDIR: "/tmp",
+};
+let browserToken = "";
+if (process.env.CODEX_HA_BROWSER_TOKEN_VALIDATED === "1") {
+  try {
+    const token = readFileSync(HOME_ASSISTANT_BROWSER_TOKEN, "utf8");
+    if (!/^[A-Za-z0-9._~-]{20,}$/u.test(token)) {
+      throw new Error("Home Assistant browser token file is invalid");
+    }
+    browserToken = token;
+    childEnvironment.HA_BROWSER_TOKEN = token;
+  } catch (error) {
+    if (error?.code !== "ENOENT") throw error;
   }
-} catch (error) {
-  if (error?.code !== "ENOENT") throw error;
 }
 
 const child = spawn(process.execPath, childArgs, {
-  env: process.env,
+  env: childEnvironment,
   stdio: ["pipe", "pipe", "pipe"],
 });
 const pendingToolLists = new Set();
@@ -48,8 +62,14 @@ function idKey(id) {
   return `${typeof id}:${JSON.stringify(id)}`;
 }
 
-function writeJson(stream, message) {
-  stream.write(`${JSON.stringify(message)}\n`);
+function redactExactSecret(value) {
+  if (!browserToken) return value;
+  return value.split(browserToken).join(REDACTED_BROWSER_TOKEN);
+}
+
+function writeJson(stream, message, redact = false) {
+  const serialized = JSON.stringify(message);
+  stream.write(`${redact ? redactExactSecret(serialized) : serialized}\n`);
 }
 
 function rejectCall(message, code, reason) {
@@ -128,10 +148,13 @@ serverLines.on("line", (line) => {
     }
   }
 
-  writeJson(process.stdout, message);
+  writeJson(process.stdout, message, true);
 });
 
-child.stderr.pipe(process.stderr);
+const childErrors = createInterface({ input: child.stderr, crlfDelay: Infinity });
+childErrors.on("line", (line) => {
+  process.stderr.write(`${redactExactSecret(line)}\n`);
+});
 child.on("error", (error) => {
   process.stderr.write(`Unable to start Playwright MCP: ${error.message}\n`);
   process.exitCode = 1;

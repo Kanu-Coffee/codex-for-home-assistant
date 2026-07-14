@@ -106,10 +106,12 @@ Supervisor가 없어도 검증 가능한 항목:
 | AT-028 | desktop/mobile viewport | DOM에서 1440x900과 390x844를 각각 확인하고 screenshot 이미지와 종횡비 및 responsive breakpoint 일치. MCP가 큰 응답 이미지를 축소할 수 있으므로 desktop PNG의 전송 픽셀은 동일 종횡비로 판정 |
 | AT-029 | console/network 관찰 | warning/error/page error와 2xx/3xx/4xx/5xx/failed/static resource 요청을 누락 없이 분류 |
 | AT-030 | renderer 기본 output 격리 | init/start가 기존 기본 output을 삭제하고 `/run/codex-ha/playwright-output` mode 0700으로 재생성, 50 MiB 제한, `/data`에 profile/artifact 없음 |
-| AT-031 | gateway와 token 비노출 | `127.0.0.1:8099`의 동적 frontend/전체 Core API/WebSocket fixture 성공, token은 정확한 local origin에만 주입되고 argv/log/MCP/console/network/artifact에 없음. token 부재 시 일반 login page 동작 |
+| AT-031 | gateway와 token 비노출 | `127.0.0.1:8099`의 frontend/auth/API/WebSocket이 direct Core fixture로 성공, 검증된 read-only token만 정확한 local origin에 주입되고 Supervisor/browser token은 argv/log/MCP/console/network/artifact에 없음. token 부재·검증 실패 시 일반 login page 동작 |
 | AT-032 | 권한/port 회귀 | renderer 추가 전후 `config.yaml`의 port/Ingress/role/AppArmor/privilege 계약이 동일 |
 | AT-033 | 업데이트 config 보존 | image 교체로 `/etc` browser 기본값은 갱신되고 marker를 넣은 `/data/codex/config.toml`, auth, SSH host key, 운영 지침은 byte-for-byte 보존 |
 | AT-034 | transport/file enforcement | wrapper의 모든 command-line 인수와 proxy의 모든 tool `filename` 거부, `/config`·`/data` artifact 우회 없음 |
+| AT-035 | browser user 최소권한 | browser token의 current user와 admin user list를 교차검증하고 active·local-only·non-system·non-admin·sole `system-read-only`일 때만 ready. system-users/admin/복수 group/비활성 token은 fail closed |
+| AT-036 | source IP와 재사용 negative | Docker inspect App IP, `curl %{local_ip}`, Core가 관측한 peer가 일치. container 제거 뒤 다른 App이 같은 IP를 받을 수 있음을 재현하고 production 파일에 Docker CIDR·`trusted_networks`·synthetic XFF 설정이 없음을 확인 |
 
 ## 3. HAOS 수동/E2E 시나리오
 
@@ -251,9 +253,9 @@ ha-api GET /states
 
 1. auth 상태와 host key fingerprint를 기록하고 `/data/codex/config.toml`에 식별 가능한 사용자 marker 추가
 2. 기존 `/etc/codex/config.toml`의 browser 기본값과 App version 기록
-3. `0.2.0` App image로 일반 update
+3. 공개 `0.2.0`에서 `0.2.1` 후보 App image로 일반 update
 4. 재시작
-5. 새 image의 `/etc` Playwright 기본값, 사용자 marker, 인증/SSH known_hosts 확인
+5. 새 image의 `/etc` Playwright 기본값, 사용자 marker, 인증/SSH known_hosts와 마스킹된 `home_assistant_browser_token` option 보존 확인
 
 성공 기준: image-managed Playwright 기본값은 제공되며 사용자 config, 인증, host key, 운영 지침은 변경되지 않음
 
@@ -295,18 +297,22 @@ ha-api GET /states
 ### E2E-016 실제 HA 대시보드 browser 검증
 
 1. AppArmor를 활성 상태로 유지하고 App을 시작한다.
-2. 새 외부 port 없이 container 안의 `http://127.0.0.1:8099`를 연다.
-3. 로그인 화면을 우회하는 raw token URL 없이 HA frontend가 로드되는지 확인한다.
-4. desktop 1440x900과 mobile 390x844에서 사용자가 지정한 dashboard/view를 연다.
-5. Core API와 WebSocket 연결, 정적 resource, 한글/emoji font, console/page error를 확인한다. HTTPS frontend이면 container 내부 endpoint로 한정된 `proxy_ssl_verify off` 경로도 기록한다.
-6. process list, App/MCP log, network/console 보고와 screenshot metadata에서 실제 token 문자열을 검색한다.
-7. App을 재시작해 init이 이전 `/run` browser output을 지우고 runtime context/secrets를 다시 만드는지 확인한다.
+2. `ha-browser-network-info`의 Supervisor self IP와 socket source IP가 같음을 확인하되 이 `/32`를 Home Assistant 설정에 추가하지 않는다.
+3. 전용 사용자가 active·local-only·sole `system-read-only`인지 확인하고 그 long-lived token을 마스킹된 App option에 저장한 뒤 재시작한다. `ha-browser-auth-status`가 ready인지 확인한다.
+4. 새 외부 port 없이 container 안의 `http://127.0.0.1:8099`를 열고 raw token URL이나 password 입력 없이 HA frontend가 로드되는지 확인한다.
+5. desktop 1440x900과 mobile 390x844에서 사용자가 지정한 dashboard/view를 연다.
+6. direct Core API와 WebSocket 연결, 정적 resource, 한글/emoji font, console/page error를 확인한다. HTTPS frontend이면 container 내부 endpoint로 한정된 `proxy_ssl_verify off` 경로도 기록한다.
+7. process list, App/MCP log, network/console 보고와 screenshot metadata에서 Supervisor token과 browser token 문자열을 검색한다.
+8. image와 process argument에 Playwright `--secrets`가 없고 hostile `PLAYWRIGHT_MCP_*`, `NODE_OPTIONS`, `NODE_PATH`가 무시되며 token reflection fixture의 MCP text가 관리 proxy에서 exact-value redaction되는지 확인한다.
+9. App을 재시작해 init이 이전 `/run` browser output을 지우고 user policy를 다시 검증하며 runtime token file/context를 다시 만드는지 확인한다.
 
 성공 기준:
 
-- frontend, API, WebSocket이 같은 loopback gateway 계약으로 동작
+- frontend, auth, API, WebSocket이 same-origin direct Core gateway 계약과 전용 read-only user permission으로 동작
 - 두 viewport에서 dashboard가 실제 entity 상태와 함께 렌더링됨
-- token이 URL, argv, 로그, MCP 응답 또는 artifact에 없음
+- Supervisor/browser token이 URL, argv, 로그, MCP 응답 또는 artifact에 없음
+- 입력 도구의 secret-name 치환 경로가 없고 proxy의 exact token text redaction이 동작
+- `configuration.yaml`, `auth_providers`, `trusted_networks`, `trusted_proxies`, `.storage`가 App에 의해 바뀌지 않음
 - Network/Ingress/privilege/AppArmor 설정을 완화하지 않음
 
 이 시나리오는 실제 HAOS에서 아직 실행하지 않았다. 로컬 Docker fixture 결과로 대체하지 않고 **NOT RUN — HAOS unverified**로 기록한다.

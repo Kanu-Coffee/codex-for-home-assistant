@@ -12,9 +12,14 @@ readonly TMUX_DATA=/data/tmux
 readonly DEFAULT_AGENTS=/usr/local/share/codex-ha/AGENTS.md
 readonly CODEX_AGENTS=${CODEX_DATA}/AGENTS.md
 readonly CODEX_AGENTS_OVERRIDE=${CODEX_DATA}/AGENTS.override.md
-readonly PLAYWRIGHT_SECRETS=${RUNTIME_DIR}/playwright-secrets.env
+readonly LEGACY_PLAYWRIGHT_SECRETS=${RUNTIME_DIR}/playwright-secrets.env
 readonly PLAYWRIGHT_OUTPUT=${RUNTIME_DIR}/playwright-output
 readonly HA_RENDER_UPSTREAM=${RUNTIME_DIR}/home-assistant-render-upstream.conf
+readonly HA_BROWSER_TOKEN_FILE=${RUNTIME_DIR}/home-assistant-browser.token
+readonly HA_BROWSER_AUTH_STATUS=${RUNTIME_DIR}/browser-auth-status.json
+readonly HA_BROWSER_NETWORK_STATUS=${RUNTIME_DIR}/browser-network-info.json
+readonly HA_BROWSER_AUTH_CHECK=/usr/local/share/codex-ha/browser-auth-check.mjs
+readonly NODE_BINARY=/usr/bin/node
 
 rm -rf -- /run/codex-ha/playwright-output
 install -d -m 0700 \
@@ -128,17 +133,42 @@ chmod 0600 "${ssh_environment_tmp}"
 mv -f "${ssh_environment_tmp}" /root/.ssh/environment
 
 if [[ -z "${SUPERVISOR_TOKEN:-}" ]]; then
-  rm -f "${PLAYWRIGHT_SECRETS}"
   bashio::log.warning 'SUPERVISOR_TOKEN is unavailable; API helpers will remain disabled'
 else
-  playwright_secrets_tmp=$(mktemp "${RUNTIME_DIR}/.playwright-secrets.XXXXXX")
-  printf 'SUPERVISOR_TOKEN=%s\n' \
-    "$(jq --null-input --arg value "${SUPERVISOR_TOKEN}" '$value')" \
-    > "${playwright_secrets_tmp}"
-  chmod 0600 "${playwright_secrets_tmp}"
-  mv -f "${playwright_secrets_tmp}" "${PLAYWRIGHT_SECRETS}"
   bashio::log.info 'Core and Supervisor API runtime environment configured'
 fi
+
+unset NODE_OPTIONS NODE_PATH
+for variable in "${!PLAYWRIGHT_MCP_@}"; do
+  unset "${variable}"
+done
+rm -f "${LEGACY_PLAYWRIGHT_SECRETS}" "${HA_BROWSER_TOKEN_FILE}" "${HA_BROWSER_AUTH_STATUS}"
+browser_token=$(codex_ha_config_string 'home_assistant_browser_token' '')
+auth_status_tmp=$(mktemp "${RUNTIME_DIR}/.browser-auth-status.XXXXXX")
+if [[ -z "${browser_token}" ]]; then
+  jq --null-input '{status: "unconfigured"}' > "${auth_status_tmp}"
+  bashio::log.warning 'Dedicated read-only Home Assistant browser token is not configured; dashboard auto-login is disabled'
+elif [[ ! "${browser_token}" =~ ^[A-Za-z0-9._~-]{20,}$ ]]; then
+  jq --null-input '{status: "rejected", reason: "invalid_token_format"}' > "${auth_status_tmp}"
+  bashio::log.warning 'Dedicated Home Assistant browser token has an invalid format; dashboard auto-login is disabled'
+elif [[ -z "${SUPERVISOR_TOKEN:-}" ]]; then
+  jq --null-input '{status: "rejected", reason: "supervisor_validation_unavailable"}' > "${auth_status_tmp}"
+  bashio::log.warning 'Dedicated Home Assistant browser user cannot be verified without the Supervisor credential; dashboard auto-login is disabled'
+elif HA_BROWSER_TOKEN="${browser_token}" "${NODE_BINARY}" "${HA_BROWSER_AUTH_CHECK}" \
+  > "${auth_status_tmp}" 2>/dev/null; then
+  browser_token_tmp=$(mktemp "${RUNTIME_DIR}/.home-assistant-browser-token.XXXXXX")
+  printf '%s' "${browser_token}" > "${browser_token_tmp}"
+  chmod 0600 "${browser_token_tmp}"
+  mv -f "${browser_token_tmp}" "${HA_BROWSER_TOKEN_FILE}"
+
+  bashio::log.info 'Validated the dedicated local-only, read-only Home Assistant browser user'
+else
+  jq --null-input '{status: "rejected", reason: "user_or_token_validation_failed"}' > "${auth_status_tmp}"
+  bashio::log.warning 'Dedicated Home Assistant browser token or user policy validation failed; dashboard auto-login is disabled'
+fi
+chmod 0600 "${auth_status_tmp}"
+mv -f "${auth_status_tmp}" "${HA_BROWSER_AUTH_STATUS}"
+unset browser_token
 
 ha_frontend_scheme=http
 ha_frontend_port=8123
@@ -177,6 +207,17 @@ printf 'set %s "%s://homeassistant:%s";\n' \
 chmod 0600 "${ha_render_upstream_tmp}"
 mv -f "${ha_render_upstream_tmp}" "${HA_RENDER_UPSTREAM}"
 bashio::log.info 'Configured the loopback Home Assistant browser gateway'
+
+browser_network_tmp=$(mktemp "${RUNTIME_DIR}/.browser-network-info.XXXXXX")
+if /usr/local/bin/ha-browser-network-info > "${browser_network_tmp}" 2>/dev/null; then
+  chmod 0600 "${browser_network_tmp}"
+  mv -f "${browser_network_tmp}" "${HA_BROWSER_NETWORK_STATUS}"
+  browser_source_ip=$(jq --raw-output '.socket_source_ip' "${HA_BROWSER_NETWORK_STATUS}")
+  bashio::log.info "Home Assistant browser traffic uses current App address ${browser_source_ip}; this dynamic address is not trusted_networks identity"
+else
+  rm -f "${browser_network_tmp}" "${HA_BROWSER_NETWORK_STATUS}"
+  bashio::log.warning 'Home Assistant browser request source address is not available yet; run ha-browser-network-info after Core is ready'
+fi
 
 for key_type in ed25519 rsa; do
   host_key="${SSH_DATA}/ssh_host_${key_type}_key"

@@ -3,13 +3,55 @@ set -Eeuo pipefail
 
 readonly RUNTIME_DIR=/run/codex-ha
 readonly PLAYWRIGHT_PROXY=/usr/local/share/codex-ha/playwright-mcp-proxy.mjs
+readonly PLAYWRIGHT_HOME=/run/codex-ha/playwright-home
+readonly BROWSER_TOKEN_FILE=/run/codex-ha/home-assistant-browser.token
+readonly BROWSER_AUTH_CHECK=/usr/local/share/codex-ha/browser-auth-check.mjs
+readonly RUNTIME_ENV=/run/codex-ha/runtime.env
+readonly NODE_BINARY=/usr/bin/node
 
 umask 077
-install -d -m 0700 "${RUNTIME_DIR}/playwright-output"
+export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+install -d -m 0700 "${RUNTIME_DIR}/playwright-output" "${PLAYWRIGHT_HOME}"
 
 if (( $# != 0 )); then
   printf 'ha-playwright-mcp does not accept command-line arguments\n' >&2
   exit 64
 fi
 
-exec node "${PLAYWRIGHT_PROXY}"
+unset \
+  BASH_ENV \
+  CODEX_HA_BROWSER_TOKEN_VALIDATED \
+  ENV \
+  HA_BROWSER_AUTH_WEBSOCKET_URL \
+  NODE_OPTIONS \
+  NODE_PATH
+for variable in "${!PLAYWRIGHT_MCP_@}"; do
+  unset "${variable}"
+done
+if [[ -r "${BROWSER_TOKEN_FILE}" ]]; then
+  browser_token=$(< "${BROWSER_TOKEN_FILE}")
+  if [[ -z "${SUPERVISOR_TOKEN:-}" && -r "${RUNTIME_ENV}" ]]; then
+    # shellcheck source=/dev/null
+    . "${RUNTIME_ENV}"
+  fi
+  if [[ -n "${SUPERVISOR_TOKEN:-}" ]] \
+    && HA_BROWSER_TOKEN="${browser_token}" \
+      "${NODE_BINARY}" "${BROWSER_AUTH_CHECK}" >/dev/null 2>&1; then
+    export CODEX_HA_BROWSER_TOKEN_VALIDATED=1
+  else
+    printf '%s\n' \
+      'Playwright dashboard auto-login is disabled because the browser user policy could not be revalidated' \
+      >&2
+  fi
+  unset browser_token
+fi
+
+unset \
+  SUPERVISOR_TOKEN \
+  HA_BROWSER_TOKEN \
+  HA_BROWSER_AUTH_WEBSOCKET_URL \
+  BASH_ENV \
+  ENV \
+  NODE_OPTIONS \
+  NODE_PATH
+exec "${NODE_BINARY}" "${PLAYWRIGHT_PROXY}"

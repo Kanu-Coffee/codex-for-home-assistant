@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
+import { mkdir, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
+import { resolve } from "node:path";
 import { createInterface } from "node:readline";
 import { setTimeout as delay } from "node:timers/promises";
 import { pathToFileURL } from "node:url";
@@ -15,6 +17,14 @@ const DESKTOP = { width: 1440, height: 900 };
 const MOBILE = { width: 390, height: 844 };
 const EXTRA_URL = process.env.PLAYWRIGHT_MCP_SMOKE_URL;
 const EXTRA_EXPECT = process.env.PLAYWRIGHT_MCP_SMOKE_EXPECT_TEXT;
+const EXTRA_EXPECT_SOURCE_IP =
+  process.env.PLAYWRIGHT_MCP_SMOKE_EXPECT_SOURCE_IP;
+const EXTRA_EXPECT_UNAUTHENTICATED =
+  process.env.PLAYWRIGHT_MCP_SMOKE_EXPECT_UNAUTHENTICATED === "1";
+const SCREENSHOT_DIR = process.env.PLAYWRIGHT_MCP_SMOKE_SCREENSHOT_DIR;
+const CHILD_ENV_OVERRIDES = JSON.parse(
+  process.env.PLAYWRIGHT_MCP_SMOKE_CHILD_ENV ?? "{}",
+);
 const PIXEL_PNG = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
   "base64",
@@ -194,7 +204,7 @@ function networkArguments(tool) {
   return {};
 }
 
-function screenshotPng(result, label) {
+function screenshotPngBuffer(result, label) {
   const image = (result.content ?? []).find(
     (item) => item.type === "image" && typeof item.data === "string",
   );
@@ -203,10 +213,23 @@ function screenshotPng(result, label) {
   const data = Buffer.from(image.data, "base64");
   assert(data.subarray(0, 8).equals(Buffer.from("89504e470d0a1a0a", "hex")));
   assert(data.length >= 24, `${label} PNG is truncated`);
+  return data;
+}
+
+function screenshotPng(result, label) {
+  const data = screenshotPngBuffer(result, label);
   return {
     width: data.readUInt32BE(16),
     height: data.readUInt32BE(20),
   };
+}
+
+async function saveScreenshot(result, filename, label) {
+  if (!SCREENSHOT_DIR) return null;
+  await mkdir(SCREENSHOT_DIR, { recursive: true, mode: 0o700 });
+  const outputPath = resolve(SCREENSHOT_DIR, filename);
+  await writeFile(outputPath, screenshotPngBuffer(result, label), { mode: 0o600 });
+  return outputPath;
 }
 
 class StdioMcpClient {
@@ -221,8 +244,17 @@ class StdioMcpClient {
   }
 
   async start() {
+    assert(
+      CHILD_ENV_OVERRIDES &&
+        typeof CHILD_ENV_OVERRIDES === "object" &&
+        !Array.isArray(CHILD_ENV_OVERRIDES) &&
+        Object.values(CHILD_ENV_OVERRIDES).every(
+          (value) => typeof value === "string",
+        ),
+      "PLAYWRIGHT_MCP_SMOKE_CHILD_ENV must contain string environment values",
+    );
     this.child = spawn(this.command, this.args, {
-      env: process.env,
+      env: { ...process.env, ...CHILD_ENV_OVERRIDES },
       stdio: ["pipe", "pipe", "pipe"],
     });
 
@@ -565,18 +597,161 @@ async function main() {
         await client.callTool(navigate, { url: EXTRA_URL }),
         `${navigate.name} extra target`,
       );
-      const extraSnapshot = assertToolResult(
-        await client.callTool(snapshot, {}),
-        `${snapshot.name} extra target`,
+      const extraDesktopResize = assertToolResult(
+        await client.callTool(resize, DESKTOP),
+        `${resize.name} extra target desktop`,
       );
-      const extraText = resultText(extraResult) + resultText(extraSnapshot);
+      const extraDesktopSnapshot = assertToolResult(
+        await client.callTool(snapshot, {}),
+        `${snapshot.name} extra target desktop`,
+      );
+      const extraDesktopShot = assertToolResult(
+        await client.callTool(screenshot, screenshotArguments(screenshot)),
+        `${screenshot.name} extra target desktop`,
+      );
+      const extraDesktopPng = screenshotPng(
+        extraDesktopShot,
+        "extra target desktop screenshot",
+      );
+      assert(
+        extraDesktopPng.width >= 1200 && extraDesktopPng.height >= 750,
+        "extra target desktop screenshot was unexpectedly small",
+      );
+
+      const extraText =
+        resultText(extraResult) +
+        resultText(extraDesktopResize) +
+        resultText(extraDesktopSnapshot) +
+        resultText(extraDesktopShot);
       assert(
         extraText.includes(EXTRA_EXPECT),
         `extra navigation did not contain expected text: ${EXTRA_EXPECT}\n${extraText}`,
       );
+      if (EXTRA_EXPECT_SOURCE_IP && !EXTRA_EXPECT_UNAUTHENTICATED) {
+        assert(
+          extraText.includes(`source-ip:${EXTRA_EXPECT_SOURCE_IP}`),
+          `extra navigation did not prove browser source IP ${EXTRA_EXPECT_SOURCE_IP}`,
+        );
+      }
+
+      const extraMobileResize = assertToolResult(
+        await client.callTool(resize, MOBILE),
+        `${resize.name} extra target mobile`,
+      );
+      const extraMobileSnapshot = assertToolResult(
+        await client.callTool(snapshot, {}),
+        `${snapshot.name} extra target mobile`,
+      );
+      const extraMobileShot = assertToolResult(
+        await client.callTool(screenshot, screenshotArguments(screenshot)),
+        `${screenshot.name} extra target mobile`,
+      );
+      const extraMobilePng = screenshotPng(
+        extraMobileShot,
+        "extra target mobile screenshot",
+      );
+      assert.deepEqual(extraMobilePng, MOBILE);
+      const extraMobileText =
+        resultText(extraMobileResize) +
+        resultText(extraMobileSnapshot) +
+        resultText(extraMobileShot);
+      assert(
+        extraMobileText.includes(EXTRA_EXPECT),
+        "extra target mobile render lost the authenticated marker",
+      );
+
+      const extraConsoleResult = assertToolResult(
+        await client.callTool(consoleMessages, consoleArguments(consoleMessages)),
+        `${consoleMessages.name} extra target`,
+      );
+      const extraConsoleText = resultText(extraConsoleResult);
+      if (EXTRA_EXPECT_UNAUTHENTICATED) {
+        assert(
+          extraConsoleText.includes("HA_BROWSER_GATEWAY_FAILED"),
+          "extra target did not report the expected fail-closed login state",
+        );
+      } else {
+        assert(
+          !extraConsoleText.includes("HA_BROWSER_GATEWAY_FAILED"),
+          `extra target reported an authentication console failure: ${extraConsoleText}`,
+        );
+      }
+
+      const extraNetworkResult = assertToolResult(
+        await client.callTool(networkRequests, networkArguments(networkRequests)),
+        `${networkRequests.name} extra target`,
+      );
+      const extraNetworkText = resultText(extraNetworkResult);
+      const extraOrigin = new URL(EXTRA_URL).origin;
+      assert(
+        extraNetworkText.includes(extraOrigin),
+        `extra target network evidence omitted the document: ${extraNetworkText}`,
+      );
+      if (EXTRA_EXPECT_UNAUTHENTICATED) {
+        assert(
+          !extraNetworkText.includes(`${extraOrigin}/api/config`),
+          "an inherited environment token reached the fail-closed Core API path",
+        );
+      } else {
+        assert(
+          extraNetworkText.includes("/api/config"),
+          `extra target network evidence omitted the Core API: ${extraNetworkText}`,
+        );
+        assert(
+          !extraNetworkText.includes(`${extraOrigin}/api/config => [401]`),
+          "extra target Core API returned HTTP 401",
+        );
+      }
+
+      const screenshots = {
+        desktop: await saveScreenshot(
+          extraDesktopShot,
+          "home-assistant-internal-desktop.png",
+          "extra target desktop screenshot",
+        ),
+        mobile: await saveScreenshot(
+          extraMobileShot,
+          "home-assistant-internal-mobile.png",
+          "extra target mobile screenshot",
+        ),
+      };
+      let exactTokenRedactionChecked = false;
+      if (!EXTRA_EXPECT_UNAUTHENTICATED) {
+        const redactionUrl = new URL(
+          "/token-redaction-fixture",
+          EXTRA_URL,
+        ).href;
+        const redactionNavigation = assertToolResult(
+          await client.callTool(navigate, { url: redactionUrl }),
+          `${navigate.name} token redaction fixture`,
+        );
+        const redactionSnapshot = assertToolResult(
+          await client.callTool(snapshot, {}),
+          `${snapshot.name} token redaction fixture`,
+        );
+        const redactionText =
+          resultText(redactionNavigation) + resultText(redactionSnapshot);
+        assert(
+          redactionText.includes(
+            "TOKEN_REFLECTION:[REDACTED_HOME_ASSISTANT_TOKEN]",
+          ),
+          "MCP text output did not redact the exact browser token",
+        );
+        exactTokenRedactionChecked = true;
+      }
       extraNavigation = {
-        origin: new URL(EXTRA_URL).origin,
+        origin: extraOrigin,
         expectedText: EXTRA_EXPECT,
+        expectedSourceIp: EXTRA_EXPECT_SOURCE_IP ?? null,
+        expectedUnauthenticated: EXTRA_EXPECT_UNAUTHENTICATED,
+        screenshots,
+        screenshotPixels: {
+          desktop: extraDesktopPng,
+          mobile: extraMobilePng,
+        },
+        consoleChecked: true,
+        networkChecked: true,
+        exactTokenRedactionChecked,
       };
     }
 

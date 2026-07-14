@@ -1,6 +1,6 @@
 {
   "name": "codex-ha-playwright-runtime",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "private": true,
   "description": "Pinned Playwright MCP runtime for Codex for Home Assistant",
   "license": "Apache-2.0",

@@ -1,3 +1,4 @@
+import json
 import re
 import struct
 from pathlib import Path
@@ -93,6 +94,18 @@ def test_app_and_dockerfile_versions_match(
     assert newest_heading
     assert newest_heading.group(1) == addon_config["version"]
 
+    package = json.loads(
+        (addon_root / "playwright/package.json").read_text(encoding="utf-8")
+    )
+    lock = json.loads(
+        (addon_root / "playwright/package-lock.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert package["version"] == addon_config["version"]
+    assert lock["version"] == addon_config["version"]
+    assert lock["packages"][""]["version"] == addon_config["version"]
+
 
 def test_ingress_and_network_contract(addon_config: dict) -> None:
     assert addon_config["ingress"] is True
@@ -138,3 +151,5 @@ def test_security_sensitive_defaults(addon_config: dict) -> None:
     assert addon_config["options"]["web_terminal_auto_start_codex"] is False
     assert addon_config["options"]["codex_approval_policy"] == "on-request"
     assert addon_config["options"]["codex_sandbox_mode"] == "danger-full-access"
+    assert "home_assistant_browser_token" not in addon_config["options"]
+    assert addon_config["schema"]["home_assistant_browser_token"] == "password?"

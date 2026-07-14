@@ -3,7 +3,7 @@ ARG BUILD_FROM=ghcr.io/home-assistant/base:3.24
 FROM ${BUILD_FROM}
 
 ARG BUILD_ARCH=amd64
-ARG BUILD_VERSION=0.2.0
+ARG BUILD_VERSION=0.2.1
 ARG TARGETARCH
 ARG CODEX_VERSION=0.144.1
 ARG CODEX_SHA256=84091ae20c65fcc7d4120db97d1bd57d7ff8df9c7609fb781c78c2ebbd4f5a28
@@ -77,6 +77,8 @@ RUN chmod 0755 \
     && chmod 0644 \
       /etc/codex/config.toml \
       /usr/local/share/codex-ha/AGENTS.md \
+      /usr/local/share/codex-ha/browser-auth-check.mjs \
+      /usr/local/share/codex-ha/browser-user-admin.mjs \
       /usr/local/share/codex-ha/playwright-init-page.ts \
       /usr/local/share/codex-ha/playwright-mcp-proxy.mjs \
       /usr/local/share/codex-ha/playwright-mcp.json

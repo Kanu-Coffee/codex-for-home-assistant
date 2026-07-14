@@ -191,9 +191,10 @@ SSH 외부 포트는 JSON 옵션이 아니라 Network 설정이다.
 ### FR-015 Home Assistant dashboard loopback gateway
 
 - 인증된 대시보드 렌더링에는 컨테이너 loopback `127.0.0.1:8099` gateway를 사용하고 `config.yaml`의 Ingress·Network port를 추가하지 않는다.
-- gateway는 Home Assistant frontend asset과 공식 Core REST/WebSocket proxy를 같은 browser origin으로 결합한다.
-- 현재 컨테이너의 ephemeral `SUPERVISOR_TOKEN`은 정확한 loopback origin의 isolated browser local storage에만 주입한다.
-- token은 command argument, URL, MCP 응답, screenshot, console/network artifact 또는 App log에 원문으로 남기지 않는다. MCP exact-value masking용 임시 파일은 `/run` 아래 `0600`으로 만들고 `/data`에 영속화하지 않는다.
+- gateway는 Home Assistant frontend asset, auth, Core REST/WebSocket을 같은 direct Core browser origin으로 결합해 전용 사용자의 permission을 일관되게 적용한다.
+- Supervisor token은 renderer에 전달하지 않는다. optional App secret의 token이 active·local-only·non-admin·sole `system-read-only` user로 검증될 때만 정확한 loopback origin의 isolated browser local storage에 주입한다.
+- 동적으로 재할당되는 App `/32`와 Docker 대역을 `trusted_networks`/`trusted_proxies`에 추가하지 않고 기존 `homeassistant` auth provider를 그대로 유지한다.
+- token은 command argument, URL, MCP 응답, screenshot, console/network artifact 또는 App log에 원문으로 남기지 않는다. 검증된 runtime token 파일만 `/run` 아래 `0600`으로 만들고 `/data`에 영속화하지 않는다. Playwright `--secrets` 입력값 치환은 사용하지 않고 관리 proxy가 stdout/stderr exact 문자열만 직접 마스킹한다.
 - token이 없으면 일반 Web UI 렌더링 기능은 유지하되 Home Assistant 자동 인증은 하지 않고 login 화면 또는 인증 부재를 결과에 명시한다. gateway upstream이 없으면 HA dashboard navigation 실패를 sanitized 상태로 보고한다.
 
 ### FR-016 업데이트와 사용자 Codex 설정 보존
@@ -276,7 +277,7 @@ MVP에서는 다음을 만들지 않는다.
 1. `codex mcp list` 또는 동등한 공식 경로에서 image-managed Playwright server가 보이고 기존 `/data/codex/config.toml` 내용이 유지된다.
 2. 로컬 fixture Web UI를 `1440x900`과 `390x844`로 렌더링하고 두 PNG screenshot과 viewport별 DOM snapshot을 만든다.
 3. 의도한 console/page error와 2xx, 3xx, 4xx/5xx, 전송 실패 resource를 MCP 도구로 구분한다.
-4. browser, MCP response, process argument, App log와 output artifact 어디에도 fixture `SUPERVISOR_TOKEN` 원문이 없다.
+4. browser, MCP response, process argument, App log와 output artifact 어디에도 fixture Supervisor token과 dedicated browser token 원문이 없다.
 5. 새 host port, Ingress port, `host_network`, Docker API, `full_access`, 추가 privilege 없이 동작한다.
 6. 기존 설치를 삭제하거나 `/data`를 reset하지 않은 일반 App 업데이트 뒤 Codex 인증·사용자 config·SSH host identity와 Playwright system MCP가 함께 동작한다.
 7. 실제 HAOS amd64에서 Chromium이 기본 AppArmor 아래 시작되고 loopback gateway로 인증된 Home Assistant dashboard를 desktop/mobile 양쪽에서 렌더링한다.
