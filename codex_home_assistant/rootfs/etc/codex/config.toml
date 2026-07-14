@@ -1,0 +1,27 @@
+[mcp_servers.playwright]
+command = "/usr/local/bin/ha-playwright-mcp"
+cwd = "/config"
+env_vars = ["SUPERVISOR_TOKEN"]
+enabled = true
+required = false
+startup_timeout_sec = 30
+tool_timeout_sec = 120
+default_tools_approval_mode = "writes"
+enabled_tools = [
+  "browser_close",
+  "browser_console_messages",
+  "browser_click",
+  "browser_fill_form",
+  "browser_hover",
+  "browser_navigate",
+  "browser_navigate_back",
+  "browser_network_requests",
+  "browser_press_key",
+  "browser_resize",
+  "browser_select_option",
+  "browser_snapshot",
+  "browser_tabs",
+  "browser_take_screenshot",
+  "browser_type",
+  "browser_wait_for",
+]

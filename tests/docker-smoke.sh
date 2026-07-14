@@ -5,11 +5,15 @@ IMAGE=${1:-codex-for-home-assistant:test}
 TEST_ID="codex-ha-smoke-${RANDOM}-$$"
 PUBLIC_CONTAINER="${TEST_ID}-public"
 DEGRADED_CONTAINER="${TEST_ID}-degraded"
+GATEWAY_FIXTURE="${TEST_ID}-gateway-fixture"
+GATEWAY_NETWORK="${TEST_ID}-gateway-network"
 PUBLIC_DATA="${TEST_ID}-public-data"
 PUBLIC_CONFIG="${TEST_ID}-public-config"
 DEGRADED_DATA="${TEST_ID}-degraded-data"
 DEGRADED_CONFIG="${TEST_ID}-degraded-config"
 WORK_DIR=$(mktemp -d)
+SUPERVISOR_TOKEN=smoke-supervisor-token-do-not-use
+GATEWAY_MARKER='HA_BROWSER_GATEWAY_AUTHENTICATED:Codex HA fixture'
 
 # Git Bash rewrites Linux container paths before invoking native Windows programs.
 if [[ "${OSTYPE:-}" == msys* || "${OSTYPE:-}" == cygwin* ]]; then
@@ -25,12 +29,16 @@ else
 fi
 
 cleanup() {
-  docker rm -f "${PUBLIC_CONTAINER}" "${DEGRADED_CONTAINER}" >/dev/null 2>&1 || true
+  docker rm -f \
+    "${PUBLIC_CONTAINER}" \
+    "${DEGRADED_CONTAINER}" \
+    "${GATEWAY_FIXTURE}" >/dev/null 2>&1 || true
   docker volume rm -f \
     "${PUBLIC_DATA}" \
     "${PUBLIC_CONFIG}" \
     "${DEGRADED_DATA}" \
     "${DEGRADED_CONFIG}" >/dev/null 2>&1 || true
+  docker network rm "${GATEWAY_NETWORK}" >/dev/null 2>&1 || true
   rm -rf -- "${WORK_DIR}"
 }
 trap cleanup EXIT
@@ -39,6 +47,7 @@ fail() {
   printf 'docker smoke: %s\n' "$*" >&2
   docker logs "${PUBLIC_CONTAINER}" 2>/dev/null || true
   docker logs "${DEGRADED_CONTAINER}" 2>/dev/null || true
+  docker logs "${GATEWAY_FIXTURE}" 2>/dev/null || true
   exit 1
 }
 
@@ -95,6 +104,22 @@ for volume in \
   docker volume create "${volume}" >/dev/null
 done
 
+docker network create "${GATEWAY_NETWORK}" >/dev/null
+docker create \
+  --platform linux/amd64 \
+  --name "${GATEWAY_FIXTURE}" \
+  --network "${GATEWAY_NETWORK}" \
+  --network-alias supervisor \
+  --network-alias homeassistant \
+  --env GATEWAY_FIXTURE_TOKEN="${SUPERVISOR_TOKEN}" \
+  --entrypoint node \
+  "${IMAGE}" \
+  /tmp/ha_browser_gateway_fixture.mjs >/dev/null
+docker cp tests/ha_browser_gateway_fixture.mjs \
+  "${GATEWAY_FIXTURE}:/tmp/ha_browser_gateway_fixture.mjs"
+docker start "${GATEWAY_FIXTURE}" >/dev/null
+wait_for_log "${GATEWAY_FIXTURE}" 'Home Assistant browser gateway fixture ready'
+
 ssh-keygen -q -t ed25519 -N '' -f "${WORK_DIR}/client_key"
 PUBLIC_KEY=$(< "${WORK_DIR}/client_key.pub")
 PUBLIC_OPTIONS=$("${PYTHON_BIN}" -c '
@@ -122,7 +147,8 @@ docker run --rm \
 docker run --detach \
   --platform linux/amd64 \
   --name "${PUBLIC_CONTAINER}" \
-  --env SUPERVISOR_TOKEN=smoke-supervisor-token-do-not-use \
+  --network "${GATEWAY_NETWORK}" \
+  --env SUPERVISOR_TOKEN="${SUPERVISOR_TOKEN}" \
   --publish 127.0.0.1::22 \
   --publish 127.0.0.1::17682 \
   --volume "${PUBLIC_DATA}:/data" \
@@ -130,9 +156,59 @@ docker run --detach \
   "${IMAGE}" >/dev/null
 
 wait_for_log "${PUBLIC_CONTAINER}" 'Codex runtime ready:'
+wait_for_log "${GATEWAY_FIXTURE}" \
+  'Gateway fixture accepted authenticated /core/info'
 wait_for_process "${PUBLIC_CONTAINER}" '/usr/sbin/sshd'
 wait_for_process "${PUBLIC_CONTAINER}" 'ttyd'
 wait_for_process "${PUBLIC_CONTAINER}" 'nginx'
+
+docker exec "${PUBLIC_CONTAINER}" /bin/sh -c '
+  codex mcp list --json | jq --exit-status '\''
+    any(.[];
+      .name == "playwright"
+      and .enabled == true
+      and .transport.type == "stdio"
+      and .transport.command == "/usr/local/bin/ha-playwright-mcp"
+      and .transport.cwd == "/config"
+      and .transport.args == []
+    )
+  '\'' >/dev/null
+' || fail 'Codex did not discover the image-managed Playwright stdio MCP'
+if docker exec "${PUBLIC_CONTAINER}" \
+  /usr/local/bin/ha-playwright-mcp --port 8931 >/dev/null 2>&1; then
+  fail 'Playwright wrapper accepted a transport-changing command-line argument'
+fi
+
+docker cp tests/playwright_mcp_smoke.mjs \
+  "${PUBLIC_CONTAINER}:/tmp/playwright_mcp_smoke.mjs"
+docker cp tests/ha_browser_gateway_fixture.mjs \
+  "${PUBLIC_CONTAINER}:/tmp/ha_browser_gateway_fixture.mjs"
+docker exec \
+  --workdir /config \
+  --env PLAYWRIGHT_MCP_SMOKE_URL=http://127.0.0.1:8099/ \
+  --env PLAYWRIGHT_MCP_SMOKE_EXPECT_TEXT="${GATEWAY_MARKER}" \
+  "${PUBLIC_CONTAINER}" \
+  node /tmp/playwright_mcp_smoke.mjs /usr/local/bin/ha-playwright-mcp \
+  || fail 'Playwright MCP browser smoke failed'
+wait_for_log "${GATEWAY_FIXTURE}" \
+  'Gateway fixture accepted authenticated /core/api/config'
+docker exec "${PUBLIC_CONTAINER}" \
+  node /tmp/ha_browser_gateway_fixture.mjs \
+  --probe-websocket ws://127.0.0.1:8099/api/websocket \
+  || fail 'Home Assistant gateway WebSocket upgrade failed'
+docker exec "${GATEWAY_FIXTURE}" curl \
+  --silent \
+  --connect-timeout 1 \
+  --max-time 2 \
+  "http://${PUBLIC_CONTAINER}:7681/" >/dev/null \
+  || fail 'Gateway fixture could not reach the app container network address'
+if docker exec "${GATEWAY_FIXTURE}" curl \
+  --silent \
+  --connect-timeout 1 \
+  --max-time 2 \
+  "http://${PUBLIC_CONTAINER}:8099/" >/dev/null 2>&1; then
+  fail 'Home Assistant browser gateway was reachable outside app loopback'
+fi
 
 docker exec --detach "${PUBLIC_CONTAINER}" \
   ttyd \
@@ -259,8 +335,14 @@ docker exec "${PUBLIC_CONTAINER}" /bin/sh -c \
   'printf "\n# preserved-smoke-marker\n" >> /data/codex/config.toml'
 docker exec "${PUBLIC_CONTAINER}" /bin/sh -c \
   'printf "\n# preserved-agents-smoke-marker\n" >> /data/codex/AGENTS.md'
+docker exec "${PUBLIC_CONTAINER}" /bin/sh -c \
+  'printf "%s\n" sentinel > /run/codex-ha/playwright-output/init-sentinel'
 docker exec "${PUBLIC_CONTAINER}" rm -f /data/ssh/ssh_host_rsa_key.pub
 docker exec "${PUBLIC_CONTAINER}" codex-ha-init >/dev/null
+docker exec "${PUBLIC_CONTAINER}" test ! -e \
+  /run/codex-ha/playwright-output/init-sentinel
+[[ $(docker exec "${PUBLIC_CONTAINER}" stat -c '%a' \
+  /run/codex-ha/playwright-output) == 700 ]]
 docker exec "${PUBLIC_CONTAINER}" grep -Fq '# preserved-smoke-marker' /data/codex/config.toml
 docker exec "${PUBLIC_CONTAINER}" grep -Fq '# preserved-agents-smoke-marker' /data/codex/AGENTS.md
 docker exec "${PUBLIC_CONTAINER}" test -s /data/ssh/ssh_host_rsa_key.pub
@@ -274,7 +356,8 @@ docker rm -f "${PUBLIC_CONTAINER}" >/dev/null
 docker run --detach \
   --platform linux/amd64 \
   --name "${PUBLIC_CONTAINER}" \
-  --env SUPERVISOR_TOKEN=smoke-supervisor-token-do-not-use \
+  --network "${GATEWAY_NETWORK}" \
+  --env SUPERVISOR_TOKEN="${SUPERVISOR_TOKEN}" \
   --volume "${PUBLIC_DATA}:/data" \
   --volume "${PUBLIC_CONFIG}:/config" \
   "${IMAGE}" >/dev/null

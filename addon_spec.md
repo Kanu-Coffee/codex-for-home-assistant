@@ -19,21 +19,31 @@ codex-for-home-assistant/
 │  ├─ translations/
 │  │  ├─ en.yaml
 │  │  └─ ko.yaml
+│  ├─ playwright/
+│  │  ├─ package.json
+│  │  └─ package-lock.json
 │  └─ rootfs/
 │     ├─ etc/
+│     │  ├─ codex/config.toml
 │     │  ├─ cont-init.d/ 또는 s6-rc.d/
 │     │  ├─ services.d/ 또는 s6-rc.d/
 │     │  ├─ ssh/
 │     │  └─ profile.d/
-│     └─ usr/local/bin/
-│        ├─ ha-codex
-│        ├─ ha-codex-login
-│        ├─ ha-api
-│        ├─ supervisor-api
-│        ├─ ha-config-check
-│        ├─ ha-core-logs
-│        ├─ ha-addon-logs
-│        └─ web-terminal-entrypoint
+│     └─ usr/local/
+│        ├─ bin/
+│        │  ├─ ha-codex
+│        │  ├─ ha-codex-login
+│        │  ├─ ha-playwright-mcp
+│        │  ├─ ha-api
+│        │  ├─ supervisor-api
+│        │  ├─ ha-config-check
+│        │  ├─ ha-core-logs
+│        │  ├─ ha-addon-logs
+│        │  └─ web-terminal-entrypoint
+│        └─ share/codex-ha/
+│           ├─ playwright-mcp-proxy.mjs
+│           ├─ playwright-mcp.json
+│           └─ playwright-init-page.ts
 ├─ tests/
 ├─ repository.yaml
 ├─ README.md
@@ -62,9 +72,9 @@ M1에서 실제 검증 전에는 amd64만 표시한다.
 
 ```yaml
 name: Codex for Home Assistant
-version: "0.1.3"
+version: "0.2.0"
 slug: codex_home_assistant
-description: Codex CLI, Web Terminal, and Remote SSH for Home Assistant
+description: Codex CLI, Playwright browser, Ingress terminal, and SSH for Home Assistant
 url: https://github.com/<owner>/codex-for-home-assistant
 stage: experimental
 startup: application
@@ -191,9 +201,13 @@ Settings → Apps → Codex for Home Assistant → Configuration/Network
 ```text
 bash
 ca-certificates
+chromium-headless-shell
 curl
+font-noto-cjk
+font-noto-emoji
 git
 jq
+nodejs
 yq
 yamllint
 openssh
@@ -217,18 +231,30 @@ nano 또는 vim
 
 `latest`만 의존하는 비재현 빌드는 release 전에 제거한다.
 
+### Playwright 설치
+
+- Microsoft `@playwright/mcp` `0.0.78`을 exact dependency로 사용하고 repository의 npm lockfile로 integrity와 transitive dependency를 고정한다.
+- 현재 lockfile의 `playwright`와 `playwright-core`는 `1.62.0-alpha-1783623505000`이며 세 항목은 함께 검증·업데이트한다.
+- `PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 npm ci --omit=dev --ignore-scripts`로 npm runtime만 설치하고 runtime browser download를 금지한다.
+- browser는 Alpine `chromium-headless-shell` package의 `/usr/bin/chromium-headless-shell`을 명시적 executable로 사용한다.
+- npm은 image build에만 설치한 virtual package로 제거하고 final image에는 `nodejs`, MCP runtime, Chromium과 필요한 CJK/emoji font만 남긴다.
+- image build에서 MCP package version, `require('playwright-core')`와 `chromium-headless-shell --version`을 검사한다.
+- Playwright upstream이 Alpine/system Chromium 조합을 공식 지원한다고 표현하지 않는다. amd64 local smoke와 실제 HAOS/AppArmor 결과를 분리해 기록한다.
+
 ## 7. 초기화 계약
 
 초기화 스크립트는 idempotent해야 한다.
 
 - 디렉터리가 이미 있으면 데이터 보존
 - `config.toml` 기존 사용자 변경 보존
+- `/etc/codex/config.toml`은 image-managed system default로 설치하고 `/data/codex/config.toml`에 MCP table을 append하지 않음
 - `CODEX_HOME/AGENTS.md`와 `AGENTS.override.md`가 모두 없을 때만 기본 운영 지침을 원자적으로 생성
 - 기존 전역 지침은 빈 파일과 심볼릭 링크를 포함해 내용과 권한 보존
 - host key가 있으면 재생성하지 않음
 - authorized_keys는 App 옵션에서 원자적으로 렌더링
 - 빈/잘못된 키는 로그로 알려주되 토큰/키 전체를 출력하지 않음
 - `/config` 쓰기 테스트는 안전한 임시 파일을 생성 후 삭제해 수행
+- 이전 기본 Playwright output을 init 시작 때 제거하고 `/run/codex-ha` 아래 `0700`으로 재생성한다. secret masking 파일은 `0600`으로 만들고 `/data`에 browser token/profile을 만들지 않음
 
 ## 8. 웹 터미널 계약
 
@@ -240,7 +266,41 @@ nano 또는 vim
 - UTF-8 locale 및 한글 입력/출력 검증
 - auto-start Codex가 종료되면 shell을 제공
 
-## 9. SSH 계약
+## 9. Browser renderer 계약
+
+Codex system config의 최소 계약:
+
+```toml
+[mcp_servers.playwright]
+command = "/usr/local/bin/ha-playwright-mcp"
+cwd = "/config"
+env_vars = ["SUPERVISOR_TOKEN"]
+enabled = true
+required = false
+startup_timeout_sec = 30
+tool_timeout_sec = 120
+default_tools_approval_mode = "writes"
+```
+
+- 위치는 `/etc/codex/config.toml`이며 user config `/data/codex/config.toml`보다 낮은 공식 system 계층이다.
+- wrapper는 pinned local `cli.js`를 직접 실행하고 `npx`, network install 또는 `latest` resolution을 사용하지 않는다.
+- browser는 headless, isolated, no-sandbox이며 기본 viewport `1440x900`; mobile 검사는 `390x844` resize를 사용한다.
+- output은 `/run/codex-ha/playwright-output`, 최대 50 MiB, `saveSession=false`, `sharedBrowserContext=false`다. enforcement proxy는 tool call의 `filename`을 거부해 `/config`·`/data`로 artifact를 우회 저장하지 못하게 한다.
+- console warning/error, network request 목록의 URL/status, snapshot, screenshot, resize와 일반 UI 상호작용만 proxy와 system config에서 동일하게 allowlist한다. 단일 request의 header/body 상세 도구는 제외한다.
+- `browser_run_code_unsafe`, file upload, unrestricted file access와 code generation은 허용하지 않는다.
+- Codex system MCP는 STDIO를 사용하며 App service는 HTTP MCP listener와 외부 browser/debug port를 열지 않는다. wrapper는 모든 command-line 인수를 거부하고 enforcement proxy만 실행한다.
+
+## 10. Home Assistant browser gateway 계약
+
+- `127.0.0.1:8099`에만 bind하고 host `ports`, Ingress port 또는 `host_network`를 추가하지 않는다.
+- `/`와 frontend asset은 Supervisor Core info에서 얻은 scheme/port의 내부 Home Assistant frontend로 전달하고, 조회 실패 시 `http://homeassistant:8123`을 사용한다. 전체 Core `/api`와 WebSocket은 공식 Supervisor Core proxy로 전달한다.
+- init page는 `127.0.0.1:8099`와 `localhost:8099` origin에서만 현재 runtime token을 local storage에 주입한다.
+- `SUPERVISOR_TOKEN`은 Codex의 `env_vars`로 MCP Node process에 전달하되 URL/command argument에 넣지 않는다. `/run/codex-ha/playwright-secrets.env` `0600` 파일은 MCP의 `--secrets` exact-value masking에 등록한다.
+- exact-value masking은 인코딩·분할된 비밀의 구조적 sanitizer가 아니다. console/network/screenshot과 dashboard 화면은 민감자료로 취급하고 token 원문을 의도적으로 기록·영속화하지 않는다.
+- HTTPS frontend upstream은 자체 서명/사용자 인증서 호환 때문에 현재 `proxy_ssl_verify off`이며 container 내부 `homeassistant` endpoint에만 한정한다.
+- browser/gateway 오류나 token 부재는 terminal, SSH와 Codex를 중단시키지 않는다. token 부재 시 HA login 화면이 나타날 수 있으며 자동 인증이 없음을 보고한다.
+
+## 11. SSH 계약
 
 권장 sshd 정책:
 
@@ -258,7 +318,7 @@ Subsystem sftp internal-sftp 또는 필요 시 비활성
 
 `AllowTcpForwarding local`은 remote app server가 요구하는 client-side local tunnel은 허용하고 reverse forwarding은 막는다. `AllowAgentForwarding no`와 함께 mobile Remote → desktop SSH project → HAOS App 실기 경로에서 동작을 확인했다.
 
-## 10. Runtime environment
+## 12. Runtime environment
 
 웹/SSH shell 모두 아래를 일관되게 가져야 한다. 구현은 `/run/codex-ha/runtime.env`와 root 전용 SSH environment 파일을 매 부팅마다 다시 만들며 비밀값을 `/data`에 복제하지 않는다.
 
@@ -273,15 +333,17 @@ PATH=/usr/local/bin:...
 
 SSH 세션은 PID 1 환경변수를 자동으로 상속하지 않을 수 있으므로, 토큰을 출력하지 않는 root-only runtime env 파일 또는 안전한 shell initialization 방식을 구현하고 권한을 테스트한다.
 
-## 11. App 문서/표현
+Playwright MCP child는 같은 runtime token을 환경에서 읽을 수 있지만 browser child나 target origin 전체에 전달하지 않는다. exact Home Assistant loopback origin의 init page와 secret masking 파일만 사용하며 파일은 App 재시작 때 다시 만들고 영속화하지 않는다.
 
-- `DOCS.md`: 설치, Web UI, 장치 코드 로그인, SSH, Remote SSH, API helper, 위험 경고, 복구
+## 13. App 문서/표현
+
+- `DOCS.md`: 설치, Web UI, 장치 코드 로그인, browser renderer, SSH, Remote SSH, API helper, 위험 경고, 복구
 - `CHANGELOG.md`: Keep a Changelog 스타일
 - `icon.png`: 제공 원본을 왜곡 없이 축소하고 바깥 matte를 투명화한 128x128 RGBA PNG
 - `logo.png`: 같은 방식의 250x250 RGBA PNG (공식 문서는 다른 비율도 허용)
 - `translations/en.yaml`, `ko.yaml`: 옵션과 Network 설명
 - 패널은 관리자만 표시
 
-## 12. Release image
+## 14. Release image
 
-로컬 개발 단계에서는 `image`를 주석 처리한 local build를 허용한다. `0.1.3` non-dev 배포는 공식 Home Assistant builder actions `2026.06.0`으로 amd64 image와 generic manifest를 미리 빌드하고 `config.yaml`의 `image`에 `ghcr.io/kanu-coffee/codex-for-home-assistant`를 사용한다. 숫자 Git tag와 App version이 정확히 같을 때만 게시하고 기존 tag는 덮어쓰지 않는다. Home Assistant `stage`는 M3 평가 전까지 `experimental`을 유지한다.
+로컬 개발 단계에서는 `image`를 주석 처리한 local build를 허용한다. `0.1.3`부터 공식 Home Assistant builder actions `2026.06.0`으로 amd64 image와 generic manifest를 미리 빌드하고 `config.yaml`의 `image`에 `ghcr.io/kanu-coffee/codex-for-home-assistant`를 사용한다. Playwright renderer를 포함하는 다음 release는 `0.2.0`이며 숫자 Git tag와 App version이 정확히 같을 때만 게시한다. 기존 tag는 덮어쓰지 않는다. Home Assistant `stage`는 HAOS browser/AppArmor 실기와 M3 평가 전까지 `experimental`을 유지한다.

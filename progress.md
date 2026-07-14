@@ -4,9 +4,9 @@
 
 ## Project Status
 
-- 상태: **amd64 MVP/M2 PASS / 0.1.3 public prerelease 완료 / HAOS 일반 업데이트 확인 대기**
-- 현재 마일스톤: **M2 릴리스 전달 완료 — post-release HAOS 업데이트 확인**
-- 마지막 문서 기준일: **2026-07-13**
+- 상태: **amd64 MVP/M2 PASS / 0.2.0 브라우저 렌더러 local candidate PASS / HAOS 실기 대기**
+- 현재 마일스톤: **Playwright 기반 Codex 브라우저 도구와 HA 대시보드 렌더 경로 전달**
+- 마지막 문서 기준일: **2026-07-14**
 - 저장소: public `Kanu-Coffee/codex-for-home-assistant`, default branch `main`
 
 ## 완료된 결정
@@ -23,6 +23,24 @@
 - [x] 문서 주도 개발 파일 세트 작성
 
 ## Current Work
+
+### 2026-07-14 — Playwright Headless Chromium 브라우저 도구
+
+- 목표: Codex가 자신이 만든 Web UI와 Home Assistant 대시보드를 실제 브라우저로 열고 데스크톱/모바일 화면, 스크린샷, 콘솔 오류, 네트워크·리소스 상태를 직접 검사할 수 있게 한다.
+- 구현 방향: App 이미지에 버전 고정한 Microsoft Playwright MCP와 Alpine `chromium-headless-shell`을 포함하고, `/etc/codex/config.toml` 시스템 계층에서 공식 STDIO MCP로 노출한다. `/data/codex/config.toml`은 수정하지 않아 기존 사용자 설정과 인증을 보존한다.
+- 보안 경계: 외부 포트와 host 권한을 추가하지 않고 브라우저는 headless/isolated/no-sandbox로 컨테이너 안에서만 실행한다. 위험한 임의 코드·파일 업로드 도구는 노출하지 않고, runtime Supervisor token은 임시 0600 secrets 파일로 마스킹한다.
+- HA 렌더 경로: loopback 전용 gateway가 Home Assistant frontend와 공식 Core API/WebSocket proxy를 결합하고, 현재 App token을 브라우저 localStorage에만 주입한다. token 원문은 MCP 응답·App 로그·artifact에 남기지 않는다.
+- 호환성 결정: Playwright의 공식 Linux 배포 대상은 Ubuntu/Debian이지만 기존 Home Assistant Alpine runtime의 회귀 폭을 줄이기 위해 시스템 Chromium 조합을 사용한다. 최종 local image는 `@playwright/mcp 0.0.78`, lockfile의 `playwright-core 1.62.0-alpha-1783623505000`, Alpine Chromium Headless Shell 150 조합으로 실제 MCP smoke를 통과했다. 이 결과와 HAOS/AppArmor 실기는 분리해 기록한다.
+- 보안 보강: 고정 stdio proxy가 raw `tools/list`와 `tools/call` 양쪽에서 Codex system config와 같은 allowlist를 강제한다. 임의 code/file upload/단일 network 상세 도구와 모든 `filename` 인수를 거부하고 wrapper의 CLI 인수도 차단한다. browser 파일은 `/run`에만 두고 init 때 지운다.
+- local gateway 증거: 모의 Supervisor/Core를 전용 Docker network에 연결해 Core info, localStorage token bootstrap, 인증된 `/api/config`, frontend marker, `/api/websocket` 101 upgrade와 `8099`의 loopback 외부 접근 차단을 확인했다.
+- local update 증거: public `0.1.3` image의 container만 candidate로 교체하고 같은 named `/data`·`/config` volume을 사용해 사용자 Codex config, valid auth marker, 운영 지침, Home Assistant config marker와 SSH host fingerprint가 보존되며 새 Playwright MCP smoke가 동작함을 확인했다.
+- [x] image-managed Playwright MCP, Chromium, Codex system config와 HA loopback gateway를 구현한다.
+- [x] 모바일/데스크톱 DOM·PNG, console/page error, 2xx/3xx/4xx/5xx/transport failure를 확인하는 실제 MCP 회귀 테스트를 추가한다.
+- [x] App 업데이트 비파괴 계약, 보안 문서, 사용자 사용법과 changelog를 갱신한다.
+- [x] amd64 image build와 최종 full Docker smoke를 통과한다.
+- [x] Linux unit/policy test와 YAML/Shell/Dockerfile/Markdown/GitHub Actions lint를 통과한다.
+- [ ] 기능 브랜치에 커밋·push한 뒤 PR/CI 결과를 기록한다.
+- [ ] 실제 HAOS에서 일반 업데이트 후 인증된 대시보드와 AppArmor Chromium 실행을 확인한다.
 
 ### 2026-07-13 — 0.1.3 amd64 GHCR non-dev 릴리스와 HACS 검토
 
@@ -109,6 +127,12 @@
 
 ### Verification
 
+- [x] `0.2.0` amd64 local image build: PASS — Home Assistant base 3.24, `@playwright/mcp 0.0.78`, Playwright core `1.62.0-alpha-1783623505000`, Chromium Headless Shell 150, Node 24.17.0, Codex CLI 0.144.1, image label version/arch 일치. local Docker image size는 533,346,012 bytes다.
+- [x] 최종 full Docker smoke: PASS — Codex system MCP discovery, proxy 제한, desktop 1440x900/mobile 390x844 DOM·PNG, console/uncaught page error, 200/302/404/500/transport failure, 모의 HA gateway 인증 REST/frontend/WebSocket/loopback 격리, output cleanup과 기존 ttyd/SSH/영속성 회귀를 확인했다.
+- [x] public `0.1.3` → local `0.2.0` update smoke: PASS — 같은 `/data`·`/config`에서 user config, valid auth marker, AGENTS, HA config marker와 SSH host fingerprint 보존 후 새 Playwright MCP smoke 통과.
+- [x] Linux Python 3.13 `pytest`: PASS — 39 passed, 0 skipped. browser supply-chain/config/proxy/gateway/update 계약, 기존 App/API/runtime/manifest/secret regression을 포함한다.
+- [x] `yamllint`, ShellCheck 0.11.0, Hadolint 2.14.0, markdownlint-cli2 0.23.0, actionlint 1.7.7, Node/Bash syntax와 `git diff --check`: PASS.
+- [ ] 실제 HAOS/AppArmor의 Chromium 시작, 실제 dashboard 인증/resource/WebSocket과 Supervisor/App Store 일반 update: NOT RUN — local Docker 결과로 대체하지 않는다.
 - [x] `docker buildx build --platform linux/amd64 --load --tag codex-ha:0.1.3-dev ...`: PASS — base `3.24`, 공식 Codex SHA-256, `codex-cli 0.144.1`, image label `0.1.3-dev`.
 - [x] Linux `python -m pytest -ra`: PASS — 30 passed, 0 skipped; 문서 manifest, 자산 계약, S6/runtime, API JSON/x-log 협상·header injection 거부, token redaction, secret scan.
 - [x] `tests/docker-smoke.sh codex-ha:0.1.3-dev`: PASS — S6, `/config` RW, permissions, nginx/ttyd, 동일 tmux session/pane/pid 재접속과 96x32 resize, auto-start false/true, Codex 후 Bash 복귀, 공개키 SSH, 비밀번호 거부, UTF-8 env, host-key/config 영속성, invalid/no-key degraded recovery.

@@ -145,3 +145,36 @@ hassio_role: manager
 - 상태: Accepted
 - 결정: HACS metadata나 repository submission을 추가하지 않고 public `repository.yaml`, GitHub URL과 My Home Assistant `supervisor_store` 링크로 배포한다.
 - 이유: HACS가 지원하는 Integration, Dashboard, Theme, Template, AppDaemon, Python Script 유형에는 Supervisor-managed Home Assistant App이 없다. 다른 유형으로 오분류해도 App Store 설치가 되지 않는다.
+
+## ADR-023 Playwright MCP를 image-managed Codex system 기능으로 제공
+
+- 상태: Accepted for 0.2.0
+- 결정: pinned `@playwright/mcp`를 container-local stdio server로 설치하고 `/etc/codex/config.toml`의 `mcp_servers.playwright`에 등록한다. server는 `required = false`이며 wrapper와 MCP 설정도 image가 소유한다.
+- 이유: Codex의 공식 system config 계층은 App 업데이트 때 새 browser 기본값과 보안 도구 목록을 함께 배포할 수 있고, stdio는 별도 인증·listener·port 없이 실제 browser 기능을 제공한다.
+- 사용자 경계: `/data/codex/config.toml`은 사용자 계층으로 계속 보존하며 image 기본값을 복사·병합·수정하지 않는다. 공식 precedence에 따라 사용자와 프로젝트 설정은 system 기본값을 override하거나 server를 비활성화할 수 있다.
+- 공급망: `@playwright/mcp` 0.0.78과 lockfile의 Playwright 의존성 1.62.0-alpha-1783623505000을 고정한다. runtime `npm install`, `npx`, `latest` 해석은 허용하지 않는다.
+
+## ADR-024 Alpine system Chromium headless shell 사용
+
+- 상태: Provisional Accepted for 0.2.0
+- 결정: upstream browser bundle을 내려받지 않고 Alpine package의 `/usr/bin/chromium-headless-shell`을 pinned Playwright MCP가 headless·isolated mode로 실행한다. CJK/emoji font를 image에 포함한다.
+- 이유: 기존 `ghcr.io/home-assistant/base:3.24`/Alpine App 구조를 유지하고 browser runtime만 추가해 배포·업데이트 회귀 범위를 줄이기 위해서다.
+- 제약: upstream Playwright의 공식 Linux browser target은 Ubuntu/Debian 계열 중심이며 이 Alpine system Chromium 조합은 공식 bundle과 동일한 지원 계약이 아니다. 로컬 fixture와 image smoke 외에 실제 HAOS/AppArmor/dashboard 실기가 필요하며 완료 전에는 **HAOS unverified**다.
+- 재검토 조건: Chromium/MCP 호환 실패가 반복되거나 보안 패치 cadence를 맞출 수 없으면 Debian/Ubuntu browser sidecar 또는 지원 base로의 전환을 별도 ADR로 평가한다.
+
+## ADR-025 HA dashboard는 loopback gateway와 컨테이너 수명 App token으로 렌더링
+
+- 상태: Provisional Accepted for 0.2.0
+- 결정: container loopback `127.0.0.1:8099`의 gateway가 HA frontend resource와 전체 Core API/WebSocket을 전달한다. 현재 container의 `SUPERVISOR_TOKEN`은 MCP Node 환경에서 읽어 `http://127.0.0.1:8099` 또는 `http://localhost:8099`의 `hassTokens` localStorage에만 주입한다. `/run/codex-ha` mode 0600 secrets는 MCP exact-value masking에 사용한다.
+- 이유: 실제 dashboard를 browser에서 검증하려면 frontend와 authenticated API/WebSocket이 같은 origin 계약으로 동작해야 한다. token을 URL, MCP 인수, 사용자 config 또는 영속 profile에 저장하지 않고도 App 자신의 공식 Core 권한을 재사용할 수 있다.
+- 보안 경계: gateway는 범용 target forward proxy가 아니며 외부/Ingress listener, 새 `config.yaml` port, `host_network`, `full_access`, `privileged`, 추가 capability를 만들지 않는다. token은 argv, URL, 로그와 `/data` artifact에 의도적으로 기록하지 않는다. exact-value masking은 인코딩·분할된 출력의 구조적 sanitizer가 아니므로 결과 전체를 민감자료로 취급한다.
+- TLS 경계: Core info가 HTTPS frontend를 보고하면 내부 `homeassistant` upstream에 `proxy_ssl_verify off`로 연결해 자체 서명/사용자 인증서를 허용한다. 이 신뢰는 container 내부 endpoint에만 한정하고 실제 HAOS에서 위험과 호환성을 재검증한다.
+- 실패 정책: token이 없으면 일반 Web UI browser 기능은 유지하고 HA dashboard는 자동 인증 없이 login 화면을 표시할 수 있다. gateway upstream 실패는 sanitized navigation 오류로 보고한다. 실제 HAOS 검증 전에는 이 경로를 완성 판정하지 않는다.
+
+## ADR-026 browser QA 표면과 artifact를 제한
+
+- 상태: Accepted for 0.2.0
+- 결정: 기본 desktop viewport는 1440x900, mobile 회귀 viewport는 390x844로 정한다. navigation, accessibility snapshot, resize, screenshot, console/page error, network request 목록의 URL/status와 기본 UI 조작을 허용한다. 민감 header/body를 포함할 수 있는 단일 request 상세, 임의 code 실행, codegen, unrestricted file access/upload는 제외한다.
+- 이유: 사용자가 요구한 responsive 화면·console 오류·resource loading 검증에는 실제 Chromium과 관찰 도구가 필요하지만 범용 browser automation code와 영속 profile은 불필요한 공격 표면이다.
+- artifact: browser output은 mode 0700의 `/run/codex-ha/playwright-output`에 두고 50 MiB로 제한하며 init 때 이전 output을 제거한다. enforcement proxy가 tool call의 `filename`을 거부해 `/config`·`/data` 우회를 막는다. screenshot과 console/network 결과는 민감자료로 취급한다.
+- 완료 기준: local fixture에서 두 viewport와 오류/resource 수집을 자동 검증하고, 실제 HAOS에서 AppArmor 활성 상태의 dashboard와 token 비노출을 별도 E2E로 검증한다.

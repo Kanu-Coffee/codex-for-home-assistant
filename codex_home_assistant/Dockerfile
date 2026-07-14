@@ -3,23 +3,30 @@ ARG BUILD_FROM=ghcr.io/home-assistant/base:3.24
 FROM ${BUILD_FROM}
 
 ARG BUILD_ARCH=amd64
-ARG BUILD_VERSION=0.1.3
+ARG BUILD_VERSION=0.2.0
 ARG TARGETARCH
 ARG CODEX_VERSION=0.144.1
 ARG CODEX_SHA256=84091ae20c65fcc7d4120db97d1bd57d7ff8df9c7609fb781c78c2ebbd4f5a28
+ARG PLAYWRIGHT_MCP_VERSION=0.0.78
 
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+
+COPY playwright/package.json playwright/package-lock.json /usr/local/lib/codex-ha/playwright/
 
 RUN apk add --no-cache \
       bash \
       ca-certificates \
+      chromium-headless-shell \
       coreutils \
       curl \
+      font-noto-cjk \
+      font-noto-emoji \
       git \
       jq \
       less \
       nano \
       nginx \
+      nodejs \
       openssh \
       ripgrep \
       shadow \
@@ -28,6 +35,7 @@ RUN apk add --no-cache \
       ttyd \
       yamllint \
       yq \
+    && apk add --no-cache --virtual .playwright-build npm \
     && resolved_arch="${TARGETARCH:-${BUILD_ARCH}}" \
     && if [[ "${resolved_arch}" != "amd64" ]]; then \
       echo "Unsupported architecture: ${resolved_arch}; this MVP supports amd64 only" >&2; \
@@ -43,7 +51,16 @@ RUN apk add --no-cache \
     && install -m 0755 /tmp/codex-x86_64-unknown-linux-musl /usr/local/libexec/codex-real \
     && rm -f "/tmp/${codex_archive}" /tmp/codex-x86_64-unknown-linux-musl \
     && codex_version_output="$(/usr/local/libexec/codex-real --version)" \
-    && [[ "${codex_version_output}" == "codex-cli ${CODEX_VERSION}" ]]
+    && [[ "${codex_version_output}" == "codex-cli ${CODEX_VERSION}" ]] \
+    && [[ "$(node -p "require('/usr/local/lib/codex-ha/playwright/package.json').dependencies['@playwright/mcp']")" == "${PLAYWRIGHT_MCP_VERSION}" ]] \
+    && PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 npm_config_cache=/tmp/npm-cache \
+      npm ci --prefix /usr/local/lib/codex-ha/playwright \
+        --omit=dev --ignore-scripts --no-audit --no-fund \
+    && [[ "$(node -p "require('/usr/local/lib/codex-ha/playwright/node_modules/@playwright/mcp/package.json').version")" == "${PLAYWRIGHT_MCP_VERSION}" ]] \
+    && node -e "require('/usr/local/lib/codex-ha/playwright/node_modules/playwright-core')" \
+    && chromium-headless-shell --version \
+    && rm -rf /tmp/npm-cache \
+    && apk del .playwright-build
 
 COPY rootfs /
 
@@ -57,7 +74,12 @@ RUN chmod 0755 \
       /etc/s6-overlay/s6-rc.d/ttyd/run \
       /usr/local/bin/* \
       /usr/local/lib/codex-ha/api-client.sh \
-    && chmod 0644 /usr/local/share/codex-ha/AGENTS.md
+    && chmod 0644 \
+      /etc/codex/config.toml \
+      /usr/local/share/codex-ha/AGENTS.md \
+      /usr/local/share/codex-ha/playwright-init-page.ts \
+      /usr/local/share/codex-ha/playwright-mcp-proxy.mjs \
+      /usr/local/share/codex-ha/playwright-mcp.json
 
 RUN install -d -m 0700 /data/home /data/codex \
     && codex_version_output="$(codex --version)" \
@@ -68,6 +90,6 @@ LABEL \
   io.hass.type="app" \
   io.hass.arch="${BUILD_ARCH}" \
   org.opencontainers.image.title="Home Assistant App: Codex for Home Assistant" \
-  org.opencontainers.image.description="Codex CLI, Ingress terminal, and public-key SSH for Home Assistant" \
+  org.opencontainers.image.description="Codex CLI, Playwright browser, Ingress terminal, and public-key SSH for Home Assistant" \
   org.opencontainers.image.source="https://github.com/Kanu-Coffee/codex-for-home-assistant" \
   org.opencontainers.image.licenses="Apache-2.0"

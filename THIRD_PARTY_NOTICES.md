@@ -22,21 +22,39 @@ The Home Assistant base image itself includes S6 Overlay, Bashio, TempIO, Alpine
 
 The release archive is downloaded during the image build and verified against the SHA-256 value pinned in `codex_home_assistant/Dockerfile`.
 
+### Playwright MCP runtime
+
+The locally built `0.2.0` amd64 image pins the npm dependency graph with `codex_home_assistant/playwright/package-lock.json`:
+
+| Package | Source | License in npm metadata |
+| --- | --- | --- |
+| `@playwright/mcp 0.0.78` | <https://github.com/microsoft/playwright-mcp> | Apache-2.0 |
+| `playwright 1.62.0-alpha-1783623505000` | <https://github.com/microsoft/playwright> | Apache-2.0 |
+| `playwright-core 1.62.0-alpha-1783623505000` | <https://github.com/microsoft/playwright> | Apache-2.0 |
+
+The lockfile also records optional macOS-only `fsevents 2.3.2` under the Playwright package. It is not installed in the Linux amd64 runtime. The build sets `PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1`; it does not redistribute a Playwright-downloaded browser. Browser execution uses Alpine's separately packaged `chromium-headless-shell` listed below.
+
+Upstream Playwright does not list Alpine Linux/musl as a supported platform for its bundled browser binaries. This project deliberately combines Playwright MCP with Alpine's system Chromium and must validate that combination for each resolved image. That compatibility caveat does not change the upstream license terms.
+
 ## Direct Alpine packages
 
-The Dockerfile directly requests the packages below. Versions and SPDX-style license identifiers were read from the current locally built amd64 M1 image on 2026-07-13. A later rebuild can resolve newer package revisions from the Alpine 3.24 repositories; the installed image's `apk list --installed` and `apk info --license <package>` output is authoritative for that image.
+The Dockerfile directly requests the runtime packages below. Versions and SPDX-style license identifiers were read from the locally built amd64 `0.2.0` image on 2026-07-14. A later rebuild can resolve newer package revisions. The installed image's `apk list --installed` and `apk info --license <package>` output is authoritative for that exact image.
 
-| Package in current image | Upstream | License reported by Alpine |
+| Package/repository revision | Upstream | License reported by Alpine |
 | --- | --- | --- |
 | bash 5.3.9-r1 | <https://www.gnu.org/software/bash/> | GPL-3.0-or-later |
 | ca-certificates 20260611-r0 | <https://www.mozilla.org/> | MPL-2.0 AND MIT |
+| chromium-headless-shell 150.0.7871.114-r0 | <https://www.chromium.org/> | BSD-3-Clause |
 | coreutils 9.11-r0 | <https://www.gnu.org/software/coreutils/> | GPL-3.0-or-later |
 | curl 8.20.0-r1 | <https://curl.se/> | curl |
+| font-noto-cjk 0_git20220127-r1 | <https://github.com/notofonts/noto-cjk> | OFL-1.1 |
+| font-noto-emoji 2.051-r0 | <https://github.com/googlefonts/noto-emoji> | OFL-1.1 |
 | git 2.54.0-r0 | <https://git-scm.com/> | GPL-2.0-only |
 | jq 1.8.1-r0 | <https://jqlang.github.io/jq/> | MIT |
 | less 702-r0 | <https://www.greenwoodsoftware.com/less/> | GPL-3.0-or-later OR BSD-2-Clause |
 | nano 9.1-r0 | <https://www.nano-editor.org/> | GPL-3.0-or-later |
 | nginx 1.30.3-r0 | <https://nginx.org/> | BSD-2-Clause |
+| nodejs 24.17.0-r0 | <https://nodejs.org/> | MIT |
 | openssh 10.3_p1-r0 | <https://www.openssh.com/portable.html> | SSH-OpenSSH |
 | ripgrep 15.1.0-r0 | <https://github.com/BurntSushi/ripgrep> | MIT OR Unlicense |
 | shadow 4.18.0-r1 | <https://github.com/shadow-maint/shadow> | BSD-3-Clause |
@@ -45,6 +63,8 @@ The Dockerfile directly requests the packages below. Versions and SPDX-style lic
 | ttyd 1.7.7-r0 | <https://github.com/tsl0922/ttyd> | MIT |
 | yamllint 1.38.0-r0 | <https://github.com/adrienverge/yamllint> | GPL-3.0-or-later |
 | yq-go 4.53.3-r0 | <https://github.com/mikefarah/yq> | MIT |
+
+The Docker build also requests `npm 11.12.1-r0` as a temporary virtual build dependency, whose Alpine-reported license is Artistic-2.0. It runs the pinned `npm ci` installation and is then removed; npm itself is not present in the final runtime image. Chromium and Node.js include their own transitive third-party notices, which remain available through the Alpine package sources and installed license material.
 
 Transitive Alpine packages are installed by the Home Assistant base image or by the packages above; they are not separately selected in this repository. To inventory an exact built image, run:
 

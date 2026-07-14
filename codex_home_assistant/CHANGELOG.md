@@ -2,6 +2,33 @@
 
 All notable changes to this App are documented in this file.
 
+## [0.2.0] - 2026-07-14
+
+### Added
+
+- Add an image-pinned Microsoft Playwright MCP runtime and headless Chromium so Codex can navigate, inspect, interact with, and capture real Web UIs without a runtime browser download.
+- Register Playwright as an image-managed Codex system MCP with desktop/mobile viewport resizing, screenshots, DOM snapshots, console messages, and network/resource status tools.
+- Add a loopback-only Home Assistant browser gateway at `http://127.0.0.1:8099/` that combines frontend assets with the supported Core REST and WebSocket proxy paths.
+
+### Changed
+
+- Extend the default Home Assistant operating guidance with a rendered UI validation loop and browser-specific safety boundaries.
+- Keep browser sessions isolated, force generated files under `/run`, and cap managed browser output with a 50 MiB eviction limit.
+
+### Security
+
+- Preserve the existing `/data/codex/config.toml` and install the browser server in lower-precedence `/etc/codex/config.toml`, so a normal update neither overwrites user settings nor requires a new Codex login.
+- Reuse the protected runtime environment to pass the Supervisor token to the MCP process, register a root-only ephemeral secrets file for exact-value redaction, and inject the token only for the loopback Home Assistant origin.
+- Expose a browser tool allowlist that omits arbitrary page-code execution, unrestricted file access, file upload, persistent profiles, and externally listening browser ports.
+
+### Testing
+
+- Add policy coverage for the pinned MCP lockfile, system Codex configuration, browser tool allowlist, loopback gateway, ephemeral secret handling, and forbidden privilege regression.
+- Add a real stdio MCP smoke flow covering desktop and mobile screenshots, console errors, successful and failed resource requests, and token redaction.
+- Exercise the loopback Home Assistant gateway against mock Supervisor/Core services, including authenticated REST, frontend rendering, WebSocket upgrade, external reachability denial, and runtime-output cleanup.
+- Replace the public `0.1.3` container with the candidate on the same named `/data` and `/config` volumes, preserving Codex settings, an authentication marker, operating guidance, Home Assistant configuration, and SSH identity while enabling the new MCP.
+- Keep actual HAOS/AppArmor execution and authenticated live dashboard rendering as explicit post-update E2E checks rather than claiming them from a standalone Docker test.
+
 ## [0.1.3] - 2026-07-13
 
 ### Added

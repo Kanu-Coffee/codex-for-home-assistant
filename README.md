@@ -13,10 +13,11 @@ Home Assistant OS 안에서 OpenAI Codex CLI를 운영하기 위한 amd64 Home A
 - Home Assistant `/config` 전체 read-write
 - Home Assistant Core REST/WebSocket 접근
 - Supervisor API `manager` 운영 helper
+- Playwright MCP 기반 격리형 Headless Chromium UI 렌더링·진단
 - Codex 인증, 설정, SSH host key의 `/data` 영속화
 - 기존 사용자 파일을 보존하는 전역 Home Assistant 운영 가드레일
 
-현재 버전은 `0.1.3`, `stage: experimental`, amd64 전용입니다. AppArmor는 활성화되어 있고 Supervisor `admin`, Docker API, App `full_access`, host network는 사용하지 않습니다.
+다음 릴리스 대상은 `0.2.0`, `stage: experimental`, amd64 전용입니다. `0.2.0`의 브라우저 기능은 아직 public release와 실제 HAOS 검증 전입니다. AppArmor는 활성화되어 있고 Supervisor `admin`, Docker API, App `full_access`, host network는 사용하지 않습니다.
 
 > 이 App은 `/config`의 비밀과 `SUPERVISOR_TOKEN`을 사용할 수 있는 강한 관리자 도구입니다. 신뢰하는 관리자만 사용하고 TCP 2223을 인터넷으로 직접 port-forward하지 마세요.
 
@@ -35,15 +36,38 @@ https://github.com/Kanu-Coffee/codex-for-home-assistant
 3. 목록을 새로고침한 뒤 **Codex for Home Assistant**를 선택해 설치합니다.
 4. 공개키와 Network 포트를 설정하고 App을 시작합니다.
 
-Supervisor는 public generic manifest `ghcr.io/kanu-coffee/codex-for-home-assistant:0.1.3`을 내려받습니다. 이미지는 공식 Home Assistant builder action으로 amd64에서 미리 빌드하며 App Store 설치 중 소스 컴파일을 요구하지 않습니다. 실제 HAOS 기능 결과는 `progress.md`의 M2 항목별 증거를 기준으로 합니다.
+`0.2.0` 공개 후 Supervisor는 public generic manifest `ghcr.io/kanu-coffee/codex-for-home-assistant:0.2.0`을 내려받습니다. 이미지는 공식 Home Assistant builder action으로 amd64에서 미리 빌드하며 App Store 설치 중 소스 컴파일을 요구하지 않습니다. 공개 전에는 이 tag를 설치 가능하다고 가정하지 말고, 실제 HAOS 기능 결과는 `progress.md`의 M2 항목별 증거를 기준으로 합니다.
 
-기존 `0.1.3-dev` App은 삭제하지 말고 일반 업데이트하세요. `0.1.3`은 `/data` 형식이나 영구 파일을 변경·초기화하지 않으므로 완전 삭제나 재설치가 필요하지 않습니다.
+기존 App은 삭제하지 말고 `0.2.0`으로 일반 업데이트하세요. 브라우저 MCP는 image-owned system config로 제공되므로 `/data` 초기화나 MCP 재등록이 필요하지 않습니다. 업데이트가 끝난 뒤 실행 중이던 Codex는 종료하고 새 세션을 시작해야 새 system config를 읽습니다.
 
 설치, Codex device login, Windows SSH config, Remote SSH, API helper, 안전한 서비스 호출과 복구 절차는 [App 사용 설명서](codex_home_assistant/DOCS.md)를 따르세요.
 
 ### HACS 지원 여부
 
 HACS가 지원하는 저장소 유형에는 Home Assistant App(구 Add-on)이 없으므로 이 저장소를 HACS custom/default repository로 등록할 수 없습니다. Integration이나 Dashboard로 잘못 등록해도 App 설치로 연결되지 않습니다. [HACS 공식 repository types](https://hacs.xyz/docs/use/repositories/type/) 대신 위 Home Assistant App repository 버튼이나 URL을 사용하세요.
+
+## 실제 브라우저로 웹 UI 확인
+
+`0.2.0` image에는 `@playwright/mcp`와 Alpine의 `chromium-headless-shell`이 포함됩니다. App의 `/etc/codex/config.toml`이 `playwright` MCP server를 system layer에 등록하므로 업데이트 뒤 시작한 새 Codex 세션에는 별도 설치나 사용자 `config.toml` 수정 없이 브라우저 도구가 나타납니다. `/data/codex/config.toml`은 그대로 보존되며, 사용자가 같은 server 이름을 명시적으로 재정의하거나 비활성화한 경우에는 그 설정을 먼저 확인하세요.
+
+Codex에 다음 URL 중 하나와 확인 항목을 자연어로 요청합니다.
+
+| 대상 | 브라우저에서 여는 URL |
+| --- | --- |
+| App 컨테이너에서 실행한 개발 서버 | 서버가 출력한 정확한 주소. 예: `http://127.0.0.1:3000` |
+| Home Assistant 대시보드 | `http://127.0.0.1:8099` |
+
+`8099`는 Headless Chromium 전용 loopback gateway이며 외부 브라우저나 Ingress에서 여는 주소가 아닙니다. 기본 desktop viewport는 `1440x900`입니다. desktop screenshot과 console error/warning, 정적 리소스를 포함한 network request를 먼저 확인한 다음 `browser_resize`로 `390x844`로 바꾸어 mobile screenshot과 같은 진단을 다시 확인하도록 요청하세요. `browser_take_screenshot`, `browser_console_messages`, `browser_network_requests`가 각각 화면, 콘솔, URL·method·status 중심의 로딩 상태를 담당합니다. 민감 정보 노출을 줄이기 위해 상세 request/response header와 body를 반환하는 도구는 제공하지 않습니다. viewport resize는 반응형 layout 검사이며 mobile User-Agent, touch, 실제 기기 성능까지 에뮬레이션하지는 않습니다.
+
+```text
+http://127.0.0.1:3000을 열어 1440x900 desktop 화면을 캡처하고,
+console error/warning과 정적 파일을 포함한 실패 network request를 확인해 줘.
+그다음 390x844로 resize해 mobile 화면을 다시 캡처하고 같은 항목을 비교해 줘.
+```
+
+브라우저 context는 세션별로 격리되고 저장하지 않습니다. screenshot 등 파일 결과는 최대 50 MiB의 `/run/codex-ha/playwright-output`에만 두며 임의 `filename` 저장을 거부합니다. App 시작·재시작 때 기존 결과를 삭제하고 `/data`에는 보존하지 않습니다. Home Assistant gateway 인증에는 runtime token을 사용하고 MCP text output에서 exact token 문자열을 마스킹하지만, 인코딩되거나 분할된 비밀과 대시보드 화면·console·network 결과 전체를 정화하는 기능은 아닙니다. 결과에는 entity, 위치, 내부 URL 등 민감한 정보가 보일 수 있으므로 Git, 이슈, 채팅에 올리기 전에 반드시 검토하세요. 클릭·입력 도구는 실제 Home Assistant 상태를 바꿀 수 있으므로 단순 렌더링 요청을 제어 작업 승인으로 간주하지 않습니다.
+
+완성된 `0.2.0` amd64 local image build와 기존 Docker smoke는 **PASS**입니다. 실제 MCP smoke에서 initialize와 제한된 `tools/list`, desktop `1440x900`·mobile `390x844` DOM viewport 및 PNG, console·uncaught error 수집, network 200/302/404/500 및 전송 실패 구분, 임의 `filename`·금지 도구 거부와 token 비노출을 확인했습니다. 모의 Supervisor/Core를 연결한 local gateway에서도 token bootstrap, 인증된 REST, frontend marker, WebSocket upgrade와 loopback 외부 차단이 통과했습니다. Public `0.1.3` container를 candidate로 교체하는 update smoke는 동일 `/data`·`/config`에서 Codex 설정·인증 marker·운영 지침·SSH identity를 보존하면서 새 Playwright MCP가 동작함을 확인했습니다. 큰 desktop PNG는 MCP 응답 한도에 맞춰 같은 종횡비로 축소될 수 있습니다. 그러나 Playwright upstream은 Alpine/musl을 공식 browser 실행 플랫폼으로 지원하지 않으며, 이 구현은 Playwright 번들 browser 대신 Alpine Chromium을 사용합니다. AppArmor가 적용된 실제 HAOS의 `8099` dashboard 인증·WebSocket·resource loading과 실제 Supervisor update는 아직 **NOT RUN**입니다.
 
 ## 로컬 빌드
 

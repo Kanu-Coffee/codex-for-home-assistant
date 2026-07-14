@@ -12,6 +12,9 @@
 - Dockerfile lint
 - App config 정책 검사
 - registry image/tag publish workflow 정책 검사
+- Playwright npm lock/version과 image-managed MCP config 검사
+- browser tool allowlist 및 금지 도구 정책 검사
+- renderer가 새 App port/Ingress/host privilege를 추가하지 않는지 검사
 - secret scan
 - 실행 파일 permission 검사
 
@@ -30,6 +33,14 @@ Supervisor가 없어도 검증 가능한 항목:
 - API response media type 협상과 header injection 거부
 - token redaction
 - `/data` persistence fixture
+- image의 `/etc/codex/config.toml`과 사용자 `/data/codex/config.toml` precedence/비변경
+- pinned Playwright MCP stdio handshake, enforcement proxy와 Codex system config의 동일 allowlist 검사
+- Alpine `chromium-headless-shell` headless launch
+- desktop 1440x900, mobile 390x844 DOM viewport와 screenshot 이미지/종횡비
+- console warning/error와 page error 수집
+- 2xx/3xx/4xx/5xx/failed/static resource network 관찰
+- mocked Core/Supervisor를 연결한 loopback gateway의 동적 frontend, 전체 Core API/WebSocket route와 HTTPS trust 설정
+- fixture Supervisor token의 argv/log/MCP 응답/browser artifact 비노출과 `/run` 정리
 - pulled GHCR image의 labels/platform 및 full smoke
 
 ### L3 Supervisor/App 개발 환경
@@ -44,6 +55,9 @@ Supervisor가 없어도 검증 가능한 항목:
 - `SUPERVISOR_TOKEN`
 - Core/Supervisor API
 - source-build App에서 public GHCR image App으로 일반 업데이트
+- AppArmor 활성 상태에서 Playwright MCP와 Chromium 시작
+- container loopback HA gateway, 실제 frontend resource와 Core API/WebSocket
+- 일반 업데이트 후 `/etc` browser 기본값 갱신과 `/data` 사용자 config/auth 비변경
 
 ### L4 실제 사용자 HAOS E2E
 
@@ -54,6 +68,9 @@ Supervisor가 없어도 검증 가능한 항목:
 - 자동화 Trace/log 분석
 - Core check/restart
 - App update persistence
+- 실제 HA 대시보드 desktop/mobile 렌더링
+- console/page error와 실패 resource 보고
+- renderer 경로 전체의 Supervisor token 비노출
 
 ## 2. 자동 테스트 케이스
 
@@ -82,6 +99,17 @@ Supervisor가 없어도 검증 가능한 항목:
 | AT-021 | API `Accept` 협상 | 기본 JSON, 로그 x-log, 비허용/CRLF 값 요청 전 거부 |
 | AT-022 | ttyd resize/reconnect | resize 반영 후 WebSocket 재연결에도 session/pane/pid 동일 |
 | AT-023 | registry release contract | generic image, numeric tag gate, version 일치, package write 권한 |
+| AT-024 | Playwright 공급망 pin | lockfile에서 `@playwright/mcp` 0.0.78과 transitive Playwright 버전이 고정되고 runtime `latest`/`npx` 설치 없음 |
+| AT-025 | system MCP config | `/etc/codex/config.toml`에 optional stdio Playwright server, timeout, tool allowlist가 있고 `/data`에 image 기본값을 복사하지 않음 |
+| AT-026 | MCP handshake/tool 표면 | raw wrapper와 Codex system config가 동일 allowlist를 사용하고 임의 code 실행/file upload/unrestricted filesystem/codegen/단일 request 상세 도구가 노출·호출되지 않음 |
+| AT-027 | headless Chromium smoke | `/usr/bin/chromium-headless-shell`로 local fixture navigation/snapshot/screenshot 성공 |
+| AT-028 | desktop/mobile viewport | DOM에서 1440x900과 390x844를 각각 확인하고 screenshot 이미지와 종횡비 및 responsive breakpoint 일치. MCP가 큰 응답 이미지를 축소할 수 있으므로 desktop PNG의 전송 픽셀은 동일 종횡비로 판정 |
+| AT-029 | console/network 관찰 | warning/error/page error와 2xx/3xx/4xx/5xx/failed/static resource 요청을 누락 없이 분류 |
+| AT-030 | renderer 기본 output 격리 | init/start가 기존 기본 output을 삭제하고 `/run/codex-ha/playwright-output` mode 0700으로 재생성, 50 MiB 제한, `/data`에 profile/artifact 없음 |
+| AT-031 | gateway와 token 비노출 | `127.0.0.1:8099`의 동적 frontend/전체 Core API/WebSocket fixture 성공, token은 정확한 local origin에만 주입되고 argv/log/MCP/console/network/artifact에 없음. token 부재 시 일반 login page 동작 |
+| AT-032 | 권한/port 회귀 | renderer 추가 전후 `config.yaml`의 port/Ingress/role/AppArmor/privilege 계약이 동일 |
+| AT-033 | 업데이트 config 보존 | image 교체로 `/etc` browser 기본값은 갱신되고 marker를 넣은 `/data/codex/config.toml`, auth, SSH host key, 운영 지침은 byte-for-byte 보존 |
+| AT-034 | transport/file enforcement | wrapper의 모든 command-line 인수와 proxy의 모든 tool `filename` 거부, `/config`·`/data` artifact 우회 없음 |
 
 ## 3. HAOS 수동/E2E 시나리오
 
@@ -221,12 +249,13 @@ ha-api GET /states
 
 ### E2E-012 업데이트 영속성
 
-1. auth 상태와 host key fingerprint 기록
-2. 새 App image로 update
-3. 재시작
-4. 인증/SSH known_hosts 확인
+1. auth 상태와 host key fingerprint를 기록하고 `/data/codex/config.toml`에 식별 가능한 사용자 marker 추가
+2. 기존 `/etc/codex/config.toml`의 browser 기본값과 App version 기록
+3. `0.2.0` App image로 일반 update
+4. 재시작
+5. 새 image의 `/etc` Playwright 기본값, 사용자 marker, 인증/SSH known_hosts 확인
 
-성공 기준: 인증과 host key 유지
+성공 기준: image-managed Playwright 기본값은 제공되며 사용자 config, 인증, host key, 운영 지침은 변경되지 않음
 
 이 시나리오는 App 삭제나 `/data` 초기화 없이 일반 업데이트로 실행한다.
 
@@ -241,12 +270,46 @@ ha-api GET /states
 
 ### E2E-014 public GHCR 업데이트
 
-1. `0.1.3` generic manifest가 인증 없이 linux/amd64로 resolve되는지 확인
-2. image labels와 `codex --version`을 검사하고 full container smoke 실행
-3. App Store 저장소를 새로고침하고 기존 `0.1.3-dev`를 일반 업데이트
-4. Web UI, Codex 로그인, SSH host identity와 `/data` 사용자 설정 확인
+1. `0.2.0` generic manifest가 인증 없이 linux/amd64로 resolve되는지 확인
+2. image labels, `codex --version`, pinned Playwright/Chromium을 검사하고 full container smoke 실행
+3. App Store 저장소를 새로고침하고 기존 `0.1.3`을 일반 업데이트
+4. Web UI, Codex 로그인, SSH host identity, `/data` 사용자 설정과 `/etc` Playwright system config 확인
 
 성공 기준: 소스 빌드 없이 image를 받고 재로그인/known_hosts 변경 없이 주요 경로가 동작함. App 삭제나 `/data` reset은 하지 않음.
+
+### E2E-015 개발 Web UI browser 검증
+
+1. App 안에서 외부에서 접근 가능한 local test Web UI 또는 사용자가 지정한 개발 Web UI를 연다.
+2. desktop 1440x900에서 navigation, accessibility snapshot과 screenshot을 수집한다.
+3. mobile 390x844로 resize하고 responsive layout과 screenshot 크기를 확인한다.
+4. 의도한 warning/error fixture와 2xx/3xx/4xx/5xx/failed resource를 발생시킨다.
+5. console/page error, request URL·method·status·failure와 screenshot을 보고한다.
+
+성공 기준:
+
+- 두 viewport에서 실제 Chromium 렌더링이 완료되고 핵심 요소가 보임
+- console/page 오류와 실패 resource가 fixture 기대값과 일치
+- 브라우저가 멈췄다는 이유만으로 `networkidle`을 성공 조건으로 사용하지 않고 명시한 UI 상태로 완료 판단
+- proxy가 `filename`을 거부하고 output과 browser profile이 `/data`에 남지 않음
+
+### E2E-016 실제 HA 대시보드 browser 검증
+
+1. AppArmor를 활성 상태로 유지하고 App을 시작한다.
+2. 새 외부 port 없이 container 안의 `http://127.0.0.1:8099`를 연다.
+3. 로그인 화면을 우회하는 raw token URL 없이 HA frontend가 로드되는지 확인한다.
+4. desktop 1440x900과 mobile 390x844에서 사용자가 지정한 dashboard/view를 연다.
+5. Core API와 WebSocket 연결, 정적 resource, 한글/emoji font, console/page error를 확인한다. HTTPS frontend이면 container 내부 endpoint로 한정된 `proxy_ssl_verify off` 경로도 기록한다.
+6. process list, App/MCP log, network/console 보고와 screenshot metadata에서 실제 token 문자열을 검색한다.
+7. App을 재시작해 init이 이전 `/run` browser output을 지우고 runtime context/secrets를 다시 만드는지 확인한다.
+
+성공 기준:
+
+- frontend, API, WebSocket이 같은 loopback gateway 계약으로 동작
+- 두 viewport에서 dashboard가 실제 entity 상태와 함께 렌더링됨
+- token이 URL, argv, 로그, MCP 응답 또는 artifact에 없음
+- Network/Ingress/privilege/AppArmor 설정을 완화하지 않음
+
+이 시나리오는 실제 HAOS에서 아직 실행하지 않았다. 로컬 Docker fixture 결과로 대체하지 않고 **NOT RUN — HAOS unverified**로 기록한다.
 
 ## 4. 회귀 테스트 우선순위
 
@@ -258,6 +321,8 @@ P0:
 - Codex auth 유실
 - `/config` 손상
 - token 로그 노출
+- loopback gateway 외부 노출 또는 renderer token/artifact 유출
+- browser 추가로 AppArmor/port/privilege 경계 약화
 
 P1:
 
@@ -266,6 +331,8 @@ P1:
 - manager API helper 실패
 - 사용자 `AGENTS.md` 덮어쓰기
 - 한글/resize 문제
+- Playwright MCP/Chromium 시작 실패
+- desktop/mobile layout, console 또는 resource 오류 수집 실패
 
 P2:
 
