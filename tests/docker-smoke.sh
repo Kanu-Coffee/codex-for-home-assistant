@@ -196,11 +196,33 @@ wait_for_process "${PUBLIC_CONTAINER}" 'nginx'
 docker exec "${PUBLIC_CONTAINER}" /bin/sh -c '
   ha-browser-auth-status | jq --exit-status '\''
     .status == "ready"
+    and .source == "manual"
     and .user.group_ids == ["system-read-only"]
     and .user.local_only == true
     and .user.is_admin == false
   '\'' >/dev/null
 ' || fail 'Dedicated Home Assistant browser user validation was not ready'
+docker exec "${PUBLIC_CONTAINER}" test ! -e /data/browser-auth/managed-user.json \
+  || fail 'manual browser token unexpectedly created a managed user state'
+docker exec "${PUBLIC_CONTAINER}" test ! -e /data/browser-auth/managed-token \
+  || fail 'manual browser token unexpectedly created a managed token'
+docker exec --workdir /config "${PUBLIC_CONTAINER}" \
+  codex debug prompt-input 'verify the Home Assistant dashboard' \
+  | docker exec --interactive "${PUBLIC_CONTAINER}" jq --exit-status '
+      [
+        .[]
+        | select(.role == "developer")
+        | .content[]?
+        | select(.type == "input_text")
+        | .text
+      ]
+      | any(
+          contains("http://127.0.0.1:8099/")
+          and contains("image-managed")
+          and contains("another browser skill or plugin")
+        )
+    ' >/dev/null \
+  || fail 'Codex model-visible instructions did not contain the canonical 8099 Playwright route'
 
 NETWORK_INFO=$(docker exec "${PUBLIC_CONTAINER}" ha-browser-network-info) \
   || fail 'Home Assistant browser network diagnostics failed'
@@ -547,6 +569,25 @@ HOST_KEY_AFTER=$(docker exec "${PUBLIC_CONTAINER}" \
   || fail 'SSH host key changed after container replacement'
 docker exec "${PUBLIC_CONTAINER}" grep -Fq '# preserved-smoke-marker' /data/codex/config.toml
 docker exec "${PUBLIC_CONTAINER}" grep -Fq '# preserved-agents-smoke-marker' /data/codex/AGENTS.md
+docker exec "${PUBLIC_CONTAINER}" /bin/sh -c \
+  'jq ".home_assistant_browser_auto_auth = false" /data/options.json > /data/options.json.tmp && mv /data/options.json.tmp /data/options.json'
+docker exec "${PUBLIC_CONTAINER}" ha-browser-auth-refresh --quiet \
+  || fail 'manual browser override did not accept automatic authentication OFF'
+docker exec "${PUBLIC_CONTAINER}" jq --exit-status \
+  '.status == "disabled" and .reason == "option_disabled"' \
+  /run/codex-ha/browser-auth-status.json >/dev/null \
+  || fail 'manual browser override was not suppressed while automatic authentication was OFF'
+docker exec "${PUBLIC_CONTAINER}" test ! -e \
+  /run/codex-ha/home-assistant-browser.token \
+  || fail 'manual browser override left a runtime token while automatic authentication was OFF'
+docker exec "${PUBLIC_CONTAINER}" /bin/sh -c \
+  'jq ".home_assistant_browser_auto_auth = true" /data/options.json > /data/options.json.tmp && mv /data/options.json.tmp /data/options.json'
+docker exec "${PUBLIC_CONTAINER}" ha-browser-auth-ensure --quiet \
+  || fail 'manual browser override did not reactivate after automatic authentication was enabled'
+docker exec "${PUBLIC_CONTAINER}" jq --exit-status \
+  '.status == "ready" and .source == "manual"' \
+  /run/codex-ha/browser-auth-status.json >/dev/null \
+  || fail 'manual browser override did not return after automatic authentication was enabled'
 
 docker run --detach \
   --platform linux/amd64 \

@@ -4,8 +4,8 @@
 
 ## Project Status
 
-- 상태: **amd64 MVP/M2 PASS / 0.2.1 public / 0.2.2 관리형 브라우저 인증 후보 최종 local regression PASS / HAOS 실기 대기**
-- 현재 마일스톤: **0.2.2 관리형 Home Assistant 대시보드 브라우저 인증 후보 검증**
+- 상태: **amd64 MVP/M2 PASS / 0.2.2 public / 0.2.3 기본 ON 브라우저 자동 인증·8099 라우팅 후보 최종 local regression PASS / HAOS 실기 대기**
+- 현재 마일스톤: **0.2.3 자동 인증 옵션과 Codex Home Assistant 브라우저 기본 경로 검증**
 - 마지막 문서 기준일: **2026-07-14**
 - 저장소: public `Kanu-Coffee/codex-for-home-assistant`, default branch `main`
 
@@ -23,6 +23,19 @@
 - [x] 문서 주도 개발 파일 세트 작성
 
 ## Current Work
+
+### 2026-07-14 — 기본 ON 브라우저 자동 인증과 8099 Codex 라우팅
+
+- 목표: App 설정에서 Home Assistant 대시보드 브라우저 자동 인증을 켜고 끌 수 있게 하고 기본값을 `true`로 두어 신규 설치와 기존 설치의 다음 시작에서 관리형 최소권한 identity를 자동 생성·재사용한다. Codex는 Home Assistant 대시보드 검사 요청을 받으면 다른 browser skill 탐색보다 image-managed Playwright MCP와 `http://127.0.0.1:8099/`를 먼저 사용한다.
+- 수명주기 원칙: OFF는 다음 App/MCP 시작부터 runtime token 주입과 자동 생성을 비활성화하되 복구 가능한 `/data/browser-auth` identity는 삭제하지 않는다. 이미 열린 browser context에는 소급 적용하지 않으므로 option 저장 뒤 App을 재시작한다. 다시 ON이면 같은 identity를 재검증·재사용한다. 완전 삭제는 OFF 상태의 `ha-browser-auth-remove`로만 수행하고 ON에서는 즉시 재생성 경쟁을 막기 위해 거부한다. 수동 token option은 ON에서만 명시적 override로 유지한다.
+- Codex 지침 원칙: 기존 `/data/codex/config.toml`과 사용자 `AGENTS.md`는 변경하지 않는다. 업데이트 가능한 `/etc/codex/config.toml`의 `developer_instructions`, 신규 설치용 기본 `AGENTS.md`, Playwright MCP tool 설명에 8099 우선 경로를 명시한다.
+- 검증 계획: option/schema/번역 계약, default-ON 자동 생성·재시작 재사용·OFF/ON 전환·수동 override, system config와 MCP tool 설명을 unit/managed-auth/container smoke로 검증한다. desktop/mobile screenshot·console·network 회귀와 update persistence를 다시 실행하며 실제 HAOS/AppArmor는 별도 NOT RUN으로 유지한다.
+- [x] `home_assistant_browser_auto_auth` default true와 option 누락 upgrade 동작, init/MCP 자동 ensure, OFF/ON 보존·재활성화, manual override no-fallback을 구현한다.
+- [x] `/etc/codex/config.toml`의 model-visible developer instruction, 신규 기본 `AGENTS.md`와 filtered `browser_navigate` 설명에 image-managed Playwright와 `http://127.0.0.1:8099/` 첫 경로를 제공하고 기존 사용자 config/AGENTS를 보존한다.
+- [x] ON 상태 remove를 Home Assistant mutation 전에 거부하고 OFF 상태에서만 exact identity를 완전 삭제해 다음 ensure의 즉시 재생성 경쟁을 차단한다.
+- 최종 local image 증거: image ID `sha256:a774b98e7b60852e9b005736ee52debea6ff67b140b2e9fae8cad20b6979329e`, label version `0.2.3`/arch `amd64`, size 533,414,320 bytes다.
+- 최종 인증/browser/update 증거: managed-auth smoke, full Docker smoke와 public `0.2.2` → local `0.2.3` update smoke가 PASS했다. `8099` fixture는 desktop `1440x900`(전송 PNG 1389x868)·mobile `390x844`, console/network, direct Core REST/WebSocket, exact token redaction을 확인했다. 실제 HAOS/AppArmor dashboard E2E는 별도 **NOT RUN**이다.
+- 최종 정적 증거: Linux Python 3.13 + bash/jq에서 pytest **50 passed**, YAML, ShellCheck 0.11.0, Hadolint 2.14.0, Markdown 20개, actionlint 1.7.7, Node/Bash syntax와 `git diff --check`가 PASS했다.
 
 ### 2026-07-14 — 브라우저 최소권한 인증 자동 설정
 

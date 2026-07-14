@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-RELEASE_IMAGE=${1:-ghcr.io/kanu-coffee/codex-for-home-assistant:0.2.1}
+RELEASE_IMAGE=${1:-ghcr.io/kanu-coffee/codex-for-home-assistant:0.2.2}
 CANDIDATE_IMAGE=${2:-codex-for-home-assistant:test}
 TEST_ID="codex-ha-update-${RANDOM}-$$"
 RELEASE_CONTAINER="${TEST_ID}-release"
@@ -200,10 +200,33 @@ docker exec "${CANDIDATE_CONTAINER}" grep -Fxq \
   "${CONFIG_MARKER}" /data/codex/config.toml
 docker exec "${CANDIDATE_CONTAINER}" grep -Fxq \
   "${AGENTS_MARKER}" /data/codex/AGENTS.md
+docker exec --workdir /config "${CANDIDATE_CONTAINER}" \
+  codex debug prompt-input 'verify the Home Assistant dashboard' \
+  | docker exec --interactive "${CANDIDATE_CONTAINER}" jq --exit-status '
+      [
+        .[]
+        | select(.role == "developer")
+        | .content[]?
+        | select(.type == "input_text")
+        | .text
+      ]
+      | any(
+          contains("http://127.0.0.1:8099/")
+          and contains("image-managed")
+          and contains("another browser skill or plugin")
+        )
+    ' >/dev/null \
+  || fail 'updated image did not expose the canonical 8099 route to Codex'
 docker exec "${CANDIDATE_CONTAINER}" jq --exit-status \
   --arg marker "${BROWSER_OPTION_MARKER}" \
   '.home_assistant_browser_token == $marker' /data/options.json >/dev/null \
   || fail 'masked browser token option was not preserved'
+docker exec "${CANDIDATE_CONTAINER}" test ! -e \
+  /data/browser-auth/managed-user.json \
+  || fail 'legacy manual browser option unexpectedly created managed user state'
+docker exec "${CANDIDATE_CONTAINER}" test ! -e \
+  /data/browser-auth/managed-token \
+  || fail 'legacy manual browser option unexpectedly created managed token state'
 [[ $(docker exec "${CANDIDATE_CONTAINER}" stat -c '%a' \
   /data/codex/config.toml) == 600 ]]
 [[ $(docker exec "${CANDIDATE_CONTAINER}" stat -c '%a' \

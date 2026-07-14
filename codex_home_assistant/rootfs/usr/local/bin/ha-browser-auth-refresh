@@ -99,6 +99,19 @@ if ! codex_ha_config_validate; then
   exit 1
 fi
 
+if ! auto_auth=$(codex_ha_config_bool home_assistant_browser_auto_auth true); then
+  write_status rejected invalid_options
+  (( quiet )) || echo 'Browser authentication is disabled because the automatic authentication option is invalid' >&2
+  exit 1
+fi
+if [[ "${auto_auth}" != true ]]; then
+  unset auto_auth
+  write_status disabled option_disabled
+  (( quiet )) || echo 'Home Assistant browser automatic authentication is disabled by the App option'
+  exit 0
+fi
+unset auto_auth
+
 if ! browser_token=$(codex_ha_config_string home_assistant_browser_token ''); then
   write_status rejected invalid_options
   (( quiet )) || echo 'Browser authentication is disabled because the manual token option is invalid' >&2

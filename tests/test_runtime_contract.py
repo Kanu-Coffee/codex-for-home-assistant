@@ -120,6 +120,7 @@ def test_default_codex_guidance_has_home_assistant_safety_rules(rootfs: Path) ->
     guidance = (
         rootfs / "usr/local/share/codex-ha/AGENTS.md"
     ).read_text(encoding="utf-8")
+    normalized_guidance = " ".join(guidance.lower().split())
 
     assert "live Home Assistant App" in guidance
     assert "A diagnostic finding alone does not authorize" in guidance
@@ -127,6 +128,22 @@ def test_default_codex_guidance_has_home_assistant_safety_rules(rootfs: Path) ->
     assert "Run `ha-config-check`" in guidance
     assert "SUPERVISOR_TOKEN" in guidance
     assert "Never describe an unverified" in guidance
+    assert "http://127.0.0.1:8099/" in guidance
+    assert "do not first search for, invoke, or install another browser skill" in (
+        normalized_guidance
+    )
+    assert "home_assistant_browser_auto_auth" in guidance
+
+
+def test_boolean_option_reader_accepts_an_explicit_false(rootfs: Path) -> None:
+    config_helpers = (
+        rootfs / "usr/local/lib/codex-ha/config.sh"
+    ).read_text(encoding="utf-8")
+    bool_reader = config_helpers.split("codex_ha_config_bool()", maxsplit=1)[1]
+    bool_reader = bool_reader.split("codex_ha_config_json()", maxsplit=1)[0]
+
+    assert "jq --raw-output" in bool_reader
+    assert "--exit-status" not in bool_reader
 
 
 def test_web_terminal_uses_tmux_and_returns_to_shell(rootfs: Path) -> None:

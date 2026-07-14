@@ -55,7 +55,7 @@ Codex ── STDIO MCP ── Playwright ── Chromium
 3. Codex 전역 운영 지침 생성(기존 `AGENTS.md` 보존)
 4. SSH host key 생성 또는 기존 key 로드
 5. App 옵션에서 `authorized_keys` 렌더링
-6. 공통 runtime environment를 만들고 수동 override 또는 `/data/browser-auth` 관리형 token의 user/group/credential/single-token policy를 검증해 통과한 경우에만 runtime token 파일을 `/run`에 `0600`으로 생성
+6. 공통 runtime environment를 만들고 기본 ON 자동 인증 option에 따라 수동 override를 검증하거나 `/data/browser-auth` 관리형 identity를 생성·재사용한다. user/group/credential/single-token policy를 통과한 경우에만 runtime token 파일을 `/run`에 `0600`으로 생성하며 OFF이면 persistent identity를 보존하고 runtime token을 만들지 않음
 7. 이전 기본 Playwright output을 지우고 runtime directory를 `/run` 아래 `0700`으로 재생성
 8. `/config` 존재 및 RW 여부 검사
 9. `sshd -t`, `nginx -t`, 옵션 형식 검사
@@ -107,7 +107,7 @@ check_for_update_on_startup = false
 기존 `config.toml`이 있으면 전체 덮어쓰지 않는다. 누락된 필수 키만 안전하게 초기화하거나 샘플을 별도 제공한다.
 wrapper는 현재 App의 approval/sandbox 옵션을 `-c` override로 주입해 파일을 덮어쓰지 않고 웹·SSH·Remote app-server에 같은 정책을 적용한다.
 
-Playwright MCP는 user config에 append하지 않고 system config에서 제공한다. 공식 Codex config 우선순위에 따라 `/data/codex/config.toml`과 신뢰된 `/config/.codex/config.toml`이 `/etc/codex/config.toml`보다 우선하므로 사용자는 App 기본 server를 재정의하거나 끌 수 있다. App 업데이트는 image의 system config만 교체하고 `/data` user config 내용은 건드리지 않는다.
+Playwright MCP는 user config에 append하지 않고 system config에서 제공한다. 같은 `/etc/codex/config.toml`의 top-level `developer_instructions`가 Home Assistant dashboard 작업에는 image-managed Playwright와 `http://127.0.0.1:8099/`를 첫 경로로 지정한다. enforcement proxy도 `browser_navigate` 도구 설명에 같은 안내를 추가해 일반 browser skill 탐색보다 현재 MCP를 바로 선택하게 한다. 공식 Codex config 우선순위에 따라 `/data/codex/config.toml`과 신뢰된 `/config/.codex/config.toml`이 `/etc/codex/config.toml`보다 우선하므로 사용자는 App 기본 server나 instruction을 재정의하거나 끌 수 있다. App 업데이트는 image의 system config만 교체하고 `/data` user config와 기존 `AGENTS.md` 내용은 건드리지 않는다.
 
 `/data/codex/AGENTS.md`와 `AGENTS.override.md`가 모두 없으면 이미지에 포함된 Home Assistant 운영 가드레일을 원자적으로 복사한다. 이 전역 지침은 진단 결과를 자동 변경 권한으로 해석하지 않고, 비밀값·`.storage`·Recorder DB·고위험 기기 동작을 보호하며, 설정 변경 후 `ha-config-check`를 요구한다. 기존 파일·빈 파일·심볼릭 링크는 그대로 보존하므로 사용자가 비활성화하거나 교체할 수 있다. `/config` 아래의 프로젝트별 지침은 Codex 공식 계층 규칙에 따라 나중에 적용되므로 이 파일은 방어 심층화이지 강제 보안 경계가 아니다.
 
@@ -146,7 +146,9 @@ Chromium
 
 ### 3.6.1 관리형 browser identity lifecycle
 
-`ha-browser-auth-setup`은 terminal에서 명시적으로 한 번 실행한다. Supervisor admin WebSocket으로 exact read-only/local-only user와 임시 local credential을 만들고, direct Core의 명시적 `homeassistant` login flow로 해당 user session을 얻어 LLAT를 만든다. LLAT ownership/type/client를 확인한 직후 non-ready state로 먼저 원자 저장하므로 hard crash에서도 raw revocation material을 잃지 않는다. OAuth refresh와 임시 password credential을 제거하고 exact single-token/credential-free 상태를 재검증한 뒤에만 state를 `ready`로 전환한다.
+`home_assistant_browser_auto_auth`는 default `true`이며 option이 없는 기존 설치도 true로 해석한다. App init과 새 Playwright MCP launcher의 `ha-browser-auth-ensure`는 먼저 수동 override 또는 ready 관리 상태를 재검증하고, 둘 다 없거나 관리형 복구가 필요하면 Supervisor admin WebSocket으로 exact read-only/local-only user와 임시 local credential을 만든다. direct Core의 명시적 `homeassistant` login flow로 해당 user session을 얻어 LLAT를 만들고, ownership/type/client를 확인한 직후 non-ready state로 먼저 원자 저장하므로 hard crash에서도 raw revocation material을 잃지 않는다. OAuth refresh와 임시 password credential을 제거하고 exact single-token/credential-free 상태를 재검증한 뒤에만 state를 `ready`로 전환한다. `ha-browser-auth-setup`은 같은 transaction의 수동 재시도·진단 경로다.
+
+OFF는 refresh 초기에 `/run` token을 제거하고 `status: disabled`를 기록한다. 이미 열린 browser context에는 소급 적용하지 않으므로 App과 기존 Codex/MCP session을 재시작해야 한다. OFF는 `/data/browser-auth`와 Home Assistant user/token을 삭제하지 않으며, ON 재시작은 같은 identity를 재사용한다. `ha-browser-auth-remove`는 OFF 상태에서만 exact identity를 명시적으로 삭제해 다음 ensure의 즉시 재생성과 경쟁하지 않게 한다. 수동 token override도 ON일 때만 적용하며 invalid manual token에서 관리형 identity로 자동 fallback하지 않는다.
 
 setup/remove는 `/data/browser-auth/operation.lock`의 kernel `flock`으로 직렬화한다. state와 token은 `O_NOFOLLOW`, owner·regular-file·single-link 검증, file/directory fsync와 atomic rename을 사용한다. token self-revoke는 current refresh token 삭제 뒤 같은 credential 재접속이 확정적으로 거부되는지 확인한다. `local_only` source policy처럼 의미가 모호한 `auth_invalid`, DNS/TLS/Core transport failure 또는 policy/credential mismatch는 `/run`만 비활성화하고 안전한 재시도에 필요한 영구 state/token을 보존한다.
 
@@ -344,7 +346,8 @@ SSH host key가 재시작마다 바뀌면 Remote SSH가 깨지므로 `/data` 영
 | sshd 실패 | Web UI는 가능, SSH degraded 로그 |
 | 브라우저 연결 끊김 | tmux/Codex 세션 유지 |
 | Playwright MCP/Chromium 시작 실패 | Codex·shell은 유지, browser tool만 degraded 오류 |
-| dedicated browser token 없음/검증 실패 또는 `SUPERVISOR_TOKEN` 없음 | 일반 URL 렌더 유지, HA dashboard는 fail-closed login 화면과 auth status 표시 |
+| 자동 인증 OFF | 기존 browser context 종료/App 재시작 뒤 일반 URL 렌더 유지, HA dashboard login 화면과 `disabled` auth status 표시; 관리형 identity 보존 |
+| 자동 setup 실패, dedicated browser token 없음/검증 실패 또는 `SUPERVISOR_TOKEN` 없음 | 일반 URL 렌더 유지, HA dashboard는 fail-closed login 화면과 auth status 표시; 필요 시 수동 setup으로 정제된 오류 확인 |
 | 관리형 setup 중 Core/provider/TLS 실패 | non-ready journal/token 보존, runtime 제거, 명시적 재실행으로 수렴 |
 | 관리형 user policy/credential 변경 | 자동 수리·삭제 거부, owned token revocation 확인 또는 recovery material 보존 |
 | loopback gateway upstream 실패 | status와 sanitized 원인 보고, token 원문 미출력 |

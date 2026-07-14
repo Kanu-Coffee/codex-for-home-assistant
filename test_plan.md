@@ -41,6 +41,8 @@ Supervisor가 없어도 검증 가능한 항목:
 - 2xx/3xx/4xx/5xx/failed/static resource network 관찰
 - mocked Core/Supervisor를 연결한 loopback gateway의 동적 frontend, 전체 Core API/WebSocket route와 HTTPS trust 설정
 - fixture Supervisor token의 argv/log/MCP 응답/browser artifact 비노출과 `/run` 정리
+- browser auto-auth option 누락/default ON 자동 생성, restart 재사용, OFF/ON identity 보존과 manual override 억제
+- model-visible Codex developer instruction과 filtered navigation tool 설명의 `127.0.0.1:8099` 우선 route
 - pulled GHCR image의 labels/platform 및 full smoke
 
 ### L3 Supervisor/App 개발 환경
@@ -114,7 +116,9 @@ Supervisor가 없어도 검증 가능한 항목:
 | AT-036 | source IP와 재사용 negative | Docker inspect App IP, `curl %{local_ip}`, Core가 관측한 peer가 일치. container 제거 뒤 다른 App이 같은 IP를 받을 수 있음을 재현하고 production 파일에 Docker CIDR·`trusted_networks`·synthetic XFF 설정이 없음을 확인 |
 | AT-037 | managed browser auth lifecycle | provider preflight 후 exact local-only/read-only user, temporary login, LLAT 생성, password/OAuth cleanup, exact single token, restart reuse, revoke rotation과 policy-checked remove가 동작하고 비밀값을 출력하지 않음 |
 | AT-038 | managed auth crash/concurrency/fail-closed | kernel lock 충돌, partial credential create, pending LLAT, provider/Core/DNS/TLS failure, ambiguous local-only rejection, policy/credential mutation과 current-token self-revoke connection close에서 journal/token을 고아화하지 않고 runtime만 비활성화 |
-| AT-039 | HTTPS Core trust | Node HTTP/WebSocket과 nginx gateway가 image CA·SNI·`homeassistant` hostname을 검증하고 `proxy_ssl_verify off`가 없으며 invalid chain/hostname에서 fail closed |
+| AT-039 | browser 자동 인증 option | schema/default true, 누락 option도 ON, startup 자동 생성, restart 동일 identity 재사용, OFF에서 `/run` token 차단·`/data`/HA identity 보존·명시적 remove 허용, ON remove 거부, ON 재활성화, manual override ON 우선/OFF 억제 |
+| AT-040 | Codex 기본 HA browser route | 기존 사용자 config/AGENTS를 보존한 update container의 `codex debug prompt-input`과 `browser_navigate` description이 image-managed Playwright와 `http://127.0.0.1:8099/`를 첫 경로로 지정하고 다른 browser skill/8123/external URL 선탐색을 금지 |
+| AT-041 | HTTPS Core trust | Node HTTP/WebSocket과 nginx gateway가 image CA·SNI·`homeassistant` hostname을 검증하고 `proxy_ssl_verify off`가 없으며 invalid chain/hostname에서 fail closed |
 
 ## 3. HAOS 수동/E2E 시나리오
 
@@ -301,14 +305,15 @@ ha-api GET /states
 
 1. AppArmor를 활성 상태로 유지하고 App을 시작한다.
 2. `ha-browser-network-info`의 Supervisor self IP와 socket source IP가 같음을 확인하되 이 `/32`를 Home Assistant 설정에 추가하지 않는다.
-3. App Web terminal에서 `ha-browser-auth-setup`을 인수 없이 실행하고 `ha-browser-auth-status`가 `source: managed`, ready, active·local-only·sole `system-read-only`, credential-free 상태인지 확인한다. 사용자가 token을 수동 복사하지 않는다.
-4. 새 외부 port 없이 container 안의 `http://127.0.0.1:8099`를 열고 raw token URL이나 password 입력 없이 HA frontend가 로드되는지 확인한다.
+3. 기본 ON `home_assistant_browser_auto_auth` 상태로 App을 설치·시작하고 terminal 명령 없이 `ha-browser-auth-status`가 `source: managed`, ready, active·local-only·sole `system-read-only`, credential-free 상태인지 확인한다. 사용자가 token을 수동 복사하지 않는다.
+4. 새 Codex 세션에 dashboard 검토만 요청하고, model-visible system instruction과 Playwright tool 설명에 따라 다른 browser skill 탐색 없이 새 외부 port 없는 container 내부 `http://127.0.0.1:8099`를 첫 URL로 열어 raw token URL이나 password 입력 없이 HA frontend가 로드되는지 확인한다.
 5. desktop 1440x900과 mobile 390x844에서 사용자가 지정한 dashboard/view를 연다.
 6. direct Core API와 WebSocket 연결, 정적 resource, 한글/emoji font, console/page error를 확인한다. HTTPS frontend이면 CA chain과 `homeassistant` hostname 검증이 켜지고 invalid certificate를 우회하지 않는지 확인한다.
 7. process list, App/MCP log, network/console 보고와 screenshot metadata에서 Supervisor token과 browser token 문자열을 검색한다.
 8. image와 process argument에 Playwright `--secrets`가 없고 hostile `PLAYWRIGHT_MCP_*`, `NODE_OPTIONS`, `NODE_PATH`가 무시되며 token reflection fixture의 MCP text가 관리 proxy에서 exact-value redaction되는지 확인한다.
-9. App을 재시작해 init이 이전 `/run` browser output을 지우고 user policy를 다시 검증하며 runtime token file/context를 다시 만드는지 확인한다.
-10. App update/recreate 뒤 같은 managed user/token이 재사용되는지 확인하고, 마지막에 `ha-browser-auth-remove`가 identity를 제거하며 수동 `home_assistant_browser_token` fallback은 별도 opt-in일 때만 우선하는지 확인한다.
+9. 자동 인증을 OFF로 저장하고 App과 기존 Codex/MCP session을 재시작해 status `disabled`, `/run` token 부재와 login page를 확인하되 `/data`와 Home Assistant identity가 보존되는지 확인한다. 이 상태에서도 `ha-browser-auth-remove`가 명시적 완전 삭제를 수행하는지 별도로 확인한다.
+10. 자동 인증을 다시 ON으로 저장하고 App을 재시작해 같은 managed user/token이 재활성화되는지 확인한다. 수동 `home_assistant_browser_token`은 ON에서만 우선하고 OFF에서는 주입되지 않으며 invalid manual token이 managed identity로 fallback하지 않는지 확인한다.
+11. App update/recreate 뒤 기존 사용자 Codex config/AGENTS, managed identity, SSH identity가 보존되고 image-managed developer instruction과 navigation tool 설명만 새 8099 기본 방침으로 갱신되는지 확인한다.
 
 성공 기준:
 

@@ -1,0 +1,58 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+quiet=0
+if (( $# == 1 )) && [[ $1 == --quiet ]]; then
+  quiet=1
+elif (( $# != 0 )); then
+  echo 'Usage: ha-browser-auth-ensure [--quiet]' >&2
+  exit 2
+fi
+
+# shellcheck source=/dev/null
+. /usr/local/lib/codex-ha/config.sh
+
+refresh_auth() {
+  if (( quiet )); then
+    /usr/local/bin/ha-browser-auth-refresh --quiet
+  else
+    /usr/local/bin/ha-browser-auth-refresh
+  fi
+}
+
+if ! codex_ha_config_validate; then
+  refresh_auth
+  exit $?
+fi
+
+if ! auto_auth=$(codex_ha_config_bool home_assistant_browser_auto_auth true); then
+  refresh_auth
+  exit $?
+fi
+if [[ "${auto_auth}" != true ]]; then
+  unset auto_auth
+  refresh_auth
+  exit $?
+fi
+unset auto_auth
+
+if ! manual_token=$(codex_ha_config_string home_assistant_browser_token ''); then
+  refresh_auth
+  exit $?
+fi
+if [[ -n "${manual_token}" ]]; then
+  unset manual_token
+  refresh_auth
+  exit $?
+fi
+unset manual_token
+
+if refresh_auth; then
+  exit 0
+fi
+
+if (( quiet )); then
+  /usr/local/bin/ha-browser-auth-setup >/dev/null 2>&1
+else
+  /usr/local/bin/ha-browser-auth-setup
+fi

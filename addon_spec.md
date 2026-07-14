@@ -72,7 +72,7 @@ M1에서 실제 검증 전에는 amd64만 표시한다.
 
 ```yaml
 name: Codex for Home Assistant
-version: "0.2.1"
+version: "0.2.3"
 slug: codex_home_assistant
 description: Codex CLI, Playwright browser, Ingress terminal, and SSH for Home Assistant
 url: https://github.com/<owner>/codex-for-home-assistant
@@ -112,6 +112,7 @@ options:
   tmux_session_name: codex-ha
   codex_approval_policy: on-request
   codex_sandbox_mode: danger-full-access
+  home_assistant_browser_auto_auth: true
   log_level: info
 
 schema:
@@ -121,6 +122,7 @@ schema:
   tmux_session_name: "match(^[A-Za-z0-9._-]{1,64}$)"
   codex_approval_policy: "list(untrusted|on-request|never)"
   codex_sandbox_mode: "list(workspace-write|danger-full-access)"
+  home_assistant_browser_auto_auth: bool
   home_assistant_browser_token: password?
   log_level: "list(trace|debug|info|notice|warning|error|fatal)"
 ```
@@ -249,6 +251,7 @@ nano 또는 vim
 - 디렉터리가 이미 있으면 데이터 보존
 - `config.toml` 기존 사용자 변경 보존
 - `/etc/codex/config.toml`은 image-managed system default로 설치하고 `/data/codex/config.toml`에 MCP table을 append하지 않음
+- system config의 `developer_instructions`는 Home Assistant dashboard에서 image-managed Playwright와 `http://127.0.0.1:8099/`를 먼저 사용하게 하며, MCP proxy의 navigation tool 설명에도 같은 route를 제공함
 - `CODEX_HOME/AGENTS.md`와 `AGENTS.override.md`가 모두 없을 때만 기본 운영 지침을 원자적으로 생성
 - 기존 전역 지침은 빈 파일과 심볼릭 링크를 포함해 내용과 권한 보존
 - host key가 있으면 재생성하지 않음
@@ -305,9 +308,9 @@ default_tools_approval_mode = "writes"
 - init page는 `127.0.0.1:8099`와 `localhost:8099` origin에서만 검증된 dedicated browser token을 local storage에 주입한다.
 - `SUPERVISOR_TOKEN`은 Playwright MCP `env_vars`에서 제외한다. system launch는 `env -i`를 사용하고 wrapper는 검증 전에 `PLAYWRIGHT_MCP_*`, `NODE_OPTIONS`, `NODE_PATH`, `BASH_ENV`, `ENV`를 제거한다. launcher는 App init과 각 MCP 시작의 user policy 재검증에만 Supervisor credential을 사용한다. proxy/browser child는 상속 환경이 아니라 고정 allowlist만 받으며, browser token은 active·local-only·non-admin·non-system·sole `system-read-only` user, credential 부재와 exact single managed LLAT 검증을 통과한 경우에만 `/run/codex-ha`의 `0600` token 파일에서 init script 환경으로 전달한다.
 - App의 dynamic IP나 Docker 대역을 `trusted_networks`/`trusted_proxies`에 넣지 않고 Home Assistant auth provider/configuration을 수정하지 않는다.
-- `ha-browser-auth-setup`은 인수 없이 명시적으로 실행하며 `/auth/providers` preflight 뒤 지원되는 admin/user WebSocket과 login/token/revoke HTTP flow로 전용 user/LLAT를 만든다. 임시 password credential과 OAuth token은 제거하고, non-ready state/token은 `/data/browser-auth`의 `0700`/`0600` private storage에 crash recovery용으로 보존한다. `ha-browser-auth-remove`는 exact identity를 확인한 뒤 제거한다.
+- `home_assistant_browser_auto_auth`는 default true이고 option이 없는 기존 설치도 true로 해석한다. init과 각 MCP launcher의 `ha-browser-auth-ensure`는 `/auth/providers` preflight 뒤 지원되는 admin/user WebSocket과 login/token/revoke HTTP flow로 전용 user/LLAT를 자동 생성·복구한다. 임시 password credential과 OAuth token은 제거하고, non-ready state/token은 `/data/browser-auth`의 `0700`/`0600` private storage에 crash recovery용으로 보존한다. `ha-browser-auth-setup`은 자동 실패의 인수 없는 수동 재시도·진단이고, `ha-browser-auth-remove`는 OFF 상태에서만 exact identity를 확인한 뒤 제거한다.
 - 관리형 setup/remove는 persistent regular lock file의 kernel `flock`으로 직렬화한다. self-revoke는 재접속 거부로 확인하고, ambiguous local-only rejection·TLS/DNS/Core failure·unexpected policy/credential에서는 runtime만 제거하며 recovery material을 보존한다.
-- optional `home_assistant_browser_token`은 수동 override로 관리형 token보다 우선한다. 이 option이 설정된 동안 자동 setup은 거부해 두 identity source를 혼합하지 않는다.
+- 자동 인증 OFF는 다음 App/MCP session부터 runtime token과 자동 setup을 막되 persistent 관리형 identity는 보존하고, 명시적 remove는 계속 허용한다. ON 상태의 remove는 다음 ensure가 즉시 identity를 재생성하는 경쟁을 막기 위해 거부한다. ON 재시작은 같은 identity를 재사용한다. optional `home_assistant_browser_token`은 ON일 때 수동 override로 관리형 token보다 우선하며 invalid manual token에서 관리형 token으로 fallback하지 않는다.
 - Playwright `--secrets`의 입력값 치환은 사용하지 않는다. 관리 proxy의 stdout/stderr exact-value masking은 인코딩·분할된 비밀의 구조적 sanitizer가 아니다. console/network/screenshot과 dashboard 화면, `/data/browser-auth`와 App backup은 민감자료로 취급한다.
 - HTTPS frontend upstream과 자동 auth bootstrap은 image CA bundle, SNI와 `homeassistant` hostname을 검증한다. 자체 서명·hostname 불일치·신뢰할 수 없는 chain을 자동 우회하지 않는다.
 - browser/gateway 오류, token 부재 또는 user policy 검증 실패는 terminal, SSH와 Codex를 중단시키지 않는다. HA login 화면과 `ha-browser-auth-status`의 fail-closed 상태를 보고한다.
@@ -358,4 +361,4 @@ Playwright MCP child는 Supervisor token을 받지 않는다. 검증된 dedicate
 
 ## 14. Release image
 
-로컬 개발 단계에서는 `image`를 주석 처리한 local build를 허용한다. `0.1.3`부터 공식 Home Assistant builder actions `2026.06.0`으로 amd64 image와 generic manifest를 미리 빌드하고 `config.yaml`의 `image`에 `ghcr.io/kanu-coffee/codex-for-home-assistant`를 사용한다. Playwright renderer는 `0.2.0`, 최소권한 browser 인증 follow-up은 `0.2.1`이며 숫자 Git tag와 App version이 정확히 같을 때만 게시한다. 기존 tag는 덮어쓰지 않는다. Home Assistant `stage`는 HAOS browser/AppArmor 실기와 M3 평가 전까지 `experimental`을 유지한다.
+로컬 개발 단계에서는 `image`를 주석 처리한 local build를 허용한다. `0.1.3`부터 공식 Home Assistant builder actions `2026.06.0`으로 amd64 image와 generic manifest를 미리 빌드하고 `config.yaml`의 `image`에 `ghcr.io/kanu-coffee/codex-for-home-assistant`를 사용한다. Playwright renderer는 `0.2.0`, 최소권한 browser 경로는 `0.2.1`, 관리형 인증은 `0.2.2`, 기본 ON 자동 인증과 Codex `8099` 라우팅은 `0.2.3`이다. 숫자 Git tag와 App version이 정확히 같을 때만 게시하고 기존 tag는 덮어쓰지 않는다. Home Assistant `stage`는 HAOS browser/AppArmor 실기와 M3 평가 전까지 `experimental`을 유지한다.

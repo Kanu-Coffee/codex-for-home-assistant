@@ -92,6 +92,7 @@ def test_managed_browser_auth_commands_are_argument_free_and_refresh_runtime(
     setup = (bin_root / "ha-browser-auth-setup").read_text(encoding="utf-8")
     remove = (bin_root / "ha-browser-auth-remove").read_text(encoding="utf-8")
     refresh = (bin_root / "ha-browser-auth-refresh").read_text(encoding="utf-8")
+    ensure = (bin_root / "ha-browser-auth-ensure").read_text(encoding="utf-8")
 
     for command, usage in (
         (setup, "Usage: ha-browser-auth-setup"),
@@ -116,11 +117,18 @@ def test_managed_browser_auth_commands_are_argument_free_and_refresh_runtime(
 
     assert 'result=$(node "${HELPER}" auto-setup)' in setup
     assert "/usr/local/bin/ha-browser-auth-refresh --quiet" in setup
+    assert "codex_ha_config_bool home_assistant_browser_auto_auth true" in setup
+    assert "Enable the home_assistant_browser_auto_auth App option" in setup
     assert "home_assistant_browser_token" in setup
     assert 'if [[ -n "${manual_token}" ]]; then' in setup
     assert "clear it before enabling managed authentication" in setup
     assert 'printf \'%s\' "${manual_token}"' not in setup
     assert 'echo "${manual_token}"' not in setup
+    assert "codex_ha_config_bool home_assistant_browser_auto_auth true" in remove
+    assert "Disable home_assistant_browser_auto_auth" in remove
+    assert remove.index("Disable home_assistant_browser_auto_auth") < remove.index(
+        'result=$(node "${HELPER}" auto-remove)'
+    )
 
     assert 'result=$(node "${HELPER}" auto-remove)' in remove
     assert "/usr/local/bin/ha-browser-auth-refresh --quiet || true" in remove
@@ -142,6 +150,16 @@ def test_managed_browser_auth_commands_are_argument_free_and_refresh_runtime(
     ):
         assert hostile_variable in refresh
     assert "set -x" not in refresh
+
+    assert ensure.startswith("#!/usr/bin/env bash\nset -Eeuo pipefail\n")
+    assert "Usage: ha-browser-auth-ensure [--quiet]" in ensure
+    assert "codex_ha_config_bool home_assistant_browser_auto_auth true" in ensure
+    assert "codex_ha_config_string home_assistant_browser_token ''" in ensure
+    assert "/usr/local/bin/ha-browser-auth-refresh" in ensure
+    assert "/usr/local/bin/ha-browser-auth-setup" in ensure
+    assert ensure.index("home_assistant_browser_token") < ensure.index(
+        "/usr/local/bin/ha-browser-auth-setup"
+    )
 
 
 def test_managed_browser_auth_storage_is_private_and_atomic(rootfs: Path) -> None:

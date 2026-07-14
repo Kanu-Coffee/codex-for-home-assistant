@@ -13,6 +13,24 @@ if (( $# != 0 )); then
   exit 2
 fi
 
+# shellcheck source=/dev/null
+. /usr/local/lib/codex-ha/config.sh
+
+if ! codex_ha_config_validate; then
+  echo 'App options are unavailable or invalid' >&2
+  exit 1
+fi
+if ! auto_auth=$(codex_ha_config_bool home_assistant_browser_auto_auth true); then
+  echo 'The home_assistant_browser_auto_auth option is invalid' >&2
+  exit 1
+fi
+if [[ "${auto_auth}" == true ]]; then
+  unset auto_auth
+  echo 'Disable home_assistant_browser_auto_auth, restart the App and browser sessions, then run ha-browser-auth-remove' >&2
+  exit 1
+fi
+unset auto_auth
+
 unset \
   BASH_ENV \
   ENV \

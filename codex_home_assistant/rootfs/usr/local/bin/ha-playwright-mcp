@@ -31,7 +31,7 @@ unset \
 for variable in "${!PLAYWRIGHT_MCP_@}"; do
   unset "${variable}"
 done
-/usr/local/bin/ha-browser-auth-refresh --quiet || true
+/usr/local/bin/ha-browser-auth-ensure --quiet || true
 if [[ -r "${BROWSER_TOKEN_FILE}" ]]; then
   browser_token=$(< "${BROWSER_TOKEN_FILE}")
   if [[ -z "${SUPERVISOR_TOKEN:-}" && -r "${RUNTIME_ENV}" ]]; then

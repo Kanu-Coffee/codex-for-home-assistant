@@ -140,22 +140,29 @@ for variable in "${!PLAYWRIGHT_MCP_@}"; do
   unset "${variable}"
 done
 rm -f "${LEGACY_PLAYWRIGHT_SECRETS}"
-if /usr/local/bin/ha-browser-auth-refresh --quiet; then
-  browser_auth_source=$(jq --raw-output '.source' "${HA_BROWSER_AUTH_STATUS}")
-  bashio::log.info "Validated dedicated local-only, read-only Home Assistant browser authentication (${browser_auth_source})"
-  unset browser_auth_source
-else
-  browser_auth_status=$(jq --raw-output '.status // "unavailable"' \
-    "${HA_BROWSER_AUTH_STATUS}" 2>/dev/null || printf 'unavailable')
-  browser_auth_reason=$(jq --raw-output '.reason // "not_configured"' \
-    "${HA_BROWSER_AUTH_STATUS}" 2>/dev/null || printf 'not_configured')
-  if [[ "${browser_auth_status}" == unconfigured ]]; then
-    bashio::log.warning 'Dashboard auto-login is disabled; run ha-browser-auth-setup once to configure managed read-only access'
-  else
-    bashio::log.warning "Dashboard auto-login is disabled because browser authentication was rejected (${browser_auth_reason})"
-  fi
-  unset browser_auth_status browser_auth_reason
-fi
+/usr/local/bin/ha-browser-auth-ensure --quiet || true
+browser_auth_status=$(jq --raw-output '.status // "unavailable"' \
+  "${HA_BROWSER_AUTH_STATUS}" 2>/dev/null || printf 'unavailable')
+browser_auth_reason=$(jq --raw-output '.reason // "not_configured"' \
+  "${HA_BROWSER_AUTH_STATUS}" 2>/dev/null || printf 'not_configured')
+case "${browser_auth_status}" in
+  ready)
+    browser_auth_source=$(jq --raw-output '.source // "unknown"' \
+      "${HA_BROWSER_AUTH_STATUS}" 2>/dev/null || printf 'unknown')
+    bashio::log.info "Validated dedicated local-only, read-only Home Assistant browser authentication (${browser_auth_source})"
+    unset browser_auth_source
+    ;;
+  disabled)
+    bashio::log.info 'Home Assistant browser automatic authentication is disabled by the App option; any managed identity is preserved'
+    ;;
+  unconfigured)
+    bashio::log.warning 'Automatic managed browser authentication could not be configured; check ha-browser-auth-status and run ha-browser-auth-setup manually only to obtain a sanitized detailed error'
+    ;;
+  *)
+    bashio::log.warning "Dashboard auto-login is unavailable because browser authentication was rejected (${browser_auth_reason})"
+    ;;
+esac
+unset browser_auth_status browser_auth_reason
 
 ha_frontend_scheme=http
 ha_frontend_port=8123

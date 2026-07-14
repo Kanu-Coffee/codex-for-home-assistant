@@ -431,6 +431,13 @@ async function main() {
     const listed = await client.request("tools/list", {});
     assert(Array.isArray(listed.tools), "tools/list returned no tools array");
     const listedNames = new Set(listed.tools.map((tool) => tool.name));
+    const navigateDescription = listed.tools.find(
+      (tool) => tool.name === "browser_navigate",
+    )?.description;
+    assert(
+      navigateDescription?.includes("http://127.0.0.1:8099/"),
+      "browser_navigate did not advertise the canonical Home Assistant gateway",
+    );
     for (const forbiddenTool of [
       "browser_evaluate",
       "browser_file_upload",

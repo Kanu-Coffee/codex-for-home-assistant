@@ -2,6 +2,30 @@
 
 All notable changes to this App are documented in this file.
 
+## [0.2.3] - 2026-07-14
+
+### Added
+
+- Add the `home_assistant_browser_auto_auth` App setting, enabled by default, to create or reuse the dedicated local-only `system-read-only` browser identity without a terminal setup step.
+- Add `ha-browser-auth-ensure` so App initialization and each new Playwright MCP process converge on the configured managed or manual authentication source.
+
+### Changed
+
+- Treat a missing automatic-auth option as enabled so existing installations gain the new default after a normal update; disabling it takes effect for the next App/MCP browser session and preserves the managed identity for later reactivation.
+- Inject an image-managed Codex developer instruction and Playwright navigation-tool guidance that direct Home Assistant dashboard checks immediately to `http://127.0.0.1:8099/` instead of first searching for another browser skill or probing Core/external URLs.
+- Keep the manual `home_assistant_browser_token` as an explicit override only while automatic authentication is enabled; OFF suppresses all automatic token injection.
+
+### Security
+
+- Continue to validate the exact local-only/read-only user and single managed LLAT before browser injection; automatic provisioning does not add trusted networks, change authentication providers, edit `.storage`, or expose the Supervisor credential to Chromium.
+- Do not delete the Home Assistant user or persistent recovery material when the setting is turned off. Complete identity deletion remains an explicit `ha-browser-auth-remove` operation.
+- Require automatic authentication to be OFF before `ha-browser-auth-remove` can delete the identity, preventing the next automatic ensure from silently recreating what the user intended to remove permanently.
+
+### Testing
+
+- Cover default-ON fresh/update behavior, automatic creation, restart reuse, OFF/ON preservation and reactivation, ON-state removal refusal, OFF-state removal, manual override suppression, and OFF-state setup refusal in the managed authentication smoke suite.
+- Verify the 8099 route in model-visible `codex debug prompt-input` output and in the filtered Playwright `browser_navigate` tool description, alongside the existing desktop/mobile, console, network, update, and credential-redaction checks.
+
 ## [0.2.2] - 2026-07-14
 
 ### Added

@@ -199,3 +199,12 @@ hassio_role: manager
 - 동시성/폐기: setup/remove는 kernel `flock`으로 직렬화한다. current LLAT self-delete는 WebSocket response가 connection close와 경쟁하므로 같은 credential 재접속의 definitive rejection으로 확인한다. ambiguous local-only rejection과 Core/DNS/TLS outage에서는 persistent material을 지우지 않는다.
 - TLS: auth bootstrap과 nginx direct Core gateway는 image CA bundle, SNI와 `homeassistant` hostname을 검증한다. 자체 서명 또는 hostname 불일치 호환을 위해 검증을 끄지 않으며, 필요한 경우 운영자가 신뢰 가능한 내부 인증서 경로를 구성하거나 HTTP 내부 endpoint를 사용한다.
 - 제외: 설치 시 무조건 자동 mutation, HTTP setup button, `trusted_networks`/`trusted_proxies`, provider order 변경, `.storage` 편집은 선택하지 않는다. 명시적 terminal command는 관리자 의도와 audit trail을 유지하면서 token 복사·붙여넣기만 제거한다.
+
+## ADR-029 기본 ON browser identity 자동 ensure와 Codex 8099 route
+
+- 상태: Accepted for 0.2.3; ADR-028의 identity·저장·검증·폐기 경계는 유지하고 activation trigger만 대체
+- 사용자 결정: `home_assistant_browser_auto_auth` boolean option을 기본 ON으로 제공하고 신규 설치와 option이 없는 기존 설치 모두 true로 해석한다. App init과 새 Playwright MCP 시작의 idempotent `ha-browser-auth-ensure`가 ADR-028 transaction을 자동 시작 또는 복구하므로 정상 경로에서 terminal setup이나 token 복사·붙여넣기를 요구하지 않는다.
+- OFF 의미: 다음 App/MCP browser session부터 `/run` token 주입과 자동 mutation을 중지하되 `/data/browser-auth`와 Home Assistant identity는 보존한다. 이미 열린 context는 소급 로그아웃하지 않으므로 App/Codex session 재시작을 요구한다. ON 재시작은 같은 identity를 재사용하며 완전 삭제는 OFF 상태의 explicit `ha-browser-auth-remove`만 수행한다. ON에서는 다음 ensure의 즉시 재생성 경쟁을 막기 위해 remove를 거부한다. 수동 token은 ON에서만 override이고 invalid manual source에서 managed source로 fallback하지 않는다.
+- Codex route: `/etc/codex/config.toml`의 공식 `developer_instructions`와 enforcement proxy의 `browser_navigate` description에 Home Assistant dashboard의 canonical first route를 image-managed Playwright MCP의 `http://127.0.0.1:8099/`로 명시한다. global Vercel/다른 browser skill disable은 일반 Web UI 작업까지 막으므로 사용하지 않는다. `/data/codex/config.toml`과 사용자 `AGENTS.md`는 갱신·병합하지 않는다.
+- 보안 유지: 자동화는 기존 exact local-only/read-only/single-LLAT 검증, provider preflight, TLS 검증, crash journal과 fail-closed 정책 안에서만 동작한다. `configuration.yaml`, `.storage`, provider order, `trusted_networks`, `trusted_proxies`, App privilege와 external port는 바꾸지 않는다.
+- 검증: option 누락/default ON 생성, restart reuse, OFF/ON 보존·재활성화, OFF-state remove, manual override ON/OFF와 failure no-fallback을 fixture로 확인한다. 기존 user config/AGENTS가 있는 update container의 `codex debug prompt-input`과 filtered MCP `tools/list`에서 8099 instruction을 확인하고 desktop/mobile browser smoke를 재실행한다.

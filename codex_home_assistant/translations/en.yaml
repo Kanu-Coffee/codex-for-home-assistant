@@ -15,12 +15,21 @@ configuration:
   codex_sandbox_mode:
     name: Codex sandbox mode
     description: danger-full-access applies only inside this App container, not to the HAOS host.
+  home_assistant_browser_auto_auth:
+    name: Headless browser automatic authentication
+    description: >-
+      Automatically create or reuse a dedicated local-only, read-only Home
+      Assistant identity for the internal headless browser. Restart the App
+      after changing this option. Disabling it shows the normal login page on
+      the next browser session; the managed identity is preserved until you
+      explicitly remove it.
   home_assistant_browser_token:
     name: Manual Home Assistant browser token override
     description: >-
       Optional manual long-lived token for one active, local-only user whose only
-      group is system-read-only. Leave empty to use ha-browser-auth-setup managed
-      authentication. Invalid or over-privileged tokens are rejected.
+      group is system-read-only. It is used only while automatic authentication
+      is enabled and overrides the managed identity. Invalid or over-privileged
+      tokens are rejected.
   log_level:
     name: Web terminal log level
     description: Enables detailed ttyd logs for trace or debug. Secrets and authorization headers are never logged.
