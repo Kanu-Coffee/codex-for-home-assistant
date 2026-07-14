@@ -66,6 +66,12 @@ def test_codex_system_config_registers_restricted_playwright_mcp(
     with config_path.open("rb") as stream:
         config = tomllib.load(stream)
 
+    developer_instructions = config["developer_instructions"]
+    assert "http://127.0.0.1:8099/" in developer_instructions
+    assert "image-managed" in developer_instructions
+    assert "another browser skill or plugin" in developer_instructions
+    assert "localhost:8123" in developer_instructions
+
     playwright = config["mcp_servers"]["playwright"]
     assert playwright["command"] == "/usr/bin/env"
     assert playwright["args"] == [
@@ -119,9 +125,9 @@ def test_playwright_wrapper_uses_only_the_image_managed_stdio_server(
     assert 'for variable in "${!PLAYWRIGHT_MCP_@}"' in wrapper
     assert "CODEX_HA_BROWSER_TOKEN_VALIDATED=1" in wrapper
     assert '"${NODE_BINARY}" "${BROWSER_AUTH_CHECK}"' in wrapper
-    refresh_call = "/usr/local/bin/ha-browser-auth-refresh --quiet || true"
-    assert refresh_call in wrapper
-    assert wrapper.index(refresh_call) < wrapper.index(
+    ensure_call = "/usr/local/bin/ha-browser-auth-ensure --quiet || true"
+    assert ensure_call in wrapper
+    assert wrapper.index(ensure_call) < wrapper.index(
         'if [[ -r "${BROWSER_TOKEN_FILE}" ]]'
     )
     assert '"$@"' not in wrapper
@@ -148,7 +154,10 @@ def test_playwright_wrapper_uses_only_the_image_managed_stdio_server(
     assert 'createInterface({ input: child.stderr, crlfDelay: Infinity })' in proxy
     assert 'Object.prototype.hasOwnProperty.call(toolArgs, "filename")' in proxy
     assert "ALLOWED_TOOLS.has(toolName)" in proxy
-    assert "message.result.tools.filter" in proxy
+    assert ".filter((tool) => ALLOWED_TOOLS.has(tool.name))" in proxy
+    assert "HOME_ASSISTANT_NAVIGATION_GUIDANCE" in proxy
+    assert "http://127.0.0.1:8099/" in proxy
+    assert ".map(addImageManagedGuidance)" in proxy
 
 
 def test_playwright_runtime_is_headless_isolated_and_ephemeral(
@@ -245,14 +254,17 @@ def test_browser_auth_refresh_is_private_fail_closed_and_called_at_init(
     assert 'printf \'HA_BROWSER_TOKEN=%s\\n\'' not in init_script
     assert "unset NODE_OPTIONS NODE_PATH" in init_script
     assert 'for variable in "${!PLAYWRIGHT_MCP_@}"' in init_script
-    init_refresh = "/usr/local/bin/ha-browser-auth-refresh --quiet"
-    assert init_refresh in init_script
-    assert init_script.index(init_refresh) < init_script.index(
-        "browser_auth_source=$(jq"
+    init_ensure = "/usr/local/bin/ha-browser-auth-ensure --quiet"
+    assert init_ensure in init_script
+    assert init_script.index(init_ensure) < init_script.index(
+        "browser_auth_status=$(jq"
     )
     assert "home_assistant_browser_token" not in init_script
     assert 'HA_BROWSER_TOKEN="${browser_token}"' not in init_script
-    assert "run ha-browser-auth-setup once" in init_script
+    assert "Automatic managed browser authentication could not be configured" in (
+        init_script
+    )
+    assert "any managed identity is preserved" in init_script
     assert "system-read-only" in (
         rootfs / "usr/local/share/codex-ha/browser-auth-check.mjs"
     ).read_text(encoding="utf-8")
@@ -277,6 +289,8 @@ def test_browser_auth_refresh_is_private_fail_closed_and_called_at_init(
     assert 'chmod 0600 "${status_tmp}"' in refresh
     assert 'mv -f "${status_tmp}" "${RUNTIME_STATUS}"' in refresh
     assert "write_status rejected invalid_options" in refresh
+    assert "codex_ha_config_bool home_assistant_browser_auto_auth true" in refresh
+    assert "write_status disabled option_disabled" in refresh
     assert "write_status rejected invalid_token_format" in refresh
     assert "write_status rejected supervisor_validation_unavailable" in refresh
     assert "write_status rejected user_or_token_validation_failed" in refresh
@@ -432,7 +446,7 @@ def test_released_image_update_smoke_is_wired_into_ci(
     )
 
     assert update_smoke.startswith("#!/usr/bin/env bash\nset -Eeuo pipefail\n")
-    assert "ghcr.io/kanu-coffee/codex-for-home-assistant:0.2.1" in update_smoke
+    assert "ghcr.io/kanu-coffee/codex-for-home-assistant:0.2.2" in update_smoke
     assert '"${DATA_VOLUME}:/data"' in update_smoke
     assert '"${CONFIG_VOLUME}:/config"' in update_smoke
     assert "/data/codex/config.toml" in update_smoke
@@ -449,13 +463,15 @@ def test_released_image_update_smoke_is_wired_into_ci(
     ):
         assert preserved_value in update_smoke
     assert "codex mcp list --json" in update_smoke
+    assert "codex debug prompt-input" in update_smoke
+    assert "http://127.0.0.1:8099/" in update_smoke
     assert "tests/playwright_mcp_smoke.mjs" in update_smoke
 
     assert "Run container smoke tests" in ci
-    assert "Verify update from released 0.2.1" in ci
+    assert "Verify update from released 0.2.2" in ci
     assert ci.index("Run container smoke tests") < ci.index(
-        "Verify update from released 0.2.1"
+        "Verify update from released 0.2.2"
     )
     assert "bash tests/update-smoke.sh" in ci
-    assert "ghcr.io/kanu-coffee/codex-for-home-assistant:0.2.1" in ci
+    assert "ghcr.io/kanu-coffee/codex-for-home-assistant:0.2.2" in ci
     assert "codex-for-home-assistant:test" in ci

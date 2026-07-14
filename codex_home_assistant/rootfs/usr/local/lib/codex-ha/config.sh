@@ -24,6 +24,20 @@ codex_ha_config_true() {
     'has($key) and .[$key] == true' "${CODEX_HA_OPTIONS_FILE}" >/dev/null
 }
 
+codex_ha_config_bool() {
+  local key=$1
+  local default_value=$2
+  if [[ "${default_value}" != true && "${default_value}" != false ]]; then
+    return 2
+  fi
+  jq --raw-output \
+    --arg key "${key}" \
+    --argjson default_value "${default_value}" \
+    'if has($key) then .[$key] else $default_value end
+      | if type == "boolean" then . else error("option is not a boolean") end' \
+    "${CODEX_HA_OPTIONS_FILE}"
+}
+
 codex_ha_config_json() {
   local key=$1
   local default_json=$2

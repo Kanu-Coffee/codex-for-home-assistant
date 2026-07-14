@@ -151,5 +151,7 @@ def test_security_sensitive_defaults(addon_config: dict) -> None:
     assert addon_config["options"]["web_terminal_auto_start_codex"] is False
     assert addon_config["options"]["codex_approval_policy"] == "on-request"
     assert addon_config["options"]["codex_sandbox_mode"] == "danger-full-access"
+    assert addon_config["options"]["home_assistant_browser_auto_auth"] is True
+    assert addon_config["schema"]["home_assistant_browser_auto_auth"] == "bool"
     assert "home_assistant_browser_token" not in addon_config["options"]
     assert addon_config["schema"]["home_assistant_browser_token"] == "password?"

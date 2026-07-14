@@ -37,6 +37,16 @@ if ! codex_ha_config_validate; then
   echo 'App options are unavailable or invalid' >&2
   exit 1
 fi
+if ! auto_auth=$(codex_ha_config_bool home_assistant_browser_auto_auth true); then
+  echo 'The home_assistant_browser_auto_auth option is invalid' >&2
+  exit 1
+fi
+if [[ "${auto_auth}" != true ]]; then
+  unset auto_auth
+  echo 'Enable the home_assistant_browser_auto_auth App option before configuring managed authentication' >&2
+  exit 1
+fi
+unset auto_auth
 manual_token=$(codex_ha_config_string home_assistant_browser_token '')
 if [[ -n "${manual_token}" ]]; then
   unset manual_token

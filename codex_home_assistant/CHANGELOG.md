@@ -2,6 +2,39 @@
 
 All notable changes to this App are documented in this file.
 
+## [0.2.3] - 2026-07-14
+
+### Added
+
+- Add the `home_assistant_browser_auto_auth` App setting, enabled by default, to create or reuse the dedicated local-only `system-read-only` browser identity without a terminal setup step.
+- Add `ha-browser-auth-ensure` so App initialization and each new Playwright MCP process converge on the configured managed or manual authentication source.
+- Add `codex_user_files_update_mode` with `preserve` (default), `refresh_agents`, and `refresh_all` choices so Home Assistant Web UI updates can optionally reset the image-managed base guidance or both guidance and the current App-option-based default Codex configuration.
+- Add root-only pre-refresh backups, crash-recovery metadata, and per-target App-version state for selected user-file updates.
+
+### Changed
+
+- Treat a missing automatic-auth option as enabled so existing installations gain the new default after a normal update; disabling it takes effect for the next App/MCP browser session and preserves the managed identity for later reactivation.
+- Inject an image-managed Codex developer instruction and Playwright navigation-tool guidance that direct Home Assistant dashboard checks immediately to `http://127.0.0.1:8099/` instead of first searching for another browser skill or probing Core/external URLs.
+- Keep the manual `home_assistant_browser_token` as an explicit override only while automatic authentication is enabled; OFF suppresses all automatic token injection.
+- Treat a missing user-file update option as `preserve`, so a normal public `0.2.2` to `0.2.3` update changes no existing `config.toml` or `AGENTS.md`. Users may choose a refresh after the new Configuration field appears and restart the App.
+- Apply each selected target at most once per App version. Keeping a refresh mode selected applies it once again on the next version; returning to `preserve` makes the selection one-off.
+- Preserve `AGENTS.override.md` at its higher precedence and exclude Codex authentication/sessions, SSH and browser identities, App options, and the entire Home Assistant `/config` tree from user-file refreshes.
+
+### Security
+
+- Continue to validate the exact local-only/read-only user and single managed LLAT before browser injection; automatic provisioning does not add trusted networks, change authentication providers, edit `.storage`, or expose the Supervisor credential to Chromium.
+- Do not delete the Home Assistant user or persistent recovery material when the setting is turned off. Complete identity deletion remains an explicit `ha-browser-auth-remove` operation.
+- Require automatic authentication to be OFF before `ha-browser-auth-remove` can delete the identity, preventing the next automatic ensure from silently recreating what the user intended to remove permanently.
+- Warn that `refresh_all` resets user MCP, model, provider, trust, endpoint, and other Codex settings; preserve the original bytes in `0700`/`0600` backup storage that must itself be treated as a credential.
+- Preflight every selected target and fail closed without following symbolic links, overwriting multiply linked files, or mutating non-regular/unsafe paths. Commit replacements atomically only after all targets and backups verify.
+
+### Testing
+
+- Cover default-ON fresh/update behavior, automatic creation, restart reuse, OFF/ON preservation and reactivation, ON-state removal refusal, OFF-state removal, manual override suppression, and OFF-state setup refusal in the managed authentication smoke suite.
+- Verify the 8099 route in model-visible `codex debug prompt-input` output and in the filtered Playwright `browser_navigate` tool description, alongside the existing desktop/mobile, console, network, update, and credential-redaction checks.
+- Cover the default/missing preserve path, agents-only and all-target refreshes, per-version/per-target one-shot behavior, private byte-exact backups, restart idempotency, crash recovery, and unsafe symlink/hardlink/non-regular rejection without changing protected identities or `/config`.
+- Keep the actual Home Assistant Configuration UI/Supervisor update and HAOS/AppArmor dashboard path explicitly **NOT RUN** until verified on a real installation.
+
 ## [0.2.2] - 2026-07-14
 
 ### Added

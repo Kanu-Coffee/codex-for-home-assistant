@@ -1,0 +1,41 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+readonly LOCK_DIRECTORY=/run/codex-ha
+readonly LOCK_PATH=${LOCK_DIRECTORY}/user-files-update.lock
+readonly HELPER=/usr/local/share/codex-ha/user-files-update.mjs
+
+if (( $# != 0 )); then
+  echo 'Usage: codex-user-files-update' >&2
+  exit 2
+fi
+
+if [[ ! -d "${LOCK_DIRECTORY}" \
+  || -L "${LOCK_DIRECTORY}" \
+  || $(stat -c '%u:%a:%F' "${LOCK_DIRECTORY}" 2>/dev/null) != '0:700:directory' ]]; then
+  echo 'Codex user-file update lock directory is unsafe' >&2
+  exit 30
+fi
+if [[ -L "${LOCK_PATH}" \
+  || ( -e "${LOCK_PATH}" && ! -f "${LOCK_PATH}" ) ]]; then
+  echo 'Codex user-file update lock is unsafe' >&2
+  exit 30
+fi
+exec 9>> "${LOCK_PATH}"
+if [[ $(stat -Lc '%u:%h:%F' /proc/self/fd/9) != '0:1:regular empty file' \
+  && $(stat -Lc '%u:%h:%F' /proc/self/fd/9) != '0:1:regular file' ]]; then
+  echo 'Codex user-file update lock ownership or link count is unsafe' >&2
+  exit 30
+fi
+if [[ $(stat -Lc '%d:%i' "${LOCK_PATH}") \
+  != "$(stat -Lc '%d:%i' /proc/self/fd/9)" ]]; then
+  echo 'Codex user-file update lock changed during validation' >&2
+  exit 30
+fi
+chmod 0600 /proc/self/fd/9
+if ! flock -n 9; then
+  echo 'Another Codex user-file update operation is running' >&2
+  exit 20
+fi
+
+exec node "${HELPER}"

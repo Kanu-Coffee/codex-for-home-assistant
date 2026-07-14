@@ -114,6 +114,8 @@ SemVer를 사용한다.
 - MINOR: 사용자 기능 및 호환 변경
 - MAJOR: 설정/권한/데이터 호환성 파괴
 
+`0.2.3`은 기본 ON browser 인증/8099 route 후보로 이미 버전·업데이트 검증이 고정된 뒤 선택형 user-file refresh UI를 같은 미공개 후보에 포함한 1회 예외다. 기본 `preserve`로 public `0.2.2`의 사용자 파일을 건드리지 않으며 자세한 근거는 ADR-030에 기록한다. 이후 새 사용자 기능은 다시 MINOR를 사용한다.
+
 `config.yaml` version과 image tag가 일치해야 한다.
 
 ## 7. GHCR

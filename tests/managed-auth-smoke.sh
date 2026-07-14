@@ -102,6 +102,31 @@ mutate_fixture() {
       http://supervisor/__fixture/mutate >/dev/null
 }
 
+write_options() {
+  local options_json=$1
+  printf '%s' "${options_json}" \
+    | docker run --rm --interactive \
+      --platform linux/amd64 \
+      --entrypoint /bin/sh \
+      --volume "${DATA_VOLUME}:/data" \
+      "${IMAGE}" \
+      -c 'umask 077; cat > /data/options.json'
+}
+
+set_auto_auth() {
+  local value=$1
+  [[ "${value}" == true || "${value}" == false ]] \
+    || fail "invalid automatic authentication test value: ${value}"
+  docker exec "${APP_CONTAINER}" /bin/sh -c '
+    set -eu
+    umask 077
+    jq --argjson value "$1" ".home_assistant_browser_auto_auth = \$value" \
+      /data/options.json > /data/options.json.tmp
+    chmod 0600 /data/options.json.tmp
+    mv /data/options.json.tmp /data/options.json
+  ' sh "${value}"
+}
+
 docker image inspect "${IMAGE}" >/dev/null 2>&1 || fail "image not found: ${IMAGE}"
 docker network create "${NETWORK}" >/dev/null
 docker volume create "${DATA_VOLUME}" >/dev/null
@@ -124,20 +149,114 @@ docker start "${FIXTURE_CONTAINER}" >/dev/null
 wait_for_log "${FIXTURE_CONTAINER}" \
   'Home Assistant browser auto-setup fixture ready'
 
-printf '%s' \
-  '{"authorized_keys":[],"web_terminal_auto_start_codex":false,"tmux_session_name":"codex-ha-managed-auth","codex_approval_policy":"on-request","codex_sandbox_mode":"danger-full-access","log_level":"info"}' \
-  | docker run --rm --interactive \
-    --platform linux/amd64 \
-    --entrypoint /bin/sh \
-    --volume "${DATA_VOLUME}:/data" \
-    "${IMAGE}" \
-    -c 'umask 077; cat > /data/options.json'
-
+# A missing new option must use the manifest default (true) for both fresh
+# installs and upgrades whose existing options.json predates the option.
+write_options \
+  '{"authorized_keys":[],"web_terminal_auto_start_codex":false,"tmux_session_name":"codex-ha-auto-auth","codex_approval_policy":"on-request","codex_sandbox_mode":"danger-full-access","log_level":"info"}'
 start_app
 docker exec "${APP_CONTAINER}" ha-browser-auth-status \
   | docker exec --interactive "${APP_CONTAINER}" jq --exit-status \
-    '.status == "unconfigured"' >/dev/null \
-  || fail 'fresh install did not start with managed authentication unconfigured'
+    '.status == "ready" and .source == "managed"' >/dev/null \
+  || fail 'default-ON fresh install did not configure managed authentication'
+AUTO_USER_ID=$(docker exec "${APP_CONTAINER}" jq --exit-status --raw-output \
+  '.user.id' /run/codex-ha/browser-auth-status.json)
+AUTO_TOKEN_HASH=$(docker exec "${APP_CONTAINER}" sha256sum \
+  /data/browser-auth/managed-token | awk '{print $1}')
+assert_fixture_state '
+  (.users | length) == 1
+  and .users[0].credential_configured == false
+  and .long_lived.issued == 1
+  and .long_lived.active == 1
+  and .active_refresh_tokens_total == 1
+' 'default-ON automatic setup'
+
+docker rm -f "${APP_CONTAINER}" >/dev/null
+start_app
+[[ $(docker exec "${APP_CONTAINER}" sha256sum \
+  /data/browser-auth/managed-token | awk '{print $1}') == "${AUTO_TOKEN_HASH}" ]] \
+  || fail 'automatic authentication did not reuse its token after restart'
+docker exec "${APP_CONTAINER}" jq --exit-status --arg user_id "${AUTO_USER_ID}" '
+  .status == "ready"
+  and .source == "managed"
+  and .user.id == $user_id
+' /run/codex-ha/browser-auth-status.json >/dev/null \
+  || fail 'automatic authentication did not reuse its user after restart'
+assert_fixture_state '
+  (.users | length) == 1
+  and .long_lived.issued == 1
+  and .long_lived.active == 1
+' 'automatic restart reuse'
+
+set_auto_auth false
+docker rm -f "${APP_CONTAINER}" >/dev/null
+start_app
+docker exec "${APP_CONTAINER}" jq --exit-status '
+  .status == "disabled" and .reason == "option_disabled"
+' /run/codex-ha/browser-auth-status.json >/dev/null \
+  || fail 'automatic authentication OFF did not produce disabled status'
+docker exec "${APP_CONTAINER}" test ! -e \
+  /run/codex-ha/home-assistant-browser.token \
+  || fail 'automatic authentication OFF left a runtime browser token'
+docker exec "${APP_CONTAINER}" test -f /data/browser-auth/managed-token \
+  || fail 'automatic authentication OFF deleted the recoverable managed token'
+[[ $(docker exec "${APP_CONTAINER}" sha256sum \
+  /data/browser-auth/managed-token | awk '{print $1}') == "${AUTO_TOKEN_HASH}" ]] \
+  || fail 'automatic authentication OFF changed the preserved managed token'
+assert_fixture_state '
+  (.users | length) == 1
+  and .long_lived.issued == 1
+  and .long_lived.active == 1
+' 'automatic authentication OFF preserves identity'
+
+set_auto_auth true
+docker rm -f "${APP_CONTAINER}" >/dev/null
+start_app
+docker exec "${APP_CONTAINER}" jq --exit-status --arg user_id "${AUTO_USER_ID}" '
+  .status == "ready"
+  and .source == "managed"
+  and .user.id == $user_id
+' /run/codex-ha/browser-auth-status.json >/dev/null \
+  || fail 'automatic authentication ON did not reactivate the preserved identity'
+[[ $(docker exec "${APP_CONTAINER}" sha256sum \
+  /data/browser-auth/managed-token | awk '{print $1}') == "${AUTO_TOKEN_HASH}" ]] \
+  || fail 'automatic authentication ON rotated the preserved token unexpectedly'
+set_auto_auth false
+docker rm -f "${APP_CONTAINER}" >/dev/null
+start_app
+docker exec "${APP_CONTAINER}" jq --exit-status \
+  '.status == "disabled" and .reason == "option_disabled"' \
+  /run/codex-ha/browser-auth-status.json >/dev/null \
+  || fail 'automatic authentication was not disabled before identity removal'
+docker exec "${APP_CONTAINER}" ha-browser-auth-remove \
+  > "${WORK_DIR}/auto-remove.log" 2>&1 \
+  || fail 'OFF-state automatic authentication identity cleanup failed'
+assert_fixture_state '
+  (.users | length) == 0
+  and .long_lived.active == 0
+' 'automatic authentication cleanup'
+docker exec "${APP_CONTAINER}" curl --fail --silent --show-error \
+  --request POST http://supervisor/__fixture/reset >/dev/null
+
+docker rm -f "${APP_CONTAINER}" >/dev/null
+docker volume rm -f "${DATA_VOLUME}" "${CONFIG_VOLUME}" >/dev/null
+docker volume create "${DATA_VOLUME}" >/dev/null
+docker volume create "${CONFIG_VOLUME}" >/dev/null
+write_options \
+  '{"authorized_keys":[],"web_terminal_auto_start_codex":false,"tmux_session_name":"codex-ha-managed-auth","codex_approval_policy":"on-request","codex_sandbox_mode":"danger-full-access","home_assistant_browser_auto_auth":false,"log_level":"info"}'
+start_app
+docker exec "${APP_CONTAINER}" ha-browser-auth-status \
+  | docker exec --interactive "${APP_CONTAINER}" jq --exit-status \
+    '.status == "disabled" and .reason == "option_disabled"' >/dev/null \
+  || fail 'explicitly disabled authentication did not stay disabled'
+DISABLED_SETUP_OUTPUT="${WORK_DIR}/disabled-setup.log"
+if docker exec "${APP_CONTAINER}" ha-browser-auth-setup \
+  > "${DISABLED_SETUP_OUTPUT}" 2>&1; then
+  fail 'manual managed setup ignored the disabled automatic authentication option'
+fi
+grep -Fq 'Enable the home_assistant_browser_auto_auth App option' \
+  "${DISABLED_SETUP_OUTPUT}" \
+  || fail 'disabled managed setup did not explain how to enable the option'
+set_auto_auth true
 
 LOCK_HOLDER_OUTPUT="${WORK_DIR}/lock-holder.log"
 docker exec "${APP_CONTAINER}" /bin/bash -c '
@@ -275,6 +394,19 @@ assert_fixture_state '
   and .long_lived.active == 1
   and .active_refresh_tokens_total == 1
 ' 'idempotent setup'
+REMOVE_WHILE_ON_OUTPUT="${WORK_DIR}/remove-while-on-rejection.log"
+if docker exec "${APP_CONTAINER}" ha-browser-auth-remove \
+  > "${REMOVE_WHILE_ON_OUTPUT}" 2>&1; then
+  fail 'managed identity removal was allowed while automatic authentication was enabled'
+fi
+grep -Fq 'Disable home_assistant_browser_auto_auth' \
+  "${REMOVE_WHILE_ON_OUTPUT}" \
+  || fail 'ON-state removal refusal did not explain the persistent deletion workflow'
+assert_fixture_state '
+  (.users | length) == 1
+  and .long_lived.active == 1
+  and .active_refresh_tokens_total == 1
+' 'ON-state removal refusal preserves identity'
 
 TOKEN_HASH_BEFORE_LOCAL_ONLY_REJECTION=$(docker exec "${APP_CONTAINER}" \
   sha256sum /data/browser-auth/managed-token | awk '{print $1}')
@@ -433,6 +565,7 @@ POLICY_MUTATION=$(docker exec "${APP_CONTAINER}" jq --null-input --compact-outpu
 mutate_fixture "${POLICY_MUTATION}"
 TOKEN_HASH_BEFORE_POLICY_REJECTION=$(docker exec "${APP_CONTAINER}" \
   sha256sum /data/browser-auth/managed-token | awk '{print $1}')
+set_auto_auth false
 mutate_fixture '{"core_info":{"port":65534}}'
 POLICY_TRANSIENT_OUTPUT="${WORK_DIR}/policy-transient-rejection.log"
 if docker exec "${APP_CONTAINER}" ha-browser-auth-remove \
@@ -491,6 +624,7 @@ assert_fixture_state '
 docker exec "${APP_CONTAINER}" test ! -e /data/browser-auth/managed-user.json
 docker exec "${APP_CONTAINER}" test ! -e /data/browser-auth/managed-token
 
+set_auto_auth true
 docker exec "${APP_CONTAINER}" ha-browser-auth-setup \
   > "${WORK_DIR}/definitive-rejection-base.log" 2>&1 \
   || fail 'managed setup for definitive auth rejection failed'
@@ -502,6 +636,7 @@ DEFINITIVE_POLICY_MUTATION=$(docker exec "${APP_CONTAINER}" jq \
   '{user_id: $user_id, user_patch: {group_ids: ["system-read-only", "system-admin"]}}')
 mutate_fixture "${DEFINITIVE_POLICY_MUTATION}"
 mutate_fixture '{"revoke":"long_lived"}'
+set_auto_auth false
 DEFINITIVE_OUTPUT="${WORK_DIR}/definitive-auth-rejection.log"
 if docker exec "${APP_CONTAINER}" ha-browser-auth-remove \
   > "${DEFINITIVE_OUTPUT}" 2>&1; then
@@ -517,6 +652,7 @@ docker exec "${APP_CONTAINER}" ha-browser-auth-remove \
   > "${WORK_DIR}/definitive-auth-cleanup.log" 2>&1 \
   || fail 'managed identity cleanup after definitive auth rejection failed'
 
+set_auto_auth true
 docker exec "${APP_CONTAINER}" ha-browser-auth-setup \
   > "${WORK_DIR}/persistent-cleanup-base.log" 2>&1 \
   || fail 'managed setup for persistent cleanup failure failed'
@@ -562,10 +698,12 @@ assert_fixture_state '
   and .long_lived.active == 1
   and .active_refresh_tokens_total == 1
 ' 'journaled uncertain token recovery'
+set_auto_auth false
 docker exec "${APP_CONTAINER}" ha-browser-auth-remove \
   > "${WORK_DIR}/persistent-cleanup-remove.log" 2>&1 \
   || fail 'managed identity removal after cleanup recovery failed'
 
+set_auto_auth true
 mutate_fixture \
   '{"fail_next":"auth/long_lived_access_token_after_create"}'
 AMBIGUOUS_LLAT_OUTPUT="${WORK_DIR}/ambiguous-llat-rejection.log"

@@ -9,6 +9,8 @@ const PLAYWRIGHT_CONFIG =
 const HOME_ASSISTANT_BROWSER_TOKEN =
   "/run/codex-ha/home-assistant-browser.token";
 const REDACTED_BROWSER_TOKEN = "[REDACTED_HOME_ASSISTANT_TOKEN]";
+const HOME_ASSISTANT_NAVIGATION_GUIDANCE =
+  "For Home Assistant dashboards, use this image-managed Playwright MCP directly and navigate first to http://127.0.0.1:8099/. Do not first invoke or install another browser skill, and do not substitute localhost:8123 or an external Home Assistant URL.";
 
 // Keep the raw MCP surface as narrow as the Codex system configuration. This
 // proxy is the enforcement point even when the wrapper is invoked directly.
@@ -81,6 +83,16 @@ function rejectCall(message, code, reason) {
   });
 }
 
+function addImageManagedGuidance(tool) {
+  if (tool.name !== "browser_navigate") return tool;
+  const upstreamDescription =
+    typeof tool.description === "string" ? tool.description : "";
+  return {
+    ...tool,
+    description: `${HOME_ASSISTANT_NAVIGATION_GUIDANCE}\n\n${upstreamDescription}`.trim(),
+  };
+}
+
 const clientLines = createInterface({ input: process.stdin });
 clientLines.on("line", (line) => {
   if (!line.trim()) return;
@@ -142,9 +154,9 @@ serverLines.on("line", (line) => {
   if ("id" in message) {
     const key = idKey(message.id);
     if (pendingToolLists.delete(key) && Array.isArray(message.result?.tools)) {
-      message.result.tools = message.result.tools.filter((tool) =>
-        ALLOWED_TOOLS.has(tool.name),
-      );
+      message.result.tools = message.result.tools
+        .filter((tool) => ALLOWED_TOOLS.has(tool.name))
+        .map(addImageManagedGuidance);
     }
   }
 

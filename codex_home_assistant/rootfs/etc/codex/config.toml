@@ -1,3 +1,15 @@
+developer_instructions = """
+For Home Assistant dashboard browser work, immediately use the image-managed
+`playwright` MCP tools and navigate first to `http://127.0.0.1:8099/`. This is
+the canonical container-local Home Assistant frontend. Do not first search for,
+invoke, or install another browser skill or plugin, and do not probe
+`localhost:8123` or an external Home Assistant URL as an alternate login path.
+If the loopback gateway is unavailable, inspect `ha-browser-auth-status` and
+`ha-browser-network-info`, then report the failure instead of silently changing
+browser routes. After navigation, verify desktop and mobile layouts plus console
+and network errors with the same image-managed Playwright MCP.
+"""
+
 [mcp_servers.playwright]
 command = "/usr/bin/env"
 args = [
