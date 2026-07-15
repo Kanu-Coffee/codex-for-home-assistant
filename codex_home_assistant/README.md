@@ -2,7 +2,7 @@
 
 Codex CLI, Home Assistant Ingress 웹 터미널, 공개키 SSH와 Playwright Headless Chromium renderer를 하나의 실험용 Home Assistant App에 제공합니다. Codex는 `/config` 전체를 read-write로 사용하고 Core API와 Supervisor `manager` API를 호출할 수 있습니다.
 
-> 현재 공개 사전 릴리스는 [`0.4.0`](https://github.com/Kanu-Coffee/codex-for-home-assistant/releases/tag/0.4.0)이며 amd64 전용 `experimental` 단계입니다. 정확한 공개 이미지 자동 회귀는 PASS했습니다. 이전 public `0.3.1`의 실제 HAOS/Core `2026.7.2` 실기에서는 automation-related 30건 중 2건의 `unknown_error` 때문에 catalog가 FAIL했고 Core restart는 PARTIAL이었습니다. Public `0.3.2`는 이 오류를 격리했지만 실제 HAOS memory 재시험은 아직 **NOT RUN**입니다. `0.4.0` 승인 팝업 행렬과 live update 감지의 실제 HAOS 검증도 아직 **NOT RUN**입니다.
+> 현재 공개 사전 릴리스는 [`0.4.0`](https://github.com/Kanu-Coffee/codex-for-home-assistant/releases/tag/0.4.0)이며 amd64 전용 `experimental` 단계입니다. 정확한 공개 이미지 자동 회귀는 PASS했습니다. 이전 public `0.3.1`의 실제 HAOS/Core `2026.7.2` 실기에서는 automation-related 30건 중 2건의 `unknown_error` 때문에 catalog가 FAIL했지만, public `0.3.2` 재시험에서는 같은 2/30 오류를 격리하고 catalog·DB·실제 CLI/MCP·privacy·candidate·restart 요청 후 fresh sync·App restart persistence가 PASS했습니다. 최종 판정은 runtime OCI digest NOT RUN과 Core 단절/reconnect 및 LKG `stale/degraded` 미관측 때문에 **PARTIAL(FAIL 0)**입니다. `0.4.0` 승인 팝업 행렬과 live update 감지의 실제 HAOS 검증은 아직 **NOT RUN**입니다.
 
 비공식 커뮤니티 프로젝트이며 OpenAI 또는 Home Assistant/Nabu Casa와 제휴하거나 이들의 보증을 받는 제품이 아닙니다.
 
@@ -53,7 +53,7 @@ App version별 1회 규칙은 public `0.4.0`에도 적용됩니다. `refresh_age
 
 `refresh_all`은 사용자가 추가한 MCP/model/provider와 기타 config를 제거할 수 있습니다. 적용 전 원본은 `/data/codex/backups/user-files`의 root-only transaction에 저장됩니다. `AGENTS.override.md`는 보존되어 base보다 높은 우선순위를 유지하며 인증/session, SSH/browser identity, App options와 Home Assistant `/config`도 갱신 대상이 아닙니다. symlink, 다중 hardlink 또는 일반 파일이 아닌 target은 따라가지 않고 전체 선택을 fail closed합니다. 기존 설치의 첫 `0.2.3` 시작은 `preserve`이므로 업데이트만으로 사용자 파일을 변경하지 않습니다. 자세한 backup/복구 절차는 [DOCS.md](./DOCS.md)를 따르세요.
 
-공개 `0.3.2`의 browser 경로는 option 누락/default ON 자동 생성, restart identity 재사용, OFF/ON 보존·재활성화, ON 삭제 거부·OFF 삭제와 수동 override 억제를 fixture와 정확한 공개 이미지에서 확인했습니다. model-visible `8099` 지침, 내부 gateway의 desktop/mobile PNG·console/network·direct Core REST/WebSocket, 선택형 user-file refresh와 public `0.3.1` replacement smoke도 통과했습니다. 실제 Home Assistant 구성 UI/Supervisor 일반 업데이트와 HAOS AppArmor의 인증된 `8099` dashboard 경로는 public `0.2.3`에서 사용자 확인 **PASS**입니다. 별도로 0.3.0과 0.3.1 memory catalog live audit는 FAIL했고 public 0.3.2는 exact related failure를 자동 재현·격리했지만 실제 HAOS memory 재시험 전입니다. Public `0.4.0`의 browser approval 자동 smoke는 PASS했으나 실제 HAOS 팝업·global-never·AppArmor·live update 검증 전입니다.
+공개 `0.3.2`의 browser 경로는 option 누락/default ON 자동 생성, restart identity 재사용, OFF/ON 보존·재활성화, ON 삭제 거부·OFF 삭제와 수동 override 억제를 fixture와 정확한 공개 이미지에서 확인했습니다. model-visible `8099` 지침, 내부 gateway의 desktop/mobile PNG·console/network·direct Core REST/WebSocket, 선택형 user-file refresh와 public `0.3.1` replacement smoke도 통과했습니다. 실제 Home Assistant 구성 UI/Supervisor 일반 업데이트와 HAOS AppArmor의 인증된 `8099` dashboard 경로는 public `0.2.3`에서 사용자 확인 **PASS**입니다. 별도로 0.3.0과 0.3.1 memory catalog live audit는 FAIL했지만 public `0.3.2` 실기는 observed related failure 격리와 핵심 memory 동작을 PASS했고, runtime digest와 순간 LKG 관측의 증거 공백 때문에 최종 PARTIAL(FAIL 0)입니다. Public `0.4.0`의 browser approval 자동 smoke는 PASS했으나 실제 HAOS 팝업·global-never·AppArmor·live update 검증 전입니다.
 
 설치, Windows SSH config, Codex Desktop 요구사항, 인증 파일 복사, API/서비스 호출 안전 절차와 복구 방법은 [DOCS.md](./DOCS.md)를 반드시 읽으세요.
 

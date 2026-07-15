@@ -55,12 +55,13 @@ All notable changes to this App are documented in this file.
 
 - Public `0.3.1` was verified byte-for-byte on a real HAOS/Core `2026.7.2` installation, but catalog refresh failed because 2 of 30 automation-related searches returned Core `unknown_error`. Core restart reconnection and privacy checks passed or partially passed as documented; candidate/change/App restart/update tests were not run.
 - The existing per-target App-version behavior applies to `0.3.2`: a retained `refresh_agents` or `refresh_all` selection refreshes its selected target once after the update. Select `preserve` before updating if that is not wanted.
-- The published `0.3.2` image passed anonymous pull, exact-image memory/full/managed-auth/user-file and public `0.3.1` update regression. Actual HAOS `0.3.2` catalog, last-known-good restart recovery, CLI/MCP lookup, candidate/change, App restart/update, and privacy retesting remain separate until this image is installed and tested.
+- At release time, the published `0.3.2` image passed anonymous pull, exact-image memory/full/managed-auth/user-file and public `0.3.1` update regression; actual HAOS retesting remained separate.
 
 ### Testing
 
 - Reproduce the live `unknown_error` boundary with source and installed-image WebSocket tests, assert the exact official automation payload, and verify combined null-config/related warnings without retaining the remote response.
 - Add negative coverage proving server `timeout`/`unauthorized`/`invalid_format`/`home_assistant_error`, client timeout, malformed result envelopes, and array results still reject the snapshot, plus normalization coverage for config fallback references and exact provenance.
+- In the subsequent public `0.3.2` HAOS/Core `2026.7.2` self-audit, the same related `unknown_error` appeared for 2 of 30 automations and was isolated as designed. Catalog/DB/CLI/MCP/privacy/candidate lifecycle, the post-restart forced fresh sync, and App restart persistence passed. The overall audit remained **PARTIAL with zero FAIL items** because the actual runtime OCI digest was unavailable and no Core disconnect/failed refresh was observed, so reconnect and the transient LKG stale/degraded state were not observed; null config was also not observed and fault injection/version-tagged update were not run.
 
 ## [0.3.1] - 2026-07-15
 

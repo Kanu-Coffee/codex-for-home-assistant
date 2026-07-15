@@ -3,16 +3,16 @@
 SHA-256 checksums of the LF-normalized repository blobs:
 
 - `9345a628a5354ffec3e301659d8aef459a0b8e67e5ff720fa0a8e973a2eae0df`  `AGENTS.md`
-- `e77d519519bba89634b00312f7f21c829d8f1971fbf485e8cb41a75332f048de`  `README.md`
-- `448ac3c0f60c1f00d1750c613371a2137d4d2a3f267ad23fdb22c15ab7b8849f`  `addon_spec.md`
-- `6e0204c4ceb0041c589e065cd3322be11fb349128f377e109bf005b46fcd15c5`  `architecture.md`
-- `6a25ce54767f3b9042aa26847c299c15cbe06cadf661906dc987691796d26cf2`  `decisions.md`
-- `69afa752d560775f5f8e997f49af2cb9600894d168431dfbf81ce96ae1cc0630`  `implementation_plan.md`
+- `a7ae62f78df6cfd1637ab3ee620d32455d1d423b84be70443b6b17f459136815`  `README.md`
+- `ee8572f34d34d6bbee5c4b2404c9cf005f17958a3ac60c32fa6ca1943961b53a`  `addon_spec.md`
+- `075e5da6fd7da7a5c8e939803dbb3bac0ca1803340d99d7e9f869cd824ffeb78`  `architecture.md`
+- `848b8d79c961953cd259588ccedfd23fa4c01b1bbc1ce087554786bdbffc47cf`  `decisions.md`
+- `f246120779ad845bc2eba2527535b7b6e49fdc617151d6f1214d033b2acfe1c8`  `implementation_plan.md`
 - `a589c169be49d8084bcc4707618bb4a5dae73608094b064a9159e1eabde59698`  `master_prompt.md`
 - `4a6cfe684cbbbd162ee5e5a5e825d067eec8b9ef2011cdeedc3b5d1762959fb1`  `product_spec.md`
-- `9f298cb2b9cf3c461db3ed30c7e8e50d046ef2696dbddf015ea6675ad69935e5`  `progress.md`
+- `c4d29ad78bd40f555d412e399dfcc063d9f26d4a9c16ad4c53ac5d06dba1d225`  `progress.md`
 - `502a3ce056e2fe21101bbaa353a933b12964f5ce37eb28729ba480f877b33436`  `references.md`
 - `7b7273da594997ceaf071e13b81d357ea828e38f26018fa620ef497bb6c8478f`  `release_git.md`
 - `25a041eee9e7f34f7d11c93cd6d22418f0217621dde8a8bc7c0545b7b6e3a5e0`  `rules.md`
-- `798b90218b3acaae0cf484c88f382dd011ad5d1a07ca623ac48a3704b0679187`  `security.md`
-- `2ebcfc611321db23717e24c387e64e4c4259155e1a5c9ebc3cd8fa6c68e5c315`  `test_plan.md`
+- `dcfbb1cb1d6c6060107a8bea622d3126807215b9a92b50c10d1beda230428b26`  `security.md`
+- `110beff39a06771067dd45842d28d9f0d0b2193d6d172362b6617dfa7fe8d714`  `test_plan.md`

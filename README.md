@@ -18,7 +18,7 @@ Home Assistant OS 안에서 OpenAI Codex CLI를 운영하기 위한 amd64 Home A
 - Codex 인증, 설정, SSH host key의 `/data` 영속화
 - 기본적으로 사용자 파일을 보존하고 구성에서 선택할 때만 현재 App 기본본으로 갱신하는 전역 Home Assistant 운영 가드레일
 
-현재 공개 사전 릴리스는 [`0.4.0`](https://github.com/Kanu-Coffee/codex-for-home-assistant/releases/tag/0.4.0)이며 정확한 공개 이미지 자동 회귀는 PASS했습니다. 이전 public `0.3.1`의 실제 HAOS/Core `2026.7.2` 실기에서는 automation-related 30건 중 2건의 `unknown_error` 때문에 catalog bootstrap이 **FAIL**했고 Core restart는 PARTIAL이었습니다. `0.3.2`는 해당 실패를 격리해 공개 image 회귀까지 통과했지만 실제 HAOS memory 재시험은 아직 **NOT RUN**입니다. `0.4.0`의 실제 HAOS 승인 팝업 행렬과 live update 감지도 아직 **NOT RUN**입니다. `stage: experimental`, amd64 전용이며 Supervisor `admin`, Docker API, App `full_access`, host network는 사용하지 않습니다.
+현재 공개 사전 릴리스는 [`0.4.0`](https://github.com/Kanu-Coffee/codex-for-home-assistant/releases/tag/0.4.0)이며 정확한 공개 이미지 자동 회귀는 PASS했습니다. 이전 public `0.3.1`의 실제 HAOS/Core `2026.7.2` 실기에서는 automation-related 30건 중 2건의 `unknown_error` 때문에 catalog bootstrap이 **FAIL**했지만, 후속 public `0.3.2` 실기에서는 같은 2/30 오류를 bounded warning으로 격리하고 catalog·DB·실제 CLI/MCP·privacy·candidate lifecycle·restart 요청 후 fresh sync·App restart persistence가 모두 PASS했습니다. `0.3.2`의 최종 실기 판정은 runtime OCI digest NOT RUN과 Core 단절/reconnect 및 LKG `stale/degraded` 미관측 때문에 **PARTIAL(FAIL 0)**입니다. `0.4.0`의 실제 HAOS 승인 팝업 행렬과 live update 감지는 아직 **NOT RUN**입니다. `stage: experimental`, amd64 전용이며 Supervisor `admin`, Docker API, App `full_access`, host network는 사용하지 않습니다.
 
 > 이 App은 `/config`의 비밀과 `SUPERVISOR_TOKEN`을 사용할 수 있는 강한 관리자 도구입니다. 신뢰하는 관리자만 사용하고 TCP 2223을 인터넷으로 직접 port-forward하지 마세요.
 
@@ -167,7 +167,7 @@ progress.md            실제 완료/미검증 상태의 단일 기준
 
 로컬 Docker 검증은 image build, Codex 실행, S6 서비스, ttyd/nginx, 동일 tmux pane 재접속·resize, 공개키 sshd, 영속 데이터와 helper 오류 처리를 다룹니다. 실제 HAOS에서는 public 설치·시작, auto-start false/true, device-code 로그인과 재시작 인증 유지, Web UI 재접속·resize, `/config` 쓰기, Core REST 조회·저위험 service call, Supervisor 정보·로그 helper·설정 검사, SSH host identity 유지와 mobile Remote SSH 프로젝트 작업을 확인했습니다. amd64 M1/M2 수용 기준은 PASS입니다.
 
-Supervisor/Core/App start/stop/restart 실동작은 manager API 기능 범위에 포함되지만 운영 중단 위험이 있으므로 명시적인 유지보수 승인 없이 자동 실행하지 않습니다. 첨부된 0.3.1 실기에서는 승인된 Core restart만 수행해 daemon 생존·재연결은 확인했으나 catalog fresh 복구는 실패했고, Supervisor/App lifecycle은 실행하지 않았습니다.
+Supervisor/Core/App start/stop/restart 실동작은 manager API 기능 범위에 포함되지만 운영 중단 위험이 있으므로 명시적인 유지보수 승인 없이 자동 실행하지 않습니다. Public `0.3.2` 실기에서는 승인된 Core restart 요청 수락, daemon process 생존, 요청 후 forced fresh sync와 App restart의 DB·applied memory·Codex 설정/인증·SSH identity 보존을 확인했습니다. 다만 probe에 Core 단절이 나타나지 않아 실제 disconnect/reconnect와 LKG `stale/degraded` 순간은 NOT OBSERVED였으며, 이를 장애 경로 PASS로 확대하지 않습니다.
 
 자세한 최신 결과와 명령 증거는 `progress.md`에 기록합니다.
 

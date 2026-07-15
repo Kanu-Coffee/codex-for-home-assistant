@@ -191,7 +191,7 @@ Codex → ha_memory STDIO MCP ─────┤
 shell → ha-memory CLI ───────────┘
 ```
 
-- `ha-memoryd`는 주기적으로 `ha-memory refresh`를 실행하는 scheduler다. Core ready 전 연결 실패, Core restart와 transport 오류를 retry/backoff하며 last-known-good catalog를 유지한다. 성공 warning은 대상 ID 없이 bounded 개수만 log한다. readiness가 실패해도 Codex, ttyd, SSH, ingress, Playwright와 browser gateway 시작을 막지 않는다.
+- `ha-memoryd`는 주기적으로 `ha-memory refresh`를 실행하는 scheduler다. Core ready 전 연결 실패, Core restart와 transport 오류를 retry/backoff하며 last-known-good catalog를 유지한다. `stale/degraded` 전환과 실패 sync 증거는 refresh 시도가 실제 실패했을 때 생기므로 scheduler sleep 안에 끝나 refresh와 겹치지 않은 짧은 restart는 outage 상태가 관측되지 않을 수 있다. 성공 warning은 대상 ID 없이 bounded 개수만 log한다. readiness가 실패해도 Codex, ttyd, SSH, ingress, Playwright와 browser gateway 시작을 막지 않는다.
 - `ha-memory-core.mjs`가 v1 schema 초기화·version gating, prepared statement, WAL/busy-timeout transaction, 상태 전이, current-row/status precondition, FTS5 query와 output limit을 한곳에서 구현한다. scheduler/CLI/MCP process가 같은 SQLite WAL database를 사용하며 Unix socket single-writer service를 별도로 만들지 않는다. 알려지지 않은 과거/미래 schema는 자동 변환하지 않고 memory만 fail closed한다.
 - `ha-memory-ha-client.mjs`는 refresh와 fresh change verification 때 Supervisor runtime credential로 고정 Supervisor Core WebSocket proxy에 연결한다. image에 고정된 `ws` runtime에 handshake timeout, 32 MiB payload cap, compression off와 기본 TLS 검증을 적용하고, `HA_WS_URL` 같은 환경 endpoint override나 direct-Core credential fallback은 허용하지 않는다. raw token, endpoint response와 인증 frame은 database·argv·stdout/stderr·App log에 쓰지 않는다.
 - 연결 실패는 token, DNS, transport, timeout, auth, protocol, 고정 command와 snapshot 범주의 closed code로만 분류한다. DB status/change verification과 CLI는 이 code를 보존하고 `ha-memoryd`는 CLI 원문을 폐기한 뒤 allowlist code만 log한다.

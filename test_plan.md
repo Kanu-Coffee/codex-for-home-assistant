@@ -1,6 +1,6 @@
 # test_plan.md — 검증 전략
 
-> 기존 browser/AppArmor 실기 대상은 public `0.2.3`이고 `0.2.4`는 그 결과를 기록한 validation/evidence release다. 검증형 HA 메모리는 public `0.3.0` 자동 회귀를 통과했지만 실제 HAOS read-only 감사의 catalog refresh는 FAIL했다. Public `0.3.1` 수정·공개 이미지 자동 회귀도 PASS했지만 후속 실제 HAOS/Core `2026.7.2` 재시험에서 automation-related 30건 중 2건이 `unknown_error`를 반환해 catalog는 다시 FAIL했다. Public `0.3.2` 자동·공개 이미지 검증 PASS와 향후 실제 HAOS 재시험을 이 증거와 구분한다. Public `0.4.0` 승인 정책의 정확한 공개 이미지 자동 검증은 PASS지만 새 HAOS UI/AppArmor 실기는 NOT RUN이다.
+> 기존 browser/AppArmor 실기 대상은 public `0.2.3`이고 `0.2.4`는 그 결과를 기록한 validation/evidence release다. 검증형 HA 메모리는 public `0.3.0` 자동 회귀를 통과했지만 실제 HAOS read-only 감사의 catalog refresh는 FAIL했다. Public `0.3.1` 수정·공개 이미지 자동 회귀도 PASS했지만 후속 실제 HAOS/Core `2026.7.2` 재시험에서 automation-related 30건 중 2건이 `unknown_error`를 반환해 catalog는 다시 FAIL했다. Public `0.3.2`의 자동·공개 이미지 검증은 PASS했고 후속 실제 HAOS 재시험은 동일 2/30 오류 격리와 핵심 memory 경로를 PASS했지만 runtime digest와 순간 LKG 관측 증거가 없어 최종 PARTIAL(FAIL 0)이다. Public `0.4.0` 승인 정책의 정확한 공개 이미지 자동 검증은 PASS지만 새 HAOS UI/AppArmor 실기는 NOT RUN이다.
 
 ## 1. 테스트 계층
 
@@ -373,6 +373,7 @@ ha-api GET /states
 
 1. 기존 사용자 `AGENTS.md`와 user `config.toml`에 marker가 있는 설치를 일반 업데이트하고 두 파일의 bytes가 보존되는지 확인한다.
 2. App을 시작해 Codex/Web/SSH/browser가 정상이고 별도 `ha-memoryd`가 Core ready 뒤 첫 bootstrap을 완료하는지 확인한다. `/data/codex-ha-memory`는 0700, DB/WAL/SHM은 0600이어야 한다.
+   설치 무결성은 tag와 비교한 immutable App payload checksum과 Supervisor/host가 제공하는 actual runtime OCI manifest digest를 별도 항목으로 판정한다. `/addons/self/info`처럼 허용된 API가 digest를 제공하지 않으면 runtime digest는 NOT RUN으로 두고 추정하지 않으며, 이 증거만을 위해 `docker_api`나 host access를 추가하지 않는다. `/run`, `/data`, DB/WAL처럼 정상적으로 변하는 실행 overlay 전체를 public image와 byte-identical하다고 판정하지 않는다.
 3. `ha-memory status`에서 schema/catalog revision, last successful refresh와 non-stale 상태만 정제돼 보이는지 확인한다. 실제 entity/area 이름 전체나 token을 로그에 출력하지 않는다. 일부 automation의 related enrichment가 Core에서 명시적으로 거부되면 refresh 출력의 bounded warning과 config-derived 직접 관계를 확인하고, timeout/transport/protocol 실패를 같은 완화 경로로 오인하지 않는다.
    실패를 주입할 수 있는 개발 설치에서는 token/auth/DNS/transport/protocol/command code가 구분되고 App log에 raw command response나 credential이 없는지도 확인한다.
 4. 통제된 entity 하나를 CLI와 `ha_memory` MCP의 exact search/show로 찾고 device/area/automation related 관계와 허용된 description이 실제 UI/API와 일치하는지 확인한다. 작은 limit을 지정해 unrelated catalog가 반환되지 않는지 확인한다.
@@ -381,7 +382,7 @@ ha-api GET /states
 7. 같은 subject에 상충하는 추론과 명시적 사용자 설명, HA가 가진 canonical relation을 각각 제시해 fact-kind authority와 unresolved/resolved conflict history를 확인한다. 실제 HA relation을 사용자 의미로 덮어쓰지 않는다.
 8. 안전한 테스트 automation/registry 변경 전에 `ha-memory change begin --subjects-json --expect-json`으로 대상과 expectation을 commit하고, 변경·필요한 reload 뒤 같은 계약의 `ha-memory change verify --expect-json` fresh Core response가 맞을 때만 memory evidence가 적용되는지 확인한다. 고의 불일치/timeout에서는 이전 applied semantic memory가 유지돼야 한다.
 9. semantic applied fact를 compensating rollback하고 원 event가 history에 남으며 실제 HA catalog, automation과 기기 상태가 바뀌지 않는지 확인한다.
-10. Core를 재시작해 daemon reconnect와 fresh refresh를 확인한다. 짧은 outage 동안 last-known-good가 stale로 표시되고 Codex/Web/SSH/browser가 계속 동작해야 한다.
+10. Core를 재시작해 restart 요청 수락, daemon process 생존과 후속 forced fresh refresh를 확인한다. 실제 disconnect/reconnect가 관측되면 별도 판정한다. Outage 중 scheduled/forced refresh가 실제 실패한 경우에는 last-known-good가 `stale/degraded`로 보존되고 Codex/Web/SSH/browser가 계속 동작해야 한다. Core-unavailable 또는 failed refresh가 한 번도 관측되지 않으면 disconnect/reconnect와 순간 LKG 상태를 PASS로 추정하지 않고 NOT OBSERVED로 기록한다.
 11. App restart와 일반 update 뒤 DB/applied semantic memory가 유지되고 image-managed system MCP/developer instruction이 새 Codex session에서 bounded lookup을 지시하는지 확인한다.
 12. memory scheduler만 중지하거나 개발 fixture의 DB lock/error를 유발해 MCP가 tool unavailable 오류 또는 catalog `degraded`/`stale`을 명확히 보고하면서 기존 App 기능은 정상인 non-fatal degradation을 확인하고 복구한다.
 
@@ -393,7 +394,7 @@ ha-api GET /states
 - history와 compensating rollback은 semantic memory에만 적용되고 HA catalog/실제 HA를 과거 상태로 되돌리지 않음
 - `ha-memoryd` 장애가 App의 기존 운영 기능을 중단시키지 않음
 
-실행 결과: **public 0.3.0 읽기 전용 감사 FAIL — catalog refresh가 모두 `ha_unavailable`이었고 원문 진단은 daemon에서 폐기됐다. Public 0.3.1의 legal null-config, 실제 installed `ws`, 정밀 code, last-known-good/recovery와 전체 자동 회귀는 PASS했다. 후속 실제 HAOS/Core `2026.7.2`의 설치 무결성·연결·daemon/DB·privacy는 PASS했지만 automation-related 30건 중 2건의 Core `unknown_error` 때문에 catalog/LKG/실제 CLI·MCP 조회는 FAIL했다. Core restart는 daemon 생존·재연결 PASS와 fresh catalog 복구 FAIL을 합쳐 PARTIAL, null-config는 NOT OBSERVED, candidate/change/App restart/update는 NOT RUN이다. Public 0.3.2는 이 exact 실패와 음성 경계를 자동 재현하고 정확한 공개 image/update 회귀를 PASS했지만 실제 HAOS 재시험 전에는 live PASS가 아니다.**
+실행 결과: **public 0.3.0 읽기 전용 감사 FAIL — catalog refresh가 모두 `ha_unavailable`이었고 원문 진단은 daemon에서 폐기됐다. Public 0.3.1의 legal null-config, 실제 installed `ws`, 정밀 code, last-known-good/recovery와 전체 자동 회귀는 PASS했다. 후속 실제 HAOS/Core `2026.7.2`의 설치 무결성·연결·daemon/DB·privacy는 PASS했지만 automation-related 30건 중 2건의 Core `unknown_error` 때문에 catalog/LKG/실제 CLI·MCP 조회는 FAIL했다. Public 0.3.2는 이 exact 실패와 음성 경계를 자동 재현하고 정확한 공개 image/update 회귀를 PASS했다. 후속 실제 HAOS/Core `2026.7.2` 재시험에서는 동일 related 오류 2/30을 config와 직접 관계를 보존한 warning으로 격리했고 catalog/DB/실제 CLI·MCP/privacy/candidate lifecycle/restart 요청 후 forced fresh sync/App restart persistence가 PASS했다. Actual runtime OCI digest는 NOT RUN이고, Core 단절이나 failed refresh가 없어 disconnect/reconnect와 순간 LKG stale/degraded는 NOT OBSERVED다. Null-config도 NOT OBSERVED, 오류 주입과 version-tagged 0.3.1→0.3.2 update는 NOT RUN이므로 최종은 PARTIAL(FAIL 0)이다.**
 
 ### E2E-019 Playwright 승인 정책 UI
 
