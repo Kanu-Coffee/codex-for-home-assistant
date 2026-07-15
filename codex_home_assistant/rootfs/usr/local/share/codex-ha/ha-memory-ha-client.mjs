@@ -50,6 +50,18 @@ export class HomeAssistantUnavailableError extends Error {
   }
 }
 
+class HomeAssistantCommandRejectedError extends HomeAssistantUnavailableError {
+  constructor(commandType, remoteCode) {
+    super(
+      commandErrorCode(commandType),
+      `Home Assistant command ${commandType} failed (${remoteCode})`,
+    );
+    this.name = "HomeAssistantCommandRejectedError";
+    this.commandType = commandType;
+    this.remoteCode = remoteCode;
+  }
+}
+
 export function homeAssistantErrorCode(error) {
   return error instanceof HomeAssistantUnavailableError &&
     HOME_ASSISTANT_ERROR_CODES.has(error.code)
@@ -262,22 +274,42 @@ class HomeAssistantWebSocketClient {
     if (message.type !== "result" || !Number.isInteger(message.id)) return;
     const pending = this.pending.get(message.id);
     if (!pending) return;
+
+    if (message.success !== true && message.success !== false) {
+      const failure = new HomeAssistantUnavailableError(
+        "ha_protocol_error",
+        "Home Assistant WebSocket returned a malformed command result",
+      );
+      this.handleFailure(failure);
+      this.socket.close();
+      return;
+    }
+
+    if (
+      message.success === false &&
+      (!message.error ||
+        typeof message.error !== "object" ||
+        Array.isArray(message.error) ||
+        typeof message.error.code !== "string" ||
+        !/^[A-Za-z0-9_.-]{1,80}$/u.test(message.error.code))
+    ) {
+      const failure = new HomeAssistantUnavailableError(
+        "ha_protocol_error",
+        "Home Assistant WebSocket returned a malformed command error",
+      );
+      this.handleFailure(failure);
+      this.socket.close();
+      return;
+    }
+
     this.pending.delete(message.id);
     clearTimeout(pending.timer);
 
     if (message.success === true) {
       pending.resolve(message.result);
     } else {
-      const code =
-        typeof message.error?.code === "string" &&
-        /^[A-Za-z0-9_.-]{1,80}$/u.test(message.error.code)
-          ? message.error.code
-          : "unknown_error";
       pending.reject(
-        new HomeAssistantUnavailableError(
-          commandErrorCode(pending.type),
-          `Home Assistant command ${pending.type} failed (${code})`,
-        ),
+        new HomeAssistantCommandRejectedError(pending.type, message.error.code),
       );
     }
   }
@@ -449,26 +481,40 @@ async function fetchAutomationDetails(client, entityId) {
     relatedResult.value &&
     typeof relatedResult.value === "object" &&
     !Array.isArray(relatedResult.value);
+  const relatedUnknownError =
+    relatedResult.status === "rejected" &&
+    relatedResult.reason instanceof HomeAssistantCommandRejectedError &&
+    relatedResult.reason.commandType === "search/related" &&
+    relatedResult.reason.remoteCode === "unknown_error";
+  const relatedUsable = relatedValid || relatedUnknownError;
 
   let failureCode = null;
   if (!configValid && configResult.status === "rejected") {
     failureCode = homeAssistantErrorCode(configResult.reason);
-  } else if (!relatedValid && relatedResult.status === "rejected") {
+  } else if (
+    !relatedUsable &&
+    relatedResult.status === "rejected"
+  ) {
     failureCode = homeAssistantErrorCode(relatedResult.reason);
-  } else if (!configValid || !relatedValid) {
+  } else if (!configValid || !relatedUsable) {
     failureCode = "ha_snapshot_incomplete";
+  }
+
+  const warnings = [];
+  if (configValid && configValue === null) {
+    warnings.push(`automation_config_unavailable:${entityId}`);
+  }
+  if (relatedUnknownError) {
+    warnings.push(`automation_related_unavailable:${entityId}`);
   }
 
   return {
     entity_id: entityId,
-    complete: Boolean(configValid && relatedValid),
+    complete: Boolean(configValid && relatedUsable),
     config: configValid && configValue !== null ? configValue : {},
-    related: relatedValid ? relatedResult.value : null,
+    related: relatedValid ? relatedResult.value : {},
     failure_code: failureCode,
-    warning:
-      configValid && configValue === null
-        ? `automation_config_unavailable:${entityId}`
-        : null,
+    warnings,
   };
 }
 
@@ -568,8 +614,8 @@ export async function fetchHomeAssistantSnapshot(options = {}) {
       states,
       automations,
       warnings: details
-        .map((detail) => detail.warning)
-        .filter((warning) => typeof warning === "string"),
+        .flatMap((detail) => detail.warnings)
+        .slice(0, 100),
     };
   } catch (error) {
     if (error instanceof HomeAssistantUnavailableError) throw error;

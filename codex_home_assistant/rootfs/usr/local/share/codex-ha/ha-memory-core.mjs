@@ -925,6 +925,11 @@ function normalizeAutomationReferences(detail) {
     device: new Set(),
     entity: new Set(),
   };
+  const relatedReferences = {
+    area: new Set(),
+    device: new Set(),
+    entity: new Set(),
+  };
   const related = detail?.related;
   if (related && typeof related === "object") {
     for (const [sourceKey, kind] of [
@@ -939,7 +944,10 @@ function normalizeAutomationReferences(detail) {
       if (!Array.isArray(values)) continue;
       for (const value of values) {
         const safe = safeText(value, 255);
-        if (safe) references[kind].add(safe);
+        if (safe) {
+          references[kind].add(safe);
+          relatedReferences[kind].add(safe);
+        }
       }
     }
   }
@@ -949,7 +957,7 @@ function normalizeAutomationReferences(detail) {
     collectReferenceValues(config, "device_id", references.device);
     collectReferenceValues(config, "entity_id", references.entity);
   }
-  return references;
+  return { references, relatedReferences };
 }
 
 function validateSnapshotIdentifier(value, label, entityLike = false) {
@@ -1303,7 +1311,7 @@ export function normalizeHomeAssistantSnapshot(rawSnapshot) {
         at,
       ),
     );
-    const references = normalizeAutomationReferences(detail);
+    const { references, relatedReferences } = normalizeAutomationReferences(detail);
     for (const [kind, values] of Object.entries(references)) {
       for (const targetId of values) {
         addRelation(
@@ -1313,7 +1321,11 @@ export function normalizeHomeAssistantSnapshot(rawSnapshot) {
           "references",
           kind,
           targetId,
-          { source: detail.related ? "search_related" : "automation_config" },
+          {
+            source: relatedReferences[kind].has(targetId)
+              ? "search_related"
+              : "automation_config",
+          },
         );
       }
     }
@@ -4438,6 +4450,9 @@ export function memoryStatus(db, dbPath = process.env.HA_MEMORY_DB ?? DEFAULT_ME
   const lastSuccessful = db
     .prepare("SELECT * FROM sync_runs WHERE status = 'success' ORDER BY id DESC LIMIT 1")
     .get();
+  const lastSuccessfulWarnings = lastSuccessful
+    ? parseJsonColumn(lastSuccessful.warnings_json, [])
+    : [];
   const fileMode = process.platform === "win32"
     ? null
     : (statSync(dbPath).mode & 0o777).toString(8).padStart(4, "0");
@@ -4467,6 +4482,9 @@ export function memoryStatus(db, dbPath = process.env.HA_MEMORY_DB ?? DEFAULT_ME
           ha_version: lastSuccessful.ha_version,
           object_count: lastSuccessful.object_count,
           relation_count: lastSuccessful.relation_count,
+          warning_count: Array.isArray(lastSuccessfulWarnings)
+            ? lastSuccessfulWarnings.length
+            : 0,
         }
       : null,
     memory_counts: counts,

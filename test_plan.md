@@ -1,6 +1,6 @@
 # test_plan.md — 검증 전략
 
-> 기존 browser/AppArmor 실기 대상은 public `0.2.3`이고 `0.2.4`는 그 결과를 기록한 validation/evidence release다. 검증형 HA 메모리는 public `0.3.0` 자동 회귀를 통과했지만 실제 HAOS read-only 감사의 catalog refresh는 FAIL했다. Public `0.3.1` 수정·공개 이미지 자동 회귀는 PASS했고 실제 HAOS 재시험은 NOT RUN이므로 두 증거를 구분한다.
+> 기존 browser/AppArmor 실기 대상은 public `0.2.3`이고 `0.2.4`는 그 결과를 기록한 validation/evidence release다. 검증형 HA 메모리는 public `0.3.0` 자동 회귀를 통과했지만 실제 HAOS read-only 감사의 catalog refresh는 FAIL했다. Public `0.3.1` 수정·공개 이미지 자동 회귀도 PASS했지만 후속 실제 HAOS/Core `2026.7.2` 재시험에서 automation-related 30건 중 2건이 `unknown_error`를 반환해 catalog는 다시 FAIL했다. 0.3.2 후보 자동 검증과 향후 실제 HAOS 재시험을 이 증거와 구분한다.
 
 ## 1. 테스트 계층
 
@@ -137,14 +137,14 @@ Supervisor가 없어도 검증 가능한 항목:
 | AT-043 | user-file refresh 안전·복구 | symlink/hardlink/FIFO와 unsafe runtime lock을 mutation 전에 거부하고 hardlink 피해 파일 mode를 바꾸지 않으며, commit 전 journal은 rollback하고 commit 후 stale journal은 이후 사용자 편집을 보존한 채 정리 |
 | AT-044 | memory packaging/S6 계약 | `ha-memory-core.mjs`, HA client, CLI, MCP와 wrapper가 image에 포함되고 독립 `ha-memoryd` scheduler는 ttyd/SSH/ingress/browser의 dependency가 아니며 optional `[mcp_servers.ha_memory]`가 STDIO로 등록됨 |
 | AT-045 | SQLite v1 schema·권한·version gating | `/data/codex-ha-memory` 0700, DB/WAL/SHM 0600, SQLite FTS5·foreign key·check와 WAL/busy-timeout transaction이 동작하고 반복 v1 initialization이 멱등이며 unsafe owner/type/link/mode, 누락/지원되지 않는 schema는 자동 삭제·migration 없이 fail closed |
-| AT-046 | bootstrap allowlist·비저장 | entity/device/area registry, `get_states`, `automation/config`, `search/related` fixture만 호출하고 정규화 catalog/relation을 생성하며 raw state/비허용 attributes, automation config, API response, `/config`, 대화/prompt와 fixture secret은 DB·FTS·audit·log에 없음 |
-| AT-047 | snapshot 원자성·last-known-good | 같은 full snapshot 반복에 duplicate가 없고 command/대상 일부 실패, transport 오류와 malformed field에서는 새 revision을 commit하지 않으며 기존 catalog와 stale/degraded 상태를 유지 |
+| AT-046 | bootstrap allowlist·비저장 | entity/device/area registry, `get_states`, `automation/config`, 공식 `search/related(item_type=automation, item_id=<automation entity_id>)`만 호출하고 정규화 catalog/relation을 생성하며 raw state/비허용 attributes, automation config, API response, `/config`, 대화/prompt와 fixture secret은 DB·FTS·audit·log에 없음. 의미가 다른 `item_type=entity`를 automation graph fallback으로 사용하지 않음 |
+| AT-047 | snapshot 원자성·last-known-good | 같은 full snapshot 반복에 duplicate가 없음. 개별 related의 정상 envelope `success:false`, `error.code=unknown_error`만 빈 enrichment/bounded warning과 config-derived 직접 관계로 격리하고, 다른 server command code, config 실패, related timeout·transport/close/protocol·malformed envelope/result에서는 새 revision을 commit하지 않으며 기존 catalog와 stale/degraded 상태를 유지 |
 | AT-048 | candidate authority·conflict | alias/use/preference/relation이 `pending → verified → applied`를 순서대로 거치고 추론/일시 state 단독 승격은 거부. HA canonical과 explicit-user semantic validator가 fact kind별로 동작하며 unresolved candidate는 적용되지 않고 contested applied fact는 기본 search/FTS에서 제외하며 bounded conflict summary는 표시 |
 | AT-049 | post-change fresh expectation | `change begin --subjects-json --expect-json`이 기존/생성 예정 대상과 closed-schema expectation digest/field summary를 먼저 기록하고 새 API response가 같은 `change verify --expect-json` 계약을 만족할 때만 evidence/apply 가능. `codex_change` relationship candidate는 동일 source·relation·target의 성공한 존재 predicate만 인정하고, raw expectation 값/state/attributes/config는 비교 뒤 폐기하며 cached row, 같은 subject의 무관한 check, 2xx, config-check-only, timeout·부분 불일치에서는 applied semantic memory 불변 |
 | AT-050 | bounded CLI/MCP retrieval과 preserve | query 256자, search 기본 8·최대 20 subject/JSON 32 KiB, subject별 relation 각 12(정확 show 30)·applied 20·open conflict 10 상한에서 exact ID/alias·FTS canonical/applied만 반환. exact show/history/conflict는 별도 row/field 한도와 MCP hard ceiling을 사용하며 pending/evidence/audit/full DB는 기본 제외하고 preserve update에도 system MCP/developer instruction 존재 |
 | AT-051 | audit/conflict/compensating rollback | `ha-memory candidate add --value-json`, evidence/verify/apply, conflict resolution과 rollback에 history-preserving actor/source/before/after event가 남고 current-row mismatch·후속 dependency를 거부하며 rollback은 원 event/linkage와 HA catalog/Core fixture를 변경하지 않음 |
 | AT-052 | memory non-fatal lifecycle·persistence | Core unavailable, DB lock/corruption과 scheduler crash에서 Web/SSH/Codex/browser는 계속 동작하고 catalog `degraded`/`stale` 또는 tool unavailable 오류를 구분. unsafe memory symlink/file도 main init을 중단하거나 target을 chmod하지 않음. App restart/update에서 DB와 applied memory는 유지되며 runtime token은 mode 0600의 ephemeral `/run` 파일에서 env로 읽고 argv/stdout/stderr/log/DB에 없음 |
-| AT-053 | live WebSocket 호환·안전 진단 | active unavailable automation의 legal `{config:null}`은 빈 config/bounded warning으로 index하고 actual installed `ws`가 Supervisor식 auth/snapshot을 완료. `HA_WS_URL` 환경 redirection과 implicit token 전달은 거부하고 token/DNS/transport/timeout/auth/protocol/고정 command/snapshot failure code를 DB·change·CLI에 보존하되 daemon은 원문/secret 없이 allowlist code만 log. non-object frame은 protocol failure로 닫고 병렬 command 실패 뒤 pending timer를 모두 정리하며, last-known-good와 recovery refresh를 확인 |
+| AT-053 | live WebSocket 호환·안전 진단 | active unavailable automation의 legal `{config:null}`은 빈 config/bounded warning으로 index하고 actual installed `ws`가 Supervisor식 auth/snapshot을 완료. 한 automation의 official related 요청만 `unknown_error`여도 remote message 없이 config/직접 관계와 다른 automation을 보존하고 exact provenance를 기록. Server `timeout`/`unauthorized`/`invalid_format`/`home_assistant_error`는 같은 완화 경로로 들어가지 않고 snapshot을 거부. `HA_WS_URL` redirection과 implicit token 전달은 거부하고 token/DNS/transport/timeout/auth/protocol/고정 command/snapshot failure code를 DB·change·CLI에 보존하되 daemon은 원문/secret 없이 allowlist code만 log. non-object/malformed result는 protocol failure로 닫고 병렬 command 실패 뒤 pending timer를 모두 정리하며, last-known-good와 recovery refresh를 확인 |
 
 ## 3. HAOS 수동/E2E 시나리오
 
@@ -372,7 +372,7 @@ ha-api GET /states
 
 1. 기존 사용자 `AGENTS.md`와 user `config.toml`에 marker가 있는 설치를 일반 업데이트하고 두 파일의 bytes가 보존되는지 확인한다.
 2. App을 시작해 Codex/Web/SSH/browser가 정상이고 별도 `ha-memoryd`가 Core ready 뒤 첫 bootstrap을 완료하는지 확인한다. `/data/codex-ha-memory`는 0700, DB/WAL/SHM은 0600이어야 한다.
-3. `ha-memory status`에서 schema/catalog revision, last successful refresh와 non-stale 상태만 정제돼 보이는지 확인한다. 실제 entity/area 이름 전체나 token을 로그에 출력하지 않는다.
+3. `ha-memory status`에서 schema/catalog revision, last successful refresh와 non-stale 상태만 정제돼 보이는지 확인한다. 실제 entity/area 이름 전체나 token을 로그에 출력하지 않는다. 일부 automation의 related enrichment가 Core에서 명시적으로 거부되면 refresh 출력의 bounded warning과 config-derived 직접 관계를 확인하고, timeout/transport/protocol 실패를 같은 완화 경로로 오인하지 않는다.
    실패를 주입할 수 있는 개발 설치에서는 token/auth/DNS/transport/protocol/command code가 구분되고 App log에 raw command response나 credential이 없는지도 확인한다.
 4. 통제된 entity 하나를 CLI와 `ha_memory` MCP의 exact search/show로 찾고 device/area/automation related 관계와 허용된 description이 실제 UI/API와 일치하는지 확인한다. 작은 limit을 지정해 unrelated catalog가 반환되지 않는지 확인한다.
 5. raw state/비허용 attributes 값과 automation raw config에 synthetic marker를 잠시 만들 수 있는 안전한 fixture를 사용하거나 개발 HA에서 주입하고, refresh 뒤 database/FTS/audit에 marker가 없는지 sanitized count 검사로 확인한 뒤 제거한다.
@@ -392,7 +392,7 @@ ha-api GET /states
 - history와 compensating rollback은 semantic memory에만 적용되고 HA catalog/실제 HA를 과거 상태로 되돌리지 않음
 - `ha-memoryd` 장애가 App의 기존 운영 기능을 중단시키지 않음
 
-실행 결과: **public 0.3.0 읽기 전용 감사 FAIL — catalog refresh가 모두 `ha_unavailable`이었고 원문 진단은 daemon에서 폐기됐다. Public 0.3.1의 legal null-config, 실제 installed `ws`, 정밀 code, last-known-good/recovery와 전체 기존 회귀는 PASS했다. 실제 HAOS catalog/restart/candidate/change/privacy 재시험은 NOT RUN이다.**
+실행 결과: **public 0.3.0 읽기 전용 감사 FAIL — catalog refresh가 모두 `ha_unavailable`이었고 원문 진단은 daemon에서 폐기됐다. Public 0.3.1의 legal null-config, 실제 installed `ws`, 정밀 code, last-known-good/recovery와 전체 자동 회귀는 PASS했다. 후속 실제 HAOS/Core `2026.7.2`의 설치 무결성·연결·daemon/DB·privacy는 PASS했지만 automation-related 30건 중 2건의 Core `unknown_error` 때문에 catalog/LKG/실제 CLI·MCP 조회는 FAIL했다. Core restart는 daemon 생존·재연결 PASS와 fresh catalog 복구 FAIL을 합쳐 PARTIAL, null-config는 NOT OBSERVED, candidate/change/App restart/update는 NOT RUN이다. Local 0.3.2 후보는 이 exact 실패와 음성 경계를 자동 재현하고 전체 image/update 회귀를 PASS했지만 실제 HAOS 재시험 전에는 live PASS가 아니다.**
 
 ## 4. 회귀 테스트 우선순위
 

@@ -31,6 +31,7 @@ const {
   listMemoryConflicts,
   memoryHistory,
   memoryStatus,
+  normalizeHomeAssistantSnapshot,
   openMemoryDatabase,
   proposeMemory,
   rejectMemoryCandidate,
@@ -114,6 +115,60 @@ async function verifyRepeatedObservation(db, candidateId, detail) {
   addMemoryEvidence(db, candidateId, "observation", detail);
   return verifyMemoryCandidate(db, candidateId, "repeated_observation");
 }
+
+test("automation config fallback keeps direct references with exact provenance", () => {
+  const normalized = normalizeHomeAssistantSnapshot({
+    haVersion: "2026.7.2-test",
+    areas: [],
+    devices: [],
+    entities: [{ entity_id: "automation.partial" }],
+    states: [{
+      entity_id: "automation.partial",
+      state: "on",
+      attributes: { friendly_name: "Partial fixture" },
+    }],
+    automations: {
+      "automation.partial": {
+        config: {
+          alias: "Partial fixture",
+          trigger: { area_id: "config_area" },
+          condition: { device_id: "config_device" },
+          action: {
+            target: {
+              entity_id: ["light.config_target", "light.related_target"],
+            },
+          },
+        },
+        related: { entity: ["light.related_target"] },
+      },
+    },
+    warnings: ["automation_related_unavailable:automation.partial"],
+  });
+
+  for (const [kind, target] of [
+    ["area", "config_area"],
+    ["device", "config_device"],
+    ["entity", "light.config_target"],
+  ]) {
+    const relation = normalized.relations.get(
+      `automation:automation.partial|references|${kind}:${target}`,
+    );
+    assert.ok(relation);
+    assert.deepEqual(JSON.parse(relation.metadata_json), {
+      source: "automation_config",
+    });
+  }
+  const relatedRelation = normalized.relations.get(
+    "automation:automation.partial|references|entity:light.related_target",
+  );
+  assert.ok(relatedRelation);
+  assert.deepEqual(JSON.parse(relatedRelation.metadata_json), {
+    source: "search_related",
+  });
+  assert.deepEqual(normalized.warnings, [
+    "automation_related_unavailable:automation.partial",
+  ]);
+});
 
 test("validated Home Assistant memory lifecycle is durable, bounded, and fail-safe", async (t) => {
   const directory = await mkdtemp(join(tmpdir(), "ha-memory-runtime-"));
@@ -249,6 +304,7 @@ test("validated Home Assistant memory lifecycle is durable, bounded, and fail-sa
   );
   const initialStatus = memoryStatus(db, dbPath);
   assert.equal(initialStatus.catalog_status, "ready");
+  assert.equal(initialStatus.last_successful_sync.warning_count, 1);
   assert.equal(initialStatus.catalog_counts.area, 2);
   assert.equal(initialStatus.catalog_counts.device, 2);
   assert.equal(initialStatus.catalog_counts.entity, 4);

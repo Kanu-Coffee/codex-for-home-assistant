@@ -114,7 +114,11 @@ function baseResponse(command) {
       attributes: { friendly_name: "Partial fixture" },
     }];
   }
-  if (command.type === "search/related") return {};
+  if (command.type === "search/related") {
+    assert.equal(command.item_type, "automation");
+    assert.equal(command.item_id, "automation.partial");
+    return {};
+  }
   return null;
 }
 
@@ -195,6 +199,166 @@ test("an unavailable automation with an explicit null config remains indexable",
   });
   assert.deepEqual(snapshot.warnings, [
     "automation_config_unavailable:automation.partial",
+  ]);
+});
+
+test("an observed related unknown_error preserves config-derived automation data", async () => {
+  resetFakeWebSocket();
+  const relatedRequests = [];
+  const remoteSecret = "REMOTE_RELATED_SECRET_7f21";
+  FakeWebSocket.commandHandler = (command) => {
+    if (command.type === "automation/config") {
+      return {
+        success: true,
+        result: {
+          config: {
+            id: "partial",
+            alias: "Partial fixture",
+            trigger: { platform: "state", entity_id: "sensor.fixture" },
+            action: {
+              target: {
+                area_id: "fixture_area",
+                device_id: "fixture_device",
+                entity_id: "light.fixture",
+              },
+            },
+          },
+        },
+      };
+    }
+    if (command.type === "search/related") {
+      relatedRequests.push(command);
+      return {
+        success: false,
+        error: { code: "unknown_error", message: remoteSecret },
+      };
+    }
+    return { success: true, result: baseResponse(command) };
+  };
+
+  const snapshot = await fetchWithFake();
+  assert.deepEqual(relatedRequests.map(({ type, item_type, item_id }) => ({
+    type,
+    item_type,
+    item_id,
+  })), [{
+    type: "search/related",
+    item_type: "automation",
+    item_id: "automation.partial",
+  }]);
+  assert.equal(snapshot.automations["automation.partial"].config.id, "partial");
+  assert.deepEqual(snapshot.automations["automation.partial"].related, {});
+  assert.deepEqual(snapshot.warnings, [
+    "automation_related_unavailable:automation.partial",
+  ]);
+  assert.equal(JSON.stringify(snapshot).includes(remoteSecret), false);
+});
+
+test("related timeout and malformed results still reject the complete snapshot", async () => {
+  resetFakeWebSocket();
+  FakeWebSocket.commandHandler = (command) => {
+    if (command.type === "automation/config") {
+      return { success: true, result: { config: {} } };
+    }
+    if (command.type === "search/related") return NO_RESPONSE;
+    return { success: true, result: baseResponse(command) };
+  };
+  await assert.rejects(
+    fetchWithFake({ timeoutMs: 10 }),
+    (error) => error.code === "ha_command_related_failed",
+  );
+
+  for (const remoteCode of [
+    "timeout",
+    "unauthorized",
+    "invalid_format",
+    "home_assistant_error",
+  ]) {
+    resetFakeWebSocket();
+    FakeWebSocket.commandHandler = (command) => {
+      if (command.type === "automation/config") {
+        return { success: true, result: { config: {} } };
+      }
+      if (command.type === "search/related") {
+        return {
+          success: false,
+          error: { code: remoteCode, message: "private remote failure" },
+        };
+      }
+      return { success: true, result: baseResponse(command) };
+    };
+    await assert.rejects(
+      fetchWithFake(),
+      (error) => error.code === "ha_command_related_failed",
+    );
+  }
+
+  resetFakeWebSocket();
+  FakeWebSocket.commandHandler = (command) => {
+    if (command.type === "automation/config") {
+      return { success: true, result: { config: {} } };
+    }
+    if (command.type === "search/related") {
+      return { success: "false", error: { code: "unknown_error" } };
+    }
+    return { success: true, result: baseResponse(command) };
+  };
+  await assert.rejects(
+    fetchWithFake(),
+    (error) => error.code === "ha_protocol_error",
+  );
+
+  resetFakeWebSocket();
+  FakeWebSocket.commandHandler = (command) => {
+    if (command.type === "automation/config") {
+      return { success: true, result: { config: {} } };
+    }
+    if (command.type === "search/related") {
+      return { success: false, error: null };
+    }
+    return { success: true, result: baseResponse(command) };
+  };
+  await assert.rejects(
+    fetchWithFake(),
+    (error) => error.code === "ha_protocol_error",
+  );
+
+  resetFakeWebSocket();
+  FakeWebSocket.commandHandler = (command) => {
+    if (command.type === "automation/config") {
+      return { success: true, result: { config: {} } };
+    }
+    if (command.type === "search/related") {
+      return { success: true, result: [] };
+    }
+    return { success: true, result: baseResponse(command) };
+  };
+  await assert.rejects(
+    fetchWithFake(),
+    (error) => error.code === "ha_snapshot_incomplete",
+  );
+});
+
+test("null config and related unknown_error retain both bounded warnings", async () => {
+  resetFakeWebSocket();
+  FakeWebSocket.commandHandler = (command) => {
+    if (command.type === "automation/config") {
+      return { success: true, result: { config: null } };
+    }
+    if (command.type === "search/related") {
+      return { success: false, error: { code: "unknown_error" } };
+    }
+    return { success: true, result: baseResponse(command) };
+  };
+
+  const snapshot = await fetchWithFake();
+  assert.deepEqual(snapshot.automations["automation.partial"], {
+    config: {},
+    related: {},
+  });
+  assert.deepEqual(snapshot.warnings, [
+    "automation_config_unavailable:automation.partial",
+    "automation_related_unavailable:automation.partial",
   ]);
 });
 
@@ -349,6 +513,7 @@ if (process.env.HA_MEMORY_INSTALLED_TEST === "1") {
     });
 
     let authenticatedToken = null;
+    const relatedRequests = [];
     server.on("connection", (socket) => {
       socket.send(JSON.stringify({
         type: "auth_required",
@@ -365,25 +530,53 @@ if (process.env.HA_MEMORY_INSTALLED_TEST === "1") {
           return;
         }
         let result;
+        let response;
         if (message.type === "config/area_registry/list") result = [];
         else if (message.type === "config/device_registry/list") result = [];
         else if (message.type === "config/entity_registry/list") {
-          result = [{ entity_id: "automation.unavailable" }];
+          result = [
+            { entity_id: "automation.unavailable" },
+            { entity_id: "automation.related_failure" },
+          ];
         } else if (message.type === "get_states") {
-          result = [{
-            entity_id: "automation.unavailable",
-            state: "unavailable",
-            attributes: { friendly_name: "Unavailable fixture" },
-          }];
+          result = [
+            {
+              entity_id: "automation.unavailable",
+              state: "unavailable",
+              attributes: { friendly_name: "Unavailable fixture" },
+            },
+            {
+              entity_id: "automation.related_failure",
+              state: "on",
+              attributes: { friendly_name: "Related failure fixture" },
+            },
+          ];
         } else if (message.type === "automation/config") {
-          result = { config: null };
-        } else if (message.type === "search/related") result = {};
-        else throw new Error(`Unexpected fixture command: ${message.type}`);
+          result = message.entity_id === "automation.unavailable"
+            ? { config: null }
+            : { config: { alias: "Related failure fixture" } };
+        } else if (message.type === "search/related") {
+          relatedRequests.push({
+            item_type: message.item_type,
+            item_id: message.item_id,
+          });
+          if (message.item_id === "automation.related_failure") {
+            response = {
+              success: false,
+              error: {
+                code: "unknown_error",
+                message: "installed remote response must stay private",
+              },
+            };
+          } else {
+            result = {};
+          }
+        } else throw new Error(`Unexpected fixture command: ${message.type}`);
+        response ??= { success: true, result };
         socket.send(JSON.stringify({
           id: message.id,
           type: "result",
-          success: true,
-          result,
+          ...response,
         }));
       });
     });
@@ -402,7 +595,23 @@ if (process.env.HA_MEMORY_INSTALLED_TEST === "1") {
       config: {},
       related: {},
     });
+    assert.deepEqual(snapshot.automations["automation.related_failure"], {
+      config: { alias: "Related failure fixture" },
+      related: {},
+    });
+    assert.deepEqual(relatedRequests.sort((left, right) =>
+      left.item_id.localeCompare(right.item_id)), [
+      {
+        item_type: "automation",
+        item_id: "automation.related_failure",
+      },
+      {
+        item_type: "automation",
+        item_id: "automation.unavailable",
+      },
+    ]);
     assert.deepEqual(snapshot.warnings, [
+      "automation_related_unavailable:automation.related_failure",
       "automation_config_unavailable:automation.unavailable",
     ]);
   });

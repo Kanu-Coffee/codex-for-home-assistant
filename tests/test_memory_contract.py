@@ -143,6 +143,8 @@ def test_memory_daemon_is_optional_to_terminal_and_ssh(rootfs: Path) -> None:
     assert ">/dev/null 2>&1" not in run_script
     assert "jq --exit-status --raw-output" in run_script
     assert ".reason" in run_script
+    assert ".warnings | length" in run_script
+    assert "bounded warning(s)" in run_script
     assert "ha_token_unavailable" in run_script
     assert "ha_auth_rejected" in run_script
     assert "ha_command_automation_config_failed" in run_script
@@ -245,6 +247,10 @@ def test_memory_ha_client_uses_the_fixed_snapshot_allowlist(rootfs: Path) -> Non
         assert command in client
     assert "config/automation/config" not in client
     assert "config/automation/related" not in client
+    assert 'item_type: "automation"' in client
+    assert "HomeAssistantCommandRejectedError" in client
+    assert 'remoteCode === "unknown_error"' in client
+    assert "automation_related_unavailable" in client
     assert "incomplete automation detail snapshot" in client
     assert "process.env.HA_WS_URL" not in client
     assert "/usr/local/lib/codex-ha/playwright/node_modules/ws/wrapper.mjs" in client

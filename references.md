@@ -42,6 +42,17 @@
 - Home Assistant Core `2026.7.2` automation entity raw configuration
   https://github.com/home-assistant/core/blob/2026.7.2/homeassistant/components/automation/config.py
 
+- Home Assistant Core `2026.7.2` `search/related` schema와 automation/entity search 의미
+  https://github.com/home-assistant/core/blob/2026.7.2/homeassistant/components/search/__init__.py#L33-L75
+  https://github.com/home-assistant/core/blob/2026.7.2/homeassistant/components/search/__init__.py#L210-L268
+  https://github.com/home-assistant/core/blob/2026.7.2/homeassistant/components/search/__init__.py#L321-L344
+
+- Home Assistant Core `2026.7.2` automation related 공식 테스트
+  https://github.com/home-assistant/core/blob/2026.7.2/tests/components/search/test_init.py#L516-L539
+
+- Home Assistant Core `2026.7.2` WebSocket `invalid_format`/`unknown_error` 처리
+  https://github.com/home-assistant/core/blob/2026.7.2/homeassistant/components/websocket_api/connection.py#L281-L331
+
 - Home Assistant authentication providers (`trusted_networks` order, trusted proxy overlap)
   https://www.home-assistant.io/docs/authentication/providers/
 
