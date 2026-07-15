@@ -261,10 +261,10 @@ hassio_role: manager
 
 ## ADR-035 개별 automation related 거부를 optional enrichment로 격리
 
-- 상태: Accepted for 0.3.2 candidate
+- 상태: Accepted for public 0.3.2
 - 배경: 정확한 public 0.3.1 설치와 Core `2026.7.2` 실기에서 registry/state와 `automation/config` 30건은 성공했지만 `search/related(item_type=automation)` 30건 중 2건이 `unknown_error`를 반환해 첫 catalog 전체가 비었다. 동일 ID의 `item_type=entity` 요청은 성공했지만 공식 Core 구현상 이는 automation 내부 graph가 아니라 해당 entity를 참조하는 역방향 관계이므로 대체 payload가 아니다.
 - 요청 계약: 기존 official payload `type=search/related`, `item_type=automation`, `item_id=<automation entity_id>`를 유지한다. `item_type=entity` 결과를 automation references로 합치거나 `.storage`/raw config parse로 우회하지 않는다.
 - 격리 결정: matched result envelope의 `success:false`와 실기에서 관측된 `error.code=unknown_error`가 함께 확인된 개별 related command만 optional enrichment 부재로 처리한다. 성공한 automation config는 allowlist scanner로 area/device/entity 직접 관계를 만들고 related는 빈 객체, warning은 `automation_related_unavailable:<allowlisted entity id>`로 남긴다. warning은 100개로 제한하고 Core error message/body/code를 snapshot에 복사하지 않는다.
 - fail-closed 경계: 공개 `ha_command_related_failed`가 같은 경우에도 내부 command-rejected type과 bounded remote code를 함께 확인한다. Server `timeout`, `unauthorized`, `invalid_format`, `home_assistant_error`, 그 밖의 command code, client timeout, config failure, auth, transport, WebSocket close, protocol error, 누락·malformed result envelope와 object가 아닌 successful related 결과는 계속 전체 snapshot을 실패시키고 last-known-good를 보존한다.
 - provenance: config scanner에서만 발견한 관계는 `automation_config`, 실제 related 배열에 있던 관계만 `search_related`로 기록한다. 빈 related 객체를 source 증거로 취급하지 않는다.
-- 검증 경계: source/installed `ws` fixture에서 explicit `unknown_error`, null-config 결합, remote-message 비노출과 exact outbound payload를 확인하고 server `timeout`/`unauthorized`/`invalid_format`/`home_assistant_error`, client timeout, malformed envelope/result 음성 테스트를 둔다. 이 자동 후보는 실제 HAOS 0.3.2 catalog/LKG/restart/CLI·MCP/candidate/change/App update/privacy 재시험을 대체하지 않는다.
+- 검증 경계: source/installed `ws` fixture에서 explicit `unknown_error`, null-config 결합, remote-message 비노출과 exact outbound payload를 확인하고 server `timeout`/`unauthorized`/`invalid_format`/`home_assistant_error`, client timeout, malformed envelope/result 음성 테스트를 둔다. 정확한 public 0.3.2 image의 자동·공개 이미지 회귀도 실제 HAOS 0.3.2 catalog/LKG/restart/CLI·MCP/candidate/change/App update/privacy 재시험을 대체하지 않는다.
