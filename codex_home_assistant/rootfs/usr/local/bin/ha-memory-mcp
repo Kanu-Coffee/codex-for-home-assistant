@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+if (( $# != 0 )); then
+  printf 'ha-memory-mcp: command-line arguments are not supported\n' >&2
+  exit 64
+fi
+
+if [[ -r /run/codex-ha/runtime.env ]]; then
+  # shellcheck disable=SC1091
+  . /run/codex-ha/runtime.env
+fi
+
+unset NODE_OPTIONS NODE_PATH
+exec /usr/bin/node /usr/local/share/codex-ha/ha-memory-mcp.mjs

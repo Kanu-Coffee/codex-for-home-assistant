@@ -93,14 +93,17 @@ jobs:
       - name: Run container smoke tests
         run: bash tests/docker-smoke.sh codex-for-home-assistant:test
 
+      - name: Run Home Assistant memory smoke tests
+        run: bash tests/memory-smoke.sh codex-for-home-assistant:test
+
       - name: Run managed browser authentication smoke tests
         run: bash tests/managed-auth-smoke.sh codex-for-home-assistant:test
 
       - name: Run user-file update policy smoke tests
         run: bash tests/user-files-update-smoke.sh codex-for-home-assistant:test
 
-      - name: Verify update from released 0.2.3 preserves persistent data
+      - name: Verify update from released 0.2.4 preserves persistent data
         run: |
           bash tests/update-smoke.sh \
-            ghcr.io/kanu-coffee/codex-for-home-assistant:0.2.3 \
+            ghcr.io/kanu-coffee/codex-for-home-assistant:0.2.4 \
             codex-for-home-assistant:test

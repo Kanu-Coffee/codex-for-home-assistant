@@ -221,3 +221,30 @@ hassio_role: manager
 - 범위 제한: refresh allowlist는 `/data/codex/config.toml`과 `/data/codex/AGENTS.md`뿐이다. `AGENTS.override.md`, `auth.json`, session, SSH identity, browser identity, App options와 Home Assistant `/config`는 변경하지 않는다. backup 자체는 기존 config의 credential을 포함할 수 있으므로 Home Assistant App backup과 함께 비밀정보로 취급한다.
 - SemVer 예외: 저장소 원칙상 사용자 기능은 MINOR지만 `0.2.3`은 기본 ON browser 인증/8099 route 후보로 이미 버전·업데이트 회귀·릴리스 전달이 고정된 상태에서 이 안전한 선택 UI를 같은 미공개 후보에 포함한다. 검증된 update 경로를 다시 번호 변경하지 않기 위한 1회 예외이며, public `0.2.2`와의 기본 동작은 `preserve`로 호환된다. 이후 새 사용자 기능은 다시 MINOR 규칙을 따른다.
 - 검증 경계: enum/default, 기존 update 첫 preserve, 두 refresh scope, target별 version one-shot, private backup, crash recovery와 unsafe link fail-closed를 local container에서 검증한다. 실제 Home Assistant 구성 UI/Supervisor 일반 update와 HAOS/AppArmor dashboard E2E는 public `0.2.3`에서 사용자 확인 **PASS**로 기록하되 원본 진단 자료가 저장소의 자동 증거라는 뜻은 아니다.
+
+## ADR-031 root-only SQLite/FTS5와 독립 `ha-memoryd`
+
+- 상태: Accepted for the verified HA memory work
+- 결정: 검증형 메모리는 `/data/codex-ha-memory/memory.sqlite3`의 SQLite와 FTS5로 구현한다. directory는 `0700`, database와 WAL/SHM은 `0600`이며 v1 schema initialization/version gating, foreign key, check constraint, WAL/busy-timeout transaction을 사용한다. 지원되지 않는 schema를 자동 migration하지 않는다. 고정 table은 `metadata`, `sync_runs`, `catalog_objects`, `catalog_relations`, `catalog_revisions`, `memory_items`, `memory_evidence`, `conflicts`, `change_records`, `audit_events`, `audit_changes`, `search_fts`다. 별도 S6 longrun `ha-memoryd`는 주기적 `ha-memory refresh` scheduler이고 scheduler/CLI/MCP는 같은 image-managed core module과 SQLite WAL store를 다중 process로 사용한다. 별도 Unix socket single-writer service는 만들지 않는다.
+- 이유: SQLite는 App 하나의 `/data` 영속 경계 안에서 구조화 catalog, provenance, FTS 검색, conflict와 history-preserving audit를 transaction으로 함께 관리할 수 있다. JSON/YAML 전체 파일은 bounded retrieval과 동시 mutation, 상태 전이·rollback invariant를 안정적으로 강제하기 어렵고 외부 vector database는 새로운 network·privacy·복구 경계를 만든다.
+- 수집 경계: Core WebSocket command는 entity/device/area registry list, `get_states`, `automation/config`와 `search/related`의 고정 allowlist다. 응답은 식별자, 허용된 표시명·설명과 관계만 정규화한다. raw state와 비허용 attributes, automation config, 임의 response, `/config` 원문, 대화 transcript, prompt와 secret/token은 저장하거나 FTS에 넣지 않는다.
+- 실패 정책: snapshot은 모든 필수 수집·정규화가 성공한 뒤 한 transaction으로 교체한다. Core/API/schema/file 검증 실패에서는 last-known-good revision을 보존하고 stale/degraded를 표시한다. `ha-memoryd`는 ttyd, SSH, Codex, ingress 또는 browser service의 dependency가 아니며 실패가 App의 기존 기능을 중단시키지 않는다.
+- 제외: `.storage` 직접 읽기, Recorder 복제, raw conversation archive, 외부 listener/sidecar/cloud vector service, 실패 시 DB 자동 삭제·무조건 재생성은 선택하지 않는다.
+
+## ADR-032 사실 종류별 authority와 검증 상태·보상 rollback
+
+- 상태: Accepted for the verified HA memory work
+- candidate lifecycle: 대화나 분석에서 얻은 alias, 실제 용도, preference와 semantic relation은 provenance가 있는 `pending`으로 시작해 허용 evidence와 transactional current-row/status를 확인한 뒤 `verified`, conflict 검사를 통과한 뒤 `applied`가 된다. 모델 추론이나 일시 state만으로 단계를 건너뛰지 않는다.
+- authority: HA entity/device/area/automation 구조, 현재 존재 여부, registry relation과 Codex change 결과는 fresh Core API가 canonical이다. HA schema가 표현하지 않는 alias·실제 용도·preference는 사용자의 명시적 설명이 semantic authority다. 두 범주를 하나의 전역 우선순위로 덮어쓰지 않고 fact kind별 validator를 사용한다.
+- change 검증: Codex mutation 전 기존 또는 생성 예정 subject와 closed-schema machine-readable expectation의 digest·field summary를 기록한다. mutation 뒤 cache가 아닌 새 Core WebSocket/API round trip이 같은 exact expectation을 만족한 경우에만 change를 verified evidence로 사용한다. `codex_change` relationship candidate는 동일 source·relation·target의 성공한 존재 predicate와만 연결한다. 같은 subject의 무관한 check, config check 성공, HTTP 2xx, service call 반환 또는 추론만으로 applied semantic memory를 갱신하지 않는다.
+- conflict: 기존 applied fact와 새 authority evidence가 충돌하면 source, before/current row와 resolution을 conflict record에 남긴다. authority가 불명확하면 unresolved로 유지하고 일반 context에서 확정 사실처럼 반환하지 않는다.
+- rollback: 모든 candidate/evidence/verify/apply/conflict resolution은 history-preserving before/after audit event를 남긴다. rollback은 current-row precondition을 확인한 compensating event이며 과거 event를 삭제하지 않고 원 event에는 rollback linkage만 기록한다. HA-derived catalog는 rollback하지 않고 fresh refresh로 교정하며 memory rollback이 HA config, registry, automation 또는 기기를 변경해서는 안 된다.
+
+## ADR-033 bounded MCP/CLI retrieval과 기존 AGENTS preserve 공존
+
+- 상태: Accepted for the verified HA memory work
+- 결정: `/usr/local/bin/ha-memory` CLI와 `/etc/codex/config.toml`의 optional STDIO `[mcp_servers.ha_memory]`가 exact ID/alias와 FTS5 기반 bounded search/show를 제공한다. Query는 최대 256자, search는 기본 8·최대 20 subject와 JSON 32 KiB, subject별 outgoing/incoming relation 각각 기본 12개, applied memory 20개, open conflict 10개로 제한한다. Exact show는 relation을 각각 30개까지 허용한다. 기본 결과는 관련 canonical/applied memory만 포함하고 pending candidate, evidence, conflict 전체와 full audit는 명시적 workflow 도구에서만 조회한다.
+- 이유: 매 요청에 전체 JSON/DB를 읽는 방식은 context 비용, stale fact 확산과 민감정보 노출을 키운다. local prepared query와 제한된 결과는 질문과 관련된 검증 사실만 주입하고 전체 catalog dump를 피한다.
+- Codex 지침: 새 설치용 `AGENTS.md`에는 entity별 데이터를 쓰지 않고 helper 위치, bounded lookup, candidate·post-change verification 규칙만 둔다. ADR-019/030 때문에 기존 base `AGENTS.md`와 user config는 기본 update에서 보존되므로 image-managed system MCP, developer instruction과 tool description에도 같은 경로를 제공한다. 사용자의 더 높은 우선순위 config/지침이 system default를 재정의할 수 있다는 기존 Codex 계약은 유지한다.
+- 보안 경계: memory MCP는 container-local STDIO이며 HTTP/SSE listener나 host/Ingress port를 만들지 않는다. wrapper는 `/usr/bin/env -i` 최소 환경에서 시작한 뒤 root-only ephemeral `/run/codex-ha/runtime.env`를 source해 fresh verify CLI child에 필요한 allowlist 환경만 넘긴다. Core token은 이 mode `0600` 파일에서 process environment로 읽되 영속 `/data`, DB, argv, stdout/stderr, tool output과 App log에 기록하지 않는다. search output은 provenance/staleness/conflict 상태를 포함하되 raw API/evidence/secret을 반환하지 않는다. MCP 실패는 Codex 전체 시작 실패로 승격하지 않는다.
+- 검증: 기존 사용자 config/AGENTS가 있는 update fixture에서 system MCP discovery와 model-visible bounded retrieval instruction, query limit, candidate 상태 분리와 non-fatal startup을 자동 검사한다. 실제 HAOS에서는 first bootstrap, Core restart/reconnect, App update persistence와 실제 registry/automation 관계를 별도 E2E로 확인한다.

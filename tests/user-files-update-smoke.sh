@@ -299,10 +299,10 @@ run_volume "${MAIN_VOLUME}" -c \
   || fail 'same-version refresh_all created another backup'
 
 # A retained refresh_all selection is intentionally eligible once again when
-# the App version advances. Simulate state written by public 0.2.3, then prove
+# the App version advances. Simulate state written by public 0.2.4, then prove
 # that the current image refreshes both targets exactly once and records both
 # the previous and current versions.
-PREVIOUS_APP_VERSION=0.2.3
+PREVIOUS_APP_VERSION=0.2.4
 [[ "${APP_VERSION}" != "${PREVIOUS_APP_VERSION}" ]] \
   || fail 'cross-version fixture must use a previous App version'
 run_volume "${MAIN_VOLUME}" -c '

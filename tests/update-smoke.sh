@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-RELEASE_IMAGE=${1:-ghcr.io/kanu-coffee/codex-for-home-assistant:0.2.3}
+RELEASE_IMAGE=${1:-ghcr.io/kanu-coffee/codex-for-home-assistant:0.2.4}
 CANDIDATE_IMAGE=${2:-codex-for-home-assistant:test}
 TEST_ID="codex-ha-update-${RANDOM}-$$"
 RELEASE_CONTAINER="${TEST_ID}-release"
@@ -284,7 +284,7 @@ docker exec --workdir /config "${CANDIDATE_CONTAINER}" \
 
 # Model saving refresh_all in the Home Assistant App configuration and then
 # restarting the App. The first candidate start above must preserve the
-# explicit 0.2.3 setting before the user opts into a 0.2.4 refresh.
+# explicit public setting before the user opts into the candidate refresh.
 docker exec "${CANDIDATE_CONTAINER}" /bin/sh -c '
   jq ".codex_user_files_update_mode = \"refresh_all\"" \
     /data/options.json > /data/options.json.tmp

@@ -1,0 +1,163 @@
+{
+  "ha_version": "2026.7.0-test",
+  "areas": [
+    {
+      "area_id": "kitchen",
+      "name": "Kitchen",
+      "aliases": ["Cookspace", "주방"],
+      "floor_id": "ground_floor",
+      "icon": "mdi:countertop",
+      "labels": ["shared"]
+    },
+    {
+      "area_id": "office",
+      "name": "Office",
+      "aliases": ["Study"],
+      "floor_id": "ground_floor",
+      "icon": "mdi:desk",
+      "labels": []
+    }
+  ],
+  "devices": [
+    {
+      "id": "dev_kitchen",
+      "name_by_user": "Kitchen Ceiling Controller",
+      "area_id": "kitchen",
+      "manufacturer": "Fixture Labs",
+      "model": "KL-100",
+      "labels": ["lighting"]
+    },
+    {
+      "id": "dev_office",
+      "name": "Office Environment Sensor",
+      "area_id": "office",
+      "manufacturer": "Fixture Labs",
+      "model": "OE-2",
+      "labels": ["climate"]
+    }
+  ],
+  "entities": [
+    {
+      "entity_id": "light.kitchen_main",
+      "name": "Kitchen Main Light",
+      "aliases": ["Prep Light"],
+      "device_id": "dev_kitchen",
+      "area_id": null,
+      "platform": "fixture_light",
+      "device_class": null,
+      "labels": ["lighting"]
+    },
+    {
+      "entity_id": "binary_sensor.kitchen_motion",
+      "name": "Kitchen Motion",
+      "aliases": [],
+      "device_id": "dev_kitchen",
+      "area_id": null,
+      "platform": "fixture_binary_sensor",
+      "device_class": "motion",
+      "labels": []
+    },
+    {
+      "entity_id": "sensor.office_temperature",
+      "name": "Office Temperature",
+      "aliases": [],
+      "device_id": "dev_office",
+      "area_id": null,
+      "platform": "fixture_sensor",
+      "device_class": "temperature",
+      "labels": []
+    },
+    {
+      "entity_id": "automation.kitchen_motion_lights",
+      "name": "Kitchen Motion Lights Registry Entry",
+      "aliases": [],
+      "device_id": null,
+      "area_id": "kitchen",
+      "platform": "automation",
+      "labels": []
+    }
+  ],
+  "states": [
+    {
+      "entity_id": "light.kitchen_main",
+      "state": "TRANSIENT_STATE_VALUE_4f91c0",
+      "attributes": {
+        "friendly_name": "Kitchen Main Light",
+        "brightness": 197,
+        "effect": "TRANSIENT_ATTRIBUTE_VALUE_8ca2d1"
+      },
+      "last_changed": "TRANSIENT_LAST_CHANGED_3d77e2",
+      "last_updated": "TRANSIENT_LAST_UPDATED_68b134"
+    },
+    {
+      "entity_id": "binary_sensor.kitchen_motion",
+      "state": "off",
+      "attributes": {
+        "friendly_name": "Kitchen Motion",
+        "device_class": "motion"
+      },
+      "last_changed": "2026-07-15T00:00:00Z",
+      "last_updated": "2026-07-15T00:00:00Z"
+    },
+    {
+      "entity_id": "sensor.office_temperature",
+      "state": "98765.4321",
+      "attributes": {
+        "friendly_name": "Office Temperature",
+        "unit_of_measurement": "°C",
+        "raw_sample": "TRANSIENT_SENSOR_SAMPLE_2b9a11"
+      },
+      "last_changed": "2026-07-15T00:00:00Z",
+      "last_updated": "2026-07-15T00:00:00Z"
+    },
+    {
+      "entity_id": "automation.kitchen_motion_lights",
+      "state": "on",
+      "attributes": {
+        "friendly_name": "Kitchen Motion Lights",
+        "id": "kitchen_motion_lights",
+        "mode": "restart",
+        "last_triggered": "TRANSIENT_LAST_TRIGGERED_f982ad"
+      },
+      "last_changed": "2026-07-15T00:00:00Z",
+      "last_updated": "2026-07-15T00:00:00Z"
+    }
+  ],
+  "automations": {
+    "automation.kitchen_motion_lights": {
+      "config": {
+        "id": "kitchen_motion_lights",
+        "alias": "Kitchen Motion Lights",
+        "description": "Turns on the prep light when kitchen motion is detected.",
+        "mode": "restart",
+        "trigger": [
+          {
+            "platform": "state",
+            "entity_id": "binary_sensor.kitchen_motion",
+            "to": "on"
+          }
+        ],
+        "action": [
+          {
+            "service": "light.turn_on",
+            "target": {
+              "entity_id": "light.kitchen_main"
+            },
+            "data": {
+              "fixture_only_raw_payload": "AUTOMATION_RAW_ACTION_93f4b7"
+            }
+          }
+        ]
+      },
+      "related": {
+        "areas": ["kitchen"],
+        "devices": ["dev_kitchen"],
+        "entities": [
+          "binary_sensor.kitchen_motion",
+          "light.kitchen_main"
+        ]
+      }
+    }
+  },
+  "warnings": ["Fixture intentionally contains transient state data."]
+}
