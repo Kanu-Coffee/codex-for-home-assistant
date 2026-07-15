@@ -1026,6 +1026,7 @@ test("validated Home Assistant memory lifecycle is durable, bounded, and fail-sa
     canonicalBeforeFailure,
   );
   assert.equal(afterFailure.last_sync.status, "failed");
+  assert.equal(afterFailure.last_sync.error_code, "ha_fixture_failure");
 
   closeMemoryDatabase(db, dbPath);
   db = null;

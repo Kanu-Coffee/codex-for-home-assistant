@@ -9,12 +9,46 @@ retry_seconds=30
 trap 'exit 0' TERM INT
 
 while true; do
-  if /usr/local/bin/ha-memory refresh --if-stale 300 >/dev/null 2>&1; then
+  refresh_output=
+  if refresh_output=$(/usr/local/bin/ha-memory refresh --if-stale 300 2>&1); then
+    unset refresh_output
     bashio::log.info 'Home Assistant memory catalog refresh completed'
     retry_seconds=30
     sleep "${REFRESH_SECONDS}" &
   else
-    bashio::log.warning "Home Assistant memory refresh is unavailable; preserving the last-known-good catalog and retrying in ${retry_seconds}s"
+    refresh_reason=
+    if parsed_reason=$(printf '%s' "${refresh_output}" \
+      | jq --exit-status --raw-output \
+        'if type == "object" and (.reason | type) == "string" then .reason else empty end' \
+        2>/dev/null); then
+      refresh_reason=${parsed_reason}
+    fi
+    unset parsed_reason refresh_output
+    case "${refresh_reason}" in
+      ha_token_unavailable|\
+      ha_ws_runtime_unavailable|\
+      ha_dns_failed|\
+      ha_transport_failed|\
+      ha_timeout|\
+      ha_auth_rejected|\
+      ha_protocol_error|\
+      ha_ws_closed|\
+      ha_command_areas_failed|\
+      ha_command_devices_failed|\
+      ha_command_entities_failed|\
+      ha_command_states_failed|\
+      ha_command_automation_config_failed|\
+      ha_command_related_failed|\
+      ha_command_failed|\
+      ha_snapshot_incomplete|\
+      ha_unavailable)
+        ;;
+      *)
+        refresh_reason=ha_unavailable
+        ;;
+    esac
+    bashio::log.warning "Home Assistant memory refresh is unavailable (${refresh_reason}); preserving the last-known-good catalog and retrying in ${retry_seconds}s"
+    unset refresh_reason
     sleep "${retry_seconds}" &
     if (( retry_seconds < MAX_RETRY_SECONDS )); then
       retry_seconds=$((retry_seconds * 2))

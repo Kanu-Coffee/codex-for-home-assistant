@@ -191,7 +191,8 @@ shell → ha-memory CLI ───────────┘
 
 - `ha-memoryd`는 주기적으로 `ha-memory refresh`를 실행하는 scheduler다. Core ready 전 연결 실패, Core restart와 transport 오류를 retry/backoff하며 last-known-good catalog를 유지한다. readiness가 실패해도 Codex, ttyd, SSH, ingress, Playwright와 browser gateway 시작을 막지 않는다.
 - `ha-memory-core.mjs`가 v1 schema 초기화·version gating, prepared statement, WAL/busy-timeout transaction, 상태 전이, current-row/status precondition, FTS5 query와 output limit을 한곳에서 구현한다. scheduler/CLI/MCP process가 같은 SQLite WAL database를 사용하며 Unix socket single-writer service를 별도로 만들지 않는다. 알려지지 않은 과거/미래 schema는 자동 변환하지 않고 memory만 fail closed한다.
-- `ha-memory-ha-client.mjs`는 refresh와 fresh change verification 때 Supervisor runtime credential로 direct Core WebSocket에 연결하지만 raw token, endpoint response와 인증 frame을 database·argv·stdout/stderr·App log에 쓰지 않는다.
+- `ha-memory-ha-client.mjs`는 refresh와 fresh change verification 때 Supervisor runtime credential로 고정 Supervisor Core WebSocket proxy에 연결한다. image에 고정된 `ws` runtime에 handshake timeout, 32 MiB payload cap, compression off와 기본 TLS 검증을 적용하고, `HA_WS_URL` 같은 환경 endpoint override나 direct-Core credential fallback은 허용하지 않는다. raw token, endpoint response와 인증 frame은 database·argv·stdout/stderr·App log에 쓰지 않는다.
+- 연결 실패는 token, DNS, transport, timeout, auth, protocol, 고정 command와 snapshot 범주의 closed code로만 분류한다. DB status/change verification과 CLI는 이 code를 보존하고 `ha-memoryd`는 CLI 원문을 폐기한 뒤 allowlist code만 log한다.
 - `/usr/local/bin/ha-memory`와 `ha-memory.mjs`는 관리자용 local CLI다. image-managed `/usr/local/bin/ha-memory-mcp`와 `ha-memory-mcp.mjs`는 외부 listener 없이 STDIO tool만 제공한다. wrapper는 system MCP의 최소 환경에서 시작해 root-only `/run/codex-ha/runtime.env`를 source하고 필요한 allowlist 환경만 CLI child에 넘기므로 fresh verify는 Core를 직접 재조회할 수 있지만 credential을 모델 입력이나 MCP 결과에 노출하지 않는다.
 - MCP의 기본 query 도구는 `memory_search`, `memory_show`, `memory_status`이며 candidate와 검증 workflow에는 `memory_propose`, `memory_add_evidence`, `memory_verify_candidate`, `memory_apply_candidate`, `memory_begin_change`, `memory_verify_change`, `memory_history`, `memory_conflicts`, `memory_resolve_conflict`, `memory_rollback`을 명시적으로 사용한다. 입력은 고정 schema와 current-row/status 검사를 통과한다. `search`는 row/32 KiB 한도를 함께 적용하고 exact `show`·history·conflict는 별도 row/field 한도와 MCP 2 MiB hard ceiling을 적용한다.
 - 새 설치용 global `AGENTS.md`에는 helper 위치와 사용·검증 규칙만 넣는다. 기존 `AGENTS.md`는 기본 `preserve`로 갱신되지 않으므로 `/etc/codex/config.toml`의 image-managed `ha_memory` MCP와 developer instruction도 매 HA 요청의 bounded search, candidate 수집과 post-change 검증을 안내한다.
@@ -278,7 +279,11 @@ Authorization: Bearer ${SUPERVISOR_TOKEN}
 
 ```text
 ws://supervisor/core/websocket
+first client frame after server auth_required:
+{"type":"auth","access_token":"${SUPERVISOR_TOKEN}"}
 ```
+
+이 endpoint와 auth frame은 Home Assistant App 통신 계약에 고정한다. Upgrade `Authorization` header를 추가하거나 Supervisor credential을 `homeassistant` direct Core endpoint에 보내지 않는다.
 
 ### Supervisor
 
@@ -336,7 +341,7 @@ automation/config
 search/related
 ```
 
-automation command는 registry에서 확인한 automation 대상에만 호출한다. command가 현재 Core version에서 지원되지 않거나 일부 대상이 실패하면 성공한 일부를 complete snapshot으로 가장하지 않고 stale/degraded 상태와 정제된 오류를 기록한다. `.storage` 직접 읽기, 임의 WebSocket command와 raw `/config` parse는 bootstrap 대체 경로가 아니다.
+automation command는 registry에서 확인한 automation 대상에만 호출한다. Core가 unavailable automation에 성공 응답으로 반환할 수 있는 explicit `config: null`은 빈 config와 bounded warning으로 정규화하고 entity/`search/related` 관계는 유지한다. command 실패, 누락된 response envelope 또는 related 실패는 성공한 일부를 complete snapshot으로 가장하지 않고 stale/degraded 상태와 정제된 오류를 기록한다. `.storage` 직접 읽기, 임의 WebSocket command와 raw `/config` parse는 bootstrap 대체 경로가 아니다.
 
 정규화 경계는 다음과 같다.
 
@@ -439,8 +444,8 @@ SSH host key가 재시작마다 바뀌면 Remote SSH가 깨지므로 `/data` 영
 | 관리형 user policy/credential 변경 | 자동 수리·삭제 거부, owned token revocation 확인 또는 recovery material 보존 |
 | loopback gateway upstream 실패 | status와 sanitized 원인 보고, token 원문 미출력 |
 | browser output 한도 도달 | MCP 한도 오류/정리 정책을 보고하고 `/data` 사용자 파일은 건드리지 않음 |
-| `ha-memoryd` 또는 Core WebSocket 시작 실패 | Codex/Web/SSH/browser는 계속 시작, last-known-good catalog를 유지하고 catalog를 `degraded`/`stale`로 표시하거나 memory tool 자체의 unavailable 오류를 반환 |
-| memory snapshot 일부 command/대상 실패 | 부분 결과를 canonical로 commit하지 않고 이전 revision 유지, 정제된 실패·retry 상태 기록 |
+| `ha-memoryd` 또는 Core WebSocket 시작 실패 | Codex/Web/SSH/browser는 계속 시작, last-known-good catalog를 유지하고 catalog를 `degraded`/`stale`로 표시하며 token/DNS/transport/timeout/auth/protocol의 allowlist code만 기록 |
+| memory snapshot 일부 command/대상 실패 | legal `config: null`은 빈 automation config로 수용하되 실제 command/envelope/related 실패는 부분 결과를 canonical로 commit하지 않고 이전 revision과 command/snapshot allowlist code 유지 |
 | memory DB unsafe owner/type/link/mode 또는 schema 손상 | 자동 삭제·재생성하지 않고 memory만 fail closed; 기존 App 기능 유지 및 복구 안내 |
 | post-change fresh expectation 불일치 | canonical catalog는 같은 fresh HA snapshot으로 수렴하지만 applied semantic memory는 바꾸지 않고 mismatch change와 conflict evidence만 기록 |
 | memory rollback revision 충돌 | compensating event를 쓰지 않고 현재 history/conflict 재조회 요구; HA catalog와 실제 HA 비변경 |

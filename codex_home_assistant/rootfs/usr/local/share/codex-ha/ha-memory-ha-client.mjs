@@ -3,16 +3,73 @@ import { readFile } from "node:fs/promises";
 const DEFAULT_WEBSOCKET_URL = "ws://supervisor/core/websocket";
 const DEFAULT_TIMEOUT_MS = 20_000;
 const MAX_MESSAGE_BYTES = 32 * 1024 * 1024;
+const INSTALLED_WS_MODULE =
+  "/usr/local/lib/codex-ha/playwright/node_modules/ws/wrapper.mjs";
+
+const HOME_ASSISTANT_ERROR_CODES = new Set([
+  "ha_unavailable",
+  "ha_token_unavailable",
+  "ha_ws_runtime_unavailable",
+  "ha_dns_failed",
+  "ha_transport_failed",
+  "ha_timeout",
+  "ha_auth_rejected",
+  "ha_protocol_error",
+  "ha_ws_closed",
+  "ha_command_areas_failed",
+  "ha_command_devices_failed",
+  "ha_command_entities_failed",
+  "ha_command_states_failed",
+  "ha_command_automation_config_failed",
+  "ha_command_related_failed",
+  "ha_command_failed",
+  "ha_snapshot_incomplete",
+  "ha_fixture_invalid",
+  "ha_fixture_failure",
+]);
+
+const COMMAND_ERROR_CODES = new Map([
+  ["config/area_registry/list", "ha_command_areas_failed"],
+  ["config/device_registry/list", "ha_command_devices_failed"],
+  ["config/entity_registry/list", "ha_command_entities_failed"],
+  ["get_states", "ha_command_states_failed"],
+  ["automation/config", "ha_command_automation_config_failed"],
+  ["search/related", "ha_command_related_failed"],
+]);
 
 export class HomeAssistantUnavailableError extends Error {
-  constructor(message, options = undefined) {
+  constructor(code, message, options = undefined) {
+    if (typeof message !== "string") {
+      options = message;
+      message = code;
+      code = "ha_unavailable";
+    }
     super(message, options);
     this.name = "HomeAssistantUnavailableError";
+    this.code = HOME_ASSISTANT_ERROR_CODES.has(code) ? code : "ha_unavailable";
   }
 }
 
+export function homeAssistantErrorCode(error) {
+  return error instanceof HomeAssistantUnavailableError &&
+    HOME_ASSISTANT_ERROR_CODES.has(error.code)
+    ? error.code
+    : "ha_unavailable";
+}
+
 function sanitizeProtocolError(error) {
-  const message = error instanceof Error ? error.message : String(error);
+  let message = error instanceof Error ? error.message : String(error);
+  for (const name of [
+    "SUPERVISOR_TOKEN",
+    "HA_BROWSER_TOKEN",
+    "HOME_ASSISTANT_TOKEN",
+    "HASS_TOKEN",
+  ]) {
+    const secret = process.env[name];
+    if (typeof secret === "string" && secret.length >= 8) {
+      message = message.replaceAll(secret, "[REDACTED]");
+    }
+  }
   return message
     .replace(/Bearer\s+[^\s]+/giu, "Bearer [REDACTED]")
     .replace(/([?&](?:access_)?token=)[^&\s]+/giu, "$1[REDACTED]")
@@ -25,10 +82,39 @@ function withTimeout(promise, timeoutMs, label) {
     promise,
     new Promise((_, reject) => {
       timer = setTimeout(() => {
-        reject(new HomeAssistantUnavailableError(`${label} timed out`));
+        reject(new HomeAssistantUnavailableError("ha_timeout", `${label} timed out`));
       }, timeoutMs);
     }),
   ]).finally(() => clearTimeout(timer));
+}
+
+function commandErrorCode(type) {
+  return COMMAND_ERROR_CODES.get(type) ?? "ha_command_failed";
+}
+
+function transportErrorCode(event) {
+  const code = event?.error?.code ?? event?.code;
+  if (code === "ENOTFOUND" || code === "EAI_AGAIN") return "ha_dns_failed";
+  if (code === "ETIMEDOUT" || code === "ESOCKETTIMEDOUT") return "ha_timeout";
+  return "ha_transport_failed";
+}
+
+async function productionWebSocketFactory(url, { timeoutMs }) {
+  let WebSocketImplementation;
+  try {
+    ({ default: WebSocketImplementation } = await import(INSTALLED_WS_MODULE));
+  } catch {
+    throw new HomeAssistantUnavailableError(
+      "ha_ws_runtime_unavailable",
+      "The image-managed Home Assistant WebSocket runtime is unavailable",
+    );
+  }
+  return new WebSocketImplementation(url, {
+    handshakeTimeout: timeoutMs,
+    maxPayload: MAX_MESSAGE_BYTES,
+    perMessageDeflate: false,
+    rejectUnauthorized: url.startsWith("wss:") ? true : undefined,
+  });
 }
 
 class HomeAssistantWebSocketClient {
@@ -41,25 +127,46 @@ class HomeAssistantWebSocketClient {
     this.closed = false;
   }
 
-  static async connect({ url, token, timeoutMs }) {
+  static async connect({ url, token, timeoutMs, webSocketFactory }) {
     if (!token) {
       throw new HomeAssistantUnavailableError(
+        "ha_token_unavailable",
         "SUPERVISOR_TOKEN is unavailable; Home Assistant memory refresh is disabled",
       );
     }
 
-    const socket = new WebSocket(url);
+    let socket;
+    try {
+      const createdSocket = (webSocketFactory ?? productionWebSocketFactory)(url, {
+        timeoutMs,
+        maxMessageBytes: MAX_MESSAGE_BYTES,
+      });
+      socket = createdSocket && typeof createdSocket.then === "function"
+        ? await createdSocket
+        : createdSocket;
+    } catch (error) {
+      if (error instanceof HomeAssistantUnavailableError) throw error;
+      throw new HomeAssistantUnavailableError(
+        "ha_transport_failed",
+        "Unable to initialize the Home Assistant WebSocket transport",
+      );
+    }
     const client = new HomeAssistantWebSocketClient(socket, timeoutMs);
 
     const authenticated = new Promise((resolve, reject) => {
-      const fail = (error) => {
-        reject(
+      const fail = (error, code = "ha_protocol_error") => {
+        const failure =
           error instanceof HomeAssistantUnavailableError
             ? error
             : new HomeAssistantUnavailableError(
+                code,
                 `Home Assistant WebSocket authentication failed: ${sanitizeProtocolError(error)}`,
-              ),
-        );
+              );
+        // The listener remains active after authentication. Preserve the
+        // original bounded reason for any requests already in flight instead
+        // of letting the later close event collapse it to ha_ws_closed.
+        client.handleFailure(failure);
+        reject(failure);
       };
 
       socket.addEventListener("message", (event) => {
@@ -82,9 +189,24 @@ class HomeAssistantWebSocketClient {
           socket.close();
           return;
         }
+        if (!message || typeof message !== "object" || Array.isArray(message)) {
+          fail(new Error("Home Assistant WebSocket returned a non-object message"));
+          socket.close();
+          return;
+        }
 
         if (message.type === "auth_required") {
-          socket.send(JSON.stringify({ type: "auth", access_token: token }));
+          try {
+            socket.send(JSON.stringify({ type: "auth", access_token: token }));
+          } catch {
+            fail(
+              new HomeAssistantUnavailableError(
+                "ha_transport_failed",
+                "Home Assistant WebSocket authentication could not be sent",
+              ),
+            );
+            socket.close();
+          }
           return;
         }
         if (message.type === "auth_ok") {
@@ -94,20 +216,36 @@ class HomeAssistantWebSocketClient {
           return;
         }
         if (message.type === "auth_invalid") {
-          fail(new Error("Home Assistant rejected App authentication"));
+          fail(
+            new HomeAssistantUnavailableError(
+              "ha_auth_rejected",
+              "Home Assistant rejected App authentication",
+            ),
+          );
           socket.close();
           return;
         }
         client.handleMessage(message);
       });
 
-      socket.addEventListener("error", () => {
-        fail(new Error("Home Assistant WebSocket transport failed"));
+      socket.addEventListener("error", (event) => {
+        fail(
+          new HomeAssistantUnavailableError(
+            transportErrorCode(event),
+            "Home Assistant WebSocket transport failed",
+          ),
+        );
+        socket.close();
       });
       socket.addEventListener("close", () => {
         client.handleClose();
         if (!client.haVersion) {
-          fail(new Error("Home Assistant WebSocket closed before authentication"));
+          fail(
+            new HomeAssistantUnavailableError(
+              "ha_ws_closed",
+              "Home Assistant WebSocket closed before authentication",
+            ),
+          );
         }
       });
     });
@@ -137,6 +275,7 @@ class HomeAssistantWebSocketClient {
           : "unknown_error";
       pending.reject(
         new HomeAssistantUnavailableError(
+          commandErrorCode(pending.type),
           `Home Assistant command ${pending.type} failed (${code})`,
         ),
       );
@@ -144,12 +283,12 @@ class HomeAssistantWebSocketClient {
   }
 
   handleClose() {
-    if (this.closed) return;
     this.closed = true;
     for (const pending of this.pending.values()) {
       clearTimeout(pending.timer);
       pending.reject(
         new HomeAssistantUnavailableError(
+          "ha_ws_closed",
           `Home Assistant WebSocket closed during ${pending.type}`,
         ),
       );
@@ -157,10 +296,22 @@ class HomeAssistantWebSocketClient {
     this.pending.clear();
   }
 
+  handleFailure(error) {
+    this.closed = true;
+    for (const pending of this.pending.values()) {
+      clearTimeout(pending.timer);
+      pending.reject(error);
+    }
+    this.pending.clear();
+  }
+
   request(command) {
     if (this.closed) {
       return Promise.reject(
-        new HomeAssistantUnavailableError("Home Assistant WebSocket is closed"),
+        new HomeAssistantUnavailableError(
+          "ha_ws_closed",
+          "Home Assistant WebSocket is closed",
+        ),
       );
     }
     const id = this.nextId++;
@@ -168,29 +319,54 @@ class HomeAssistantWebSocketClient {
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
         this.pending.delete(id);
-        reject(new HomeAssistantUnavailableError(`Home Assistant command ${type} timed out`));
+        reject(
+          new HomeAssistantUnavailableError(
+            commandErrorCode(type),
+            `Home Assistant command ${type} timed out`,
+          ),
+        );
       }, this.timeoutMs);
       this.pending.set(id, { resolve, reject, timer, type });
-      this.socket.send(JSON.stringify({ id, ...command }));
+      try {
+        this.socket.send(JSON.stringify({ id, ...command }));
+      } catch {
+        clearTimeout(timer);
+        this.pending.delete(id);
+        reject(
+          new HomeAssistantUnavailableError(
+            "ha_transport_failed",
+            `Home Assistant command ${type} could not be sent`,
+          ),
+        );
+      }
     });
   }
 
   close() {
-    this.closed = true;
+    // Reject and clear any parallel requests before closing the transport. The
+    // subsequent close event is intentionally idempotent.
+    this.handleClose();
     this.socket.close();
   }
 }
 
 function requireFixtureShape(fixture) {
   if (!fixture || typeof fixture !== "object" || Array.isArray(fixture)) {
-    throw new HomeAssistantUnavailableError("Memory test fixture must be a JSON object");
+    throw new HomeAssistantUnavailableError(
+      "ha_fixture_invalid",
+      "Memory test fixture must be a JSON object",
+    );
   }
   if (fixture.error) {
-    throw new HomeAssistantUnavailableError("Memory test fixture requested an API failure");
+    throw new HomeAssistantUnavailableError(
+      "ha_fixture_failure",
+      "Memory test fixture requested an API failure",
+    );
   }
   for (const key of ["areas", "devices", "entities", "states"]) {
     if (!Array.isArray(fixture[key])) {
       throw new HomeAssistantUnavailableError(
+        "ha_fixture_invalid",
         `Memory test fixture field ${key} must be an array`,
       );
     }
@@ -215,6 +391,7 @@ function requireFixtureShape(fixture) {
 async function readTestFixture(path) {
   if (process.env.HA_MEMORY_TEST_MODE !== "1") {
     throw new HomeAssistantUnavailableError(
+      "ha_fixture_invalid",
       "HA_MEMORY_TEST_FIXTURE is only accepted in explicit memory test mode",
     );
   }
@@ -223,6 +400,7 @@ async function readTestFixture(path) {
     parsed = JSON.parse(await readFile(path, "utf8"));
   } catch (error) {
     throw new HomeAssistantUnavailableError(
+      "ha_fixture_invalid",
       `Unable to read Home Assistant memory test fixture: ${sanitizeProtocolError(error)}`,
     );
   }
@@ -252,25 +430,45 @@ async function fetchAutomationDetails(client, entityId) {
     }),
   ]);
 
-  const configValid =
+  const configEnvelopeValid =
     configResult.status === "fulfilled" &&
     configResult.value &&
     typeof configResult.value === "object" &&
     !Array.isArray(configResult.value) &&
-    configResult.value.config &&
-    typeof configResult.value.config === "object" &&
-    !Array.isArray(configResult.value.config);
+    Object.hasOwn(configResult.value, "config");
+  const configValue = configEnvelopeValid ? configResult.value.config : undefined;
+  // Core intentionally returns {config: null} for an unavailable automation
+  // whose entity still exists. That is a complete response, not a transport or
+  // snapshot failure; index the entity/related graph without persisting raw config.
+  const configValid =
+    configEnvelopeValid &&
+    (configValue === null ||
+      (typeof configValue === "object" && !Array.isArray(configValue)));
   const relatedValid =
     relatedResult.status === "fulfilled" &&
     relatedResult.value &&
     typeof relatedResult.value === "object" &&
     !Array.isArray(relatedResult.value);
 
+  let failureCode = null;
+  if (!configValid && configResult.status === "rejected") {
+    failureCode = homeAssistantErrorCode(configResult.reason);
+  } else if (!relatedValid && relatedResult.status === "rejected") {
+    failureCode = homeAssistantErrorCode(relatedResult.reason);
+  } else if (!configValid || !relatedValid) {
+    failureCode = "ha_snapshot_incomplete";
+  }
+
   return {
     entity_id: entityId,
     complete: Boolean(configValid && relatedValid),
-    config: configValid ? configResult.value.config : null,
+    config: configValid && configValue !== null ? configValue : {},
     related: relatedValid ? relatedResult.value : null,
+    failure_code: failureCode,
+    warning:
+      configValid && configValue === null
+        ? `automation_config_unavailable:${entityId}`
+        : null,
   };
 }
 
@@ -301,12 +499,22 @@ export async function fetchHomeAssistantSnapshot(options = {}) {
   const timeoutMs = Number.isInteger(options.timeoutMs)
     ? options.timeoutMs
     : DEFAULT_TIMEOUT_MS;
-  const url = options.url ?? process.env.HA_WS_URL ?? DEFAULT_WEBSOCKET_URL;
+  // Never accept an endpoint from the process environment: doing so could send
+  // the Supervisor credential to a caller-selected host. Tests may inject an
+  // explicit in-process URL without changing the production CLI surface.
+  const url = options.url ?? DEFAULT_WEBSOCKET_URL;
+  if (options.url !== undefined && options.token === undefined) {
+    throw new HomeAssistantUnavailableError(
+      "ha_token_unavailable",
+      "An explicit Home Assistant WebSocket endpoint requires an explicit credential",
+    );
+  }
   const token = options.token ?? process.env.SUPERVISOR_TOKEN ?? "";
   const client = await HomeAssistantWebSocketClient.connect({
     url,
     token,
     timeoutMs,
+    webSocketFactory: options.webSocketFactory,
   });
 
   try {
@@ -320,6 +528,7 @@ export async function fetchHomeAssistantSnapshot(options = {}) {
     for (const [key, value] of Object.entries({ areas, devices, entities, states })) {
       if (!Array.isArray(value)) {
         throw new HomeAssistantUnavailableError(
+          "ha_snapshot_incomplete",
           `Home Assistant ${key} response was not a list`,
         );
       }
@@ -328,8 +537,10 @@ export async function fetchHomeAssistantSnapshot(options = {}) {
     const activeAutomationIds = automationEntityIds(states);
     const allAutomationIds = automationEntityIds([...entities, ...states]);
     const details = await fetchAutomationDetailsBounded(client, activeAutomationIds);
-    if (details.some((detail) => !detail.complete)) {
+    const incompleteDetail = details.find((detail) => !detail.complete);
+    if (incompleteDetail) {
       throw new HomeAssistantUnavailableError(
+        incompleteDetail.failure_code ?? "ha_snapshot_incomplete",
         "Home Assistant returned an incomplete automation detail snapshot",
       );
     }
@@ -356,14 +567,21 @@ export async function fetchHomeAssistantSnapshot(options = {}) {
       entities,
       states,
       automations,
-      warnings: [],
+      warnings: details
+        .map((detail) => detail.warning)
+        .filter((warning) => typeof warning === "string"),
     };
   } catch (error) {
     if (error instanceof HomeAssistantUnavailableError) throw error;
     throw new HomeAssistantUnavailableError(
-      `Home Assistant memory refresh failed: ${sanitizeProtocolError(error)}`,
+      "ha_snapshot_incomplete",
+      "Home Assistant memory refresh failed before a complete snapshot was available",
     );
   } finally {
-    client.close();
+    try {
+      client.close();
+    } catch {
+      // The requested snapshot outcome is authoritative; close errors are not.
+    }
   }
 }

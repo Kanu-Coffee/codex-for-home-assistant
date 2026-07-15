@@ -140,6 +140,18 @@ def test_memory_daemon_is_optional_to_terminal_and_ssh(rootfs: Path) -> None:
     run_script = (memory_service / "run").read_text(encoding="utf-8")
     assert run_script.startswith("#!/command/with-contenv bashio\n")
     assert "/usr/local/bin/ha-memory" in run_script
+    assert ">/dev/null 2>&1" not in run_script
+    assert "jq --exit-status --raw-output" in run_script
+    assert ".reason" in run_script
+    assert "ha_token_unavailable" in run_script
+    assert "ha_auth_rejected" in run_script
+    assert "ha_command_automation_config_failed" in run_script
+    assert "refresh_reason=ha_unavailable" in run_script
+    assert all(
+        "refresh_output" not in line
+        for line in run_script.splitlines()
+        if "bashio::log" in line
+    )
     assert (memory_service / "dependencies.d/codex-ha-init").is_file()
 
     for service in ("ttyd", "sshd"):
@@ -234,6 +246,11 @@ def test_memory_ha_client_uses_the_fixed_snapshot_allowlist(rootfs: Path) -> Non
     assert "config/automation/config" not in client
     assert "config/automation/related" not in client
     assert "incomplete automation detail snapshot" in client
+    assert "process.env.HA_WS_URL" not in client
+    assert "/usr/local/lib/codex-ha/playwright/node_modules/ws/wrapper.mjs" in client
+    assert "maxPayload: MAX_MESSAGE_BYTES" in client
+    assert "perMessageDeflate: false" in client
+    assert "configValue === null" in client
 
 
 def test_default_guidance_defines_verified_memory_workflow(rootfs: Path) -> None:

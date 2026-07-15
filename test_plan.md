@@ -1,6 +1,6 @@
 # test_plan.md — 검증 전략
 
-> 기존 browser/AppArmor 실기 대상은 public `0.2.3`이고 `0.2.4`는 그 결과를 기록한 validation/evidence release다. 검증형 HA 메모리는 public `0.3.0`으로 자동 fixture/container/public-image 회귀를 통과했지만, 새 HAOS memory E2E는 별도 미실행 상태로 release 증거와 구분한다.
+> 기존 browser/AppArmor 실기 대상은 public `0.2.3`이고 `0.2.4`는 그 결과를 기록한 validation/evidence release다. 검증형 HA 메모리는 public `0.3.0` 자동 회귀를 통과했지만 실제 HAOS read-only 감사의 catalog refresh는 FAIL했다. 0.3.1 자동 수정 증거와 공개 image의 HAOS 재시험 NOT RUN 경계를 release 증거와 구분한다.
 
 ## 1. 테스트 계층
 
@@ -115,7 +115,7 @@ Supervisor가 없어도 검증 가능한 항목:
 | AT-021 | API `Accept` 협상 | 기본 JSON, 로그 x-log, 비허용/CRLF 값 요청 전 거부 |
 | AT-022 | ttyd resize/reconnect | resize 반영 후 WebSocket 재연결에도 session/pane/pid 동일 |
 | AT-023 | registry release contract | generic image, numeric tag gate, version 일치, package write 권한 |
-| AT-024 | Playwright 공급망 pin | lockfile에서 `@playwright/mcp` 0.0.78과 transitive Playwright 버전이 고정되고 runtime `latest`/`npx` 설치 없음 |
+| AT-024 | Playwright/WebSocket 공급망 pin | lockfile에서 `@playwright/mcp` 0.0.78, transitive Playwright와 privileged helper가 공유하는 `ws` 8.18.3이 고정되고 image가 `wrapper.mjs`를 import하며 runtime `latest`/`npx` 설치 없음 |
 | AT-025 | system MCP config | `/etc/codex/config.toml`에 optional stdio Playwright server, timeout, tool allowlist가 있고 `/data`에 image 기본값을 복사하지 않음 |
 | AT-026 | MCP handshake/tool 표면 | raw wrapper와 Codex system config가 동일 allowlist를 사용하고 임의 code 실행/file upload/unrestricted filesystem/codegen/단일 request 상세 도구가 노출·호출되지 않음 |
 | AT-027 | headless Chromium smoke | `/usr/bin/chromium-headless-shell`로 local fixture navigation/snapshot/screenshot 성공 |
@@ -144,6 +144,7 @@ Supervisor가 없어도 검증 가능한 항목:
 | AT-050 | bounded CLI/MCP retrieval과 preserve | query 256자, search 기본 8·최대 20 subject/JSON 32 KiB, subject별 relation 각 12(정확 show 30)·applied 20·open conflict 10 상한에서 exact ID/alias·FTS canonical/applied만 반환. exact show/history/conflict는 별도 row/field 한도와 MCP hard ceiling을 사용하며 pending/evidence/audit/full DB는 기본 제외하고 preserve update에도 system MCP/developer instruction 존재 |
 | AT-051 | audit/conflict/compensating rollback | `ha-memory candidate add --value-json`, evidence/verify/apply, conflict resolution과 rollback에 history-preserving actor/source/before/after event가 남고 current-row mismatch·후속 dependency를 거부하며 rollback은 원 event/linkage와 HA catalog/Core fixture를 변경하지 않음 |
 | AT-052 | memory non-fatal lifecycle·persistence | Core unavailable, DB lock/corruption과 scheduler crash에서 Web/SSH/Codex/browser는 계속 동작하고 catalog `degraded`/`stale` 또는 tool unavailable 오류를 구분. unsafe memory symlink/file도 main init을 중단하거나 target을 chmod하지 않음. App restart/update에서 DB와 applied memory는 유지되며 runtime token은 mode 0600의 ephemeral `/run` 파일에서 env로 읽고 argv/stdout/stderr/log/DB에 없음 |
+| AT-053 | live WebSocket 호환·안전 진단 | active unavailable automation의 legal `{config:null}`은 빈 config/bounded warning으로 index하고 actual installed `ws`가 Supervisor식 auth/snapshot을 완료. `HA_WS_URL` 환경 redirection과 implicit token 전달은 거부하고 token/DNS/transport/timeout/auth/protocol/고정 command/snapshot failure code를 DB·change·CLI에 보존하되 daemon은 원문/secret 없이 allowlist code만 log. non-object frame은 protocol failure로 닫고 병렬 command 실패 뒤 pending timer를 모두 정리하며, last-known-good와 recovery refresh를 확인 |
 
 ## 3. HAOS 수동/E2E 시나리오
 
@@ -372,6 +373,7 @@ ha-api GET /states
 1. 기존 사용자 `AGENTS.md`와 user `config.toml`에 marker가 있는 설치를 일반 업데이트하고 두 파일의 bytes가 보존되는지 확인한다.
 2. App을 시작해 Codex/Web/SSH/browser가 정상이고 별도 `ha-memoryd`가 Core ready 뒤 첫 bootstrap을 완료하는지 확인한다. `/data/codex-ha-memory`는 0700, DB/WAL/SHM은 0600이어야 한다.
 3. `ha-memory status`에서 schema/catalog revision, last successful refresh와 non-stale 상태만 정제돼 보이는지 확인한다. 실제 entity/area 이름 전체나 token을 로그에 출력하지 않는다.
+   실패를 주입할 수 있는 개발 설치에서는 token/auth/DNS/transport/protocol/command code가 구분되고 App log에 raw command response나 credential이 없는지도 확인한다.
 4. 통제된 entity 하나를 CLI와 `ha_memory` MCP의 exact search/show로 찾고 device/area/automation related 관계와 허용된 description이 실제 UI/API와 일치하는지 확인한다. 작은 limit을 지정해 unrelated catalog가 반환되지 않는지 확인한다.
 5. raw state/비허용 attributes 값과 automation raw config에 synthetic marker를 잠시 만들 수 있는 안전한 fixture를 사용하거나 개발 HA에서 주입하고, refresh 뒤 database/FTS/audit에 marker가 없는지 sanitized count 검사로 확인한 뒤 제거한다.
 6. 사용자에게만 의미가 있는 비민감 alias 또는 preference를 명시적으로 설명하고 `ha-memory candidate add --value-json` → evidence → verify → apply를 수행한다. pending 상태에서는 기본 search에 없고 applied 뒤 관련 query에만 나타나는지 확인한다.
@@ -390,7 +392,7 @@ ha-api GET /states
 - history와 compensating rollback은 semantic memory에만 적용되고 HA catalog/실제 HA를 과거 상태로 되돌리지 않음
 - `ha-memoryd` 장애가 App의 기존 운영 기능을 중단시키지 않음
 
-실행 결과: **NOT RUN — 새 메모리 기능의 자동 fixture와 별도로 실제 HAOS에서 검증해야 한다.**
+실행 결과: **public 0.3.0 읽기 전용 감사 FAIL — catalog refresh가 모두 `ha_unavailable`이었고 원문 진단은 daemon에서 폐기됐다. Local 0.3.1의 legal null-config, 실제 installed `ws`, 정밀 code, last-known-good/recovery와 전체 기존 회귀는 PASS했다. 0.3.1 공개 image와 실제 HAOS catalog/restart/candidate/change/privacy 재시험은 NOT RUN이다.**
 
 ## 4. 회귀 테스트 우선순위
 
