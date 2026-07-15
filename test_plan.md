@@ -1,6 +1,6 @@
 # test_plan.md — 검증 전략
 
-> 기존 browser/AppArmor 실기 대상은 public `0.2.3`이고 `0.2.4`는 그 결과를 기록한 validation/evidence release다. 검증형 HA 메모리는 public `0.3.0` 자동 회귀를 통과했지만 실제 HAOS read-only 감사의 catalog refresh는 FAIL했다. Public `0.3.1` 수정·공개 이미지 자동 회귀도 PASS했지만 후속 실제 HAOS/Core `2026.7.2` 재시험에서 automation-related 30건 중 2건이 `unknown_error`를 반환해 catalog는 다시 FAIL했다. Public `0.3.2` 자동·공개 이미지 검증 PASS와 향후 실제 HAOS 재시험을 이 증거와 구분한다.
+> 기존 browser/AppArmor 실기 대상은 public `0.2.3`이고 `0.2.4`는 그 결과를 기록한 validation/evidence release다. 검증형 HA 메모리는 public `0.3.0` 자동 회귀를 통과했지만 실제 HAOS read-only 감사의 catalog refresh는 FAIL했다. Public `0.3.1` 수정·공개 이미지 자동 회귀도 PASS했지만 후속 실제 HAOS/Core `2026.7.2` 재시험에서 automation-related 30건 중 2건이 `unknown_error`를 반환해 catalog는 다시 FAIL했다. Public `0.3.2` 자동·공개 이미지 검증 PASS와 향후 실제 HAOS 재시험을 이 증거와 구분한다. Public `0.4.0` 승인 정책의 정확한 공개 이미지 자동 검증은 PASS지만 새 HAOS UI/AppArmor 실기는 NOT RUN이다.
 
 ## 1. 테스트 계층
 
@@ -145,7 +145,7 @@ Supervisor가 없어도 검증 가능한 항목:
 | AT-051 | audit/conflict/compensating rollback | `ha-memory candidate add --value-json`, evidence/verify/apply, conflict resolution과 rollback에 history-preserving actor/source/before/after event가 남고 current-row mismatch·후속 dependency를 거부하며 rollback은 원 event/linkage와 HA catalog/Core fixture를 변경하지 않음 |
 | AT-052 | memory non-fatal lifecycle·persistence | Core unavailable, DB lock/corruption과 scheduler crash에서 Web/SSH/Codex/browser는 계속 동작하고 catalog `degraded`/`stale` 또는 tool unavailable 오류를 구분. unsafe memory symlink/file도 main init을 중단하거나 target을 chmod하지 않음. App restart/update에서 DB와 applied memory는 유지되며 runtime token은 mode 0600의 ephemeral `/run` 파일에서 env로 읽고 argv/stdout/stderr/log/DB에 없음 |
 | AT-053 | live WebSocket 호환·안전 진단 | active unavailable automation의 legal `{config:null}`은 빈 config/bounded warning으로 index하고 actual installed `ws`가 Supervisor식 auth/snapshot을 완료. 한 automation의 official related 요청만 `unknown_error`여도 remote message 없이 config/직접 관계와 다른 automation을 보존하고 exact provenance를 기록. Server `timeout`/`unauthorized`/`invalid_format`/`home_assistant_error`는 같은 완화 경로로 들어가지 않고 snapshot을 거부. `HA_WS_URL` redirection과 implicit token 전달은 거부하고 token/DNS/transport/timeout/auth/protocol/고정 command/snapshot failure code를 DB·change·CLI에 보존하되 daemon은 원문/secret 없이 allowlist code만 log. non-object/malformed result는 protocol failure로 닫고 병렬 command 실패 뒤 pending timer를 모두 정리하며, last-known-good와 recovery refresh를 확인 |
-| AT-054 | Playwright 승인 정책 | App option/schema/번역 default safe, system default prompt와 16개 per-tool fallback, helper/config/proxy allowlist parity를 확인. disposable container의 fake `codex-real`은 missing/safe 11 approve+5 prompt, never 16 approve, always 16 prompt, 기존 2개를 포함한 총 19개 `-c`, 인수 pass-through를 검증하고 enum/type 오류는 78로 종료. 실제 pinned Codex는 모든 valid override를 parse하며 public 0.3.2 update는 option key를 삽입하지 않고 safe fallback을 사용 |
+| AT-054 | Playwright 승인 정책 | App option/schema/번역 default safe, system default prompt와 16개 per-tool fallback, helper/config/proxy allowlist parity를 확인. disposable container의 fake `codex-real`은 missing/safe 11 approve+5 prompt, never 16 approve, always 16 prompt, 기존 2개를 포함한 총 19개 `-c`, 인수 pass-through를 검증하고 enum/type 오류는 78로 종료. 실제 pinned Codex는 모든 valid override를 parse하며 public `0.3.2` → 정확한 public `0.4.0` update는 option key를 삽입하지 않고 safe fallback을 사용. 동일 merge SHA main CI `29408206017`, tag Builder `29408467932`와 public browser approval policy/full/update smoke **PASS** |
 
 ## 3. HAOS 수동/E2E 시나리오
 
@@ -404,7 +404,9 @@ ha-api GET /states
 5. `always`에서 허용 도구 16개가 승인 요청인지 확인한다. 별도로 top-level `codex_approval_policy=never` 조합은 Codex 전역 full-auto가 우선할 수 있음을 UI 설명과 실제 동작으로 확인한다.
 6. desktop/mobile 렌더링, console/network, 자동 인증, AppArmor와 사용자 config/AGENTS/browser identity 보존을 함께 회귀한다.
 
-성공 기준: 문서화된 mode 행렬과 global-policy precedence가 실제 팝업에 일치하고 proxy allowlist·HA 권한·credential 경계는 변하지 않는다. 공개 image가 없는 candidate 단계에서는 이 실기를 **NOT RUN**으로 기록한다.
+성공 기준: 문서화된 mode 행렬과 global-policy precedence가 실제 팝업에 일치하고 proxy allowlist·HA 권한·credential 경계는 변하지 않는다.
+
+실행 결과: 동일 merge SHA의 main CI [`29408206017`](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/29408206017)과 tag Builder [`29408467932`](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/29408467932), 정확한 public `0.4.0` image의 browser approval policy smoke, full browser/gateway/Core WebSocket/ttyd/SSH smoke와 public `0.3.2` → `0.4.0` update smoke는 **PASS**다. 실제 HAOS Configuration UI의 `safe`/`never`/`always` popup 행렬, `codex_approval_policy=never` precedence, AppArmor 활성 상태의 인증된 `127.0.0.1:8099` desktop/mobile dashboard·console·network 회귀와 live HA update 감지는 **NOT RUN**이다. 기존 public `0.2.3` browser/AppArmor 사용자 확인 PASS와 혼합하지 않는다.
 
 ## 4. 회귀 테스트 우선순위
 

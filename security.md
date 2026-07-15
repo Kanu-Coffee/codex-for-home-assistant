@@ -225,6 +225,8 @@ Playwright 승인창을 줄이는 옵션을 browser 권한 경계나 Home Assist
 - MCP popup 생략은 현재 사용자 요청의 범위 확장이 아니며 실제 Home Assistant 변경·고위험 장치 규칙과 변경 후 검증 지침을 계속 적용
 - App option은 wrapper의 CLI config로 적용하고 사용자 `config.toml`, `AGENTS.md`, browser credential을 덮어쓰지 않음. invalid enum/type은 fail closed
 
+자동 검증 상태: 동일 merge SHA의 main CI [`29408206017`](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/29408206017)과 tag Builder [`29408467932`](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/29408467932), 정확한 public `0.4.0` image의 browser approval policy/full browser·gateway·Core WebSocket·ttyd·SSH/public `0.3.2` → `0.4.0` update smoke는 **PASS**다. 실제 HAOS Configuration UI의 `safe`/`never`/`always` popup 행렬, `codex_approval_policy=never` precedence, AppArmor 활성 상태의 인증된 `127.0.0.1:8099` dashboard 회귀와 live HA update 감지는 **NOT RUN**이며 자동 검증으로 대체하지 않는다.
+
 ## 4. `manager` 선택 근거
 
 `manager`는 CLI형 관리 App에 필요한 Supervisor 운영 권한을 제공하면서 `admin`보다 제한적이다. Core 기기 제어는 `homeassistant_api: true`로 별도 제공되므로 실제 서비스 호출을 위해 `admin`이 필요하지 않다.
@@ -332,5 +334,7 @@ manager가 특정 필요한 endpoint를 거부하면:
 ## 8. 실기 검증 경계
 
 Alpine의 system `chromium-headless-shell` 조합은 upstream Playwright의 공식 Ubuntu/Debian browser bundle 대상과 다르다. 로컬 container fixture 통과만으로 HAOS 지원을 확정하지 않는다. Public `0.2.3`의 실제 HAOS에서 AppArmor 활성 상태의 browser 시작, loopback gateway, dashboard resource/WebSocket과 desktop/mobile 화면·console·network 경로가 동작했다고 사용자가 확인해 이 실기 항목은 **PASS**로 기록한다. 이는 upstream Alpine 지원 계약이나 모든 장치 보장을 뜻하지 않으며 Chromium·Playwright package revision이 바뀌면 재검증한다. token 원문 비노출은 자동 fixture/redaction smoke 증거와 계속 함께 판단한다.
+
+Public `0.4.0`의 정확한 공개 image 자동 회귀는 PASS지만 새 승인 정책을 포함한 실제 HAOS Configuration UI popup 행렬, top-level `codex_approval_policy=never` precedence, AppArmor 활성 상태의 인증된 `127.0.0.1:8099` dashboard와 live HA update 감지는 **NOT RUN**이다. 따라서 위 public `0.2.3` 사용자 확인 PASS를 `0.4.0` 실기 PASS로 승격하지 않는다.
 
 검증형 메모리는 fixture의 SQLite/FTS5, state machine, allowlist와 failure injection이 통과해도 실제 HAOS의 Core WebSocket command 가용성, registry/automation 규모, Core restart 재연결, App update persistence와 S6 lifecycle을 완료로 간주하지 않는다. Public 0.3.0의 read-only HAOS 감사에서는 첫 catalog bootstrap이 FAIL했다. 정확한 public 0.3.1 image 자동 회귀는 PASS했지만 후속 실제 HAOS/Core `2026.7.2` 실기에서 `automation/config` 30건은 성공하고 automation-related 30건 중 2건이 Core `unknown_error`를 반환해 catalog bootstrap은 **FAIL**했다. 설치 무결성·Core 연결·daemon/DB·privacy는 PASS, Core restart의 daemon 생존·재연결은 PASS지만 fresh catalog 복구는 FAIL이라 PARTIAL, null-config는 NOT OBSERVED, candidate/change/App restart/update는 NOT RUN이다. 정확한 public 0.3.2 image의 자동·공개 이미지 회귀는 PASS했지만 실제 HAOS 재시험과 별도 기록하며, 실제 entity·area·automation 이름이나 memory DB를 저장소 증거로 커밋하지 않는다.

@@ -28,7 +28,15 @@ All notable changes to this App are documented in this file.
 
 - Add exact static parity checks across the system MCP configuration, runtime policy helper, and proxy allowlist, including the 11 safe and 5 interactive tools.
 - Add a disposable-container wrapper smoke covering missing, `safe`, `never`, `always`, invalid enum, invalid type, CLI argument pass-through, and pinned Codex TOML parsing, plus public `0.3.2` update preservation.
-- Keep the actual Home Assistant Configuration UI approval matrix and AppArmor dashboard session as a separate HAOS acceptance check after the public image is available.
+- Merge [PR #26](https://github.com/Kanu-Coffee/codex-for-home-assistant/pull/26) as `bca612661692e3d66d239c06b57b52921ea56af6`; [main CI 29408206017](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/29408206017) passed before publication.
+- Verify the exact public image with browser-policy, full browser/gateway/Core WebSocket/ttyd/SSH, memory, managed-auth, user-file, and public `0.3.2` to public `0.4.0` update smokes; all passed.
+- Keep the actual HAOS `0.4.0` Configuration UI approval matrix, top-level global-never precedence, AppArmor `127.0.0.1:8099` dashboard session, and live update detection explicitly **NOT RUN**.
+
+### Release evidence
+
+- Publish the annotated `0.4.0` tag at `2026-07-15T10:32:08Z`; [Builder 29408467932](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/29408467932) then published the GHCR images, and the verified [GitHub prerelease](https://github.com/Kanu-Coffee/codex-for-home-assistant/releases/tag/0.4.0) was published at `2026-07-15T10:42:35Z`.
+- The generic and per-architecture tags share OCI index digest `sha256:758837276c4247a304c58791bddab5912977d3445801dcd832a638f9a2af9342`; the linux/amd64 runtime manifest digest is `sha256:b586727e9a2ca724f32f8255f692cd32104aeed45bc0e65b8c12cb3cc151373b`.
+- Confirm anonymous generic/per-architecture tag access and pulls, the expected version/architecture/source labels, and the absence of a mutable `latest` tag.
 
 ## [0.3.2] - 2026-07-15
 
