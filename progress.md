@@ -4,9 +4,9 @@
 
 ## Project Status
 
-- 상태: **amd64 MVP/M2 PASS / 0.2.4 public·자동 회귀 PASS / Home Assistant UI·Supervisor update·HAOS AppArmor dashboard는 public 0.2.3 사용자 확인 PASS**
-- 현재 마일스톤: **0.2.4 validation/evidence patch 공개 검증 완료 / M3 대기**
-- 마지막 문서 기준일: **2026-07-14**
+- 상태: **amd64 MVP/M2 PASS / 0.3.0 memory 후보 local 자동 회귀 PASS / 0.2.4 public PASS / 새 memory의 실제 HAOS E2E는 NOT RUN**
+- 현재 마일스톤: **0.3.0 검증 기반 HA memory 후보 구현·local 검증 완료 / PR CI 대기**
+- 마지막 문서 기준일: **2026-07-15**
 - 저장소: public `Kanu-Coffee/codex-for-home-assistant`, default branch `main`
 
 ## 완료된 결정
@@ -23,6 +23,22 @@
 - [x] 문서 주도 개발 파일 세트 작성
 
 ## Current Work
+
+### 2026-07-15 — 검증 기반 지속 개선형 Home Assistant 메모리
+
+- 목표: Home Assistant의 엔티티·장치·영역·자동화 관계를 빠르게 검색할 수 있는 영속 인덱스를 만들고, 대화에서 얻은 별칭·용도·선호·관계는 `candidate → verified → applied` 상태 전이와 출처 증거를 거쳐서만 활성 메모리에 반영한다.
+- 권위 규칙: 구조·현재 존재 여부·변경 결과는 최신 Core REST/WebSocket API를 우선하고, 별칭·실제 용도·선호처럼 사용자 의미에 속하는 정보는 사용자의 명시적 설명을 우선한다. 일시 상태값과 단일 추론은 영속 메모리에 직접 저장하지 않는다.
+- 저장·검색 계획: root-only `/data/codex-ha-memory/memory.sqlite3`에 정규화된 snapshot, 관계, 후보, 증거, 충돌, 변경 검증, 감사 이력을 저장한다. Codex는 전체 DB를 컨텍스트로 읽지 않고 `ha-memory search`/`show`가 반환한 제한된 관련 결과만 사용한다.
+- 변경 검증 계획: Codex가 HA 설정 또는 registry를 바꾸기 전에 change record를 만들고, 변경 후 Core API snapshot과 명시적 expectation을 다시 확인한 성공 change만 메모리 후보의 검증 근거로 허용한다.
+- 복구 계획: HA snapshot은 실제 HA의 캐시이므로 과거 상태로 롤백하지 않고 다음 refresh로 교정한다. 후보·적용·충돌 해결 같은 메모리 mutation은 before/after 감사 event를 남기고 현재값 precondition을 확인한 event rollback을 제공한다.
+- 검증 계획: fixture 기반 Node/SQLite 동적 테스트로 초기 인덱스, 비영속 상태 제외, 후보 상태 전이, 출처 우선순위, API change verification, 관련 검색 제한, 충돌·이력·rollback을 확인한다. pytest 계약, Node/Bash syntax, YAML/Markdown, secret scan과 가능한 container smoke를 회귀 실행한다.
+- [x] SQLite v1/FTS5 store, Core WebSocket allowlist client, `ha-memory` CLI와 optional STDIO MCP, 독립 `ha-memoryd`를 구현했다. area/device/entity/automation과 관계는 full snapshot transaction으로 갱신하고 state가 없는 disabled automation은 registry metadata만 index한다.
+- [x] candidate의 type-specific durable schema, structured provenance/evidence, `pending → verified → applied`, fact-kind authority, open-conflict search 제외, expectation digest·exact predicate binding, history-preserving audit와 dependency-safe compensating rollback을 구현했다. transient state/raw conversation/credential fixture sentinel은 DB/WAL/SHM byte 검사에서 발견되지 않았다.
+- [x] App init은 unsafe memory file/symlink를 따라가거나 mode를 바꾸지 않고 memory만 비활성화한다. 기본 `AGENTS.md`, image-owned developer instruction, Docker packaging과 S6 service를 연결하면서 기존 사용자 config/AGENTS와 App 권한 계약은 유지했다.
+- [x] 제품·아키텍처·보안·테스트·사용 문서와 `0.3.0` changelog를 갱신했다. 새 memory 기능의 실제 HAOS Core/registry/restart/update E2E는 실행 환경이 없어 **NOT RUN**이며 local fixture/container 결과와 구분한다.
+- [x] 최종 local image `sha256:07fecc736c43e9eb1ba2bde495e375554ee972a7c4f1ca1de787b028b1e81c9f`는 version `0.3.0`, arch `amd64`, size 533,512,546 bytes다. 설치 image 내부 memory lifecycle/schema/client, unsafe broken/valid symlink·WAL, raw-byte 비저장, MCP 실제 호출과 volume 교체 영속성 smoke가 PASS했다.
+- [x] 전체 Docker browser/gateway/Core WebSocket/ttyd/SSH smoke, managed browser-auth smoke, user-file update smoke와 public `0.2.4` → local `0.3.0` update smoke가 모두 PASS했다. 로컬 source에서는 Node 4 tests, 전체 pytest **56 passed / 8 jq-dependent skipped**, Markdown 20 files, YAML, ShellCheck, Hadolint, MANIFEST와 `git diff --check`가 PASS했다.
+- [ ] PR을 열고 Linux CI의 pytest+jq, Home Assistant App linter와 fresh amd64 build/full smoke를 통과한다.
 
 ### 2026-07-14 — HAOS UI/AppArmor 실기 완료 기록과 0.2.4 릴리스
 

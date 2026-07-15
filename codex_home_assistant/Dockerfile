@@ -3,7 +3,7 @@ ARG BUILD_FROM=ghcr.io/home-assistant/base:3.24
 FROM ${BUILD_FROM}
 
 ARG BUILD_ARCH=amd64
-ARG BUILD_VERSION=0.2.4
+ARG BUILD_VERSION=0.3.0
 ARG TARGETARCH
 ARG CODEX_VERSION=0.144.1
 ARG CODEX_SHA256=84091ae20c65fcc7d4120db97d1bd57d7ff8df9c7609fb781c78c2ebbd4f5a28
@@ -60,6 +60,7 @@ RUN apk add --no-cache \
     && [[ "$(node -p "require('/usr/local/lib/codex-ha/playwright/node_modules/@playwright/mcp/package.json').version")" == "${PLAYWRIGHT_MCP_VERSION}" ]] \
     && [[ "$(node -p "require('/usr/local/lib/codex-ha/playwright/node_modules/ws/package.json').version")" == "${WS_VERSION}" ]] \
     && node -e "require('/usr/local/lib/codex-ha/playwright/node_modules/playwright-core')" \
+    && node -e "const { DatabaseSync } = require('node:sqlite'); const db = new DatabaseSync(':memory:'); db.exec('CREATE VIRTUAL TABLE smoke USING fts5(value)'); db.close()" \
     && chromium-headless-shell --version \
     && rm -rf /tmp/npm-cache \
     && apk del .playwright-build
@@ -69,6 +70,7 @@ COPY rootfs /
 RUN printf '%s\n' "${BUILD_VERSION}" > /usr/local/share/codex-ha/app-version \
     && chmod 0755 \
       /etc/s6-overlay/s6-rc.d/codex-ha-init/run \
+      /etc/s6-overlay/s6-rc.d/ha-memoryd/run \
       /etc/s6-overlay/s6-rc.d/ingress/finish \
       /etc/s6-overlay/s6-rc.d/ingress/run \
       /etc/s6-overlay/s6-rc.d/sshd/finish \
@@ -82,6 +84,10 @@ RUN printf '%s\n' "${BUILD_VERSION}" > /usr/local/share/codex-ha/app-version \
       /usr/local/share/codex-ha/AGENTS.md \
       /usr/local/share/codex-ha/browser-auth-check.mjs \
       /usr/local/share/codex-ha/browser-user-admin.mjs \
+      /usr/local/share/codex-ha/ha-memory-core.mjs \
+      /usr/local/share/codex-ha/ha-memory-ha-client.mjs \
+      /usr/local/share/codex-ha/ha-memory-mcp.mjs \
+      /usr/local/share/codex-ha/ha-memory.mjs \
       /usr/local/share/codex-ha/playwright-init-page.ts \
       /usr/local/share/codex-ha/playwright-mcp-proxy.mjs \
       /usr/local/share/codex-ha/playwright-mcp.json \

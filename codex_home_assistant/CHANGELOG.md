@@ -2,6 +2,32 @@
 
 All notable changes to this App are documented in this file.
 
+## [0.3.0] - 2026-07-15
+
+### Added
+
+- Add a persistent, root-only SQLite/FTS5 Home Assistant memory store with a normalized index of areas, devices, entities, automations, and their registry/automation relationships.
+- Add the non-blocking `ha-memoryd` S6 refresh service, the `ha-memory` administration CLI, and an optional image-managed `ha_memory` MCP server with bounded search and exact-subject tools.
+- Add provenance-aware semantic memory candidates for aliases, purposes, preferences, relationships, and notes. Candidates must move through separate pending, verified, and applied states; repeated observations, explicit user evidence, fresh HA structure, and verified Codex changes have distinct verification rules.
+- Add pre-change subject and expectation-digest records, fresh post-change Home Assistant API verification against the same contract, conflict tracking, bounded audit history, and dependency-safe compensating rollback for semantic-memory events.
+
+### Security
+
+- Store only allowlisted registry and automation metadata plus typed semantic values and structured provenance labels. Raw current/history state values, timestamps, automation actions/templates, conversations, API responses, and credentials are excluded from durable memory; state may be compared during fresh verification, but only expectation/predicate digests, checked field names, and match booleans are retained. A verified change can validate a relationship candidate only through the exact source/relation/target existence predicate.
+- Protect `/data/codex-ha-memory` as root-only storage, reject unsafe links/ownership/schema, use atomic WAL transactions and integrity checks, preserve the last-known-good catalog on refresh failure, and cap every normal search by query length, result count, relationships, applied memories, conflicts, and serialized bytes.
+- Keep Home Assistant structural facts under fresh Core API authority and explicit user explanations above observations or model inference. Conflicts remain visible instead of silently replacing equal/higher-authority memory.
+
+### Upgrade notes
+
+- The new memory database is created automatically and survives normal App replacement through `/data`. Unsafe memory links/files fail closed without being followed or blocking the main App init. Initial Core indexing runs in a separate retrying service, so an unavailable Core or memory database does not block Web UI, SSH, Codex, or browser startup.
+- Existing user `config.toml` and `AGENTS.md` remain subject to `codex_user_files_update_mode`. The image-managed system config still supplies the optional memory MCP and its operating rules; start a new Codex session after updating to discover it.
+- A retained `refresh_agents` or `refresh_all` selection runs once again for its selected targets at version `0.3.0`. Select `preserve` before updating if that reset is not wanted.
+
+### Testing
+
+- Add fixture-driven Node/SQLite lifecycle coverage for bootstrap, state/entity-registry automation union including disabled registry-only entries, normalized relationships, raw/transient byte exclusion, candidate verification/application, exact change-predicate binding, stronger-provenance deduplication, source precedence, conflicts, precommitted fresh change success/mismatch, bounded search, dependency-safe history/rollback, and concurrent atomic refresh failure.
+- Add static packaging/S6/MCP/schema contracts and a container smoke covering unsafe and broken init/SQLite auxiliary links, root-only permissions, CLI and real MCP tool calls, active-automation detail failure, persistence across replacement, and raw sentinel exclusion.
+
 ## [0.2.4] - 2026-07-14
 
 ### Changed

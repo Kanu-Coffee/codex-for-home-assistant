@@ -1,0 +1,27 @@
+#!/command/with-contenv bashio
+# shellcheck shell=bash
+set -Eeuo pipefail
+
+readonly REFRESH_SECONDS=900
+readonly MAX_RETRY_SECONDS=300
+retry_seconds=30
+
+trap 'exit 0' TERM INT
+
+while true; do
+  if /usr/local/bin/ha-memory refresh --if-stale 300 >/dev/null 2>&1; then
+    bashio::log.info 'Home Assistant memory catalog refresh completed'
+    retry_seconds=30
+    sleep "${REFRESH_SECONDS}" &
+  else
+    bashio::log.warning "Home Assistant memory refresh is unavailable; preserving the last-known-good catalog and retrying in ${retry_seconds}s"
+    sleep "${retry_seconds}" &
+    if (( retry_seconds < MAX_RETRY_SECONDS )); then
+      retry_seconds=$((retry_seconds * 2))
+      if (( retry_seconds > MAX_RETRY_SECONDS )); then
+        retry_seconds=${MAX_RETRY_SECONDS}
+      fi
+    fi
+  fi
+  wait $!
+done

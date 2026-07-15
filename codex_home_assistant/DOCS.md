@@ -10,6 +10,7 @@
 - Home Assistant 설정 전체를 `/config`에 read-write로 매핑
 - Core REST API와 Supervisor `manager` API helper
 - Playwright MCP와 격리형 Headless Chromium을 이용한 웹 UI·dashboard 렌더링 진단
+- `0.3.0` 후보: Core API로 검증한 HA 구조 인덱스와 출처 기반 semantic memory의 `/data` 영속화
 - `/data`에 Codex 인증, 설정, SSH host key 영속화
 - 기본적으로 기존 사용자 파일을 보존하고, 구성에서 명시할 때만 현재 App 기본 config/지침을 안전하게 갱신하는 전역 Home Assistant 운영 가드레일
 
@@ -120,6 +121,123 @@ Codex 공식 [AGENTS.md 지침 계층](https://developers.openai.com/codex/agent
 - `/config` 아래에 둔 프로젝트/디렉터리별 지침은 더 나중에 적용되어 전역 지침보다 우선할 수 있습니다.
 - 이 파일은 방어 심층화 지침이지 강제 보안 경계가 아닙니다. App 옵션의 approval/sandbox, App 권한 경계와 사람의 검토를 계속 사용해야 합니다.
 - App 업데이트 뒤 이미 실행 중인 Codex에는 소급 적용되지 않으므로 새 Codex 세션을 시작하세요.
+
+## 검증 기반 Home Assistant 메모리
+
+`0.3.0` 후보부터 image-owned `/etc/codex/config.toml`은 optional STDIO `ha_memory` MCP를 등록합니다. 새 Codex 세션은 Home Assistant 요청마다 현재 질문, 사용자가 이름 붙인 대상, 작은 result limit만으로 `memory_search`를 먼저 호출하도록 안내받습니다. MCP가 시작되지 않아도 App과 Codex 자체는 계속 사용할 수 있으며, 이때는 bounded `ha-memory search` CLI를 사용하거나 memory context가 없었다고 보고합니다. `/data/codex-ha-memory/memory.sqlite3`를 직접 열어 전체 table을 prompt에 넣지 마세요.
+
+### 저장하는 것과 저장하지 않는 것
+
+첫 성공 refresh는 Core WebSocket의 area/device/entity registry, `get_states`, `automation/config`, `search/related`를 결합합니다. Automation은 entity registry와 state의 합집합으로 발견하며 state가 없는 disabled registry automation은 제한된 registry metadata로도 index합니다. 다음 allowlist만 보존합니다.
+
+- area ID, 표시명, alias, floor/icon/label
+- device ID, 사용자 표시명, area, manufacturer/model, disabled/label
+- entity ID, 표시명/alias, device/area 연결, platform, 제한된 category/class/icon/label
+- automation ID, alias, description, mode와 정규화된 area/device/entity 참조 관계
+- applied semantic memory의 값, 출처, 검증 방법과 시간, 충돌·감사 event
+
+현재 또는 과거 state 값, `last_changed`/`last_updated`/`last_triggered`, 비허용 state attribute, automation trigger/condition/action/template 본문, registry unique ID/connections, 전체 API 응답, raw 대화·로그·웹 페이지, token/password/header는 보존하지 않습니다. `get_states`에서 표시명, device class, icon, automation id/mode 같은 명시적 allowlist metadata만 정규화할 수 있습니다. 변경 후 state 검증은 fresh response를 메모리에서 비교하지만 DB에는 expectation/predicate digest, `subject`, 검사 field와 `matched` boolean만 기록합니다. API 실패 때도 응답 body나 credential을 error/audit에 복사하지 않습니다.
+
+저장소 directory는 root-owned `0700`, database/WAL/SHM은 `0600`입니다. 시작 전 regular file, ownership, symlink/hardlink와 schema/integrity를 확인하고 위험하면 기존 자료를 자동 삭제하지 않은 채 memory만 fail closed합니다. App을 일반 업데이트하거나 재시작해도 `/data`의 catalog, applied memory, conflict와 audit은 유지됩니다.
+
+### 초기 인덱스와 검색
+
+main init은 네트워크 없이 DB path와 v1 schema만 검증합니다. Unsafe link/file/schema는 따라가거나 자동 교체하지 않고 memory만 비활성화하므로 다른 App service 시작은 계속됩니다. 독립 S6 `ha-memoryd`가 Core 준비 전에는 정제된 경고와 exponential retry를 사용하고, 성공 뒤 정기 refresh합니다. 실패한 refresh는 진행 중 snapshot을 활성화하지 않고 마지막 성공 catalog를 그대로 보존합니다.
+
+```bash
+ha-memory status
+ha-memory refresh --force
+ha-memory search "주방 움직임 조명" --limit 8
+ha-memory search "조명" --subject entity:light.kitchen_main --limit 4
+ha-memory show automation:automation.kitchen_motion_lights
+```
+
+`search` query는 최대 256자이고 기본 8·최대 20 subject, serialized JSON 32 KiB입니다. 결과 subject마다 applied memory 20개, outgoing/incoming relation 각각 12개, open conflict 10개까지만 포함합니다. `show`도 정확한 한 subject만 반환하며 relation만 방향별 30개로 늘리고, show/history/conflict는 별도 row/field 한도와 MCP 2 MiB hard ceiling을 사용합니다. Pending candidate, 전체 evidence, 전체 conflict/audit은 일반 search/show에 포함되지 않습니다.
+
+`status`의 의미는 다음과 같습니다.
+
+| 상태 | 의미 |
+| --- | --- |
+| `empty` | local schema만 있고 성공한 Core bootstrap이 아직 없습니다. |
+| `ready` | 마지막 refresh가 성공했고 active catalog가 있습니다. |
+| `degraded` | 첫 성공 snapshot 전에 Core/validation 실패가 있었습니다. |
+| `stale` | 이전 성공 snapshot은 보존됐지만 가장 최근 refresh가 실패했습니다. |
+
+### Candidate → verified → applied
+
+대화에서 얻은 별칭, 실제 용도, 선호, note, HA schema 밖 관계는 먼저 candidate로만 기록합니다. 다음 예시는 사용자가 주방 조명을 “준비등”이라고 명시한 경우입니다. JSON string은 shell에서 바깥 single quote와 안쪽 double quote를 모두 유지해야 합니다.
+
+`--source-ref`와 evidence `--detail`은 대화 문장을 복사하는 칸이 아닙니다. 공백 없는 소문자 구조화 label만 허용되며 길이는 200 bytes 이하입니다. 예: `user-request:explicit-alias`, `observation:sample-2`.
+
+```bash
+ha-memory candidate add \
+  --subject entity:light.kitchen_main \
+  --memory-type alias \
+  --key user_alias \
+  --value-json '"준비등"' \
+  --source user_explicit \
+  --source-ref 'user-request:explicit-alias'
+
+ha-memory candidate verify 1 --method user_explicit
+ha-memory candidate apply 1
+```
+
+명시적 user 설명은 그 semantic fact의 권위 근거입니다. Observation/inference candidate는 서로 다른 observation evidence가 최소 2개 있어야 `repeated_observation`으로 검증할 수 있습니다. `belongs_to`, `located_in`, `references` 같은 canonical 관계는 `--method ha_api`가 fresh Core snapshot과 일치해야 합니다. 검증은 적용과 별도 단계이므로 verified candidate도 `candidate apply` 전에는 search 결과에 나타나지 않습니다.
+
+```bash
+ha-memory candidate evidence 2 \
+  --evidence-type observation \
+  --detail 'observation:independent-second-sample'
+ha-memory candidate verify 2 --method repeated_observation
+ha-memory candidate list --status pending --limit 20
+```
+
+같은 subject/type/key에 값이 다르면 source authority를 비교합니다. Explicit user memory는 observation/inference보다 높고 자동으로 낮은 authority를 supersede하더라도 resolved conflict 이력을 남깁니다. 같거나 더 높은 기존 근거, HA canonical 관계 불일치 또는 사라진 HA subject는 open conflict가 되며 사용자의 명시적인 판단 없이 조용히 선택하지 않습니다.
+
+### 변경 전후 fresh API 검증
+
+Codex가 HA 설정, registry 또는 automation을 바꾸기 전 영향 subject와 closed-schema expectation을 commit하고, 변경 명령이 성공한 뒤 별도의 fresh Core API snapshot으로 같은 expectation을 확인합니다. 명령 exit 0, 작성한 YAML, 의도한 값은 검증 증거가 아닙니다.
+
+```bash
+EXPECTATIONS='{
+  "objects": {
+    "entity:light.kitchen_main": {"exists": true, "area_id": "kitchen"}
+  },
+  "relationships": [{
+    "source": "entity:light.kitchen_main",
+    "relation": "located_in",
+    "target": "area:kitchen",
+    "exists": true
+  }]
+}'
+
+ha-memory change begin \
+  --summary 'change:move-kitchen-light-area' \
+  --subject entity:light.kitchen_main \
+  --subject area:kitchen \
+  --expect-json "${EXPECTATIONS}"
+
+# Home Assistant mutation and any required reload happen here.
+
+ha-memory change verify 1 --expect-json "${EXPECTATIONS}"
+```
+
+Expectation은 object의 `exists`, `active`, `name`, `description`, `area_id`, `device_id`, 관계 존재 여부와 entity state/attribute의 exact 값을 지원합니다. 모든 참조 subject는 begin 대상에 포함되고 각 대상은 적어도 한 check로 덮여야 합니다. 생성할 object처럼 begin 시점에 아직 없는 subject도 선언할 수 있습니다. Begin은 canonical digest와 field-only summary만 저장하고 raw expectation 값은 결과가 맞거나 틀려도 저장하지 않습니다. Verify는 같은 계약만 허용합니다. Success는 `verified`, 불일치는 `mismatch`와 open conflict, Core/API 실패는 `unavailable`로 남습니다. `codex_change` source relationship candidate는 이 change가 `verified`이고 동일 source·relation·target의 존재 predicate가 성공해야 `change_verification` 증거로 검증할 수 있습니다. 같은 subject의 무관한 object/state check나 `exists: false` check는 candidate fact를 검증하지 않습니다.
+
+### 충돌, 이력과 rollback
+
+```bash
+ha-memory conflicts --status open --limit 20
+ha-memory conflict resolve 3 \
+  --winner existing \
+  --reason 'User confirmed the existing semantic meaning'
+ha-memory history --subject entity:light.kitchen_main --limit 30
+ha-memory rollback 12 --reason 'User withdrew the previously applied alias'
+```
+
+Semantic conflict winner는 `candidate` 또는 `existing`이며 실제 사용자 지시에 따라 선택합니다. `ha` winner는 HA canonical/change-result conflict에서만 허용됩니다. Audit event는 before/after row를 보존하고 rollback은 현재 row가 해당 event 직후 상태와 같고 후속 dependency가 없을 때만 compensating event를 만듭니다. 원 event는 삭제하지 않고 rollback linkage를 기록합니다. 나중 변경으로 값이 달라졌으면 `rollback_diverged`로 거부합니다. HA-derived catalog revision, change-verification history, 실제 configuration/device state는 rollback 대상이 아니며 다음 fresh refresh로만 교정합니다.
+
+Memory DB가 unsafe/corrupt로 거부되면 App을 중지하고 `/data/codex-ha-memory`를 포함한 private backup을 먼저 확보하세요. DB/WAL을 임의 삭제·수정하거나 오래된 catalog로 HA를 되돌리지 말고, `ha-memory status`, 정제된 App log, App/Core version만 수집해 보고하세요. Store가 정상이고 Core만 일시 중단됐다면 last-known-good를 유지한 채 daemon이 재시도하므로 수동 초기화가 필요하지 않습니다.
 
 ## Web UI와 공유 tmux 세션
 

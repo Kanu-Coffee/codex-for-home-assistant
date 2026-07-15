@@ -5,9 +5,10 @@ from pathlib import Path
 
 
 S6_ROOT = Path("etc/s6-overlay/s6-rc.d")
-S6_SERVICES = ("codex-ha-init", "ttyd", "ingress", "sshd")
+S6_SERVICES = ("codex-ha-init", "ha-memoryd", "ttyd", "ingress", "sshd")
 EXECUTABLE_ROOTFS_PATHS = (
     "etc/s6-overlay/s6-rc.d/codex-ha-init/run",
+    "etc/s6-overlay/s6-rc.d/ha-memoryd/run",
     "etc/s6-overlay/s6-rc.d/ingress/finish",
     "etc/s6-overlay/s6-rc.d/ingress/run",
     "etc/s6-overlay/s6-rc.d/sshd/finish",
@@ -26,9 +27,10 @@ def test_s6_user_bundle_and_dependency_graph(rootfs: Path) -> None:
     assert (s6_root / "codex-ha-init/up").is_file()
     assert (s6_root / "codex-ha-init/dependencies.d/base").is_file()
 
-    for service in ("ttyd", "ingress", "sshd"):
+    for service in ("ha-memoryd", "ttyd", "ingress", "sshd"):
         assert (s6_root / service / "type").read_text().strip() == "longrun"
 
+    assert (s6_root / "ha-memoryd/dependencies.d/codex-ha-init").is_file()
     assert (s6_root / "ttyd/dependencies.d/codex-ha-init").is_file()
     assert (s6_root / "sshd/dependencies.d/codex-ha-init").is_file()
     assert (s6_root / "ingress/dependencies.d/ttyd").is_file()

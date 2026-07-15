@@ -146,6 +146,12 @@ runtime_tmp=$(mktemp "${RUNTIME_DIR}/.runtime.env.XXXXXX")
 chmod 0600 "${runtime_tmp}"
 mv -f "${runtime_tmp}" "${RUNTIME_DIR}/runtime.env"
 
+if /usr/local/bin/ha-memory init >/dev/null 2>&1; then
+  bashio::log.info 'Validated the persistent Home Assistant memory store'
+else
+  bashio::log.error 'Home Assistant memory is unavailable; its existing store was preserved and other App services will continue'
+fi
+
 ssh_environment_tmp=$(mktemp /root/.ssh/.environment.XXXXXX)
 {
   printf 'BASH_ENV=%s\n' '/etc/profile.d/codex-ha.sh'

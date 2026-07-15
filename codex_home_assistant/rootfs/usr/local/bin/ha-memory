@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+if [[ -r /run/codex-ha/runtime.env ]]; then
+  # shellcheck disable=SC1091
+  . /run/codex-ha/runtime.env
+fi
+
+exec /usr/bin/node /usr/local/share/codex-ha/ha-memory.mjs "$@"

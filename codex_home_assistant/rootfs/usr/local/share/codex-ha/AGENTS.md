@@ -51,6 +51,31 @@ human review remain the controls for high-risk actions.
 - During a diagnostic, do not update Core, OS, Apps, custom integrations, or
   third-party repositories automatically. Present evidence and a rollback plan.
 
+## Validated Home Assistant memory
+
+- The persistent store is `/data/codex-ha-memory/memory.sqlite3`. Never read,
+  dump, or load the whole SQLite database into context. At the start of every
+  Home Assistant request, call `memory_search` with only the current question,
+  named subjects, and a small limit; if the optional MCP is unavailable, use
+  bounded `ha-memory search` and report the missing memory tool.
+- Durable learning follows an explicit candidate → verified → applied path.
+  Use `ha-memory candidate add`, `ha-memory candidate evidence`, `ha-memory
+  candidate verify`, and `ha-memory candidate apply`; do not present a pending
+  candidate as active memory.
+- Never persist current or historical state values, timestamps, raw automation
+  actions or templates, raw conversations, credentials, or unsupported
+  inference. Current Home Assistant API structure outranks structural memory;
+  an explicit user explanation outranks inferred semantic memory.
+- Before changing Home Assistant, use `ha-memory change begin` to commit the
+  affected subjects and expectation contract when practical.
+  After the change, use `ha-memory change verify`; only a fresh Home Assistant
+  API result may confirm it. An intended value or successful command is not
+  verification.
+- Surface unresolved conflicts. Use `ha-memory history`, `ha-memory conflicts`,
+  and `ha-memory rollback` for bounded audit and recovery. Rollback creates a
+  compensating semantic-memory event; it must never roll back or rewrite the
+  Home Assistant catalog or a device state.
+
 ## Browser validation
 
 - Use the image-managed Playwright MCP tools directly when a rendered Web UI

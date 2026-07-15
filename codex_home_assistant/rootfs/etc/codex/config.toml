@@ -8,7 +8,64 @@ If the loopback gateway is unavailable, inspect `ha-browser-auth-status` and
 `ha-browser-network-info`, then report the failure instead of silently changing
 browser routes. After navigation, verify desktop and mobile layouts plus console
 and network errors with the same image-managed Playwright MCP.
+
+For every Home Assistant request, first call the image-managed `ha_memory`
+`memory_search` tool with only the current question, any named subject, and a
+small result limit. Use the returned relevant subset; never directly read or
+dump `/data/codex-ha-memory/memory.sqlite3` or load the complete memory store.
+If the MCP tool is unavailable, use the bounded `ha-memory search` CLI rather
+than reading SQLite. Use `ha-memory candidate add`, `ha-memory candidate
+evidence`, `ha-memory candidate verify`, and `ha-memory candidate apply` as
+the explicit pending-to-verified-to-applied workflow.
+Submit newly learned durable aliases, purposes, preferences, notes, and
+relationships with `memory_propose`.
+Keep transient state values and unsupported inferences out of active memory:
+candidate evidence, verification, and explicit apply are separate steps.
+Before changing Home Assistant, record the intended subjects and expectation
+contract with
+`memory_begin_change` or `ha-memory change begin` when practical. After
+changing it, call `memory_verify_change` or `ha-memory change verify`; only
+fresh Home Assistant API evidence may confirm the
+result and update memory. For structural facts, current Home Assistant API data
+outranks memory. For aliases, purposes, and preferences, an explicit user
+explanation outranks observation or inference. Surface unresolved conflicts instead of
+silently choosing a stale value; use `ha-memory history`, `ha-memory conflicts`,
+and `ha-memory rollback` for bounded audit and semantic-memory recovery. If the
+optional memory server is unavailable,
+continue the task and report that memory context or verification was unavailable.
 """
+
+[mcp_servers.ha_memory]
+command = "/usr/bin/env"
+args = [
+  "-i",
+  "HOME=/data/home",
+  "LANG=C.UTF-8",
+  "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+  "/usr/local/bin/ha-memory-mcp",
+]
+cwd = "/config"
+env_vars = []
+enabled = true
+required = false
+startup_timeout_sec = 10
+tool_timeout_sec = 120
+default_tools_approval_mode = "writes"
+enabled_tools = [
+  "memory_search",
+  "memory_show",
+  "memory_propose",
+  "memory_add_evidence",
+  "memory_verify_candidate",
+  "memory_apply_candidate",
+  "memory_begin_change",
+  "memory_verify_change",
+  "memory_status",
+  "memory_history",
+  "memory_conflicts",
+  "memory_resolve_conflict",
+  "memory_rollback",
+]
 
 [mcp_servers.playwright]
 command = "/usr/bin/env"
