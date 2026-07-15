@@ -2,6 +2,30 @@
 
 All notable changes to this App are documented in this file.
 
+## [0.3.1] - 2026-07-15
+
+### Fixed
+
+- Accept Home Assistant's successful `automation/config` response with `config: null` for an unavailable automation. The automation entity and its `search/related` graph remain indexable with an empty config and a bounded warning instead of aborting the entire catalog snapshot.
+- Use the image-pinned `ws` runtime for the memory client with a handshake timeout, 32 MiB payload cap, disabled compression, and normal TLS verification, matching the App's other privileged WebSocket helpers.
+- Preserve closed, machine-readable token, DNS, transport, timeout, authentication, protocol, command, and snapshot failure reasons in sync status and change verification. The daemon logs only an allowlisted reason code and never the captured command output.
+- Reject valid JSON frames that are not protocol objects without crashing, and clear all pending parallel command timers before the transport closes after a partial failure.
+
+### Security
+
+- Remove the `HA_WS_URL` environment override so a caller cannot redirect the runtime Supervisor credential to an arbitrary WebSocket endpoint. Programmatic test endpoints require an explicit test credential and the production path remains fixed at the documented Supervisor proxy.
+- Keep Supervisor authentication in the first WebSocket `auth` frame; do not add the credential to the HTTP Upgrade headers or send it to a direct-Core fallback.
+
+### Upgrade notes
+
+- The existing per-target App-version behavior applies to `0.3.1`: a retained `refresh_agents` or `refresh_all` selection refreshes its selected target once after the update. Select `preserve` before updating if that is not wanted.
+- The supplied 0.3.0 read-only HAOS audit established the failure boundary but discarded the original WebSocket error. Automated tests cover the legal null-config response and diagnostic stages; actual HAOS catalog/restart/candidate verification remains separate until the published image is re-tested.
+
+### Testing
+
+- Add unit coverage for unavailable automation config, token/auth/DNS/protocol/timeout/command diagnostics, non-object frames, pending-request cleanup, remote-message and credential suppression, and rejection of environment endpoint redirection.
+- Add an installed-image Supervisor-style WebSocket handshake/snapshot test using the actual pinned `ws` package, plus container checks for failed-refresh diagnosis, last-known-good preservation, and recovery.
+
 ## [0.3.0] - 2026-07-15
 
 ### Added

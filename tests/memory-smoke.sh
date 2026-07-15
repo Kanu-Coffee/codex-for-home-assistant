@@ -134,6 +134,32 @@ assert_json 'catalog refresh did not index the fixture' \
     and .relation_count >= 6' \
   "${REFRESH_OUTPUT}"
 
+if FAILURE_OUTPUT=$(docker exec \
+  --env HA_MEMORY_TEST_FIXTURE= \
+  --env SUPERVISOR_TOKEN= \
+  "${FIRST_CONTAINER}" \
+  ha-memory refresh --force 2>&1); then
+  fail 'token-less installed refresh unexpectedly succeeded'
+fi
+assert_json 'installed refresh did not expose the bounded token diagnostic' \
+  '.error == "ha_unavailable"
+    and .reason == "ha_token_unavailable"
+    and (.message | contains("SUPERVISOR_TOKEN"))' \
+  "${FAILURE_OUTPUT}"
+FAILURE_STATUS=$(docker exec "${FIRST_CONTAINER}" ha-memory status) \
+  || fail 'ha-memory status failed after an injected refresh failure'
+assert_json 'failed refresh did not preserve and diagnose the last-known-good catalog' \
+  '.catalog_status == "stale"
+    and .last_sync.status == "failed"
+    and .last_sync.error_code == "ha_token_unavailable"
+    and .last_successful_sync.id > 0' \
+  "${FAILURE_STATUS}"
+RECOVERY_OUTPUT=$(docker exec "${FIRST_CONTAINER}" ha-memory refresh --force) \
+  || fail 'fixture-backed catalog did not recover after an injected failure'
+assert_json 'recovered catalog refresh was not successful' \
+  '.status == "success" and .sync_id > 0' \
+  "${RECOVERY_OUTPUT}"
+
 SEARCH_OUTPUT=$(docker exec "${FIRST_CONTAINER}" ha-memory search 'Kitchen Main') \
   || fail 'catalog search failed'
 assert_json 'catalog search did not return the fixture entity within its bound' \

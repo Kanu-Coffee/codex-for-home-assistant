@@ -1,6 +1,6 @@
 # references.md — 공식 근거
 
-검증 기준일: **2026-07-13**
+검증 기준일: **2026-07-15**
 
 구현 시작 시 아래 공식 문서의 최신 내용을 다시 확인한다. 기술 문서는 바뀔 수 있으므로 이 목록은 근거와 탐색 출발점이지 영구 고정값이 아니다.
 
@@ -36,6 +36,12 @@
 - Home Assistant WebSocket API  
   https://developers.home-assistant.io/docs/api/websocket/
 
+- Home Assistant Core `2026.7.2` automation WebSocket handlers (`automation/config`)
+  https://github.com/home-assistant/core/blob/2026.7.2/homeassistant/components/automation/__init__.py
+
+- Home Assistant Core `2026.7.2` automation entity raw configuration
+  https://github.com/home-assistant/core/blob/2026.7.2/homeassistant/components/automation/config.py
+
 - Home Assistant authentication providers (`trusted_networks` order, trusted proxy overlap)
   https://www.home-assistant.io/docs/authentication/providers/
 
@@ -56,6 +62,9 @@
 
 - Home Assistant Supervisor App network implementation snapshot (`8821586`)
   https://github.com/home-assistant/supervisor/tree/8821586aee2f1ab2c545626fb1c0f9a6d14885ce
+
+- Home Assistant Supervisor Core WebSocket proxy implementation snapshot (`8821586`)
+  https://github.com/home-assistant/supervisor/blob/8821586aee2f1ab2c545626fb1c0f9a6d14885ce/supervisor/api/proxy.py
 
 - 공식 example App repository  
   https://github.com/home-assistant/apps-example
@@ -118,6 +127,8 @@
 - exposed host port는 `ports` mapping 및 App Network UI에서 관리한다.
 - Ingress는 `ingress`, `ingress_port`, `ingress_stream`을 지원한다.
 - Core API proxy는 `http://supervisor/core/api/`, WebSocket은 `ws://supervisor/core/websocket`이다.
+- Supervisor의 Core WebSocket proxy는 Core의 `auth_required`를 전달하며 App은 그 뒤 첫 인증 frame의 `access_token`에 `SUPERVISOR_TOKEN`을 보낸다. Upgrade 요청의 `Authorization` header는 요구되지 않는다.
+- Core `2026.7.2`의 `automation/config` 성공 응답은 automation entity의 `raw_config`를 그대로 반환하므로, unavailable/invalid automation에서는 `{ "config": null }`이 합법적인 성공 응답일 수 있다.
 - Supervisor API는 `http://supervisor/`와 `SUPERVISOR_TOKEN`을 사용한다.
 - `hassio_role` 값에는 `manager`와 `admin`이 별도로 존재한다.
 - Codex Remote SSH는 원격 login shell의 PATH에서 `codex`를 찾고 원격 인증을 요구한다.

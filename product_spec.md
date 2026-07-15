@@ -222,11 +222,11 @@ SSH 외부 포트는 JSON 옵션이 아니라 Network 설정이다.
 ### FR-017 검증형 Home Assistant 메모리 저장소와 bootstrap
 
 - 영속 메모리는 root-only `/data/codex-ha-memory/memory.sqlite3`의 SQLite와 FTS5를 사용한다. 디렉터리는 `0700`, database와 journal 계열 파일은 `0600`으로 유지한다.
-- 독립 S6 서비스 `ha-memoryd`가 Core 연결과 refresh를 담당한다. memory service나 Core가 준비되지 않아도 Codex, 웹 터미널, SSH, browser 기능은 계속 시작하며 메모리는 명확한 degraded/stale 상태를 반환한다.
-- 최초 성공 실행과 이후 refresh는 Core WebSocket의 고정 allowlist인 entity/device/area registry, `get_states`, automation config와 related 결과만 수집한다. 공식 command의 지원 여부와 응답 오류를 검사하고 임의 WebSocket command나 `.storage` 직접 읽기로 우회하지 않는다.
+- 독립 S6 서비스 `ha-memoryd`가 Core 연결과 refresh를 담당한다. memory service나 Core가 준비되지 않아도 Codex, 웹 터미널, SSH, browser 기능은 계속 시작하며 메모리는 명확한 degraded/stale 상태와 closed token/DNS/transport/timeout/auth/protocol/command/snapshot code를 반환한다. daemon log에는 command 원문이 아니라 allowlist code만 남긴다.
+- 최초 성공 실행과 이후 refresh는 고정 Supervisor Core WebSocket proxy와 image-pinned `ws` runtime을 통해 entity/device/area registry, `get_states`, automation config와 related 결과만 수집한다. `HA_WS_URL` 환경 override, Upgrade credential header나 direct-Core credential fallback을 제공하지 않는다. 공식 command의 지원 여부와 응답 오류를 검사하고 임의 WebSocket command나 `.storage` 직접 읽기로 우회하지 않는다.
 - entity/device/area의 식별자·표시명·설명·연결 관계와 automation의 식별자·alias·description·정규화된 관련 대상만 allowlist schema로 저장한다. automation은 entity registry와 state 합집합으로 발견한다. `get_states`의 raw state와 임의 attributes는 저장하지 않되 표시명, device class, icon, automation id/mode 같은 명시적 allowlist metadata만 정규화할 수 있다.
 - automation raw config, 임의 API response, `/config` 원문, 대화 transcript, prompt, token, secret, credential과 비밀 가능성이 있는 비허용 field는 database와 FTS index에 저장하지 않는다.
-- refresh는 완전한 응답을 정규화한 뒤 transaction으로 snapshot을 교체한다. transport/API/정규화 실패에서는 last-known-good catalog를 보존하고 불완전한 응답으로 대량 삭제하거나 stale 자료를 새 canonical truth로 표시하지 않는다.
+- refresh는 완전한 응답을 정규화한 뒤 transaction으로 snapshot을 교체한다. unavailable automation의 성공 응답 `config: null`은 빈 config와 bounded warning을 가진 완전한 응답으로 처리하되 command/envelope/related 실패는 부분 성공으로 간주하지 않는다. transport/API/정규화 실패에서는 last-known-good catalog를 보존하고 불완전한 응답으로 대량 삭제하거나 stale 자료를 새 canonical truth로 표시하지 않는다.
 
 ### FR-018 메모리 후보, 권위와 변경 후 검증
 

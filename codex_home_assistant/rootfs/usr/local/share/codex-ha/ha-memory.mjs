@@ -21,7 +21,10 @@ import {
   verifyMemoryCandidate,
   verifyMemoryChange,
 } from "./ha-memory-core.mjs";
-import { HomeAssistantUnavailableError } from "./ha-memory-ha-client.mjs";
+import {
+  homeAssistantErrorCode,
+  HomeAssistantUnavailableError,
+} from "./ha-memory-ha-client.mjs";
 
 class UsageError extends Error {}
 
@@ -308,7 +311,11 @@ function errorPayload(error) {
     return { error: error.code, message: error.message, details: error.details ?? null };
   }
   if (error instanceof HomeAssistantUnavailableError) {
-    return { error: "ha_unavailable", message: error.message };
+    return {
+      error: "ha_unavailable",
+      reason: homeAssistantErrorCode(error),
+      message: error.message,
+    };
   }
   if (error instanceof UsageError) {
     return { error: "usage", message: error.message, ...commandHelp() };

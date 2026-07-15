@@ -4,8 +4,8 @@
 
 ## Project Status
 
-- 상태: **amd64 MVP/M2 PASS / 0.3.0 public·자동·공개 이미지 회귀 PASS / 새 memory의 실제 HAOS E2E는 NOT RUN**
-- 현재 마일스톤: **0.3.0 prerelease/GHCR 공개 완료 / 실제 HAOS memory E2E 대기**
+- 상태: **amd64 MVP/M2 PASS / 0.3.0 public 자동 회귀 PASS·실제 HAOS catalog FAIL / 0.3.1 local PASS·PR 대기**
+- 현재 마일스톤: **0.3.1 memory live-refresh patch 검증·공개**
 - 마지막 문서 기준일: **2026-07-15**
 - 저장소: public `Kanu-Coffee/codex-for-home-assistant`, default branch `main`
 
@@ -23,6 +23,17 @@
 - [x] 문서 주도 개발 파일 세트 작성
 
 ## Current Work
+
+### 2026-07-15 — 실제 HAOS memory refresh 복구와 0.3.1 patch
+
+- 입력 증거: `ha-memory-0.3.0-readonly-audit-2026-07-15.md`는 실제 HAOS에서 daemon retry와 MCP/SQLite는 정상이나 모든 catalog sync가 `ha_unavailable`로 실패하고, daemon이 stderr를 버려 transport/auth/protocol/command 원인을 구분할 수 없음을 확인했다. exec sandbox의 `bwrap` 실패와 Bubble Card resource 404는 memory 제품 실패와 분리한다.
+- 원인 대조: 최신 공식 Home Assistant App 통신 문서와 Supervisor/Core 소스 기준으로 `ws://supervisor/core/websocket` + `SUPERVISOR_TOKEN` auth frame은 올바르다. 다만 Core는 unavailable automation에 성공 응답 `{"config": null}`을 반환할 수 있는데 0.3.0 client가 이를 불완전 snapshot으로 거부하며, production client는 image에 이미 고정·검증된 `ws` runtime 대신 Node built-in WebSocket을 사용한다. 기존 로그가 원인을 폐기했으므로 null-config를 live 원인으로 확정하지 않고 가장 근접한 호환성 결함으로 수정한다.
+- 구현 계획: explicit-null automation은 빈 config와 정제된 warning으로 보존하고 entity/related 관계는 계속 index한다. production WebSocket을 고정 `ws` runtime과 32 MiB cap/handshake timeout/no compression으로 통일한다. Home Assistant unavailable 오류에는 closed machine code만 부여해 sync/change/CLI에 전달하고 daemon은 command 원문을 log하지 않은 채 allowlist reason만 기록한다.
+- 검증 계획: null automation, auth/transport/protocol/command 실패 code와 secret redaction unit test, 실제 installed `ws`를 쓰는 Supervisor-style WebSocket container smoke, 기존 lifecycle/privacy/MCP/persistence/full/update 회귀, lint·manifest를 통과시킨다.
+- 릴리스 계획: patch version `0.3.1`로 PR/CI/main merge 후 annotated tag, GitHub prerelease와 generic/per-arch GHCR image를 발행하고 공개 image를 다시 검증한다. 실제 HAOS catalog 성공/restart/candidate lifecycle은 새 image에서 별도 실기하기 전까지 **NOT RUN**으로 유지한다.
+- [x] unavailable automation의 legal `config: null`을 bounded warning과 빈 config로 보존하고, image-pinned `ws` transport와 closed diagnostic code를 적용했다. 환경 `HA_WS_URL` credential redirection을 제거하고, non-object protocol frame은 안전하게 거부하며 병렬 command 실패 뒤 모든 pending timer를 즉시 정리한다. daemon은 CLI 원문을 메모리에만 받아 allowlist reason만 log한다.
+- [x] 최종 local amd64 image `sha256:ab91cd043fcd27142a55d1afbcfaae6c77d87545abfd965a203065c30ccf7da2`는 version/arch label `0.3.1`/`amd64`, size 533,516,021 bytes다. source Node **9 tests**, 설치 image의 실제 `ws`를 포함한 Node **10 tests**, Windows pytest **56 passed / 8 jq-dependent skipped**와 Linux Python 3.13 + jq pytest **64 passed**, YAML, Markdown 20 files, ShellCheck 0.11.0, Hadolint 2.14.0, actionlint 1.7.7과 `git diff --check`가 PASS했다. App linter는 PR Linux CI에서 다시 실행한다.
+- [x] local image에서 memory lifecycle/privacy/MCP/persistence와 실패 진단·last-known-good·recovery, 전체 browser/gateway/Core WebSocket/ttyd/SSH, managed-auth, user-file update, public `0.3.0` → local `0.3.1` update smoke가 모두 PASS했다. 실제 HAOS 0.3.1 catalog/restart/candidate/change/privacy 재시험은 여전히 **NOT RUN**이다.
 
 ### 2026-07-15 — 검증 기반 지속 개선형 Home Assistant 메모리
 

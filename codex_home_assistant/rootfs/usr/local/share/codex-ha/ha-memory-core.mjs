@@ -10,6 +10,7 @@ import { DatabaseSync } from "node:sqlite";
 
 import {
   fetchHomeAssistantSnapshot,
+  homeAssistantErrorCode,
   HomeAssistantUnavailableError,
 } from "./ha-memory-ha-client.mjs";
 
@@ -1962,7 +1963,7 @@ function beginSync(db) {
 function failSync(db, syncId, error) {
   const errorCode =
     error instanceof HomeAssistantUnavailableError
-      ? "ha_unavailable"
+      ? homeAssistantErrorCode(error)
       : error instanceof MemoryError
         ? error.code
         : "refresh_failed";
@@ -3770,7 +3771,7 @@ export async function verifyMemoryChange(db, changeIdValue, expectations) {
   } catch (error) {
     const reasonCode =
       error instanceof HomeAssistantUnavailableError
-        ? "ha_unavailable"
+        ? homeAssistantErrorCode(error)
         : error instanceof MemoryError
           ? error.code
           : "refresh_failed";

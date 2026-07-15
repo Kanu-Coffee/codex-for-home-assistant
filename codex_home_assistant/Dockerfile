@@ -3,7 +3,7 @@ ARG BUILD_FROM=ghcr.io/home-assistant/base:3.24
 FROM ${BUILD_FROM}
 
 ARG BUILD_ARCH=amd64
-ARG BUILD_VERSION=0.3.0
+ARG BUILD_VERSION=0.3.1
 ARG TARGETARCH
 ARG CODEX_VERSION=0.144.1
 ARG CODEX_SHA256=84091ae20c65fcc7d4120db97d1bd57d7ff8df9c7609fb781c78c2ebbd4f5a28
@@ -60,6 +60,7 @@ RUN apk add --no-cache \
     && [[ "$(node -p "require('/usr/local/lib/codex-ha/playwright/node_modules/@playwright/mcp/package.json').version")" == "${PLAYWRIGHT_MCP_VERSION}" ]] \
     && [[ "$(node -p "require('/usr/local/lib/codex-ha/playwright/node_modules/ws/package.json').version")" == "${WS_VERSION}" ]] \
     && node -e "require('/usr/local/lib/codex-ha/playwright/node_modules/playwright-core')" \
+    && node --input-type=module -e "const ws = await import('/usr/local/lib/codex-ha/playwright/node_modules/ws/wrapper.mjs'); if (typeof ws.default !== 'function') process.exit(1)" \
     && node -e "const { DatabaseSync } = require('node:sqlite'); const db = new DatabaseSync(':memory:'); db.exec('CREATE VIRTUAL TABLE smoke USING fts5(value)'); db.close()" \
     && chromium-headless-shell --version \
     && rm -rf /tmp/npm-cache \
