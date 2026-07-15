@@ -35,7 +35,7 @@
 - [x] 0.3.1 실기 증거와 0.3.2 후보 문서·version/Docker/Playwright metadata, public `0.3.1` update baseline과 changelog를 일치시켰다. 공식 Core `2026.7.2` 구현·테스트·WebSocket error mapping을 `references.md`와 ADR-035에 기록했다.
 - [x] final local image `sha256:20bb84c6c102df567f0467d1d6d178b098823bc17ecb98a71723270c195b6305`는 size 533,517,099 bytes, linux/amd64, `io.hass.version=0.3.2`, Codex `0.144.1`, Node `24.17.0`, `ws` `8.18.3`이다. Source Node **13 tests**, 설치 image Node **14 tests**, Windows pytest **56 passed / 8 jq-dependent skipped**, YAML, Markdown 20 files, ShellCheck 0.11.0, Hadolint 2.14.0과 `git diff --check`가 PASS했다.
 - [x] 0.3.2 image의 memory lifecycle/privacy/MCP/persistence/actual installed `ws`, 전체 browser/gateway/Core WebSocket/ttyd/SSH, managed-auth, user-file update smoke와 public `0.3.1` → local `0.3.2` update smoke가 모두 PASS했다. 실제 HAOS 0.3.2 catalog/LKG/restart/CLI·MCP/candidate/change/App restart·update/privacy 재시험은 **NOT RUN**이다.
-- [ ] 전체 자동 회귀와 Git diff를 검토하고 기능 브랜치 commit/push/PR을 완료한다.
+- [x] 전체 자동 회귀와 Git diff를 검토하고 구현 commit `24534b5`를 `fix/ha-memory-related-degradation`에 push한 뒤 [draft PR #24](https://github.com/Kanu-Coffee/codex-for-home-assistant/pull/24)를 `main` 대상으로 열었다. Merge/tag/release/image publish는 이번 작업 범위에서 수행하지 않는다.
 
 ### 2026-07-15 — 실제 HAOS memory refresh 복구와 0.3.1 patch
 
