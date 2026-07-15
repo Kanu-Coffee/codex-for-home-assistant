@@ -2,6 +2,30 @@
 
 All notable changes to this App are documented in this file.
 
+## [0.3.2] - 2026-07-15
+
+### Fixed
+
+- Keep Home Assistant's official `search/related` automation request shape while isolating only the observed Core result envelope `success: false`, `error.code: unknown_error` for the affected automation. Its successful `automation/config` remains indexable, direct area/device/entity references are extracted locally, and the missing related enrichment becomes a bounded `automation_related_unavailable` warning instead of aborting every catalog bootstrap.
+- Distinguish the observed Core `unknown_error` from server `timeout`, `unauthorized`, `invalid_format`, `home_assistant_error`, client timeout, transport, WebSocket close, protocol, malformed envelope, and malformed successful-result failures. Only the exact observed related error is degradable; all other incomplete-snapshot paths remain fail closed and preserve the last-known-good catalog.
+- Record each normalized automation relationship with its actual `search_related` or `automation_config` provenance instead of treating an empty related object as the source of config-derived references.
+- Surface only the persisted warning count through `ha-memory status` and daemon success logging so operators can distinguish a complete base catalog with missing optional enrichment without logging automation identifiers.
+
+### Security
+
+- Do not persist or return the Core error message/body when related enrichment is unavailable. The warning contains only a fixed prefix and the already allowlisted automation entity identifier, and the snapshot warning list is capped at 100 entries.
+
+### Upgrade notes
+
+- Public `0.3.1` was verified byte-for-byte on a real HAOS/Core `2026.7.2` installation, but catalog refresh failed because 2 of 30 automation-related searches returned Core `unknown_error`. Core restart reconnection and privacy checks passed or partially passed as documented; candidate/change/App restart/update tests were not run.
+- The existing per-target App-version behavior applies to `0.3.2`: a retained `refresh_agents` or `refresh_all` selection refreshes its selected target once after the update. Select `preserve` before updating if that is not wanted.
+- Automated regression validates this candidate, but actual HAOS `0.3.2` catalog, last-known-good restart recovery, CLI/MCP lookup, candidate/change, App restart/update, and privacy retesting remain separate until a published image is installed and tested.
+
+### Testing
+
+- Reproduce the live `unknown_error` boundary with source and installed-image WebSocket tests, assert the exact official automation payload, and verify combined null-config/related warnings without retaining the remote response.
+- Add negative coverage proving server `timeout`/`unauthorized`/`invalid_format`/`home_assistant_error`, client timeout, malformed result envelopes, and array results still reject the snapshot, plus normalization coverage for config fallback references and exact provenance.
+
 ## [0.3.1] - 2026-07-15
 
 ### Fixed

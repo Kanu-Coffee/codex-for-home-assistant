@@ -189,7 +189,7 @@ Codex → ha_memory STDIO MCP ─────┤
 shell → ha-memory CLI ───────────┘
 ```
 
-- `ha-memoryd`는 주기적으로 `ha-memory refresh`를 실행하는 scheduler다. Core ready 전 연결 실패, Core restart와 transport 오류를 retry/backoff하며 last-known-good catalog를 유지한다. readiness가 실패해도 Codex, ttyd, SSH, ingress, Playwright와 browser gateway 시작을 막지 않는다.
+- `ha-memoryd`는 주기적으로 `ha-memory refresh`를 실행하는 scheduler다. Core ready 전 연결 실패, Core restart와 transport 오류를 retry/backoff하며 last-known-good catalog를 유지한다. 성공 warning은 대상 ID 없이 bounded 개수만 log한다. readiness가 실패해도 Codex, ttyd, SSH, ingress, Playwright와 browser gateway 시작을 막지 않는다.
 - `ha-memory-core.mjs`가 v1 schema 초기화·version gating, prepared statement, WAL/busy-timeout transaction, 상태 전이, current-row/status precondition, FTS5 query와 output limit을 한곳에서 구현한다. scheduler/CLI/MCP process가 같은 SQLite WAL database를 사용하며 Unix socket single-writer service를 별도로 만들지 않는다. 알려지지 않은 과거/미래 schema는 자동 변환하지 않고 memory만 fail closed한다.
 - `ha-memory-ha-client.mjs`는 refresh와 fresh change verification 때 Supervisor runtime credential로 고정 Supervisor Core WebSocket proxy에 연결한다. image에 고정된 `ws` runtime에 handshake timeout, 32 MiB payload cap, compression off와 기본 TLS 검증을 적용하고, `HA_WS_URL` 같은 환경 endpoint override나 direct-Core credential fallback은 허용하지 않는다. raw token, endpoint response와 인증 frame은 database·argv·stdout/stderr·App log에 쓰지 않는다.
 - 연결 실패는 token, DNS, transport, timeout, auth, protocol, 고정 command와 snapshot 범주의 closed code로만 분류한다. DB status/change verification과 CLI는 이 code를 보존하고 `ha-memoryd`는 CLI 원문을 폐기한 뒤 allowlist code만 log한다.
@@ -341,7 +341,7 @@ automation/config
 search/related
 ```
 
-automation command는 registry에서 확인한 automation 대상에만 호출한다. Core가 unavailable automation에 성공 응답으로 반환할 수 있는 explicit `config: null`은 빈 config와 bounded warning으로 정규화하고 entity/`search/related` 관계는 유지한다. command 실패, 누락된 response envelope 또는 related 실패는 성공한 일부를 complete snapshot으로 가장하지 않고 stale/degraded 상태와 정제된 오류를 기록한다. `.storage` 직접 읽기, 임의 WebSocket command와 raw `/config` parse는 bootstrap 대체 경로가 아니다.
+automation command는 registry에서 확인한 automation 대상에만 호출한다. graph 요청은 공식 Core 의미를 유지해 `search/related(item_type=automation, item_id=<automation entity_id>)`를 사용하며, `item_type=entity`는 역방향 entity 관계이므로 fallback graph로 사용하지 않는다. Core가 unavailable automation에 성공 응답으로 반환할 수 있는 explicit `config: null`은 빈 config와 bounded warning으로 정규화한다. 개별 related 요청의 정상 result envelope가 실기와 같은 `success:false`, `error.code=unknown_error`인 경우에만 해당 enrichment를 빈 객체와 warning으로 격리하고 성공한 config의 allowlist area/device/entity 직접 참조를 사용한다. 다른 server command code, server/client timeout, unauthorized, invalid format, config 실패, auth/transport/close/protocol, 누락·malformed envelope와 malformed successful related 결과는 성공한 일부를 complete snapshot으로 가장하지 않고 stale/degraded 상태와 정제된 오류를 기록한다. `.storage` 직접 읽기, 임의 WebSocket command와 raw `/config` parse는 bootstrap 대체 경로가 아니다.
 
 정규화 경계는 다음과 같다.
 
@@ -445,7 +445,8 @@ SSH host key가 재시작마다 바뀌면 Remote SSH가 깨지므로 `/data` 영
 | loopback gateway upstream 실패 | status와 sanitized 원인 보고, token 원문 미출력 |
 | browser output 한도 도달 | MCP 한도 오류/정리 정책을 보고하고 `/data` 사용자 파일은 건드리지 않음 |
 | `ha-memoryd` 또는 Core WebSocket 시작 실패 | Codex/Web/SSH/browser는 계속 시작, last-known-good catalog를 유지하고 catalog를 `degraded`/`stale`로 표시하며 token/DNS/transport/timeout/auth/protocol의 allowlist code만 기록 |
-| memory snapshot 일부 command/대상 실패 | legal `config: null`은 빈 automation config로 수용하되 실제 command/envelope/related 실패는 부분 결과를 canonical로 commit하지 않고 이전 revision과 command/snapshot allowlist code 유지 |
+| 개별 automation `search/related`가 정상 envelope의 `unknown_error`로 거부됨 | official automation payload는 유지하고 해당 enrichment만 빈 객체와 bounded warning으로 격리. 성공 config에서 직접 관계를 추출해 snapshot commit |
+| memory 필수 command/transport/envelope 실패 | legal `config: null`은 빈 automation config로 수용하되 config 실패, related timeout/close/protocol 또는 malformed 결과는 부분 결과를 canonical로 commit하지 않고 이전 revision과 command/snapshot allowlist code 유지 |
 | memory DB unsafe owner/type/link/mode 또는 schema 손상 | 자동 삭제·재생성하지 않고 memory만 fail closed; 기존 App 기능 유지 및 복구 안내 |
 | post-change fresh expectation 불일치 | canonical catalog는 같은 fresh HA snapshot으로 수렴하지만 applied semantic memory는 바꾸지 않고 mismatch change와 conflict evidence만 기록 |
 | memory rollback revision 충돌 | compensating event를 쓰지 않고 현재 history/conflict 재조회 요구; HA catalog와 실제 HA 비변경 |

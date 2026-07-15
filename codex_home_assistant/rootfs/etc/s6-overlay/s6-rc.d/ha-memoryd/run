@@ -11,8 +11,23 @@ trap 'exit 0' TERM INT
 while true; do
   refresh_output=
   if refresh_output=$(/usr/local/bin/ha-memory refresh --if-stale 300 2>&1); then
+    refresh_warning_count=0
+    if parsed_warning_count=$(printf '%s' "${refresh_output}" \
+      | jq --exit-status --raw-output \
+        'if type == "object" and (.warnings | type) == "array" then (.warnings | length) else 0 end' \
+        2>/dev/null) \
+      && [[ "${parsed_warning_count}" =~ ^[0-9]+$ ]] \
+      && (( parsed_warning_count <= 100 )); then
+      refresh_warning_count=${parsed_warning_count}
+    fi
+    unset parsed_warning_count
     unset refresh_output
-    bashio::log.info 'Home Assistant memory catalog refresh completed'
+    if (( refresh_warning_count > 0 )); then
+      bashio::log.warning "Home Assistant memory catalog refresh completed with ${refresh_warning_count} bounded warning(s)"
+    else
+      bashio::log.info 'Home Assistant memory catalog refresh completed'
+    fi
+    unset refresh_warning_count
     retry_seconds=30
     sleep "${REFRESH_SECONDS}" &
   else

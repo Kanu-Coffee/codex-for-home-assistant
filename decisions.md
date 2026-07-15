@@ -251,10 +251,20 @@ hassio_role: manager
 
 ## ADR-034 고정 Supervisor WebSocket transport와 closed memory 진단
 
-- 상태: Accepted for 0.3.1
+- 상태: Accepted for 0.3.1; related command rejection 정책은 ADR-035가 부분 대체
 - 배경: public 0.3.0 read-only HAOS audit에서 REST, daemon scheduler, MCP와 SQLite는 정상이나 catalog refresh가 즉시 `ha_unavailable`로 반복 실패했다. daemon이 CLI stderr를 폐기하고 DB가 모든 HA 오류를 한 code로 축약해 auth/transport/command/snapshot 경계를 사후 확정할 수 없었다.
 - endpoint/auth 결정: 공식 App 계약의 `ws://supervisor/core/websocket`과 첫 `auth` frame의 `SUPERVISOR_TOKEN`을 유지한다. Upgrade authorization header를 추가하거나 credential을 direct Core에 보내는 fallback은 만들지 않는다. production `HA_WS_URL` 환경 override는 임의 endpoint로 credential을 보낼 수 있어 제거한다. test endpoint는 명시적 URL과 명시적 test token을 함께 제공할 때만 module-level test에서 허용한다.
 - transport 결정: image에 이미 version-pinned된 `ws` runtime을 memory client도 사용하고 handshake timeout, 32 MiB `maxPayload`, compression off와 기본 TLS 검증을 적용한다. 이는 Node built-in transport의 오류가 입증됐다는 뜻이 아니라 App의 privileged WebSocket helper와 connection/payload 경계를 통일하는 결정이다.
 - snapshot 결정: Home Assistant Core가 unavailable automation에 성공 응답으로 반환할 수 있는 `{config: null}`은 protocol상 완전한 응답이다. 이를 빈 config와 bounded warning으로 정규화하고 entity/`search/related` graph는 유지한다. 실제 command rejection, 누락 envelope와 malformed/failed related 결과는 계속 전체 snapshot을 실패시켜 partial canonical commit을 막는다.
 - 진단 결정: token, DNS, transport, timeout, auth, protocol, 고정 command와 snapshot의 closed low-cardinality code만 `sync_runs`, change verification과 CLI reason에 전달한다. 원격 message, hostname, entity ID와 token 일부를 code로 만들지 않는다. daemon은 captured stdout/stderr 원문을 log하지 않고 closed allowlist reason만 남긴 뒤 변수를 폐기한다.
-- 검증 경계: legal null-config, 실제 installed `ws` Supervisor-style handshake, 단계별 code, secret/message suppression, endpoint redirection 거부와 last-known-good/recovery를 자동 검증한다. 0.3.0 audit의 원인이 null-config였다는 최종 판정과 HAOS 완료는 published 0.3.1 live re-test 전까지 보류한다.
+- 검증 경계: legal null-config, 실제 installed `ws` Supervisor-style handshake, 단계별 code, secret/message suppression, endpoint redirection 거부와 last-known-good/recovery를 자동 검증한다. 후속 published 0.3.1 live re-test에서는 null-config가 관측되지 않았고 실제 실패 단계가 automation-related 2건의 Core `unknown_error`로 확인됐다.
+
+## ADR-035 개별 automation related 거부를 optional enrichment로 격리
+
+- 상태: Accepted for 0.3.2 candidate
+- 배경: 정확한 public 0.3.1 설치와 Core `2026.7.2` 실기에서 registry/state와 `automation/config` 30건은 성공했지만 `search/related(item_type=automation)` 30건 중 2건이 `unknown_error`를 반환해 첫 catalog 전체가 비었다. 동일 ID의 `item_type=entity` 요청은 성공했지만 공식 Core 구현상 이는 automation 내부 graph가 아니라 해당 entity를 참조하는 역방향 관계이므로 대체 payload가 아니다.
+- 요청 계약: 기존 official payload `type=search/related`, `item_type=automation`, `item_id=<automation entity_id>`를 유지한다. `item_type=entity` 결과를 automation references로 합치거나 `.storage`/raw config parse로 우회하지 않는다.
+- 격리 결정: matched result envelope의 `success:false`와 실기에서 관측된 `error.code=unknown_error`가 함께 확인된 개별 related command만 optional enrichment 부재로 처리한다. 성공한 automation config는 allowlist scanner로 area/device/entity 직접 관계를 만들고 related는 빈 객체, warning은 `automation_related_unavailable:<allowlisted entity id>`로 남긴다. warning은 100개로 제한하고 Core error message/body/code를 snapshot에 복사하지 않는다.
+- fail-closed 경계: 공개 `ha_command_related_failed`가 같은 경우에도 내부 command-rejected type과 bounded remote code를 함께 확인한다. Server `timeout`, `unauthorized`, `invalid_format`, `home_assistant_error`, 그 밖의 command code, client timeout, config failure, auth, transport, WebSocket close, protocol error, 누락·malformed result envelope와 object가 아닌 successful related 결과는 계속 전체 snapshot을 실패시키고 last-known-good를 보존한다.
+- provenance: config scanner에서만 발견한 관계는 `automation_config`, 실제 related 배열에 있던 관계만 `search_related`로 기록한다. 빈 related 객체를 source 증거로 취급하지 않는다.
+- 검증 경계: source/installed `ws` fixture에서 explicit `unknown_error`, null-config 결합, remote-message 비노출과 exact outbound payload를 확인하고 server `timeout`/`unauthorized`/`invalid_format`/`home_assistant_error`, client timeout, malformed envelope/result 음성 테스트를 둔다. 이 자동 후보는 실제 HAOS 0.3.2 catalog/LKG/restart/CLI·MCP/candidate/change/App update/privacy 재시험을 대체하지 않는다.
