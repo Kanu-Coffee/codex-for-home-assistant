@@ -4,8 +4,8 @@
 
 ## Project Status
 
-- 상태: **amd64 MVP/M2 PASS / 0.3.0 memory 후보 local·PR CI PASS / 0.2.4 public PASS / 새 memory의 실제 HAOS E2E는 NOT RUN**
-- 현재 마일스톤: **0.3.0 검증 기반 HA memory 후보 PR #20 검증 완료 / review·실제 HAOS E2E 대기**
+- 상태: **amd64 MVP/M2 PASS / 0.3.0 public·자동·공개 이미지 회귀 PASS / 새 memory의 실제 HAOS E2E는 NOT RUN**
+- 현재 마일스톤: **0.3.0 prerelease/GHCR 공개 완료 / 실제 HAOS memory E2E 대기**
 - 마지막 문서 기준일: **2026-07-15**
 - 저장소: public `Kanu-Coffee/codex-for-home-assistant`, default branch `main`
 
@@ -38,7 +38,10 @@
 - [x] 제품·아키텍처·보안·테스트·사용 문서와 `0.3.0` changelog를 갱신했다. 새 memory 기능의 실제 HAOS Core/registry/restart/update E2E는 실행 환경이 없어 **NOT RUN**이며 local fixture/container 결과와 구분한다.
 - [x] 최종 local image `sha256:07fecc736c43e9eb1ba2bde495e375554ee972a7c4f1ca1de787b028b1e81c9f`는 version `0.3.0`, arch `amd64`, size 533,512,546 bytes다. 설치 image 내부 memory lifecycle/schema/client, unsafe broken/valid symlink·WAL, raw-byte 비저장, MCP 실제 호출과 volume 교체 영속성 smoke가 PASS했다.
 - [x] 전체 Docker browser/gateway/Core WebSocket/ttyd/SSH smoke, managed browser-auth smoke, user-file update smoke와 public `0.2.4` → local `0.3.0` update smoke가 모두 PASS했다. 로컬 source에서는 Node 4 tests, 전체 pytest **56 passed / 8 jq-dependent skipped**, Markdown 20 files, YAML, ShellCheck, Hadolint, MANIFEST와 `git diff --check`가 PASS했다.
-- [x] [PR #20](https://github.com/Kanu-Coffee/codex-for-home-assistant/pull/20)을 열었다. 기능 commit `4fd2f1236b11ff45ae05e3f6fe317474a4851bd9`의 push [CI 29382194369](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/29382194369), PR [CI 29382202828](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/29382202828)와 non-publishing [Builder 29382202944](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/29382202944)가 모두 PASS했다. Linux pytest+jq, Home Assistant App linter, fresh amd64 build, memory/기존 full smoke와 public `0.2.4` update가 포함됐으며 merge·tag·release·image publish는 수행하지 않았다.
+- [x] [PR #20](https://github.com/Kanu-Coffee/codex-for-home-assistant/pull/20)의 기능 commit `4fd2f1236b11ff45ae05e3f6fe317474a4851bd9`에서 push [CI 29382194369](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/29382194369), PR [CI 29382202828](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/29382202828)와 non-publishing [Builder 29382202944](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/29382202944)가 모두 PASS했다. Linux pytest+jq, Home Assistant App linter, fresh amd64 build, memory/기존 full smoke와 public `0.2.4` update가 포함됐다.
+- [x] PR #20을 merge commit `7489ba8b86ccffaef0113599c1f9e67cb7876d9d`로 `main`에 병합했고 동일 SHA의 [main CI 29384344027](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/29384344027)에서 lint/unit, App linter와 linux/amd64 memory/full/update smoke가 PASS했다.
+- [x] merge SHA에 annotated `0.3.0` tag를 게시하고 공식 [Builder 29384484760](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/29384484760)으로 generic/per-arch GHCR image와 [GitHub prerelease](https://github.com/Kanu-Coffee/codex-for-home-assistant/releases/tag/0.3.0)를 발행했다. 두 OCI index digest는 `sha256:5ddb290534d45d46b34d2ef478ede83110c3b8e3a56f601ce2c6b45d5814341f`, runtime manifest digest는 `sha256:1c1e6a43cf24508e1c39c62bb2f0ab57c635208d8bd47537d4f9d09f0487f360`이며 익명 pull, linux/amd64, version/arch/source label과 mutable `latest` 부재를 확인했다.
+- [x] 정확한 public `0.3.0` image에서 memory lifecycle/privacy/MCP/persistence, browser/gateway/Core WebSocket/ttyd/SSH, managed-auth, user-file와 public `0.2.4` → `0.3.0` update smoke가 모두 PASS했다. 새 memory의 실제 HAOS Core registry 규모, Core restart 재연결과 App update persistence E2E는 환경이 없어 **NOT RUN**이다.
 
 ### 2026-07-14 — HAOS UI/AppArmor 실기 완료 기록과 0.2.4 릴리스
 
@@ -358,6 +361,7 @@
 - [x] Public `0.2.3` Home Assistant 구성 UI/Supervisor 일반 업데이트 경로 — 사용자 확인 PASS
 - [x] Public `0.2.3` AppArmor 활성 상태의 인증된 `8099` dashboard desktop/mobile·console·network/resource·WebSocket — 사용자 확인 PASS
 - [x] `0.2.4` validation/evidence tag/GHCR/prerelease — 익명 linux/amd64 pull, 공개 이미지 회귀와 동일 merge SHA native Linux 전체 smoke PASS
+- [x] `0.3.0` 검증 기반 memory tag/GHCR/prerelease — 익명 linux/amd64 pull, 정확한 공개 이미지 memory/full/update 회귀와 동일 merge SHA main CI PASS; 실제 HAOS memory E2E는 NOT RUN
 
 ## M3 — aarch64 및 안정화
 

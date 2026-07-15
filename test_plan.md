@@ -1,6 +1,6 @@
 # test_plan.md — 검증 전략
 
-> 기존 browser/AppArmor 실기 대상은 public `0.2.3`이고 `0.2.4`는 그 결과를 기록한 validation/evidence release다. 아래 검증형 HA 메모리 항목은 이후의 미공개 기능 작업이며 자동 fixture 결과와 새 HAOS E2E를 기존 release 증거와 구분한다.
+> 기존 browser/AppArmor 실기 대상은 public `0.2.3`이고 `0.2.4`는 그 결과를 기록한 validation/evidence release다. 검증형 HA 메모리는 public `0.3.0`으로 자동 fixture/container/public-image 회귀를 통과했지만, 새 HAOS memory E2E는 별도 미실행 상태로 release 증거와 구분한다.
 
 ## 1. 테스트 계층
 
