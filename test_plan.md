@@ -1,6 +1,6 @@
 # test_plan.md — 검증 전략
 
-> 기존 browser/AppArmor 실기 대상은 public `0.2.3`이고 `0.2.4`는 그 결과를 기록한 validation/evidence release다. 검증형 HA 메모리는 public `0.3.0` 자동 회귀를 통과했지만 실제 HAOS read-only 감사의 catalog refresh는 FAIL했다. 0.3.1 자동 수정 증거와 공개 image의 HAOS 재시험 NOT RUN 경계를 release 증거와 구분한다.
+> 기존 browser/AppArmor 실기 대상은 public `0.2.3`이고 `0.2.4`는 그 결과를 기록한 validation/evidence release다. 검증형 HA 메모리는 public `0.3.0` 자동 회귀를 통과했지만 실제 HAOS read-only 감사의 catalog refresh는 FAIL했다. Public `0.3.1` 수정·공개 이미지 자동 회귀는 PASS했고 실제 HAOS 재시험은 NOT RUN이므로 두 증거를 구분한다.
 
 ## 1. 테스트 계층
 
@@ -392,7 +392,7 @@ ha-api GET /states
 - history와 compensating rollback은 semantic memory에만 적용되고 HA catalog/실제 HA를 과거 상태로 되돌리지 않음
 - `ha-memoryd` 장애가 App의 기존 운영 기능을 중단시키지 않음
 
-실행 결과: **public 0.3.0 읽기 전용 감사 FAIL — catalog refresh가 모두 `ha_unavailable`이었고 원문 진단은 daemon에서 폐기됐다. Local 0.3.1의 legal null-config, 실제 installed `ws`, 정밀 code, last-known-good/recovery와 전체 기존 회귀는 PASS했다. 0.3.1 공개 image와 실제 HAOS catalog/restart/candidate/change/privacy 재시험은 NOT RUN이다.**
+실행 결과: **public 0.3.0 읽기 전용 감사 FAIL — catalog refresh가 모두 `ha_unavailable`이었고 원문 진단은 daemon에서 폐기됐다. Public 0.3.1의 legal null-config, 실제 installed `ws`, 정밀 code, last-known-good/recovery와 전체 기존 회귀는 PASS했다. 실제 HAOS catalog/restart/candidate/change/privacy 재시험은 NOT RUN이다.**
 
 ## 4. 회귀 테스트 우선순위
 
