@@ -4,15 +4,31 @@ import tomllib
 from pathlib import Path
 
 
-REQUIRED_BROWSER_TOOLS = {
+SAFE_AUTO_APPROVE_BROWSER_TOOLS = {
     "browser_close",
     "browser_console_messages",
+    "browser_hover",
     "browser_navigate",
+    "browser_navigate_back",
     "browser_network_requests",
     "browser_resize",
     "browser_snapshot",
+    "browser_tabs",
     "browser_take_screenshot",
+    "browser_wait_for",
 }
+
+INTERACTIVE_BROWSER_TOOLS = {
+    "browser_click",
+    "browser_fill_form",
+    "browser_press_key",
+    "browser_select_option",
+    "browser_type",
+}
+
+ALLOWED_BROWSER_TOOLS = (
+    SAFE_AUTO_APPROVE_BROWSER_TOOLS | INTERACTIVE_BROWSER_TOOLS
+)
 
 DANGEROUS_BROWSER_TOOLS = {
     "browser_evaluate",
@@ -87,11 +103,24 @@ def test_codex_system_config_registers_restricted_playwright_mcp(
     assert playwright["required"] is False
     assert playwright["startup_timeout_sec"] == 30
     assert playwright["tool_timeout_sec"] == 120
-    assert playwright["default_tools_approval_mode"] == "writes"
+    assert playwright["default_tools_approval_mode"] == "prompt"
 
     enabled_tools = set(playwright["enabled_tools"])
-    assert REQUIRED_BROWSER_TOOLS <= enabled_tools
+    assert enabled_tools == ALLOWED_BROWSER_TOOLS
     assert DANGEROUS_BROWSER_TOOLS.isdisjoint(enabled_tools)
+
+    tool_modes = {
+        name: settings["approval_mode"]
+        for name, settings in playwright["tools"].items()
+    }
+    assert set(tool_modes) == enabled_tools
+    assert {
+        name for name, mode in tool_modes.items() if mode == "approve"
+    } == SAFE_AUTO_APPROVE_BROWSER_TOOLS
+    assert {
+        name for name, mode in tool_modes.items() if mode == "prompt"
+    } == INTERACTIVE_BROWSER_TOOLS
+    assert set(tool_modes.values()) == {"approve", "prompt"}
 
     proxy = (
         rootfs / "usr/local/share/codex-ha/playwright-mcp-proxy.mjs"
@@ -102,6 +131,51 @@ def test_codex_system_config_registers_restricted_playwright_mcp(
     assert allowlist_match
     proxy_tools = set(re.findall(r'"(browser_[a-z_]+)"', allowlist_match.group(1)))
     assert enabled_tools == proxy_tools
+
+    policy_helper = (
+        rootfs / "usr/local/lib/codex-ha/browser-approval.sh"
+    ).read_text(encoding="utf-8")
+
+    def helper_array(name: str) -> set[str]:
+        match = re.search(
+            rf"readonly {name}=\((.*?)\n\)", policy_helper, re.DOTALL
+        )
+        assert match
+        return set(re.findall(r"\b(browser_[a-z_]+)\b", match.group(1)))
+
+    assert helper_array("CODEX_HA_PLAYWRIGHT_SAFE_TOOLS") == (
+        SAFE_AUTO_APPROVE_BROWSER_TOOLS
+    )
+    assert helper_array("CODEX_HA_PLAYWRIGHT_INTERACTIVE_TOOLS") == (
+        INTERACTIVE_BROWSER_TOOLS
+    )
+    assert SAFE_AUTO_APPROVE_BROWSER_TOOLS.isdisjoint(INTERACTIVE_BROWSER_TOOLS)
+
+
+def test_playwright_approval_policy_is_applied_by_the_codex_wrapper(
+    rootfs: Path,
+) -> None:
+    policy_helper = (
+        rootfs / "usr/local/lib/codex-ha/browser-approval.sh"
+    ).read_text(encoding="utf-8")
+    wrapper = (rootfs / "usr/local/bin/codex").read_text(encoding="utf-8")
+    init_script = (rootfs / "usr/local/bin/codex-ha-init").read_text(
+        encoding="utf-8"
+    )
+
+    assert "safe | never | always" in policy_helper
+    assert "mcp_servers.playwright.default_tools_approval_mode" in policy_helper
+    assert '.approval_mode=\\"${approval_mode}\\"' in policy_helper
+    assert "approval_mode=approve" in policy_helper
+    assert "approval_mode=prompt" in policy_helper
+    assert 'browser_approval_policy=safe' in wrapper
+    assert "codex_ha_config_string 'browser_approval_policy' 'safe'" in wrapper
+    assert 'exit 78' in wrapper
+    assert '"${CODEX_HA_BROWSER_APPROVAL_ARGS[@]}"' in wrapper
+    assert "browser-approval.sh" in wrapper
+    assert "browser-approval.sh" in init_script
+    assert "Configured headless browser approval policy" in init_script
+    assert "Invalid headless browser approval policy" in init_script
 
 
 def test_playwright_wrapper_uses_only_the_image_managed_stdio_server(
@@ -435,6 +509,17 @@ def test_real_playwright_mcp_smoke_is_part_of_container_validation(
     assert "Home Assistant browser gateway was reachable outside app loopback" in docker_smoke
     assert "/run/codex-ha/playwright-output/init-sentinel" in docker_smoke
 
+    approval_smoke = (
+        repository_root / "tests/browser-approval-smoke.sh"
+    ).read_text(encoding="utf-8")
+    ci = (repository_root / ".github/workflows/ci.yaml").read_text(
+        encoding="utf-8"
+    )
+    assert approval_smoke.startswith("#!/usr/bin/env bash\nset -Eeuo pipefail\n")
+    assert "codex mcp get playwright --json" in approval_smoke
+    assert "tests/fake-codex-real.sh" in approval_smoke
+    assert "browser-approval-smoke.sh" in ci
+
 
 def test_released_image_update_smoke_is_wired_into_ci(
     repository_root: Path,
@@ -446,7 +531,7 @@ def test_released_image_update_smoke_is_wired_into_ci(
     )
 
     assert update_smoke.startswith("#!/usr/bin/env bash\nset -Eeuo pipefail\n")
-    assert "ghcr.io/kanu-coffee/codex-for-home-assistant:0.3.1" in update_smoke
+    assert "ghcr.io/kanu-coffee/codex-for-home-assistant:0.3.2" in update_smoke
     assert '\\"codex_user_files_update_mode\\":\\"preserve\\"' in update_smoke
     assert '"${DATA_VOLUME}:/data"' in update_smoke
     assert '"${CONFIG_VOLUME}:/config"' in update_smoke
@@ -464,15 +549,17 @@ def test_released_image_update_smoke_is_wired_into_ci(
     ):
         assert preserved_value in update_smoke
     assert "codex mcp list --json" in update_smoke
+    assert "codex mcp get playwright --json" in update_smoke
+    assert 'has("browser_approval_policy") | not' in update_smoke
     assert "codex debug prompt-input" in update_smoke
     assert "http://127.0.0.1:8099/" in update_smoke
     assert "tests/playwright_mcp_smoke.mjs" in update_smoke
 
     assert "Run container smoke tests" in ci
-    assert "Verify update from released 0.3.1" in ci
+    assert "Verify update from released 0.3.2" in ci
     assert ci.index("Run container smoke tests") < ci.index(
-        "Verify update from released 0.3.1"
+        "Verify update from released 0.3.2"
     )
     assert "bash tests/update-smoke.sh" in ci
-    assert "ghcr.io/kanu-coffee/codex-for-home-assistant:0.3.1" in ci
+    assert "ghcr.io/kanu-coffee/codex-for-home-assistant:0.3.2" in ci
     assert "codex-for-home-assistant:test" in ci

@@ -4,8 +4,8 @@
 
 ## Project Status
 
-- 상태: **amd64 MVP/M2 PASS / 0.3.1 실제 HAOS catalog FAIL / 0.3.2 public 자동·공개 이미지 회귀 PASS / 실제 HAOS NOT RUN**
-- 현재 마일스톤: **0.3.2 공개 완료 / 실제 HAOS 자기점검 대기**
+- 상태: **amd64 MVP/M2 PASS / 0.4.0 Playwright 승인 정책 candidate 구현·검증 중 / 실제 HAOS NOT RUN**
+- 현재 마일스톤: **0.4.0 browser approval UI 구현·공개 준비**
 - 마지막 문서 기준일: **2026-07-15**
 - 저장소: public `Kanu-Coffee/codex-for-home-assistant`, default branch `main`
 
@@ -23,6 +23,18 @@
 - [x] 문서 주도 개발 파일 세트 작성
 
 ## Current Work
+
+### 2026-07-15 — Home Assistant UI의 Playwright 승인 정책과 0.4.0
+
+- 목표: `browser_approval_policy`를 `safe` 기본, `never` full-auto, `always` full-prompt로 제공하고 현재 Playwright allowlist 16개의 MCP 승인 mode를 App 구성에서 선택한다. 사용자 config/AGENTS와 browser identity는 수정하지 않는다.
+- 정책: safe는 탐색·관찰 11개 approve와 click/form/key/select/type 5개 prompt, never는 현재 16개 approve, always는 현재 16개 prompt다. server default는 prompt라 미래 도구가 자동 승인되지 않으며 proxy 금지 도구와 Home Assistant 권한은 변하지 않는다. top-level `codex_approval_policy=never`의 전역 MCP 자동 승인 precedence를 UI·문서에 공개한다.
+- 구현: system fallback, 공통 helper, init 검증과 wrapper CLI override, en/ko option, invalid enum/type fail-closed, public `0.3.2` update baseline을 `0.4.0` candidate에 반영한다.
+- 검증: static helper/config/proxy parity, disposable-container fake argv와 pinned Codex parse, full/memory/managed-auth/user-file/browser-policy/update smoke, lint와 CI/Builder를 실행한다. 공개 뒤 HAOS Configuration UI/AppArmor의 실제 popup matrix는 별도 수용 항목으로 남긴다.
+- [x] App option/schema/번역, safe system fallback, 공통 helper, wrapper/init과 16개 explicit per-tool override를 구현했다. `ha_memory`의 `writes` 정책, proxy allowlist, 사용자 config/AGENTS/browser identity와 App 권한은 변경하지 않았다.
+- [x] Windows Python 3.14에서 pytest **58 passed / 8 jq-dependent skipped**, YAML, Markdown 20 files, ShellCheck, Hadolint와 `git diff --check`가 PASS했다. Linux PR CI에서 jq-dependent pytest와 Home Assistant App linter를 다시 실행한다.
+- [x] local amd64 image `sha256:cce65f996a418d0ae5c61d1193fbbba39c10f2c9baeff27da9995518cf945502`는 530,874,711 bytes, `io.hass.version=0.4.0`, `io.hass.arch=amd64`, Codex `0.144.1`이다.
+- [x] browser approval missing/safe/never/always, invalid enum/type 78, pinned Codex parse와 argument passthrough smoke, 전체 browser/gateway/Core WebSocket/ttyd/SSH, memory, managed-auth, user-file update와 public `0.3.2` → local `0.4.0` update smoke가 PASS했다.
+- 실제 Home Assistant Configuration UI의 mode 표시·popup 행렬, top-level never precedence와 HAOS/AppArmor `8099` dashboard 회귀는 public `0.4.0` 설치 전 **NOT RUN**이다.
 
 ### 2026-07-15 — 0.3.1 실제 `search/related` 실패와 0.3.2 patch
 

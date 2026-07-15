@@ -145,6 +145,7 @@ Supervisor가 없어도 검증 가능한 항목:
 | AT-051 | audit/conflict/compensating rollback | `ha-memory candidate add --value-json`, evidence/verify/apply, conflict resolution과 rollback에 history-preserving actor/source/before/after event가 남고 current-row mismatch·후속 dependency를 거부하며 rollback은 원 event/linkage와 HA catalog/Core fixture를 변경하지 않음 |
 | AT-052 | memory non-fatal lifecycle·persistence | Core unavailable, DB lock/corruption과 scheduler crash에서 Web/SSH/Codex/browser는 계속 동작하고 catalog `degraded`/`stale` 또는 tool unavailable 오류를 구분. unsafe memory symlink/file도 main init을 중단하거나 target을 chmod하지 않음. App restart/update에서 DB와 applied memory는 유지되며 runtime token은 mode 0600의 ephemeral `/run` 파일에서 env로 읽고 argv/stdout/stderr/log/DB에 없음 |
 | AT-053 | live WebSocket 호환·안전 진단 | active unavailable automation의 legal `{config:null}`은 빈 config/bounded warning으로 index하고 actual installed `ws`가 Supervisor식 auth/snapshot을 완료. 한 automation의 official related 요청만 `unknown_error`여도 remote message 없이 config/직접 관계와 다른 automation을 보존하고 exact provenance를 기록. Server `timeout`/`unauthorized`/`invalid_format`/`home_assistant_error`는 같은 완화 경로로 들어가지 않고 snapshot을 거부. `HA_WS_URL` redirection과 implicit token 전달은 거부하고 token/DNS/transport/timeout/auth/protocol/고정 command/snapshot failure code를 DB·change·CLI에 보존하되 daemon은 원문/secret 없이 allowlist code만 log. non-object/malformed result는 protocol failure로 닫고 병렬 command 실패 뒤 pending timer를 모두 정리하며, last-known-good와 recovery refresh를 확인 |
+| AT-054 | Playwright 승인 정책 | App option/schema/번역 default safe, system default prompt와 16개 per-tool fallback, helper/config/proxy allowlist parity를 확인. disposable container의 fake `codex-real`은 missing/safe 11 approve+5 prompt, never 16 approve, always 16 prompt, 기존 2개를 포함한 총 19개 `-c`, 인수 pass-through를 검증하고 enum/type 오류는 78로 종료. 실제 pinned Codex는 모든 valid override를 parse하며 public 0.3.2 update는 option key를 삽입하지 않고 safe fallback을 사용 |
 
 ## 3. HAOS 수동/E2E 시나리오
 
@@ -393,6 +394,17 @@ ha-api GET /states
 - `ha-memoryd` 장애가 App의 기존 운영 기능을 중단시키지 않음
 
 실행 결과: **public 0.3.0 읽기 전용 감사 FAIL — catalog refresh가 모두 `ha_unavailable`이었고 원문 진단은 daemon에서 폐기됐다. Public 0.3.1의 legal null-config, 실제 installed `ws`, 정밀 code, last-known-good/recovery와 전체 자동 회귀는 PASS했다. 후속 실제 HAOS/Core `2026.7.2`의 설치 무결성·연결·daemon/DB·privacy는 PASS했지만 automation-related 30건 중 2건의 Core `unknown_error` 때문에 catalog/LKG/실제 CLI·MCP 조회는 FAIL했다. Core restart는 daemon 생존·재연결 PASS와 fresh catalog 복구 FAIL을 합쳐 PARTIAL, null-config는 NOT OBSERVED, candidate/change/App restart/update는 NOT RUN이다. Public 0.3.2는 이 exact 실패와 음성 경계를 자동 재현하고 정확한 공개 image/update 회귀를 PASS했지만 실제 HAOS 재시험 전에는 live PASS가 아니다.**
+
+### E2E-019 Playwright 승인 정책 UI
+
+1. Home Assistant App 구성에 `safe`, `never`, `always`가 표시되고 신규·기존 누락 설치의 기본 동작이 `safe`인지 확인한다.
+2. 각 mode를 저장한 뒤 App을 재시작하고 새 Codex session에서 내부 `127.0.0.1:8099`의 비파괴 dashboard fixture를 연다.
+3. `safe`에서 navigate/tabs/resize/snapshot/screenshot/console/network는 무승인, click/type/press key/form/select는 승인 요청인지 확인한다.
+4. `never`에서 허용 도구 16개가 무승인이고 금지 도구 호출은 계속 거부되는지 확인한다.
+5. `always`에서 허용 도구 16개가 승인 요청인지 확인한다. 별도로 top-level `codex_approval_policy=never` 조합은 Codex 전역 full-auto가 우선할 수 있음을 UI 설명과 실제 동작으로 확인한다.
+6. desktop/mobile 렌더링, console/network, 자동 인증, AppArmor와 사용자 config/AGENTS/browser identity 보존을 함께 회귀한다.
+
+성공 기준: 문서화된 mode 행렬과 global-policy precedence가 실제 팝업에 일치하고 proxy allowlist·HA 권한·credential 경계는 변하지 않는다. 공개 image가 없는 candidate 단계에서는 이 실기를 **NOT RUN**으로 기록한다.
 
 ## 4. 회귀 테스트 우선순위
 

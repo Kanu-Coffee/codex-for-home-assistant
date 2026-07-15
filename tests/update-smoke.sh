@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-RELEASE_IMAGE=${1:-ghcr.io/kanu-coffee/codex-for-home-assistant:0.3.1}
+RELEASE_IMAGE=${1:-ghcr.io/kanu-coffee/codex-for-home-assistant:0.3.2}
 CANDIDATE_IMAGE=${2:-codex-for-home-assistant:test}
 TEST_ID="codex-ha-update-${RANDOM}-$$"
 RELEASE_CONTAINER="${TEST_ID}-release"
@@ -205,6 +205,9 @@ start_app "${CANDIDATE_CONTAINER}" "${CANDIDATE_IMAGE}"
 [[ $(container_hash "${CANDIDATE_CONTAINER}" /data/options.json) \
   == "${OPTIONS_HASH_BEFORE}" ]] \
   || fail 'Home Assistant App options changed during image update'
+docker exec "${CANDIDATE_CONTAINER}" jq --exit-status \
+  'has("browser_approval_policy") | not' /data/options.json >/dev/null \
+  || fail 'update unexpectedly inserted the new browser approval option'
 
 docker exec "${CANDIDATE_CONTAINER}" jq --exit-status \
   --arg marker "${AUTH_MARKER}" \
@@ -270,6 +273,9 @@ docker exec "${CANDIDATE_CONTAINER}" /bin/sh -c '
     )
   '\'' >/dev/null
 ' || fail 'updated image did not expose the image-managed Playwright MCP'
+docker exec --workdir /config "${CANDIDATE_CONTAINER}" \
+  codex mcp get playwright --json >/dev/null \
+  || fail 'missing browser approval option did not use the safe fallback'
 
 docker cp tests/playwright_mcp_smoke.mjs \
   "${CANDIDATE_CONTAINER}:/tmp/playwright_mcp_smoke.mjs"

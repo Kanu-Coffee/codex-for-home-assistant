@@ -15,6 +15,15 @@ configuration:
   codex_sandbox_mode:
     name: Codex sandbox mode
     description: danger-full-access applies only inside this App container, not to the HAOS host.
+  browser_approval_policy:
+    name: Headless browser approval policy
+    description: >-
+      safe automatically approves dashboard navigation and inspection but asks
+      before clicks or input. never suppresses approval prompts for the current
+      restricted Playwright tool set. always asks for every Playwright tool.
+      Codex approval_policy never is an umbrella full-auto policy and may
+      override safe or always prompts. Restart the App and start a new Codex
+      session after changing this option.
   codex_user_files_update_mode:
     name: Codex user-file update mode
     description: >-
