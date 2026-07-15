@@ -79,7 +79,7 @@ M1에서 실제 검증 전에는 amd64만 표시한다.
 
 ```yaml
 name: Codex for Home Assistant
-version: "0.3.2"
+version: "0.4.0"
 slug: codex_home_assistant
 description: Codex CLI, Playwright browser, Ingress terminal, and SSH for Home Assistant
 url: https://github.com/<owner>/codex-for-home-assistant
@@ -119,6 +119,7 @@ options:
   tmux_session_name: codex-ha
   codex_approval_policy: on-request
   codex_sandbox_mode: danger-full-access
+  browser_approval_policy: safe
   codex_user_files_update_mode: preserve
   home_assistant_browser_auto_auth: true
   log_level: info
@@ -130,6 +131,7 @@ schema:
   tmux_session_name: "match(^[A-Za-z0-9._-]{1,64}$)"
   codex_approval_policy: "list(untrusted|on-request|never)"
   codex_sandbox_mode: "list(workspace-write|danger-full-access)"
+  browser_approval_policy: "list(safe|never|always)"
   codex_user_files_update_mode: "list(preserve|refresh_agents|refresh_all)"
   home_assistant_browser_auto_auth: bool
   home_assistant_browser_token: password?
@@ -194,6 +196,15 @@ Settings → Apps → Codex for Home Assistant → Configuration/Network
 - 기본: `danger-full-access`
 - App 컨테이너 내부의 Codex 실행 정책
 - Home Assistant `full_access`와 다른 개념임을 문서화
+
+### `browser_approval_policy`
+
+- 타입: `list(safe|never|always)`; 누락된 기존 option도 `safe`로 해석
+- `safe`: 탐색·조회·browser session 동작은 MCP 자동 승인, click/form/key/select/type은 prompt
+- `never`: 현재 16개 Playwright allowlist에 `approve`; 금지 도구나 추가 권한은 열지 않음
+- `always`: 현재 16개 Playwright allowlist에 `prompt`
+- 미래 도구는 server default `prompt`를 상속하며, 설정 변경은 App/새 Codex session 재시작 후 적용
+- top-level `codex_approval_policy=never`는 전역 full-auto로 MCP prompt를 자동 승인할 수 있으므로 `safe`/`always`의 prompt보다 우선할 수 있음
 
 ### `codex_user_files_update_mode`
 
@@ -398,7 +409,7 @@ enabled = true
 required = false
 startup_timeout_sec = 30
 tool_timeout_sec = 120
-default_tools_approval_mode = "writes"
+default_tools_approval_mode = "prompt"
 ```
 
 - 위치는 `/etc/codex/config.toml`이며 user config `/data/codex/config.toml`보다 낮은 공식 system 계층이다.
@@ -406,6 +417,7 @@ default_tools_approval_mode = "writes"
 - browser는 headless, isolated, no-sandbox이며 기본 viewport `1440x900`; mobile 검사는 `390x844` resize를 사용한다.
 - output은 `/run/codex-ha/playwright-output`, 최대 50 MiB, `saveSession=false`, `sharedBrowserContext=false`다. enforcement proxy는 tool call의 `filename`을 거부해 `/config`·`/data`로 artifact를 우회 저장하지 못하게 한다.
 - console warning/error, network request 목록의 URL/status, snapshot, screenshot, resize와 일반 UI 상호작용만 proxy와 system config에서 동일하게 allowlist한다. 단일 request의 header/body 상세 도구는 제외한다.
+- image fallback은 safe 11개 도구를 `approve`, interactive 5개 도구를 `prompt`로 명시한다. Codex wrapper는 `browser_approval_policy`에 따라 server default prompt와 현재 allowlist 16개의 per-tool mode를 CLI override로 주입하며 user config나 `AGENTS.md`를 변경하지 않는다.
 - `browser_run_code_unsafe`, file upload, unrestricted file access와 code generation은 허용하지 않는다.
 - Codex system MCP는 STDIO를 사용하며 App service는 HTTP MCP listener와 외부 browser/debug port를 열지 않는다. wrapper는 모든 command-line 인수를 거부하고 enforcement proxy만 실행한다.
 

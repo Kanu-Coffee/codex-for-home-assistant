@@ -2,6 +2,34 @@
 
 All notable changes to this App are documented in this file.
 
+## [0.4.0] - 2026-07-15
+
+### Added
+
+- Add the `browser_approval_policy` Home Assistant App option with `safe` (default), `never`, and `always` modes. `safe` automatically approves browser navigation and inspection while retaining prompts for clicks, form input, key presses, selections, and typing; `never` suppresses MCP prompts for the current restricted Playwright allowlist; `always` requests approval for each allowed browser tool.
+
+### Changed
+
+- Apply the selected browser policy on every Codex CLI and app-server launch through image-managed CLI overrides without rewriting the user's `config.toml` or `AGENTS.md`.
+- Change the Playwright server fallback from annotation-dependent `writes` behavior to an explicit `prompt` default plus reviewed per-tool modes. Future tools therefore prompt until they are deliberately added to the image allowlist and policy helper.
+- Advance the released-image update regression from public `0.3.1` to public `0.3.2` and preserve an older `options.json` without inserting the new key; its missing value resolves to `safe` at runtime.
+
+### Security
+
+- Keep the existing 16-tool Playwright proxy allowlist unchanged. The new full-auto choice does not enable code evaluation, arbitrary file upload, PDF/file output paths, unrestricted network tools, or any additional Home Assistant permission.
+- Keep `codex_approval_policy` as the umbrella command policy. When it is `never` under a full-write permission profile, Codex may automatically approve MCP prompts globally, so `safe` or `always` cannot force a browser popup in that combination. Home Assistant device mutations still require authorization from the user's current request and remain subject to the App operating guidance.
+
+### Upgrade notes
+
+- New and existing installations that do not yet have `browser_approval_policy` use `safe`. Save a different mode in the App Configuration UI, restart the App, and start a new Codex session to apply it.
+- The existing per-target App-version behavior applies to `0.4.0`: a retained `refresh_agents` or `refresh_all` selection refreshes its selected target once after the update. Select `preserve` before updating if that is not wanted.
+
+### Testing
+
+- Add exact static parity checks across the system MCP configuration, runtime policy helper, and proxy allowlist, including the 11 safe and 5 interactive tools.
+- Add a disposable-container wrapper smoke covering missing, `safe`, `never`, `always`, invalid enum, invalid type, CLI argument pass-through, and pinned Codex TOML parsing, plus public `0.3.2` update preservation.
+- Keep the actual Home Assistant Configuration UI approval matrix and AppArmor dashboard session as a separate HAOS acceptance check after the public image is available.
+
 ## [0.3.2] - 2026-07-15
 
 ### Fixed

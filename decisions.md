@@ -268,3 +268,11 @@ hassio_role: manager
 - fail-closed 경계: 공개 `ha_command_related_failed`가 같은 경우에도 내부 command-rejected type과 bounded remote code를 함께 확인한다. Server `timeout`, `unauthorized`, `invalid_format`, `home_assistant_error`, 그 밖의 command code, client timeout, config failure, auth, transport, WebSocket close, protocol error, 누락·malformed result envelope와 object가 아닌 successful related 결과는 계속 전체 snapshot을 실패시키고 last-known-good를 보존한다.
 - provenance: config scanner에서만 발견한 관계는 `automation_config`, 실제 related 배열에 있던 관계만 `search_related`로 기록한다. 빈 related 객체를 source 증거로 취급하지 않는다.
 - 검증 경계: source/installed `ws` fixture에서 explicit `unknown_error`, null-config 결합, remote-message 비노출과 exact outbound payload를 확인하고 server `timeout`/`unauthorized`/`invalid_format`/`home_assistant_error`, client timeout, malformed envelope/result 음성 테스트를 둔다. 정확한 public 0.3.2 image의 자동·공개 이미지 회귀도 실제 HAOS 0.3.2 catalog/LKG/restart/CLI·MCP/candidate/change/App update/privacy 재시험을 대체하지 않는다.
+
+## ADR-036 Home Assistant UI 기반 Playwright 승인 정책
+
+- 상태: Accepted for 0.4.0
+- 사용자 결정: `browser_approval_policy`를 `safe`, `never`, `always`의 닫힌 enum으로 제공하고 신규·누락 option 기본값을 `safe`로 둔다. safe는 browser 탐색·관찰·session 동작을 자동 승인하고 click/form/key/select/type은 prompt, never는 현재 허용 도구 전체 approve, always는 전체 prompt다.
+- 구현 결정: `/etc/codex/config.toml`의 Playwright 기본을 `prompt`로 두고 현재 16개 allowlist의 safe fallback을 명시한다. 공통 image helper를 init과 `codex` wrapper가 함께 사용하고 wrapper는 server default와 known tool 16개의 per-tool mode를 CLI config로 주입한다. 사용자 `config.toml`, `AGENTS.md`, browser identity는 수정하지 않는다.
+- 보안 경계: enforcement proxy의 허용 도구 목록은 바꾸지 않는다. code evaluation, arbitrary upload/output와 상세 단일 network request는 계속 차단되고 미래 도구는 prompt를 상속한다. top-level `codex_approval_policy=never`는 Codex 전체 full-auto로 MCP prompt를 자동 승인할 수 있으므로 safe/always가 이를 다시 강제할 수 없음을 UI와 문서에 공개한다.
+- 적용·검증: option 저장 뒤 App과 새 Codex session을 재시작한다. helper/config/proxy 집합 parity, static mode, fake pinned-binary argv, 실제 Codex parse, invalid type/enum exit 78와 public 0.3.2 update preservation을 자동 검증하고 실제 popup matrix와 AppArmor dashboard는 public image의 HAOS 수용 시험으로 분리한다.

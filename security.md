@@ -212,6 +212,19 @@ entity/area 이름, 자동화 설명, 사용자 preference와 관계만으로도
 - DB와 Home Assistant App backup을 민감자료로 취급하고 fixture/CI에는 가짜 entity·area·사용자 값만 사용. secret scan은 SQLite dump와 MCP output fixture도 검사
 - 손상·schema mismatch·lock 충돌에서 database를 자동 삭제하거나 빈 DB로 교체하지 않고 memory tool 오류 또는 catalog의 `degraded`/`stale` 상태를 반환. memory service 실패는 Codex/Web/SSH/browser의 availability와 분리
 
+### T-015 브라우저 full-auto 설정의 과도한 신뢰
+
+Playwright 승인창을 줄이는 옵션을 browser 권한 경계나 Home Assistant 변경 승인으로 오해하면 page prompt injection 또는 잘못된 agent 판단이 UI 조작으로 이어질 수 있다. top-level Codex `never`와 browser `always`를 함께 설정했을 때 후자가 팝업을 강제한다고 오해할 위험도 있다.
+
+완화:
+
+- 신규·누락값은 `safe`로 두고 탐색·snapshot·screenshot·console/network 같은 11개 동작만 approve하며 click/form/key/select/type 5개는 prompt로 명시
+- full-auto `never`도 enforcement proxy의 현재 16개 allowlist에만 적용하고 code evaluation, arbitrary file upload/output와 상세 request 도구는 계속 차단
+- server default를 `prompt`로 두어 미래 도구가 검토 없이 자동 승인되지 않게 하고 helper/system config/proxy 집합을 contract test로 고정
+- `codex_approval_policy=never`가 full-write profile에서 MCP prompt를 전역 자동 승인할 수 있어 browser safe/always보다 우선할 수 있음을 UI·문서에 명시
+- MCP popup 생략은 현재 사용자 요청의 범위 확장이 아니며 실제 Home Assistant 변경·고위험 장치 규칙과 변경 후 검증 지침을 계속 적용
+- App option은 wrapper의 CLI config로 적용하고 사용자 `config.toml`, `AGENTS.md`, browser credential을 덮어쓰지 않음. invalid enum/type은 fail closed
+
 ## 4. `manager` 선택 근거
 
 `manager`는 CLI형 관리 App에 필요한 Supervisor 운영 권한을 제공하면서 `admin`보다 제한적이다. Core 기기 제어는 `homeassistant_api: true`로 별도 제공되므로 실제 서비스 호출을 위해 `admin`이 필요하지 않다.

@@ -3,7 +3,7 @@ ARG BUILD_FROM=ghcr.io/home-assistant/base:3.24
 FROM ${BUILD_FROM}
 
 ARG BUILD_ARCH=amd64
-ARG BUILD_VERSION=0.3.2
+ARG BUILD_VERSION=0.4.0
 ARG TARGETARCH
 ARG CODEX_VERSION=0.144.1
 ARG CODEX_SHA256=84091ae20c65fcc7d4120db97d1bd57d7ff8df9c7609fb781c78c2ebbd4f5a28
@@ -82,6 +82,7 @@ RUN printf '%s\n' "${BUILD_VERSION}" > /usr/local/share/codex-ha/app-version \
       /usr/local/lib/codex-ha/api-client.sh \
     && chmod 0644 \
       /etc/codex/config.toml \
+      /usr/local/lib/codex-ha/browser-approval.sh \
       /usr/local/share/codex-ha/AGENTS.md \
       /usr/local/share/codex-ha/browser-auth-check.mjs \
       /usr/local/share/codex-ha/browser-user-admin.mjs \

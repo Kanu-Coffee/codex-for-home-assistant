@@ -67,6 +67,7 @@ HACS는 Integration, Dashboard, Theme, Template, AppDaemon, Python Script 저장
 | `tmux_session_name` | `codex-ha` | 모든 Web UI 연결이 공유하는 세션 이름. 영문, 숫자, `.`, `_`, `-`만 허용됩니다. |
 | `codex_approval_policy` | `on-request` | Codex 명령 승인 정책 (`untrusted`, `on-request`, `never`). |
 | `codex_sandbox_mode` | `danger-full-access` | 컨테이너 내부 Codex 샌드박스 (`workspace-write`, `danger-full-access`). |
+| `browser_approval_policy` | `safe` | Playwright MCP 승인 정책 (`safe`, `never`, `always`). |
 | `codex_user_files_update_mode` | `preserve` | App version별 user `config.toml`/base `AGENTS.md` 갱신 범위 (`preserve`, `refresh_agents`, `refresh_all`). |
 | `log_level` | `info` | ttyd 웹 터미널 로그 수준. `trace`/`debug`에서 상세 로그를 켭니다. |
 
@@ -79,11 +80,12 @@ web_terminal_auto_start_codex: false
 tmux_session_name: codex-ha
 codex_approval_policy: on-request
 codex_sandbox_mode: danger-full-access
+browser_approval_policy: safe
 codex_user_files_update_mode: preserve
 log_level: info
 ```
 
-사용자 `config.toml`은 `/data/codex/config.toml`에 처음 한 번 생성되며 기본 `preserve`에서는 이후 덮어쓰지 않습니다. `codex` wrapper는 파일을 수정하지 않은 채 현재 `codex_approval_policy`와 `codex_sandbox_mode` App 옵션을 모든 CLI/Remote app-server 실행에 우선 적용합니다. `0.2.0`부터 image-owned `/etc/codex/config.toml`은 공식 Codex system config layer에서 `playwright` MCP를 등록합니다. 일반 업데이트는 이 system layer만 교체하므로 `/data` 설정과 인증은 보존되며 수동 MCP 재설정이 필요하지 않습니다. 단, 사용자가 같은 `mcp_servers.playwright`를 더 높은 우선순위에서 명시적으로 재정의하거나 비활성화했다면 그 설정이 영향을 줄 수 있습니다. 옵션이나 image를 바꾼 뒤 이미 실행 중인 Codex는 종료하고 새로 시작하세요. 그 밖의 Codex 설정은 사용자 `config.toml`에서 관리합니다.
+사용자 `config.toml`은 `/data/codex/config.toml`에 처음 한 번 생성되며 기본 `preserve`에서는 이후 덮어쓰지 않습니다. `codex` wrapper는 파일을 수정하지 않은 채 현재 command/sandbox/browser 승인 App 옵션을 모든 CLI/Remote app-server 실행의 CLI config 계층에 적용합니다. `0.2.0`부터 image-owned `/etc/codex/config.toml`은 공식 Codex system config layer에서 `playwright` MCP를 등록합니다. 일반 업데이트는 이 system layer만 교체하므로 `/data` 설정과 인증은 보존되며 수동 MCP 재설정이 필요하지 않습니다. 단, 사용자가 실행 시점에 별도 CLI override를 주면 같은 CLI 계층에서 영향을 줄 수 있습니다. 옵션이나 image를 바꾼 뒤 이미 실행 중인 Codex는 종료하고 새로 시작하세요. 그 밖의 Codex 설정은 사용자 `config.toml`에서 관리합니다.
 
 ### 선택형 Codex 사용자 파일 갱신
 
@@ -276,6 +278,20 @@ tmux kill-session -t codex-ha
 ## Playwright Headless Chromium renderer
 
 `0.2.0` 이상 image는 Node.js, `@playwright/mcp 0.0.78`, Alpine `chromium-headless-shell`과 한글·emoji font를 함께 제공합니다. Codex는 image-owned `/etc/codex/config.toml`의 `playwright` MCP server를 새 세션에서 자동으로 읽습니다. `0.2.3`부터 같은 system config의 `developer_instructions`와 Playwright의 `browser_navigate` 설명이 Home Assistant dashboard 요청을 곧바로 `http://127.0.0.1:8099/`로 보냅니다. 별도 Vercel/범용 browser skill을 먼저 실행하거나 `localhost:8123`·외부 URL을 탐색하지 않습니다. 사용자가 npm package나 browser binary를 설치하거나 `/data/codex/config.toml`에 MCP 명령을 복사할 필요가 없고, 기본 `preserve`에서는 기존 사용자 config와 `AGENTS.md`를 덮어쓰지 않습니다. 이미 열려 있던 Codex 세션은 App 업데이트 후 자동으로 system config를 다시 읽지 않으므로 새 세션을 시작하세요.
+
+### 브라우저 승인 정책
+
+App **구성**의 `browser_approval_policy`는 URL과 관계없이 image-managed `playwright` MCP 전체에 적용됩니다.
+
+| mode | 허용된 Playwright 도구의 동작 |
+| --- | --- |
+| `safe` | 기본값. navigate/back, tabs, resize, hover, wait, close, snapshot, screenshot, console, network 목록은 자동 승인하고 click, form fill, key press, select, type은 승인 요청합니다. |
+| `never` | 현재 proxy allowlist의 16개 도구를 자동 승인합니다. code evaluation, arbitrary upload/output와 상세 단일 network request처럼 차단된 도구는 계속 사용할 수 없습니다. |
+| `always` | 현재 허용된 16개 도구를 모두 승인 요청으로 처리합니다. |
+
+서버 기본값은 `prompt`라서 향후 도구가 image에 추가되더라도 정책 분류 전에는 자동 승인되지 않습니다. `codex_approval_policy`는 별도의 상위 command 정책이며, 이를 `never`로 두고 full-write 권한을 사용하면 Codex가 MCP prompt도 전역 자동 승인할 수 있으므로 `safe`나 `always`가 팝업을 강제하는 보안 경계는 아닙니다. 반대로 `browser_approval_policy=never`는 현재 Playwright allowlist에 명시적 `approve`를 적용합니다. 어느 mode도 사용자의 현재 요청에 없던 Home Assistant 변경을 새로 허가하지 않으며 고위험 장치 운영 지침은 유지됩니다.
+
+기존 `/data/options.json`에 key가 없으면 `safe`로 동작하고 파일에 key를 자동 삽입하지 않습니다. 설정을 바꾼 뒤 App을 재시작하고 새 Codex 세션을 시작해야 하며 이미 열린 browser context에는 소급 적용되지 않습니다.
 
 ### 어떤 URL을 여는가
 

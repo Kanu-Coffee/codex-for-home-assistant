@@ -7,12 +7,19 @@ set -Eeuo pipefail
 . /usr/local/lib/codex-ha/environment.sh
 # shellcheck source=/dev/null
 . /usr/local/lib/codex-ha/config.sh
+# shellcheck source=/dev/null
+. /usr/local/lib/codex-ha/browser-approval.sh
 
 approval_policy=on-request
 sandbox_mode=danger-full-access
+browser_approval_policy=safe
 if codex_ha_config_validate; then
   approval_policy=$(codex_ha_config_string 'codex_approval_policy' 'on-request')
   sandbox_mode=$(codex_ha_config_string 'codex_sandbox_mode' 'danger-full-access')
+  if ! browser_approval_policy=$(codex_ha_config_string 'browser_approval_policy' 'safe'); then
+    printf 'codex: invalid headless browser approval policy\n' >&2
+    exit 78
+  fi
 fi
 
 case "${approval_policy}" in
@@ -29,8 +36,17 @@ case "${sandbox_mode}" in
     exit 78
     ;;
 esac
+if ! codex_ha_browser_approval_policy_validate "${browser_approval_policy}"; then
+  printf 'codex: invalid headless browser approval policy\n' >&2
+  exit 78
+fi
+if ! codex_ha_browser_build_approval_args "${browser_approval_policy}"; then
+  printf 'codex: unable to apply headless browser approval policy\n' >&2
+  exit 78
+fi
 
 exec /usr/local/libexec/codex-real \
   -c "approval_policy=\"${approval_policy}\"" \
   -c "sandbox_mode=\"${sandbox_mode}\"" \
+  "${CODEX_HA_BROWSER_APPROVAL_ARGS[@]}" \
   "$@"

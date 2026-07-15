@@ -82,7 +82,7 @@ enabled = true
 required = false
 startup_timeout_sec = 30
 tool_timeout_sec = 120
-default_tools_approval_mode = "writes"
+default_tools_approval_mode = "prompt"
 enabled_tools = [
   "browser_close",
   "browser_console_messages",
@@ -101,3 +101,51 @@ enabled_tools = [
   "browser_type",
   "browser_wait_for",
 ]
+
+[mcp_servers.playwright.tools.browser_close]
+approval_mode = "approve"
+
+[mcp_servers.playwright.tools.browser_console_messages]
+approval_mode = "approve"
+
+[mcp_servers.playwright.tools.browser_hover]
+approval_mode = "approve"
+
+[mcp_servers.playwright.tools.browser_navigate]
+approval_mode = "approve"
+
+[mcp_servers.playwright.tools.browser_navigate_back]
+approval_mode = "approve"
+
+[mcp_servers.playwright.tools.browser_network_requests]
+approval_mode = "approve"
+
+[mcp_servers.playwright.tools.browser_resize]
+approval_mode = "approve"
+
+[mcp_servers.playwright.tools.browser_snapshot]
+approval_mode = "approve"
+
+[mcp_servers.playwright.tools.browser_tabs]
+approval_mode = "approve"
+
+[mcp_servers.playwright.tools.browser_take_screenshot]
+approval_mode = "approve"
+
+[mcp_servers.playwright.tools.browser_wait_for]
+approval_mode = "approve"
+
+[mcp_servers.playwright.tools.browser_click]
+approval_mode = "prompt"
+
+[mcp_servers.playwright.tools.browser_fill_form]
+approval_mode = "prompt"
+
+[mcp_servers.playwright.tools.browser_press_key]
+approval_mode = "prompt"
+
+[mcp_servers.playwright.tools.browser_select_option]
+approval_mode = "prompt"
+
+[mcp_servers.playwright.tools.browser_type]
+approval_mode = "prompt"
