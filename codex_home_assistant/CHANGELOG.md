@@ -19,7 +19,7 @@ All notable changes to this App are documented in this file.
 
 - Public `0.3.1` was verified byte-for-byte on a real HAOS/Core `2026.7.2` installation, but catalog refresh failed because 2 of 30 automation-related searches returned Core `unknown_error`. Core restart reconnection and privacy checks passed or partially passed as documented; candidate/change/App restart/update tests were not run.
 - The existing per-target App-version behavior applies to `0.3.2`: a retained `refresh_agents` or `refresh_all` selection refreshes its selected target once after the update. Select `preserve` before updating if that is not wanted.
-- Automated regression validates this candidate, but actual HAOS `0.3.2` catalog, last-known-good restart recovery, CLI/MCP lookup, candidate/change, App restart/update, and privacy retesting remain separate until a published image is installed and tested.
+- The published `0.3.2` image passed anonymous pull, exact-image memory/full/managed-auth/user-file and public `0.3.1` update regression. Actual HAOS `0.3.2` catalog, last-known-good restart recovery, CLI/MCP lookup, candidate/change, App restart/update, and privacy retesting remain separate until this image is installed and tested.
 
 ### Testing
 

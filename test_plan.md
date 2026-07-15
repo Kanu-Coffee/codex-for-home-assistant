@@ -1,6 +1,6 @@
 # test_plan.md — 검증 전략
 
-> 기존 browser/AppArmor 실기 대상은 public `0.2.3`이고 `0.2.4`는 그 결과를 기록한 validation/evidence release다. 검증형 HA 메모리는 public `0.3.0` 자동 회귀를 통과했지만 실제 HAOS read-only 감사의 catalog refresh는 FAIL했다. Public `0.3.1` 수정·공개 이미지 자동 회귀도 PASS했지만 후속 실제 HAOS/Core `2026.7.2` 재시험에서 automation-related 30건 중 2건이 `unknown_error`를 반환해 catalog는 다시 FAIL했다. 0.3.2 후보 자동 검증과 향후 실제 HAOS 재시험을 이 증거와 구분한다.
+> 기존 browser/AppArmor 실기 대상은 public `0.2.3`이고 `0.2.4`는 그 결과를 기록한 validation/evidence release다. 검증형 HA 메모리는 public `0.3.0` 자동 회귀를 통과했지만 실제 HAOS read-only 감사의 catalog refresh는 FAIL했다. Public `0.3.1` 수정·공개 이미지 자동 회귀도 PASS했지만 후속 실제 HAOS/Core `2026.7.2` 재시험에서 automation-related 30건 중 2건이 `unknown_error`를 반환해 catalog는 다시 FAIL했다. Public `0.3.2` 자동·공개 이미지 검증 PASS와 향후 실제 HAOS 재시험을 이 증거와 구분한다.
 
 ## 1. 테스트 계층
 
@@ -392,7 +392,7 @@ ha-api GET /states
 - history와 compensating rollback은 semantic memory에만 적용되고 HA catalog/실제 HA를 과거 상태로 되돌리지 않음
 - `ha-memoryd` 장애가 App의 기존 운영 기능을 중단시키지 않음
 
-실행 결과: **public 0.3.0 읽기 전용 감사 FAIL — catalog refresh가 모두 `ha_unavailable`이었고 원문 진단은 daemon에서 폐기됐다. Public 0.3.1의 legal null-config, 실제 installed `ws`, 정밀 code, last-known-good/recovery와 전체 자동 회귀는 PASS했다. 후속 실제 HAOS/Core `2026.7.2`의 설치 무결성·연결·daemon/DB·privacy는 PASS했지만 automation-related 30건 중 2건의 Core `unknown_error` 때문에 catalog/LKG/실제 CLI·MCP 조회는 FAIL했다. Core restart는 daemon 생존·재연결 PASS와 fresh catalog 복구 FAIL을 합쳐 PARTIAL, null-config는 NOT OBSERVED, candidate/change/App restart/update는 NOT RUN이다. Local 0.3.2 후보는 이 exact 실패와 음성 경계를 자동 재현하고 전체 image/update 회귀를 PASS했지만 실제 HAOS 재시험 전에는 live PASS가 아니다.**
+실행 결과: **public 0.3.0 읽기 전용 감사 FAIL — catalog refresh가 모두 `ha_unavailable`이었고 원문 진단은 daemon에서 폐기됐다. Public 0.3.1의 legal null-config, 실제 installed `ws`, 정밀 code, last-known-good/recovery와 전체 자동 회귀는 PASS했다. 후속 실제 HAOS/Core `2026.7.2`의 설치 무결성·연결·daemon/DB·privacy는 PASS했지만 automation-related 30건 중 2건의 Core `unknown_error` 때문에 catalog/LKG/실제 CLI·MCP 조회는 FAIL했다. Core restart는 daemon 생존·재연결 PASS와 fresh catalog 복구 FAIL을 합쳐 PARTIAL, null-config는 NOT OBSERVED, candidate/change/App restart/update는 NOT RUN이다. Public 0.3.2는 이 exact 실패와 음성 경계를 자동 재현하고 정확한 공개 image/update 회귀를 PASS했지만 실제 HAOS 재시험 전에는 live PASS가 아니다.**
 
 ## 4. 회귀 테스트 우선순위
 

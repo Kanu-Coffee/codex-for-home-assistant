@@ -4,8 +4,8 @@
 
 ## Project Status
 
-- 상태: **amd64 MVP/M2 PASS / 0.3.1 실제 HAOS catalog FAIL / 0.3.2 후보 자동 회귀 PASS / 실제 HAOS NOT RUN**
-- 현재 마일스톤: **0.3.2 후보 GitHub 전달 / 실제 HAOS 재시험 대기**
+- 상태: **amd64 MVP/M2 PASS / 0.3.1 실제 HAOS catalog FAIL / 0.3.2 public 자동·공개 이미지 회귀 PASS / 실제 HAOS NOT RUN**
+- 현재 마일스톤: **0.3.2 공개 완료 / 실제 HAOS 자기점검 대기**
 - 마지막 문서 기준일: **2026-07-15**
 - 저장소: public `Kanu-Coffee/codex-for-home-assistant`, default branch `main`
 
@@ -24,18 +24,21 @@
 
 ## Current Work
 
-### 2026-07-15 — 0.3.1 실제 `search/related` 실패와 0.3.2 후보
+### 2026-07-15 — 0.3.1 실제 `search/related` 실패와 0.3.2 patch
 
 - 입력 증거: `codex-for-home-assistant-0.3.1-live-self-audit-2026-07-15.md`에서 공식 public `0.3.1` 설치 blob 일치, Core `2026.7.2` 연결·인증, daemon/SQLite 무결성, Core restart 뒤 재연결과 credential/raw-response 비노출은 확인됐다. 그러나 active automation 30건 중 `search/related(item_type=automation)` 2건이 Core `unknown_error`를 반환해 모든 refresh가 `ha_command_related_failed`로 중단됐고 catalog/LKG/실제 CLI·MCP 검색은 **FAIL**했다. candidate/change/App restart/update는 **NOT RUN**, `config: null` 경로는 **NOT OBSERVED**다.
 - 공식 계약 대조: Home Assistant Core `2026.7.2`의 `search` 구현과 테스트에서 automation entity ID를 펼치는 요청은 `item_type=automation`이 맞다. `item_type=entity`는 해당 entity를 참조하는 역방향 관계를 찾는 다른 계약이므로, 실기에서 성공했다는 이유만으로 payload를 바꾸지 않는다. 확정 제품 결함은 선택적 related enrichment의 명시적 Core command 거부 1건도 필수 snapshot 실패로 취급해 config에서 안전하게 추출 가능한 관계와 나머지 정상 automation까지 전부 폐기하는 fail-all 정책이다.
 - 구현 계획: `automation/config`과 related의 의미는 유지한다. Core가 `search/related`에 정상 result envelope의 `success:false`, `error.code=unknown_error`를 준 경우에만 해당 automation의 related를 빈 객체와 bounded warning으로 낮추고, 이미 존재하는 allowlist config scanner로 area/device/entity 관계를 정규화한다. 그 밖의 server command code, server/client timeout, unauthorized, invalid format, auth, transport, WebSocket close, protocol 오류, malformed success response와 config 실패는 계속 전체 snapshot을 fail closed한다.
 - 검증 계획: 실제 `unknown_error` 응답에서 snapshot/catalog 관계가 config 기반으로 완성되는 회귀, server `timeout`/`unauthorized`/`invalid_format`/`home_assistant_error`, client timeout·connection/protocol·malformed 결과가 여전히 실패하는 negative test, null config와 related 실패의 warning 결합, installed `ws` WebSocket 회귀를 추가한다. 이후 Node/Python 계약, memory/container/full/update smoke, lint·secret scan·manifest를 실행한다.
-- 전달 경계: patch version `0.3.2` 후보와 public `0.3.1` update 기준선을 기능 브랜치/PR로 준비한다. 자동 검증이 PASS해도 실제 HAOS `0.3.2` catalog/restart/candidate/change/privacy 재시험 전에는 실기 성공으로 기록하지 않으며, 이번 요청에 없는 merge/tag/release/image publish는 별도 승인·요청 없이 수행하지 않는다.
+- 전달 경계: patch version `0.3.2`와 public `0.3.1` update 기준선을 기능 브랜치/PR로 준비한 뒤 사용자의 후속 명시적 요청에 따라 main merge, annotated tag, GitHub prerelease와 generic/per-arch GHCR image까지 발행한다. 자동·공개 이미지 검증이 PASS해도 실제 HAOS `0.3.2` catalog/restart/candidate/change/privacy 재시험 전에는 실기 성공으로 기록하지 않는다.
 - [x] explicit remote `search/related`의 `unknown_error`만 내부 command-rejected type과 remote code를 함께 확인해 bounded per-automation degradation으로 처리했다. Config-derived 직접 관계와 exact provenance를 유지하고, 다른 server command code, server/client timeout·unauthorized·invalid format·auth/transport/close/protocol·malformed envelope/result·config 실패는 계속 full-snapshot fail closed하도록 회귀 테스트로 고정했다. `ha-memory status`와 daemon은 대상 ID/remote body 없이 warning count만 보고한다.
-- [x] 0.3.1 실기 증거와 0.3.2 후보 문서·version/Docker/Playwright metadata, public `0.3.1` update baseline과 changelog를 일치시켰다. 공식 Core `2026.7.2` 구현·테스트·WebSocket error mapping을 `references.md`와 ADR-035에 기록했다.
+- [x] 0.3.1 실기 증거와 0.3.2 문서·version/Docker/Playwright metadata, public `0.3.1` update baseline과 changelog를 일치시켰다. 공식 Core `2026.7.2` 구현·테스트·WebSocket error mapping을 `references.md`와 ADR-035에 기록했다.
 - [x] final local image `sha256:20bb84c6c102df567f0467d1d6d178b098823bc17ecb98a71723270c195b6305`는 size 533,517,099 bytes, linux/amd64, `io.hass.version=0.3.2`, Codex `0.144.1`, Node `24.17.0`, `ws` `8.18.3`이다. Source Node **13 tests**, 설치 image Node **14 tests**, Windows pytest **56 passed / 8 jq-dependent skipped**, YAML, Markdown 20 files, ShellCheck 0.11.0, Hadolint 2.14.0과 `git diff --check`가 PASS했다.
-- [x] 0.3.2 image의 memory lifecycle/privacy/MCP/persistence/actual installed `ws`, 전체 browser/gateway/Core WebSocket/ttyd/SSH, managed-auth, user-file update smoke와 public `0.3.1` → local `0.3.2` update smoke가 모두 PASS했다. 실제 HAOS 0.3.2 catalog/LKG/restart/CLI·MCP/candidate/change/App restart·update/privacy 재시험은 **NOT RUN**이다.
-- [x] 전체 자동 회귀와 Git diff를 검토하고 구현 commit `24534b5`를 `fix/ha-memory-related-degradation`에 push한 뒤 [draft PR #24](https://github.com/Kanu-Coffee/codex-for-home-assistant/pull/24)를 `main` 대상으로 열었다. Merge/tag/release/image publish는 이번 작업 범위에서 수행하지 않는다.
+- [x] local 0.3.2 image의 memory lifecycle/privacy/MCP/persistence/actual installed `ws`, 전체 browser/gateway/Core WebSocket/ttyd/SSH, managed-auth, user-file update smoke와 public `0.3.1` → local `0.3.2` update smoke가 모두 PASS했다. 실제 HAOS 0.3.2 catalog/LKG/restart/CLI·MCP/candidate/change/App restart·update/privacy 재시험은 **NOT RUN**이다.
+- [x] 구현 commit `24534b5`와 검증 인계 commit `1a3bd2e`를 `fix/ha-memory-related-degradation`에 push하고 [PR #24](https://github.com/Kanu-Coffee/codex-for-home-assistant/pull/24)를 열었다. PR [CI 29403106903](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/29403106903)과 non-publishing [Builder 29403107117](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/29403107117)가 PASS했다.
+- [x] PR #24를 merge commit `5f1b28733c6b0b01fe6d3ae8f5074654812781d6`로 `main`에 병합했고 동일 SHA의 [main CI 29404524753](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/29404524753)에서 lint/unit, Home Assistant App linter와 linux/amd64 전체 회귀가 PASS했다.
+- [x] merge SHA에 annotated `0.3.2` tag를 게시하고 공식 [Builder 29404702270](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/29404702270)으로 generic/per-arch GHCR image와 [GitHub prerelease](https://github.com/Kanu-Coffee/codex-for-home-assistant/releases/tag/0.3.2)를 발행했다. 두 OCI index digest는 `sha256:d14bb71190be15fa6a45a19a2e981cb173c741e37ab0344c9bf941abbaab2c6b`, runtime manifest digest는 `sha256:3af26175df8c35a83e19634a0f7278f3ca3f70b08cb035e9953f2a519a9f353a`이며 익명 generic/per-arch pull, linux/amd64, version/arch/source label과 mutable `latest` 부재를 확인했다.
+- [x] 정확한 public `0.3.2` image에서 actual installed `ws` 포함 memory lifecycle/privacy/MCP/persistence, browser/gateway/Core WebSocket/ttyd/SSH, managed-auth, user-file와 public `0.3.1` → `0.3.2` update smoke가 모두 PASS했다. 실제 HAOS 0.3.2 catalog/LKG/restart/CLI·MCP/candidate/change/App restart·update/privacy E2E는 **NOT RUN**이다.
 
 ### 2026-07-15 — 실제 HAOS memory refresh 복구와 0.3.1 patch
 
@@ -392,6 +395,7 @@
 - [x] `0.2.4` validation/evidence tag/GHCR/prerelease — 익명 linux/amd64 pull, 공개 이미지 회귀와 동일 merge SHA native Linux 전체 smoke PASS
 - [x] `0.3.0` 검증 기반 memory tag/GHCR/prerelease — 익명 linux/amd64 pull, 정확한 공개 이미지 memory/full/update 회귀와 동일 merge SHA main CI PASS; 실제 HAOS memory E2E는 NOT RUN
 - [x] `0.3.1` memory live-refresh patch tag/GHCR/prerelease — 익명 generic/per-arch pull, 정확한 공개 이미지 memory/full/update 회귀와 동일 merge SHA main CI PASS; 후속 실제 HAOS에서 catalog FAIL/Core restart PARTIAL/privacy PASS
+- [x] `0.3.2` automation related 격리 patch tag/GHCR/prerelease — 익명 generic/per-arch pull, 정확한 공개 이미지 memory/full/update 회귀와 동일 merge SHA main CI PASS; 실제 HAOS 0.3.2 재시험은 NOT RUN
 
 ## M3 — aarch64 및 안정화
 
