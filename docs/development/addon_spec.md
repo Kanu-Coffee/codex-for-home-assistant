@@ -5,14 +5,18 @@
 ```text
 codex-for-home-assistant/
 ├─ .github/
-│  └─ workflows/
-│     ├─ lint.yaml
-│     ├─ builder.yaml
-│     └─ build-app.yaml
+│  ├─ workflows/
+│  │  ├─ ci.yaml
+│  │  ├─ builder.yaml
+│  │  └─ build-app.yaml
+│  └─ SECURITY.md
 ├─ codex_home_assistant/
 │  ├─ config.yaml
 │  ├─ Dockerfile
+│  ├─ README.md
+│  ├─ README.en.md
 │  ├─ DOCS.md
+│  ├─ DOCS.en.md
 │  ├─ CHANGELOG.md
 │  ├─ icon.png
 │  ├─ logo.png
@@ -52,13 +56,16 @@ codex-for-home-assistant/
 │           ├─ playwright-mcp.json
 │           └─ playwright-init-page.ts
 ├─ tests/
+├─ docs/
+│  ├─ development/
+│  └─ archive/
 ├─ repository.yaml
 ├─ README.md
+├─ README.en.md
 ├─ LICENSE
 ├─ AGENTS.md
-├─ rules.md
-├─ progress.md
-└─ 기타 설계 문서
+├─ SUPPORT.md
+└─ CONTRIBUTING.md
 ```
 
 S6 디렉터리 방식은 선택한 최신 Home Assistant base image의 공식 예제를 그대로 따른다. 과거 경로를 추측해 고정하지 않는다.
@@ -79,7 +86,7 @@ M1에서 실제 검증 전에는 amd64만 표시한다.
 
 ```yaml
 name: Codex for Home Assistant
-version: "0.4.0"
+version: "0.5.0"
 slug: codex_home_assistant
 description: Codex CLI, Playwright browser, Ingress terminal, and SSH for Home Assistant
 url: https://github.com/<owner>/codex-for-home-assistant
