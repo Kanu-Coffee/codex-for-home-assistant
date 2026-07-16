@@ -102,11 +102,11 @@ HAOS Web UI에서 shell/Codex가 사용 가능하고 재접속 시 세션이 유
 - public key 성공
 - host key 재시작 유지
 - `ssh host 'command -v codex; codex --version; pwd'`
-- Codex Desktop Remote SSH 실기
+- ChatGPT mobile Remote의 HA App 직접 SSH 실기
 
 ### 완료 조건
 
-일반 SSH와 Codex Desktop remote project가 모두 동작한다.
+일반 SSH와 ChatGPT mobile Remote의 직접 SSH `/config` project가 모두 동작한다.
 
 ## Phase 5 — Core/Supervisor API 운영 도구
 

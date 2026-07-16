@@ -17,7 +17,7 @@ Use Codex inside Home Assistant to inspect your setup and improve dashboards, au
 - Codex CLI with read-write access to all of `/config`
 - Home Assistant Core API and Supervisor `manager` helpers
 - Shared `tmux` Web terminal that resumes after you close and reopen the browser
-- Public-key-only SSH and desktop Codex SSH projects
+- Public-key-only SSH for direct ChatGPT mobile Remote access to the bundled Codex environment
 - **OPEN WEB UI** in the Home Assistant mobile app or website
 - Headless Chromium checks for desktop/mobile dashboard layouts and console/network errors
 - Project-local verified memory for HA structure and user-stated aliases, purposes, and preferences

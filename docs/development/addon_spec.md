@@ -462,7 +462,7 @@ AllowTcpForwarding local
 Subsystem sftp internal-sftp 또는 필요 시 비활성
 ```
 
-`AllowTcpForwarding local`은 remote app server가 요구하는 client-side local tunnel은 허용하고 reverse forwarding은 막는다. `AllowAgentForwarding no`와 함께 mobile Remote → desktop SSH project → HAOS App 실기 경로에서 동작을 확인했다.
+`AllowTcpForwarding local`은 remote app server가 요구하는 client-side local tunnel은 허용하고 reverse forwarding은 막는다. `AllowAgentForwarding no`와 함께 mobile Remote → HAOS App 직접 SSH → 내장 Codex app-server 실기 경로에서 동작을 확인했다.
 
 ## 12. Runtime environment
 

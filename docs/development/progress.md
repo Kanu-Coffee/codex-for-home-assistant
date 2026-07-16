@@ -24,11 +24,19 @@
 
 ## Current Work
 
+### 2026-07-16 — ChatGPT mobile Remote 직접 SSH 문서 정정
+
+- 원인: 일반적인 desktop-host Remote 안내를 이 HA App의 실제 경로에 잘못 적용해 Mac/Windows desktop app이 SSH 중계에 필요하다고 문서화했다.
+- 런타임 재확인: App 이미지가 OpenSSH와 Codex CLI를 함께 제공하고, mobile Remote가 `HA host:2223`에 공개키 SSH로 직접 연결해 login shell의 내장 `codex` app-server를 bootstrap한 뒤 `/config`를 연다.
+- 정정 범위: 한·영 root/App README와 DOCS, architecture/product/security/test/reference 문서, 과거 운영 가이드와 검증 기록의 desktop 중개 전제를 제거한다.
+- 경계: 일반 SSH client는 `/config` Bash를 열어 `ha-codex` 또는 `codex`를 수동 실행한다. Web UI의 공유 tmux와 mobile Remote app-server 세션은 기본적으로 별개다.
+- 검증: 중개형 문구 전체 검색 결과 0건, local Markdown link/anchor, markdownlint 33 files/0 errors, pytest **57 passed / 8 jq-dependent skipped**, yamllint와 `git diff --check` PASS.
+
 ### 2026-07-16 — 사용자 중심 문서·저장소 정리
 
 - 목표: GitHub와 Home Assistant App 표면을 개발 증거 중심 문서에서 HAOS 사용자 중심의 설치·활용·설정·보안 가이드로 재구성하고, 런타임 동작을 바꾸지 않은 채 개발 잔여물을 정리한다.
 - 사전 감사: `origin/main` `2291455`, 추적 파일 131개와 두 registered worktree를 확인했다. Docker image에는 `rootfs/`와 Playwright package만 복사됨을 재확인하고 `rootfs`, Dockerfile, `config.yaml`, 번역, workflow, active runtime/contract test를 변경 범위에서 제외했다. 모든 추적 test/fixture는 CI 또는 smoke에 연결되어 있었고, 실제 로컬 잔여물은 ignored `.pytest_cache`와 `tests/__pycache__`뿐이었다.
-- 사용자 문서: 한국어 기본 `README.md`, App `README.md`와 `DOCS.md`를 서비스·활용 사례 중심으로 다시 작성하고 `README.en.md`, App `README.en.md`, `DOCS.en.md`, 한·영 prompt cookbook을 추가했다. 옵션의 실제 기본값, Ingress terminal 경계, Bubble Card 미포함, mobile Remote의 phone→desktop→SSH 구조, custom `ha_memory`와 OpenAI Memories의 구분, 실제 HAOS memory 수용 공백을 코드·공식 문서와 일치시켰다.
+- 사용자 문서: 한국어 기본 `README.md`, App `README.md`와 `DOCS.md`를 서비스·활용 사례 중심으로 다시 작성하고 `README.en.md`, App `README.en.md`, `DOCS.en.md`, 한·영 prompt cookbook을 추가했다. 옵션의 실제 기본값, Ingress terminal 경계, Bubble Card 미포함, mobile Remote의 직접 SSH 구조, custom `ha_memory`와 OpenAI Memories의 구분, 실제 HAOS memory 수용 공백을 구현과 일치시켰다.
 - 운영 표면: `SUPPORT.md`, `.github/SECURITY.md`, `CONTRIBUTING.md`, 현재 workflow 기반 release guide와 문서 index를 추가했다. Public `0.5.0` image의 실제 ttyd/tmux 화면을 비밀 없는 격리 Docker에서 desktop/mobile로 캡처했으며, Home Assistant Ingress frame이 없는 preview라는 경계를 caption과 asset 문서에 기록했다.
 - 개발 기록: 활성 계약·ADR·증거 문서를 `docs/development/`, 초기 master prompt·구현/Git 계획과 과거 `0.4.0` 운영 문서를 `docs/archive/`로 이동하고 archive warning을 추가했다. 루트 문서 14개 hash를 중복 강제하던 `MANIFEST.md`와 전용 `tests/test_manifest.py`는 제거했다. Git이 blob 무결성을 제공하고 모든 Markdown에 lint·link 검증을 적용하므로 앱 runtime/기능 test는 유지하면서 문서 수정의 불필요한 checksum 결합만 없앴다.
 - 검증: 로컬 Markdown/HTML 상대 link와 heading anchor 33개 파일 전부 해석, markdownlint 33 files/0 errors, pytest **57 passed / 8 jq-dependent skipped**, `python -m yamllint`, secret scan 포함 계약 test와 `git diff --check`가 PASS했다. runtime/packaging 파일이 변경되지 않아 image rebuild와 container smoke는 실행하지 않았다.
@@ -261,7 +269,7 @@
 - 목표: 새 HAOS 보고서와 기존 사용자 E2E 증거를 합쳐 로그 helper, Web UI 재접속, 인증·SSH 경로의 회귀 여부를 판정하고 amd64 MVP와 정식 릴리스의 남은 조건을 분리한다.
 - 실기 결과: `0.1.3-dev`/amd64 보고서는 PASS 16, FAIL 0이다. Core/App 직접 로그 요청과 `ha-core-logs`/`ha-addon-logs self`가 모두 rc 0/nonempty였고, 재접속 뒤 App helper도 stderr 없이 성공했다. raw 로그나 진단 원문은 저장소에 포함하지 않는다.
 - Web UI 결과: 다른 브라우저/환경으로 다시 열었을 때 이전 대화와 터미널이 복구됐고 resize와 `clear` 오류 부재를 확인했다. 사전 session ID가 없어 HAOS의 동일 ID 기계 비교는 미실행이지만, 실제 ttyd 로컬 smoke가 동일 session/pane/pid를 별도로 검증한다.
-- 합산 증거: 보고서 한 회차에서 미실행한 외부 SSH/Remote와 로그인 영속성은 사용자의 기존 mobile Remote → desktop SSH project → HAOS `/config` E2E 및 삭제 없는 연속 업데이트 뒤 인증 유지 결과로 이미 PASS다.
+- 합산 증거: 보고서 한 회차에서 미실행한 외부 SSH/Remote와 로그인 영속성은 사용자의 기존 mobile Remote → HAOS App 직접 SSH → `/config` E2E 및 삭제 없는 연속 업데이트 뒤 인증 유지 결과로 이미 PASS다.
 - 완료 판정: 새 런타임 결함은 없으며 현재 주 사용 경로는 **실사용 가능한 beta/MVP candidate**다. 그러나 저장소의 M1/M2 수용 기준상 HAOS auto-start 양 모드, device-auth·재시작 영속성, 안전한 Core POST service call이 미검증이므로 프로젝트 완료로 표시하지 않는다. 첫 non-dev 릴리스에는 인증/host identity 재시작 확인과 tag/GHCR 배포도 필요하다. Home Assistant `stage`는 M3 평가 전까지 `experimental`을 유지한다. 위험한 Core/App lifecycle 실동작은 구현 결함 증거가 없으므로 자동 실행하지 않는다.
 - 데이터 전환: 이번 변경은 실기 증거와 프로젝트 상태 문서만 갱신한다. App 업데이트도 기능 반영 목적으로 필요하지 않으며 `/data` 초기화나 App 삭제·재설치는 하지 않는다. 영속성 후속 시험도 일반 App 재시작/업데이트로 수행한다.
 - [x] 보고서의 PASS/FAIL/UNVERIFIED를 기존 실기·자동 검증 증거와 대조한다.
@@ -350,7 +358,7 @@
 - [x] 실제 HAOS auto-start false/true: PASS — 두 옵션의 의도된 shell/Codex 시작 동작을 사용자 확인.
 - [x] App update Codex 인증 영속성: PASS — App 삭제 없이 연속 업데이트한 환경에서 로그인 상태와 인증된 Codex 실행 유지.
 - [x] device code 로그인과 App 재시작 인증 영속성: PASS — 사용자 실기 확인.
-- [x] Home Assistant Network 공개키 SSH와 remote app server: PASS — 사용자 mobile Remote → 연결된 desktop SSH project → HAOS `/config` E2E 확인.
+- [x] Home Assistant Network 공개키 SSH와 remote app server: PASS — 사용자 mobile Remote → HAOS App 직접 SSH → `/config` E2E 확인.
 - [x] 실제 `/config` write/rollback, Core REST 조회, Supervisor 조회/direct log/config-check: PASS — `/config` 임시 변경 정리, `/config`·`/states`·`/services`, Core/App direct logs, self/info, `/core/check` 확인.
 - [x] `0.1.3-dev`의 `ha-core-logs`/`ha-addon-logs`: PASS — 사용자 별도 결과와 보고서에서 모두 rc 0/nonempty이며 direct `text/x-log` 요청과 helper 사이의 불일치나 negotiation 오류 없음.
 - [x] 실제 Core service call: PASS — 임시 persistent notification 생성·dismiss 각각 rc 0, 정리 확인.
@@ -407,7 +415,7 @@
 - [x] 기본 host port `2223` 노출
 - [x] login shell에서 `codex`, `CODEX_HOME`, `/config` 확인
 - [x] Windows OpenSSH 접속 검증 (local Docker port; HA Network는 M2)
-- [x] Desktop SSH remote app-server bootstrap 검증 — mobile Remote 경유 사용자 E2E
+- [x] mobile Remote 직접 SSH app-server bootstrap 검증 — 사용자 E2E
 
 ### 6. Home Assistant API 운영 기능
 
@@ -446,7 +454,7 @@
 - [x] auto-start false/true 동작
 - [x] 장치 코드 로그인 방식 확인
 - [x] App 업데이트 후 Codex 인증 유지
-- [x] SSH/Remote SSH 테스트 — mobile Remote 경유 desktop SSH project
+- [x] SSH/Remote SSH 테스트 — mobile Remote의 HAOS App 직접 SSH
 - [x] `/config` 파일 수정·롤백 테스트
 - [x] Core API 상태·서비스 목록 조회
 - [x] 안전한 Core service call — 임시 persistent notification 생성·dismiss와 정리
@@ -484,7 +492,7 @@
 | Q-003 | Codex `workspace-write` sandbox가 HAOS App 컨테이너에서 정상 작동하는가? | MVP는 container 내부 `danger-full-access`; 이후 비교 테스트 |
 | Q-004 | `manager` 역할에서 필요한 Supervisor 엔드포인트가 모두 허용되는가? | endpoint별 통합 테스트로 확인; admin 자동 승격 금지 |
 | Q-005 | 실제 사용자 HAOS 아키텍처는 무엇인가? | 최초 MVP는 amd64; 확인·검증 후 aarch64 추가 |
-| Q-006 | Desktop SSH project가 Alpine/musl 원격 app-server를 정상 시작하는가? | 사용자 mobile Remote 경유 E2E PASS; Codex/아키텍처 변경 시 재검증 |
+| Q-006 | mobile Remote 직접 SSH가 Alpine/musl 원격 app-server를 정상 시작하는가? | 사용자 E2E PASS; Codex/아키텍처 변경 시 재검증 |
 
 ## 최근 완료 기록
 
@@ -511,14 +519,14 @@
 - 결과: 저장소를 public으로 전환하고 PR #1을 `main`에 병합해 Home Assistant App Store에 `https://github.com/Kanu-Coffee/codex-for-home-assistant`를 추가할 수 있게 했다.
 - 배포 검증: public GitHub 페이지와 raw `repository.yaml`, App `config.yaml`, Dockerfile을 인증 없이 조회했다.
 - 자동 검증: merge commit `ce06435`의 main CI에서 App config, lint/unit, amd64 build/smoke가 모두 PASS했다. 최초 build attempt의 Alpine CDN TLS 오류는 재실행에서 정상 통과했다.
-- 미검증: 실제 HAOS 설치·시작, Ingress, device auth, Network SSH, Codex Desktop Remote SSH, 실제 Core/Supervisor 호출은 사용자의 M2 테스트 결과를 기다린다.
+- 미검증: 실제 HAOS 설치·시작, Ingress, device auth, Network SSH, ChatGPT mobile Remote 직접 SSH, 실제 Core/Supervisor 호출은 사용자의 M2 테스트 결과를 기다린다.
 - 다음: 사용자가 amd64 HAOS App Store에서 public 저장소를 추가하고 설치·사용한 뒤 오류와 수정사항을 전달한다.
 
 ### 2026-07-13 — amd64 local MVP
 
 - 결과: 설치 가능한 Local App source, Codex CLI, Ingress terminal runtime, 공개키 SSH, API helper, CI와 운영 문서를 구현했다.
 - 로컬 검증: amd64 build, 24 unit/policy tests, full Docker smoke, App/shell/YAML/Markdown/Docker lint와 secret scan 통과.
-- 미검증: 실제 HAOS Ingress, device auth/update persistence, Home Assistant Network 2223, Codex Desktop Remote SSH, 실제 Core/Supervisor manager API.
+- 미검증: 실제 HAOS Ingress, device auth/update persistence, Home Assistant Network 2223, ChatGPT mobile Remote 직접 SSH, 실제 Core/Supervisor manager API.
 - 전달: 구현 커밋 `95bc564`, 전달 기록 `29c67b5`, CI 수정 `a09301a`를 private origin에 push하고 draft PR #1을 생성했다. `a09301a`의 원격 CI 6 jobs는 모두 PASS했다.
 - 다음: HAOS amd64에서 M2 E2E를 수행하고 검증된 결과만 PR에 반영한다.
 

@@ -3,10 +3,10 @@
 ## 1. 컨텍스트
 
 ```text
-ChatGPT mobile Remote ── Desktop App ── SSH ───┐
-Windows Terminal ─────────────────────── SSH ───┤
-Home Assistant Frontend ──── Ingress/WebSocket ┤
-                                               ▼
+ChatGPT mobile Remote ──────────────── SSH ───┐
+Windows Terminal ───────────────────── SSH ───┤
+Home Assistant Frontend ─── Ingress/WebSocket ┤
+                                              ▼
                               Codex for Home Assistant App
                               ├─ Codex CLI
                               ├─ ttyd
@@ -412,17 +412,15 @@ Ingress connection
 
 ```text
 ChatGPT mobile Remote (선택)
-  → paired desktop app
-  → ~/.ssh/config alias
   → App host:2223
   → public key auth
   → login shell loads runtime env
   → command -v codex
-  → Codex remote app-server bootstrap
+  → App 내장 Codex remote app-server bootstrap
   → remote project /config
 ```
 
-SSH host key가 재시작마다 바뀌면 Remote SSH가 깨지므로 `/data` 영속화는 필수다.
+모바일 Remote가 App의 SSH endpoint에 직접 연결하므로 별도의 Mac/Windows desktop app 또는 중계 host는 필요하지 않다. 일반 SSH client는 `/config`의 Bash를 열고, 모바일 Remote는 SSH를 통해 내장 `codex` app-server를 bootstrap한다. SSH host key가 재시작마다 바뀌면 Remote SSH가 깨지므로 `/data` 영속화는 필수다.
 
 ## 11. 실패 모드
 

@@ -100,7 +100,7 @@
 - Codex authentication 및 headless/device code login  
   https://developers.openai.com/codex/auth
 
-- Codex Remote SSH connections  
+- ChatGPT Remote connections — 일반 desktop-host 흐름 참고용이며 이 App의 검증된 모바일 직접 SSH 경로와 구분
   https://developers.openai.com/codex/remote-connections
 
 - Codex configuration reference  
@@ -145,14 +145,14 @@
 - Core `2026.7.2`의 `automation/config` 성공 응답은 automation entity의 `raw_config`를 그대로 반환하므로, unavailable/invalid automation에서는 `{ "config": null }`이 합법적인 성공 응답일 수 있다.
 - Supervisor API는 `http://supervisor/`와 `SUPERVISOR_TOKEN`을 사용한다.
 - `hassio_role` 값에는 `manager`와 `admin`이 별도로 존재한다.
-- Codex Remote SSH는 원격 login shell의 PATH에서 `codex`를 찾고 원격 인증을 요구한다.
-- ChatGPT mobile Remote는 SSH host에 직접 연결하지 않고 페어링된 desktop app을 제어하며, desktop app이 SSH remote project와 app server를 담당한다.
+- 이 App의 ChatGPT mobile Remote 경로는 App SSH endpoint에 직접 연결하며, 원격 login shell의 PATH에서 `codex`를 찾아 내장 app-server를 bootstrap한다.
+- 이 App 경로에는 별도의 Mac/Windows desktop app이나 페어링된 중계 host가 필요하지 않다.
 - Headless Codex는 `codex login --device-auth` 또는 local `auth.json` 복사를 지원한다.
 - Codex config는 `approval_policy`, `sandbox_mode`, file credential store를 지원한다.
 - Supervisor 2026.04부터 legacy `build.yaml`과 자동 `BUILD_FROM` 주입을 사용하지 않으며 Dockerfile이 build source of truth다.
 - 현재 generic Home Assistant Alpine base는 `3.24`, builder composite actions는 `2026.06.0`이다.
 - Codex CLI는 `0.144.1` amd64 musl release artifact와 GitHub asset digest를 사용한다.
-- Codex Remote SSH는 remote login shell의 PATH에서 `codex`를 찾고 remote host 자체의 인증을 요구한다.
+- 직접 Remote SSH는 remote login shell의 PATH에서 `codex`를 찾고 HA App에 저장된 Codex 인증을 요구한다.
 - Supervisor Core/App 로그 endpoint는 `Accept: text/plain` 또는 `text/x-log`를 사용하며 JSON Accept만 보내면 협상이 실패할 수 있다.
 - Codex는 `CODEX_HOME`의 `AGENTS.md`를 전역 지침으로 읽고 프로젝트 root부터 현재 디렉터리까지 더 가까운 지침을 뒤에 결합한다.
 - OpenAI MCP tool surface는 tool description과 JSON schema를 모델에 제공하고 read-only annotation을 approval filtering에 사용할 수 있으므로, 사용자 명시 기억의 호출 조건은 model-visible description에 두되 source/status/transient/canonical 검증은 server-side에서도 강제해야 한다.

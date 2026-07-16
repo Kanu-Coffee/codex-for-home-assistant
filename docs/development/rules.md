@@ -26,7 +26,7 @@
 
 - Codex CLI
 - Ingress 웹 터미널
-- SSH 및 Codex Desktop Remote SSH
+- SSH 및 ChatGPT mobile Remote 직접 SSH
 
 어느 하나를 제거하거나 별도 제품으로 분리하지 않는다.
 

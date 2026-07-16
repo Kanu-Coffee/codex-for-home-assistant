@@ -87,7 +87,7 @@
 - 외부 접근은 VPN/mesh network 권장
 - host key 영속화
 - 로그인 시도 로그
-- mobile Remote는 HAOS에 직접 SSH하지 않고 신뢰한 desktop app의 SSH 연결을 제어하므로 desktop 계정·device pairing도 접근 경계로 취급
+- mobile Remote가 HA App SSH endpoint에 직접 연결하므로 ChatGPT 계정, 휴대폰, SSH 개인키, `authorized_keys`와 HA/VPN network 도달성을 모두 접근 경계로 취급
 
 ### T-006 Prompt injection 또는 잘못된 에이전트 판단
 
