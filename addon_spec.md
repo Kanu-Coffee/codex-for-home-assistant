@@ -329,7 +329,7 @@ search/related
 - entity registry와 state의 합집합에서 automation을 찾고 허용된 식별자, 표시명·description, area/device/entity relation만 저장한다. state가 없는 disabled registry automation도 index한다. active graph는 공식 payload `search/related(item_type=automation, item_id=<automation entity_id>)`로 요청하며 `item_type=entity`를 대체 graph로 사용하지 않는다. Core가 unavailable automation에 성공 응답으로 주는 explicit `config: null`은 빈 config와 bounded warning으로 수용한다. 개별 related 요청의 정상 result envelope가 실기에서 관측한 `success:false`, `error.code=unknown_error`인 경우만 빈 enrichment와 warning으로 격리하고 config-derived 직접 관계를 유지한다. 그 밖의 command code, config 실패, server/client timeout, unauthorized, invalid format, transport/close/protocol, 누락·malformed envelope와 malformed successful related 응답은 전체 refresh를 실패시킨다.
 - `get_states`의 state와 임의 attributes는 fresh expectation 비교 뒤 폐기한다. 표시명, device class, icon, automation id/mode 같은 명시적 allowlist metadata만 catalog에 정규화할 수 있다.
 - automation raw config, 임의 response, `/config` 원문, 대화 transcript/prompt, token·secret과 비허용 field는 DB, FTS, audit와 log에 쓰지 않는다.
-- optional related의 관측된 `unknown_error`를 제외한 command/대상 실패, unsupported 또는 malformed response와 transport interruption은 partial canonical commit이 아니라 stale/degraded retry가 되며 고정 command별 또는 연결 단계별 allowlist code를 status에 남긴다. Related warning은 고정 prefix와 allowlisted automation ID만 포함하고 전체 snapshot에서 최대 100개로 제한한다.
+- optional related의 관측된 `unknown_error`를 제외한 command/대상 실패, unsupported 또는 malformed response와 transport interruption은 partial canonical commit이 아니라 stale/degraded retry가 되며 고정 command별 또는 연결 단계별 allowlist code를 status에 남긴다. 이 상태 전이는 refresh가 실제 실패한 경우의 증거이며 scheduler 시도와 겹치지 않은 짧은 Core outage를 사후 추정하지 않는다. Related warning은 고정 prefix와 allowlisted automation ID만 포함하고 전체 snapshot에서 최대 100개로 제한한다.
 
 ### CLI와 MCP 계약
 
