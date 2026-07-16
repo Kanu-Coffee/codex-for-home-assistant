@@ -27,7 +27,7 @@ The app is currently `stage: experimental` and `boot: manual`. aarch64 devices a
 - A Web terminal inside Home Assistant Ingress
 - Codex CLI running from `/config`
 - Core REST API and Supervisor `manager` API helpers
-- Public-key-only SSH and desktop Codex SSH projects
+- Public-key-only SSH for direct ChatGPT mobile Remote access to the bundled Codex environment
 - Playwright tools that inspect dashboards and web interfaces in real Headless Chromium
 - This project's own `ha_memory` for verified HA structure and durable information explicitly provided by the user
 
@@ -162,14 +162,14 @@ Ingress opens inside Home Assistant authentication, so you do not need to expose
 
 SSH is optional. If you do not use it, leave `authorized_keys` empty and disable the Network port.
 
-1. If your PC does not already have an Ed25519 key, create one:
+1. If the SSH client does not already have an Ed25519 key, create one. This example also supports optional testing from a PC:
 
    ```powershell
    ssh-keygen -t ed25519
    Get-Content "$HOME\.ssh\id_ed25519.pub"
    ```
 
-2. Add the single output line beginning with `ssh-ed25519` to `authorized_keys`, then restart the app. Never copy the `id_ed25519` private key.
+2. Add the single output line beginning with `ssh-ed25519` to `authorized_keys`, then restart the app. Keep the private key only on the client that connects; never paste it into documentation, logs, or issues.
 3. In the app's **Network** settings, check the host port for `22/tcp`. The default is `2223`.
 4. Add a specific host alias to `~/.ssh/config` on your PC:
 
@@ -192,23 +192,33 @@ Password and keyboard-interactive authentication are blocked. For access away fr
 
 ### ChatGPT mobile Remote
 
-Your phone does not connect directly to the HAOS app.
+ChatGPT mobile Remote connects directly to the HA app's public-key SSH endpoint. The HA app image includes both Codex CLI and the Remote app server, so no separate Mac/Windows desktop app or relay host is required.
 
 ```text
-ChatGPT mobile app
-  → Mac/Windows desktop app in the same account and workspace
-  → public-key SSH
-  → /config in Codex for Home Assistant
+ChatGPT mobile Remote
+  → public-key SSH (HA host:2223, root)
+  → Codex app server bundled in the HA app
+  → /config remote project
 ```
 
-1. Complete the SSH setup above and verify `ssh codex-ha` on the desktop PC.
-2. In the remote shell, check `codex --version` and the sign-in state.
-3. In the ChatGPT desktop app, open **Settings → Connections → SSH** and add or enable `codex-ha`.
-4. Select `/config` as the remote project folder.
-5. Start **Set up Remote** in the desktop app and scan the QR code with your phone.
-6. Confirm that the phone and desktop use the same ChatGPT account and workspace, then complete any required MFA or SSO steps.
+1. In the Web UI, complete `ha-codex-login` and confirm that `codex login status` reports a signed-in session.
+2. Add only the **public key** paired with the key used by mobile Remote to `authorized_keys`, then restart the app.
+3. Check the host port for `22/tcp` in the app's **Network** settings. The default is `2223`.
+4. When adding an SSH connection in ChatGPT mobile Remote, use these values:
 
-From mobile, you can start a task, continue an existing task, send follow-up instructions, approve actions, and inspect diffs, tests, and terminal results. The desktop host must be awake and online, and the ChatGPT app must be running. Remote availability can vary by plan, region, workspace policy, and app version. See OpenAI's [Remote connections](https://learn.chatgpt.com/docs/remote-connections) for the latest procedure.
+   | Field | Value |
+   | --- | --- |
+   | Host | HA hostname or IP reachable from the phone |
+   | Port | Host port shown in App Network, default `2223` |
+   | User | `root` |
+   | Authentication | Private key matching the public key in `authorized_keys` |
+   | Project path | `/config` |
+
+5. When connected, mobile Remote uses `codex` from the SSH login shell to start the app's bundled app server and opens the Codex project in `/config`.
+
+A regular SSH client opens a Bash shell in `/config`; it does not automatically open the Codex interface. Run `ha-codex` or `codex` manually in that case. Mobile Remote bootstraps the remote app server and therefore opens the Codex task directly. The shared Web UI `tmux` session and a mobile Remote session are separate by default.
+
+From mobile, you can start a task, continue an existing task, send follow-up instructions, approve actions, and inspect diffs, tests, and terminal results. The HA app must be running and its SSH host port must be reachable from the phone. For access away from home, use a trusted VPN or mesh VPN instead of publishing the SSH port. Menu names and Remote availability can vary by ChatGPT app version, plan, region, and workspace policy.
 
 ## Common use cases
 

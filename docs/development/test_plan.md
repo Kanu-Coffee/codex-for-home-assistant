@@ -233,16 +233,16 @@ ssh -p 2223 root@<ha-host>
 - `/config` 시작
 - `codex --version` 성공
 
-### E2E-007 Desktop SSH 프로젝트와 mobile Remote
+### E2E-007 ChatGPT mobile Remote 직접 SSH
 
-1. Windows `~/.ssh/config` alias 생성
-2. 일반 `ssh <alias>` 성공
-3. Codex Desktop Connections에 host 추가
-4. `/config` 선택
-5. 파일 읽기/테스트 파일 생성/삭제
-6. 선택적으로 mobile Remote에서 연결된 desktop host의 같은 SSH 프로젝트 작업 계속
+1. mobile Remote용 공개키를 App `authorized_keys`에 등록하고 App 재시작
+2. mobile Remote에 HA host, App Network port, `root`, 대응 개인키 등록
+3. 별도 desktop host 없이 mobile Remote에서 App SSH endpoint에 직접 연결
+4. App 내장 remote app-server가 시작되고 `/config` 프로젝트가 열리는지 확인
+5. 파일 읽기/테스트 파일 생성/삭제 후 정리
+6. App 재시작 뒤 동일 host key와 인증으로 재연결
 
-성공 기준: remote app server가 시작되고 desktop 또는 mobile Remote를 통해 작업 완료
+성공 기준: mobile Remote의 직접 SSH로 App 내장 remote app-server가 시작되고 `/config` 작업을 완료하며 Mac/Windows desktop 중계가 필요하지 않음
 
 ### E2E-008 Core API
 

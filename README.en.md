@@ -54,7 +54,7 @@ These images show the real Web terminal from the public `0.5.0` image, captured 
 | Clean up entities | Find duplicate, unused, or broken-reference candidates and show their impact. Deletion or registry changes require separate confirmation. |
 | Diagnose errors | Review configuration files, `ha-config-check`, Core/App logs, and current state together, then propose the smallest fix. |
 | Work directly on Home Assistant | Change `/config` files and use supported Core/Supervisor APIs, then recheck results through fresh APIs where possible. |
-| Continue while away from home | Use the Ingress terminal in the Home Assistant mobile app or website, or continue a desktop SSH project through ChatGPT mobile Remote. |
+| Continue while away from home | Use the Ingress terminal in the Home Assistant mobile app or website, or connect ChatGPT mobile Remote directly to the app's SSH endpoint. |
 | Preserve context about your home | Keep verified HA structure and user-stated aliases, purposes, and preferences in this project's local memory, then retrieve only relevant context for later work. |
 
 Custom cards such as Bubble Card and Mushroom are not bundled with the app. Ask Codex to use components you already have, or to present an installation plan for review first.
@@ -64,9 +64,8 @@ Custom cards such as Bubble Card and Mushroom are not bundled with the app. Ask 
 ```mermaid
 flowchart LR
     M["Home Assistant mobile/web"] -->|Ingress| T["Shared Web terminal"]
-    P["ChatGPT mobile Remote"] --> D["Mac/Windows desktop app"]
-    D -->|Public-key SSH| S["SSH shell / remote project"]
-    T --> C["Codex CLI"]
+    P["ChatGPT mobile Remote"] -->|Public-key SSH| S["HA app SSH / Codex app server"]
+    T --> C["Bundled Codex CLI"]
     S --> C
     C --> F["Read and edit /config"]
     C --> A["Core and Supervisor APIs"]
@@ -156,9 +155,9 @@ Show each item's references and cleanup risk in a table. Do not delete anything.
 | Method | Setup | What to expect |
 | --- | --- | --- |
 | Home Assistant Ingress | Start the app and select **OPEN WEB UI** | The simplest option. Use the same terminal session in the HA mobile app or mobile web interface. |
-| ChatGPT mobile Remote | Desktop app, public-key SSH, and Remote pairing | Start tasks, send follow-ups, approve actions, and inspect results from a phone. The phone does not connect directly to HAOS. |
+| ChatGPT mobile Remote | A public key and the HA app's SSH host and port | Connect directly to the HA app's SSH endpoint to start tasks, send follow-ups, approve actions, and inspect results from a phone. |
 
-The mobile Remote path is **ChatGPT mobile → Mac or Windows desktop app in the same account/workspace → this app's `/config` over SSH**. The desktop host must be awake and online, and the app must be running. Availability can vary by ChatGPT plan, region, workspace policy, and app version. See [ChatGPT mobile Remote in the user guide](codex_home_assistant/DOCS.en.md#chatgpt-mobile-remote) for setup details.
+The mobile Remote path is **ChatGPT mobile Remote → public-key SSH → the Codex app server bundled in this HA app → `/config`**. No separate Mac/Windows desktop app or relay host is required. The HA app must be running and its SSH host port must be reachable from the phone; use a VPN or mesh VPN instead of exposing that port directly to the internet. See [ChatGPT mobile Remote in the user guide](codex_home_assistant/DOCS.en.md#chatgpt-mobile-remote) for setup details.
 
 ## Verified Home Assistant memory
 

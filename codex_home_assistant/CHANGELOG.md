@@ -389,5 +389,5 @@ All notable changes to this App are documented in this file.
 
 - No registry `image` is configured; this public development repository installs by building its Dockerfile on the amd64 Home Assistant host.
 - Local Docker verification covers public-key SSH, password rejection, host-key/config persistence, degraded no-key operation, API helper error/redaction behavior, and the complete lint suite.
-- Actual HAOS amd64 installation, Ingress/WebSocket behavior, device-auth persistence, Network port mapping, Windows SSH, Codex Desktop Remote SSH on Alpine/musl, real Core service calls, and Supervisor `manager` endpoints remain unverified M2 work.
+- Actual HAOS amd64 installation, Ingress/WebSocket behavior, device-auth persistence, Network port mapping, Windows SSH, direct ChatGPT mobile Remote SSH to the bundled Codex app server on Alpine/musl, real Core service calls, and Supervisor `manager` endpoints remain unverified M2 work.
 - Only amd64 is declared. aarch64 is not supported or claimed.
