@@ -67,6 +67,24 @@ function testOverride(name, fallback) {
   return process.env[name] || fallback;
 }
 
+function trustedOwnerUid() {
+  if (process.platform === "win32") return null;
+  if (
+    process.env.HA_FEEDBACK_TEST_MODE === "1" &&
+    typeof process.getuid === "function"
+  ) {
+    return process.getuid();
+  }
+  return 0;
+}
+
+function assertTrustedOwner(stat, label) {
+  const expectedUid = trustedOwnerUid();
+  if (expectedUid === null || stat.uid === expectedUid) return;
+  const expectedOwner = expectedUid === 0 ? "root" : "the test runtime user";
+  fail(`${label} must be owned by ${expectedOwner}`, 65);
+}
+
 function reportRoot() {
   return path.resolve(testOverride("HA_FEEDBACK_REPORT_ROOT", DEFAULT_REPORT_ROOT));
 }
@@ -431,9 +449,7 @@ function readRegularPrivateFile(filePath, maxBytes, label) {
   if (!initialStat.isFile() || initialStat.isSymbolicLink() || initialStat.nlink !== 1) {
     fail(`${label} must be a regular single-link file`, 65);
   }
-  if (process.platform !== "win32" && initialStat.uid !== 0) {
-    fail(`${label} must be owned by root`, 65);
-  }
+  assertTrustedOwner(initialStat, label);
   let descriptor;
   try {
     descriptor = fs.openSync(
@@ -454,9 +470,7 @@ function readRegularPrivateFile(filePath, maxBytes, label) {
       fail(`${label} changed or is not a regular single-link file`, 65);
     }
     if (stat.size > maxBytes) fail(`${label} is too large`, 65);
-    if (process.platform !== "win32" && stat.uid !== 0) {
-      fail(`${label} must be owned by root`, 65);
-    }
+    assertTrustedOwner(stat, label);
     if (process.platform !== "win32" && (stat.mode & 0o777) !== 0o600) {
       fail(`${label} must use private mode 0600`, 65);
     }
@@ -538,9 +552,7 @@ function ensureDirectoryNoLinks(directory, mode = 0o700) {
   if (!stat.isDirectory() || stat.isSymbolicLink()) {
     fail("managed path must be a real directory", 65);
   }
-  if (process.platform !== "win32" && stat.uid !== 0) {
-    fail("managed directory must be owned by root", 65);
-  }
+  assertTrustedOwner(stat, "managed directory");
   fs.chmodSync(absolute, mode);
   assertNoSymlinkComponents(absolute);
   return absolute;
@@ -1157,9 +1169,7 @@ function resolveReport(inputPath) {
   if (!directoryStat.isDirectory() || directoryStat.isSymbolicLink()) {
     fail("report directory is unsafe", 65);
   }
-  if (process.platform !== "win32" && directoryStat.uid !== 0) {
-    fail("report directory must be owned by root", 65);
-  }
+  assertTrustedOwner(directoryStat, "report directory");
   if (process.platform !== "win32" && (directoryStat.mode & 0o777) !== 0o700) {
     fail("report directory must use private mode 0700", 65);
   }
@@ -1216,17 +1226,13 @@ function renderCommand(inputPath) {
 function secureGhConfigTree(directory) {
   const stat = fs.lstatSync(directory);
   if (!stat.isDirectory() || stat.isSymbolicLink()) fail("GitHub CLI config directory is unsafe", 65);
-  if (process.platform !== "win32" && stat.uid !== 0) {
-    fail("GitHub CLI config directory must be owned by root", 65);
-  }
+  assertTrustedOwner(stat, "GitHub CLI config directory");
   fs.chmodSync(directory, 0o700);
   for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
     const target = path.join(directory, entry.name);
     const targetStat = fs.lstatSync(target);
     if (targetStat.isSymbolicLink()) fail("GitHub CLI config contains a symbolic link", 65);
-    if (process.platform !== "win32" && targetStat.uid !== 0) {
-      fail("GitHub CLI config contains a file not owned by root", 65);
-    }
+    assertTrustedOwner(targetStat, "GitHub CLI config entry");
     if (targetStat.isDirectory()) {
       secureGhConfigTree(target);
     } else if (targetStat.isFile() && targetStat.nlink === 1) {
