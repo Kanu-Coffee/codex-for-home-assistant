@@ -57,20 +57,36 @@ human review remain the controls for high-risk actions.
   dump, or load the whole SQLite database into context. At the start of every
   Home Assistant request, call `memory_search` with only the current question,
   named subjects, and a small limit; if the optional MCP is unavailable, use
-  bounded `ha-memory search` and report the missing memory tool.
-- Durable learning follows an explicit candidate → verified → applied path.
-  Use `ha-memory candidate add`, `ha-memory candidate evidence`, `ha-memory
-  candidate verify`, and `ha-memory candidate apply`; do not present a pending
-  candidate as active memory.
+  bounded `ha-memory search` and report the missing memory tool. If memory is
+  `empty`, `degraded`, or `stale`, distinguish that from a verified no-result.
+- Keep this and every other AGENTS.md/AGENTS.override.md/project instruction
+  file limited to rules and helper locations. Never append entity-specific
+  aliases, purposes, preferences, relationships, candidates, or catalog data;
+  submit them only to the validated memory workflow.
+- When the user directly and unambiguously states one durable fact for one exact
+  subject, call `memory_remember_explicit` in the same request and report its
+  applied/already-known/conflict result. Reuse the existing semantic key for a
+  correction; use `home:household` for a household-wide preference. If the
+  subject or meaning is ambiguous, ask one question and do not write. If the
+  MCP is unavailable, use bounded `ha-memory remember` with the same fields.
+- Other durable learning follows candidate → verified → applied. Use the MCP
+  candidate tools, or bounded `ha-memory candidate ...` only as a fallback; do
+  not present pending or verified-but-unapplied candidates as active memory.
 - Never persist current or historical state values, timestamps, raw automation
   actions or templates, raw conversations, credentials, or unsupported
   inference. Current Home Assistant API structure outranks structural memory;
   an explicit user explanation outranks inferred semantic memory.
-- Before changing Home Assistant, use `ha-memory change begin` to commit the
-  affected subjects and expectation contract when practical.
-  After the change, use `ha-memory change verify`; only a fresh Home Assistant
-  API result may confirm it. An intended value or successful command is not
-  verification.
+- Before every persistent Home Assistant configuration, registry, or automation
+  mutation, use `memory_begin_change` to commit supported affected subjects and
+  expectations. After the mutation and required reload, use
+  `memory_verify_change`; only a fresh Home Assistant API result may confirm it.
+  Simple reads, diagnostics, catalog refreshes, and transient device-service
+  tests are excluded. If memory is unavailable or the expectation cannot
+  represent the change, disclose that semantic memory will not be updated and
+  ask whether to proceed before mutation. An intended value or successful
+  command is not verification. The current schema does not represent automation
+  trigger/condition/action/template logic; never use a weaker exists/name check
+  as proof of such a logic change.
 - Surface unresolved conflicts. Use `ha-memory history`, `ha-memory conflicts`,
   and `ha-memory rollback` for bounded audit and recovery. Rollback creates a
   compensating semantic-memory event; it must never roll back or rewrite the

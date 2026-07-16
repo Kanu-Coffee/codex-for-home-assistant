@@ -61,6 +61,9 @@ const SOURCE_AUTHORITY = {
 };
 const STRUCTURAL_AUTHORITY = 1_000;
 const CATALOG_FRESHNESS_MS = 24 * 60 * 60 * 1000;
+const SQLITE_BUSY_TIMEOUT_MS = 5_000;
+const SQLITE_INTEGRITY_RETRY_MS = 25;
+const SQLITE_INTEGRITY_RETRY_SIGNAL = new Int32Array(new SharedArrayBuffer(4));
 const CANONICAL_CONFLICT_REASONS = new Set([
   "ha_subject_missing",
   "ha_canonical_mismatch",
@@ -376,6 +379,20 @@ function lstatIfPresent(path) {
   }
 }
 
+function checkEphemeralSqliteFile(path) {
+  try {
+    checkStorageObject(path, "file");
+    return true;
+  } catch (error) {
+    // SQLite removes WAL, shared-memory, and rollback-journal files as the
+    // final connection closes. Disappearance during inspection is therefore
+    // expected; every object that remains present must still pass the full
+    // type, link-count, owner, and mode checks above.
+    if (error?.code === "ENOENT") return false;
+    throw error;
+  }
+}
+
 function prepareStorage(dbPath) {
   const directory = dirname(dbPath);
   if (!lstatIfPresent(directory)) mkdirSync(directory, { recursive: true, mode: 0o700 });
@@ -386,16 +403,17 @@ function prepareStorage(dbPath) {
     chmodSync(dbPath, 0o600);
   }
   for (const suffix of ["-wal", "-shm", "-journal"]) {
-    const auxiliaryPath = `${dbPath}${suffix}`;
-    if (lstatIfPresent(auxiliaryPath)) checkStorageObject(auxiliaryPath, "file");
+    checkEphemeralSqliteFile(`${dbPath}${suffix}`);
   }
 }
 
 function secureSqliteFiles(dbPath) {
-  for (const path of [dbPath, `${dbPath}-wal`, `${dbPath}-shm`]) {
-    if (!lstatIfPresent(path)) continue;
-    checkStorageObject(path, "file");
-    chmodSync(path, 0o600);
+  if (lstatIfPresent(dbPath)) {
+    checkStorageObject(dbPath, "file");
+    chmodSync(dbPath, 0o600);
+  }
+  for (const suffix of ["-wal", "-shm"]) {
+    checkEphemeralSqliteFile(`${dbPath}${suffix}`);
   }
 }
 
@@ -709,9 +727,66 @@ function validateExistingSchema(db) {
   return true;
 }
 
-function assertDatabaseIntegrity(db) {
-  const integrity = db.prepare("PRAGMA quick_check").get();
-  if (!integrity || integrity.quick_check !== "ok") {
+function isSqliteLockDiagnostic(value) {
+  return typeof value === "string" &&
+    /^(?:database(?: table)? is locked|database is busy)(?::.*)?$/iu.test(value.trim());
+}
+
+function isConcurrentFtsDiagnostic(value) {
+  return typeof value === "string" &&
+    /^fts5: .+ table "search_fts"$/u.test(value.trim());
+}
+
+function isSqliteBusyError(error) {
+  const extendedCode = Number(error?.errcode);
+  const primaryCode = Number.isInteger(extendedCode) ? extendedCode & 0xff : null;
+  return primaryCode === 5 || primaryCode === 6;
+}
+
+function databaseBusyError() {
+  return new MemoryError(
+    "database_busy",
+    "Home Assistant memory database is busy; retry the request",
+  );
+}
+
+function assertDatabaseIntegrity(db, options = {}) {
+  const deadline = Date.now() + SQLITE_BUSY_TIMEOUT_MS;
+  while (true) {
+    let dataVersionBefore = null;
+    let integrityRows;
+    let dataVersionAfter = null;
+    try {
+      if (options.retryConcurrentFts) {
+        dataVersionBefore = db.prepare("PRAGMA data_version").get()?.data_version ?? null;
+      }
+      integrityRows = db.prepare("PRAGMA quick_check").all();
+      if (options.retryConcurrentFts) {
+        dataVersionAfter = db.prepare("PRAGMA data_version").get()?.data_version ?? null;
+      }
+    } catch (error) {
+      if (isSqliteBusyError(error)) throw databaseBusyError();
+      throw error;
+    }
+    const diagnostics = integrityRows.map((row) => row?.quick_check);
+    if (diagnostics.length === 1 && diagnostics[0] === "ok") return;
+    const lockOnly = diagnostics.length > 0 && diagnostics.every(isSqliteLockDiagnostic);
+    const concurrentFtsOnly = options.retryConcurrentFts === true &&
+      dataVersionBefore !== null &&
+      dataVersionAfter !== null &&
+      dataVersionBefore !== dataVersionAfter &&
+      diagnostics.length > 0 &&
+      diagnostics.every(isConcurrentFtsDiagnostic);
+    if (lockOnly || concurrentFtsOnly) {
+      if (Date.now() >= deadline) throw databaseBusyError();
+      Atomics.wait(
+        SQLITE_INTEGRITY_RETRY_SIGNAL,
+        0,
+        0,
+        SQLITE_INTEGRITY_RETRY_MS,
+      );
+      continue;
+    }
     throw new MemoryError(
       "database_corrupt",
       "Home Assistant memory database failed its integrity check",
@@ -731,20 +806,38 @@ function initializeSchema(db) {
   validateExistingSchema(db);
 }
 
+function validateAndInitializeSchema(db) {
+  return runTransaction(db, () => {
+    assertDatabaseIntegrity(db);
+    initializeSchema(db);
+    assertDatabaseIntegrity(db);
+  });
+}
+
 export function openMemoryDatabase(dbPath = process.env.HA_MEMORY_DB ?? DEFAULT_MEMORY_DB) {
   process.umask(0o077);
   prepareStorage(dbPath);
+  let initializeDatabase = true;
+  let enableWal = true;
   let db;
   try {
     const existingDatabase = lstatIfPresent(dbPath);
     if (existingDatabase && existingDatabase.size > 0) {
       let preflight;
       try {
-        preflight = new DatabaseSync(dbPath, { readOnly: true });
-        assertDatabaseIntegrity(preflight);
-        validateExistingSchema(preflight);
+        preflight = new DatabaseSync(dbPath, {
+          readOnly: true,
+          timeout: SQLITE_BUSY_TIMEOUT_MS,
+        });
+        const schemaReady = validateExistingSchema(preflight);
+        if (schemaReady) {
+          assertDatabaseIntegrity(preflight, { retryConcurrentFts: true });
+        }
+        initializeDatabase = !schemaReady;
+        enableWal = preflight.prepare("PRAGMA journal_mode").get()?.journal_mode !== "wal";
       } catch (error) {
         if (error instanceof MemoryError) throw error;
+        if (isSqliteBusyError(error)) throw databaseBusyError();
         throw new MemoryError(
           "database_corrupt",
           "Home Assistant memory database could not be validated safely",
@@ -753,20 +846,21 @@ export function openMemoryDatabase(dbPath = process.env.HA_MEMORY_DB ?? DEFAULT_
         preflight?.close();
       }
     }
-    db = new DatabaseSync(dbPath);
-    db.exec("PRAGMA journal_mode = WAL");
+    db = new DatabaseSync(dbPath, { timeout: SQLITE_BUSY_TIMEOUT_MS });
+    db.exec(`PRAGMA busy_timeout = ${SQLITE_BUSY_TIMEOUT_MS}`);
     db.exec("PRAGMA synchronous = FULL");
     db.exec("PRAGMA foreign_keys = ON");
-    db.exec("PRAGMA busy_timeout = 5000");
     db.exec("PRAGMA trusted_schema = OFF");
     db.exec("PRAGMA temp_store = MEMORY");
-    assertDatabaseIntegrity(db);
-    initializeSchema(db);
-    assertDatabaseIntegrity(db);
+    if (initializeDatabase) validateAndInitializeSchema(db);
+    if (enableWal) db.exec("PRAGMA journal_mode = WAL");
     secureSqliteFiles(dbPath);
     return db;
   } catch (error) {
     db?.close();
+    if (!(error instanceof MemoryError) && isSqliteBusyError(error)) {
+      throw databaseBusyError();
+    }
     throw error;
   }
 }
@@ -1380,19 +1474,28 @@ function latestSuccessfulSyncId(db) {
 }
 
 function runTransaction(db, callback) {
-  db.exec("BEGIN IMMEDIATE");
+  try {
+    db.exec("BEGIN IMMEDIATE");
+  } catch (error) {
+    if (isSqliteBusyError(error)) throw databaseBusyError();
+    throw error;
+  }
   try {
     const result = callback();
     db.exec("COMMIT");
     return result;
   } catch (error) {
-    db.exec("ROLLBACK");
+    try {
+      db.exec("ROLLBACK");
+    } catch {
+      // SQLite can roll back automatically after a fatal database error.
+    }
     throw error;
   }
 }
 
 function subjectExists(db, subject, activeOnly = true) {
-  if (subject.kind === "home") return true;
+  if (subject.kind === "home") return subject.id === "household";
   const suffix = activeOnly ? " AND active = 1" : "";
   return Boolean(
     db
@@ -2310,6 +2413,31 @@ function rejectTransientMemory(memoryType, memoryKey, value) {
   }
 }
 
+function rejectAmbiguousExplicitMemory(memoryType, memoryKey, value) {
+  rejectTransientMemory(memoryType, memoryKey, value);
+  const serialized = stableJson(value);
+  if (
+    /\b(today|tonight|currently|right now|at the moment|for now|temporarily|this (?:morning|afternoon|evening))\b|오늘|지금|현재|당분간|일시적|임시로/iu.test(
+      serialized,
+    )
+  ) {
+    throw new MemoryError(
+      "transient_rejected",
+      "A time-local statement cannot be applied as durable explicit memory",
+    );
+  }
+  if (
+    /\b(probably|maybe|perhaps|likely|i think|i guess|seems?|seems like)\b|아마도?|추정|것\s*같|거\s*같|듯해|듯하다|듯합니다/iu.test(
+      serialized,
+    )
+  ) {
+    throw new MemoryError(
+      "explicit_fact_ambiguous",
+      "An uncertain statement must remain a candidate until it has stronger evidence",
+    );
+  }
+}
+
 function normalizeCandidateMemoryValue(memoryType, value) {
   if (memoryType === "relationship") {
     const relationship = validateRelationshipValue(value);
@@ -2512,7 +2640,7 @@ export function proposeMemory(db, input) {
          WHERE subject_kind = ? AND subject_id = ? AND memory_type = ?
          AND memory_key = ? AND value_json = ?
          AND authority >= ?
-         AND status IN ('pending', 'verified', 'applied')
+         AND status IN ('pending', 'verified', 'applied', 'conflict')
        ORDER BY id DESC LIMIT 1`,
     )
     .get(
@@ -2534,7 +2662,7 @@ export function proposeMemory(db, input) {
            WHERE subject_kind = ? AND subject_id = ? AND memory_type = ?
            AND memory_key = ? AND value_json = ?
            AND authority >= ?
-           AND status IN ('pending', 'verified', 'applied')
+           AND status IN ('pending', 'verified', 'applied', 'conflict')
          ORDER BY id DESC LIMIT 1`,
       )
       .get(
@@ -3208,6 +3336,118 @@ export function applyMemoryCandidate(db, candidateIdValue) {
   });
 }
 
+export async function rememberExplicitMemory(db, input) {
+  const memoryType = safeText(input.memoryType, 40);
+  if (!MEMORY_TYPES.has(memoryType)) {
+    throw new MemoryError("invalid_memory_type", `Unsupported memory type: ${memoryType}`);
+  }
+  const memoryKey = validateMemoryKey(input.key);
+  if (input.value === undefined || input.value === null) {
+    throw new MemoryError("invalid_value", "Memory value must not be null");
+  }
+  const normalizedValue = normalizeCandidateMemoryValue(memoryType, input.value);
+  rejectAmbiguousExplicitMemory(memoryType, memoryKey, normalizedValue);
+
+  if (memoryType === "relationship") {
+    const { relation } = validateRelationshipValue(normalizedValue);
+    if (RESERVED_RELATIONSHIPS.has(relation)) {
+      throw new MemoryError(
+        "canonical_fact_requires_ha",
+        `Relationship ${relation} must be learned from fresh Home Assistant API evidence`,
+      );
+    }
+  }
+
+  const proposal = proposeMemory(db, {
+    subject: input.subject,
+    memoryType,
+    key: memoryKey,
+    value: normalizedValue,
+    source: "user_explicit",
+    sourceRef: input.sourceRef,
+  });
+  const auditEventIds = [];
+  if (proposal.audit_event_id) auditEventIds.push(proposal.audit_event_id);
+  let candidate = proposal.candidate;
+
+  if (candidate.status === "applied") {
+    return {
+      result: "already_applied",
+      candidate,
+      conflict_id: null,
+      deduplicated: true,
+      audit_event_ids: auditEventIds,
+    };
+  }
+
+  if (candidate.status === "conflict") {
+    const conflict = db
+      .prepare(
+        `SELECT id FROM conflicts
+         WHERE candidate_memory_id = ? AND status = 'open'
+         ORDER BY id DESC LIMIT 1`,
+      )
+      .get(candidate.id);
+    if (!conflict) {
+      throw new MemoryError(
+        "conflict_not_found",
+        `Memory candidate ${candidate.id} has no current conflict`,
+      );
+    }
+    return {
+      result: "conflict",
+      candidate,
+      conflict_id: conflict.id,
+      deduplicated: true,
+      audit_event_ids: auditEventIds,
+    };
+  }
+
+  if (candidate.status === "pending") {
+    const verification = await verifyMemoryCandidate(
+      db,
+      candidate.id,
+      "user_explicit",
+    );
+    if (verification.audit_event_id) {
+      auditEventIds.push(verification.audit_event_id);
+    }
+    candidate = verification.candidate;
+    if (!verification.verified) {
+      return {
+        result: "conflict",
+        candidate,
+        conflict_id: verification.conflict_id ?? null,
+        deduplicated: proposal.deduplicated,
+        audit_event_ids: auditEventIds,
+      };
+    }
+  }
+
+  if (candidate.status !== "verified") {
+    throw new MemoryError(
+      "candidate_not_verified",
+      `Memory candidate ${candidate.id} is ${candidate.status}, not ready to apply`,
+    );
+  }
+
+  const application = applyMemoryCandidate(db, candidate.id);
+  if (application.audit_event_id) auditEventIds.push(application.audit_event_id);
+  const result = application.candidate.status === "conflict"
+    ? "conflict"
+    : application.result === "duplicate"
+      ? "already_applied"
+      : "applied";
+  return {
+    result,
+    application_result: application.result ?? result,
+    candidate: application.candidate,
+    conflict_id: application.conflict_id ?? null,
+    deduplicated: proposal.deduplicated,
+    audit_event_ids: auditEventIds,
+  };
+}
+
 export function rejectMemoryCandidate(db, candidateIdValue, reasonValue) {
   const candidateId = parsePositiveId(candidateIdValue, "Candidate ID");
   let candidate = readAuditedRow(db, "memory_items", candidateId);
@@ -3284,13 +3524,19 @@ export function listMemoryCandidates(db, options = {}) {
   if (!allowedStatuses.has(status)) {
     throw new MemoryError("invalid_status", `Unsupported candidate status: ${status}`);
   }
-  const limit = boundedResultLimit(options.limit, 20, 100);
+  const limit = boundedResultLimit(options.limit, 20, 20);
+  const subject = parseSubject(options.subject);
+  const rows = db
+    .prepare(
+      `SELECT * FROM memory_items
+       WHERE status = ? AND subject_kind = ? AND subject_id = ?
+       ORDER BY id DESC LIMIT ?`,
+    )
+    .all(status, subject.kind, subject.id, limit);
   return {
     status,
-    candidates: db
-      .prepare("SELECT * FROM memory_items WHERE status = ? ORDER BY id DESC LIMIT ?")
-      .all(status, limit)
-      .map(candidateView),
+    subject: subject.key,
+    candidates: rows.map(candidateView),
   };
 }
 
@@ -4424,6 +4670,7 @@ export function rollbackMemoryEvent(db, eventIdValue, reasonValue) {
 }
 
 export function memoryStatus(db, dbPath = process.env.HA_MEMORY_DB ?? DEFAULT_MEMORY_DB) {
+  assertDatabaseIntegrity(db, { retryConcurrentFts: true });
   const freshness = catalogFreshness(db);
   const counts = Object.fromEntries(
     ["pending", "verified", "applied", "rejected", "conflict", "superseded"].map(
@@ -4460,7 +4707,7 @@ export function memoryStatus(db, dbPath = process.env.HA_MEMORY_DB ?? DEFAULT_ME
     schema_version: Number.parseInt(metadataGet(db, "schema_version"), 10),
     database_path: dbPath,
     database_mode: fileMode,
-    integrity: db.prepare("PRAGMA quick_check").get()?.quick_check ?? "unknown",
+    integrity: "ok",
     catalog_status: freshness.status,
     catalog_stored_status: freshness.stored_status,
     catalog_fresh: freshness.fresh,

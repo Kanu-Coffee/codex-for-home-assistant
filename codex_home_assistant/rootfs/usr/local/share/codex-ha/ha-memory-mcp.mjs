@@ -2,7 +2,7 @@ import { spawn } from "node:child_process";
 import { createInterface } from "node:readline";
 
 const SERVER_NAME = "codex-ha-memory";
-const SERVER_VERSION = "1.0.0";
+const SERVER_VERSION = "1.1.0";
 const DEFAULT_PROTOCOL_VERSION = "2024-11-05";
 const CLI_PATH = "/usr/local/bin/ha-memory";
 const CLI_TIMEOUT_MS = 90_000;
@@ -24,19 +24,35 @@ const VERIFICATION_METHODS = new Set([
   "ha_api",
   "change_verification",
 ]);
+const CANDIDATE_STATUSES = new Set([
+  "pending",
+  "verified",
+  "applied",
+  "rejected",
+  "conflict",
+  "superseded",
+]);
 const CONFLICT_STATUSES = new Set(["open", "resolved"]);
 const CONFLICT_WINNERS = new Set(["candidate", "existing", "ha"]);
 
 const SERVER_INSTRUCTIONS = [
   "Search Home Assistant memory at the start of each Home Assistant request,",
   "using only the current question, named subjects, and a small result limit.",
-  "Do not read the SQLite database or load the complete memory store.",
-  "New aliases, purposes, preferences, notes, and relationships are",
-  "candidates until evidence is added, verification succeeds, and the candidate",
-  "is explicitly applied. Never apply a transient state value or an unsupported",
-  "inference. Before a Home Assistant change, commit its subjects and expectation",
-  "contract when practical; after the change, use memory_verify_change so fresh Home Assistant",
-  "API evidence, rather than the intended result, controls the memory update.",
+  "Do not read the SQLite database, load the complete memory store, or write",
+  "entity-specific memory into any AGENTS.md file. If memory is empty, stale,",
+  "degraded, or unavailable, disclose that instead of treating zero results as",
+  "proof that no memory exists. When the user directly and unambiguously states",
+  "one durable alias, purpose, preference, note, or non-canonical relationship",
+  "for one exact subject, call memory_remember_explicit in the same request and",
+  "report whether it was applied or left in conflict. Ask one clarifying question",
+  "instead of writing when the subject or meaning is ambiguous. Never label a",
+  "transient state, observation, or model inference as user-explicit.",
+  "For a persistent Home Assistant configuration, registry, or automation change,",
+  "commit supported subjects and expectations with memory_begin_change before",
+  "mutation, then call memory_verify_change after mutation and any required reload.",
+  "Diagnostics, catalog refreshes, and transient device-service tests are excluded.",
+  "If the expectation cannot represent the change or memory is unavailable, do not",
+  "update semantic memory; disclose the verification gap before proceeding.",
   "For structural facts, current Home Assistant API data outranks memory. For",
   "aliases, purposes, and preferences, explicit user explanations outrank",
   "observations or inference. Expose unresolved conflicts.",
@@ -212,6 +228,50 @@ const tools = [
     annotations: readAnnotations,
   },
   {
+    name: "memory_remember_explicit",
+    title: "Remember one explicit user fact",
+    description:
+      "For one exact subject, run the audited pending-to-verified-to-applied workflow for a durable fact the user directly and unambiguously stated. The server fixes provenance to user_explicit, rejects transient or obviously uncertain values, noncanonical home subjects, and canonical HA relationships, and returns applied, already_applied, or conflict. Do not call for observations, inferences, ambiguous subjects, raw transcripts, or secrets.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        subject: boundedString("Exact entity, device, area, automation, or home:household subject.", 512),
+        memory_type: {
+          type: "string",
+          enum: ["alias", "purpose", "preference", "relationship", "note"],
+          description: "Durable semantic category stated directly by the user.",
+        },
+        key: boundedString("Stable semantic slot. Reuse an existing key for corrections; for new facts prefer user_alias, user_purpose, user_preference.<setting>, user_note.<topic>, or user_relationship.<relation>.", 80),
+        value: {
+          oneOf: [
+            { type: "string", minLength: 1, maxLength: 4096 },
+            {
+              type: "array",
+              minItems: 1,
+              maxItems: 20,
+              uniqueItems: true,
+              items: { type: "string", minLength: 1, maxLength: 500 },
+            },
+            {
+              type: "object",
+              properties: {
+                relation: boundedString("Non-canonical semantic relationship name.", 80),
+                target: boundedString("Relationship target kind:id.", 512),
+              },
+              required: ["relation", "target"],
+              additionalProperties: false,
+            },
+          ],
+          description: "Complete intended durable value. Alias accepts one string or the full intended alias array; relationship accepts relation and target. Never include current state, timestamps, credentials, or raw conversation.",
+        },
+        source_ref: structuredLabel("Lowercase structured provenance label such as user-request:explicit-alias; never copy the user's sentence."),
+      },
+      required: ["subject", "memory_type", "key", "value", "source_ref"],
+      additionalProperties: false,
+    },
+    annotations: writeAnnotations,
+  },
+  {
     name: "memory_propose",
     title: "Propose a memory candidate",
     description:
@@ -256,6 +316,50 @@ const tools = [
         source_ref: structuredLabel("Lowercase structured provenance label, not quoted conversation or state data."),
       },
       required: ["subject", "memory_type", "key", "value", "source", "source_ref"],
+      additionalProperties: false,
+    },
+    annotations: writeAnnotations,
+  },
+  {
+    name: "memory_list_candidates",
+    title: "List bounded memory candidates",
+    description:
+      "List one exact subject's bounded candidate subset for follow-up verification or withdrawal; this cannot be used as a full-store dump.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        status: {
+          type: "string",
+          enum: ["pending", "verified", "applied", "rejected", "conflict", "superseded"],
+          default: "pending",
+          description: "Candidate lifecycle status to return.",
+        },
+        subject: boundedString("Exact subject used to restrict the candidate list.", 512),
+        limit: {
+          type: "integer",
+          minimum: 1,
+          maximum: 20,
+          default: 20,
+          description: "Maximum candidates to return.",
+        },
+      },
+      required: ["subject"],
+      additionalProperties: false,
+    },
+    annotations: readAnnotations,
+  },
+  {
+    name: "memory_reject_candidate",
+    title: "Reject a memory candidate",
+    description:
+      "Reject a non-applied candidate after the user withdraws it or verification shows it should not become active memory; the audit history is retained.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        candidate_id: { ...idSchema, description: "Candidate identifier." },
+        reason: structuredLabel("Lowercase structured rejection reason, not a raw transcript."),
+      },
+      required: ["candidate_id", "reason"],
       additionalProperties: false,
     },
     annotations: writeAnnotations,
@@ -650,6 +754,22 @@ function cliArgumentsForTool(name, rawArguments) {
     }
     case "memory_show":
       return ["show", requireString(args, "subject", { maxLength: 512 })];
+    case "memory_remember_explicit": {
+      const memoryType = requireChoice(args, "memory_type", MEMORY_TYPES);
+      return [
+        "remember",
+        "--subject",
+        requireString(args, "subject", { maxLength: 512 }),
+        "--memory-type",
+        memoryType,
+        "--key",
+        requireString(args, "key", { maxLength: 80 }),
+        "--value-json",
+        requireMemoryValue(args, memoryType),
+        "--source-ref",
+        requireStructuredLabel(args, "source_ref"),
+      ];
+    }
     case "memory_propose": {
       const memoryType = requireChoice(args, "memory_type", MEMORY_TYPES);
       return [
@@ -669,6 +789,31 @@ function cliArgumentsForTool(name, rawArguments) {
         requireStructuredLabel(args, "source_ref"),
       ];
     }
+    case "memory_list_candidates": {
+      const result = [
+        "candidate",
+        "list",
+        "--status",
+        hasOwn(args, "status")
+          ? requireChoice(args, "status", CANDIDATE_STATUSES)
+          : "pending",
+        "--limit",
+        optionalLimit(args, 20, 20),
+      ];
+      result.push(
+        "--subject",
+        requireString(args, "subject", { maxLength: 512 }),
+      );
+      return result;
+    }
+    case "memory_reject_candidate":
+      return [
+        "candidate",
+        "reject",
+        requireId(args, "candidate_id"),
+        "--reason",
+        requireStructuredLabel(args, "reason"),
+      ];
     case "memory_add_evidence":
       return [
         "candidate",

@@ -14,6 +14,7 @@ import {
   proposeMemory,
   refreshMemory,
   rejectMemoryCandidate,
+  rememberExplicitMemory,
   resolveMemoryConflict,
   rollbackMemoryEvent,
   searchMemory,
@@ -121,6 +122,7 @@ function commandHelp() {
       refresh: "Refresh the HA catalog through a fresh Core WebSocket API session",
       search: "Return only bounded, relevant active memory",
       show: "Show one exact active subject",
+      remember: "Verify and apply one unambiguous durable fact stated directly by the user",
       candidate: "add, evidence, verify, apply, reject, or list candidates",
       change: "begin or verify a Home Assistant change",
       conflicts: "List conflicts",
@@ -177,9 +179,20 @@ async function executeCandidateCommand(db, parsed) {
     return listMemoryCandidates(db, {
       status: option(parsed, "status", "pending"),
       limit: positiveInteger(option(parsed, "limit"), "--limit", 20),
+      subject: requiredOption(parsed, "subject"),
     });
   }
   throw new UsageError(`Unknown candidate subcommand: ${subcommand}`);
+}
+
+async function executeRememberCommand(db, parsed) {
+  return rememberExplicitMemory(db, {
+    subject: requiredOption(parsed, "subject"),
+    memoryType: requiredOption(parsed, "memory-type"),
+    key: requiredOption(parsed, "key"),
+    value: jsonValue(requiredOption(parsed, "value-json"), "--value-json"),
+    sourceRef: requiredOption(parsed, "source-ref"),
+  });
 }
 
 function changeSubjects(parsed) {
@@ -262,6 +275,7 @@ export async function executeMemoryCli(argv) {
         requirePositional(parsed.positionals, 1, "subject"),
       );
     }
+    if (command === "remember") return await executeRememberCommand(db, parsed);
     if (command === "candidate") return await executeCandidateCommand(db, parsed);
     if (command === "change") return await executeChangeCommand(db, parsed);
     if (command === "conflicts") {

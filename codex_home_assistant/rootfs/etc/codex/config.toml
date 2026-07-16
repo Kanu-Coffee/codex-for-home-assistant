@@ -14,25 +14,45 @@ For every Home Assistant request, first call the image-managed `ha_memory`
 small result limit. Use the returned relevant subset; never directly read or
 dump `/data/codex-ha-memory/memory.sqlite3` or load the complete memory store.
 If the MCP tool is unavailable, use the bounded `ha-memory search` CLI rather
-than reading SQLite. Use `ha-memory candidate add`, `ha-memory candidate
-evidence`, `ha-memory candidate verify`, and `ha-memory candidate apply` as
-the explicit pending-to-verified-to-applied workflow.
-Submit newly learned durable aliases, purposes, preferences, notes, and
-relationships with `memory_propose`.
-Keep transient state values and unsupported inferences out of active memory:
-candidate evidence, verification, and explicit apply are separate steps.
-Before changing Home Assistant, record the intended subjects and expectation
-contract with
-`memory_begin_change` or `ha-memory change begin` when practical. After
-changing it, call `memory_verify_change` or `ha-memory change verify`; only
-fresh Home Assistant API evidence may confirm the
-result and update memory. For structural facts, current Home Assistant API data
-outranks memory. For aliases, purposes, and preferences, an explicit user
-explanation outranks observation or inference. Surface unresolved conflicts instead of
-silently choosing a stale value; use `ha-memory history`, `ha-memory conflicts`,
-and `ha-memory rollback` for bounded audit and semantic-memory recovery. If the
-optional memory server is unavailable,
-continue the task and report that memory context or verification was unavailable.
+than reading SQLite. If search or `memory_status` says `empty`, `degraded`, or
+`stale`, tell the user that memory is still learning or unavailable; do not
+treat zero results as proof that no memory exists. Never store entity details,
+aliases, purposes, preferences, relationships, or candidates in any AGENTS.md,
+AGENTS.override.md, or project instruction file; those files contain rules only.
+
+When the user directly and unambiguously states one durable, non-secret alias,
+purpose, preference, note, or non-canonical relationship for one exact subject,
+call `memory_remember_explicit` in the same request. Reuse an existing semantic
+key for corrections; for new keys prefer `user_alias`, `user_purpose`,
+`user_preference.<setting>`, `user_note.<topic>`, or
+`user_relationship.<relation>`, and use `home:household` for household-wide
+preferences. If that MCP tool is unavailable, use the bounded `ha-memory
+remember` CLI with the same exact fields. Report briefly whether the fact was
+applied, already known, or left in conflict. If the subject or meaning is
+ambiguous, ask one clarifying question and do not write a candidate. Never
+label a current state, time-local observation, page/log content, or model
+inference as user-explicit. Such facts must use the separate `memory_propose`,
+evidence, verification, and apply tools and remain inactive until their actual
+verification requirement is met.
+
+For every persistent Home Assistant configuration, registry, or automation
+mutation, call `memory_begin_change` before the mutation with the affected
+subjects and a supported closed expectation. After the mutation and any needed
+reload, call `memory_verify_change`; only its fresh Home Assistant API evidence
+may confirm the result and update memory. Simple reads, diagnostics, catalog
+refreshes, and transient device-service tests are excluded. If the expectation
+schema cannot represent the durable change or the optional memory server is
+unavailable, do not update semantic memory: disclose the verification gap and
+ask whether to proceed before mutating Home Assistant. Trigger, condition,
+action, and template logic are not represented by the current automation
+expectation schema; never substitute an exists/name check for such a change.
+For structural facts, current Home Assistant API data outranks memory. For
+aliases, purposes, and preferences, an explicit user explanation outranks
+observation or inference.
+Surface unresolved conflicts instead of silently choosing a stale value; use
+`memory_list_candidates`, `memory_reject_candidate`, `memory_history`,
+`memory_conflicts`, and `memory_rollback` for bounded follow-up and semantic
+memory recovery. Memory rollback never rolls Home Assistant itself back.
 """
 
 [mcp_servers.ha_memory]
@@ -54,7 +74,10 @@ default_tools_approval_mode = "writes"
 enabled_tools = [
   "memory_search",
   "memory_show",
+  "memory_remember_explicit",
   "memory_propose",
+  "memory_list_candidates",
+  "memory_reject_candidate",
   "memory_add_evidence",
   "memory_verify_candidate",
   "memory_apply_candidate",

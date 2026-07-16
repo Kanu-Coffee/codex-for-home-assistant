@@ -216,13 +216,20 @@ docker exec --workdir /config "${PUBLIC_CONTAINER}" \
         | select(.type == "input_text")
         | .text
       ]
-      | any(
-          contains("http://127.0.0.1:8099/")
-          and contains("image-managed")
-          and contains("another browser skill or plugin")
-        )
+      | join(" ")
+      | contains("http://127.0.0.1:8099/")
+        and contains("image-managed")
+        and contains("another browser skill or plugin")
+        and contains("memory_search")
+        and contains("memory_remember_explicit")
+        and contains("memory_begin_change")
+        and contains("memory_verify_change")
+        and contains("AGENTS.override.md")
+        and contains("empty")
+        and contains("degraded")
+        and contains("stale")
     ' >/dev/null \
-  || fail 'Codex model-visible instructions did not contain the canonical 8099 Playwright route'
+  || fail 'Codex model-visible instructions did not contain the browser and memory user-flow contracts'
 
 NETWORK_INFO=$(docker exec "${PUBLIC_CONTAINER}" ha-browser-network-info) \
   || fail 'Home Assistant browser network diagnostics failed'
