@@ -190,6 +190,11 @@ docker cp tests/fixtures/ha_feedback_feature.json \
   "${CONTAINER}:${FIXTURE_DIR}/feature.json" >/dev/null
 docker cp tests/fixtures/ha_feedback_malicious.json \
   "${CONTAINER}:${FIXTURE_DIR}/malicious.json" >/dev/null
+docker exec "${CONTAINER}" chown 0:0 \
+  "${FAKE_GH_BIN}" \
+  "${FIXTURE_DIR}/bug.json" \
+  "${FIXTURE_DIR}/feature.json" \
+  "${FIXTURE_DIR}/malicious.json"
 docker exec "${CONTAINER}" chmod 0755 "${FAKE_GH_BIN}"
 docker exec "${CONTAINER}" chmod 0600 \
   "${FIXTURE_DIR}/bug.json" \
