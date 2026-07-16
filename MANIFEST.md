@@ -10,7 +10,7 @@ SHA-256 checksums of the LF-normalized repository blobs:
 - `8769a74fabb4775f4725f0bbf47fcd9e413a8b7c75b1ce9a8e754dfb4132d7cc`  `implementation_plan.md`
 - `a589c169be49d8084bcc4707618bb4a5dae73608094b064a9159e1eabde59698`  `master_prompt.md`
 - `4a6cfe684cbbbd162ee5e5a5e825d067eec8b9ef2011cdeedc3b5d1762959fb1`  `product_spec.md`
-- `82a2f4519214af8942eeeb7d0ab8e2ef3bc86c56b9cea75e89f3902a641a3820`  `progress.md`
+- `ff6f5ac04eadc0326df15575b158369f42aaf46f7e562422b54f179af80dba8d`  `progress.md`
 - `502a3ce056e2fe21101bbaa353a933b12964f5ce37eb28729ba480f877b33436`  `references.md`
 - `7b7273da594997ceaf071e13b81d357ea828e38f26018fa620ef497bb6c8478f`  `release_git.md`
 - `25a041eee9e7f34f7d11c93cd6d22418f0217621dde8a8bc7c0545b7b6e3a5e0`  `rules.md`

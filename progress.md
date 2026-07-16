@@ -33,7 +33,7 @@
 - 검증 계획: README/App 문서/changelog, ADR-036, Phase 9, security와 E2E-019의 오래된 전체 `NOT RUN` 문구를 위 부분 실기 결과로 교정한다. Markdown/YAML, manifest, secret scan, pytest와 `git diff --check`를 실행하고 runtime code/image/version은 변경하지 않는다.
 - [x] README/App 문서/changelog, ADR-036, Phase 9, security와 E2E-019에서 `never` 실행 완료·14/16 승인 0회 PASS와 잔여 NOT TESTED/NOT RUN 항목을 일치시켰다.
 - [x] Windows Python 3.14에서 pytest **58 passed / 8 jq-dependent skipped**, YAML lint, Markdown 20 files/0 errors, manifest·secret scan과 `git diff --check`가 PASS했다. Runtime file을 바꾸지 않아 local image rebuild는 생략하고 PR Linux CI의 jq/App linter/full image smoke를 최종 회귀로 사용한다.
-- [ ] `never` 수용 증거 commit을 현재 draft PR #28에 push하고 Linux CI와 non-publishing Builder 결과를 기록한다.
+- [x] `never` 수용 증거 commit `9e72c22e007f9c45119d187830d5f222d53621c7`을 draft [PR #28](https://github.com/Kanu-Coffee/codex-for-home-assistant/pull/28)에 push했다. [CI 29460824707](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/29460824707)의 Linux jq 포함 lint/unit, App linter, amd64 full browser approval/memory/managed-auth/user-file/public `0.3.2` update smoke와 non-publishing [Builder 29460824933](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/29460824933)이 PASS했다.
 
 ### 2026-07-16 — public 0.3.2 실제 HAOS memory 재시험 증거 반영
 
