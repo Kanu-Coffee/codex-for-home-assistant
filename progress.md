@@ -34,6 +34,7 @@
 - [x] README/App 문서/changelog, architecture/addon/security/decision/implementation/test 계약과 M2 상태에서 오래된 `0.3.2 live NOT RUN` 표현을 실제 PARTIAL(FAIL 0) 결과로 교정했다. 선택한 immutable App payload와 actual runtime manifest 증거를 분리하고 `docker_api`/host access 금지를 유지했다.
 - [x] Core restart 증거는 요청 수락·daemon process 생존·요청 후 forced fresh sync PASS와 disconnect/reconnect·LKG 상태 NOT OBSERVED로 분리했다. 독립 diff 검토에서 수치·판정·privacy·0.4.0 증거 경계를 다시 확인했다.
 - [x] Windows Python 3.14에서 pytest **58 passed / 8 jq-dependent skipped**, YAML lint, Markdown 20 files/0 errors, manifest·secret scan과 `git diff --check`가 PASS했다. 런타임 파일을 바꾸지 않아 local image rebuild는 생략하고 PR Linux CI의 jq/App linter/full image smoke를 최종 회귀로 사용한다.
+- [x] 증거 commit `1117b688522b1e645fa2633e67e266cd1e3e3e77`을 `agent/record-0.3.2-live-audit`에 push하고 draft [PR #28](https://github.com/Kanu-Coffee/codex-for-home-assistant/pull/28)을 열었다. PR [CI 29460043342](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/29460043342)의 Linux jq 포함 lint/unit, App linter, amd64 full browser/memory/managed-auth/user-file/public `0.3.2` update smoke와 non-publishing [Builder 29460043413](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/29460043413)이 PASS했다.
 
 ### 2026-07-15 — Home Assistant UI의 Playwright 승인 정책과 0.4.0
 
