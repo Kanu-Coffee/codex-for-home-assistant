@@ -30,7 +30,8 @@ All notable changes to this App are documented in this file.
 - Add a disposable-container wrapper smoke covering missing, `safe`, `never`, `always`, invalid enum, invalid type, CLI argument pass-through, and pinned Codex TOML parsing, plus public `0.3.2` update preservation.
 - Merge [PR #26](https://github.com/Kanu-Coffee/codex-for-home-assistant/pull/26) as `bca612661692e3d66d239c06b57b52921ea56af6`; [main CI 29408206017](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/29408206017) passed before publication.
 - Verify the exact public image with browser-policy, full browser/gateway/Core WebSocket/ttyd/SSH, memory, managed-auth, user-file, and public `0.3.2` to public `0.4.0` update smokes; all passed.
-- Keep the actual HAOS `0.4.0` Configuration UI approval matrix, top-level global-never precedence, AppArmor `127.0.0.1:8099` dashboard session, and live update detection explicitly **NOT RUN**.
+- In the subsequent actual HAOS `never`-mode acceptance run, 14 allowed Playwright tools completed with zero MCP approval prompts, including desktop/mobile rendering, automatic dashboard authentication, console/network inspection, and non-mutating click/input paths. `select_option` had no safe target and `close` was not reported, so both remain **NOT TESTED** and the overall approval matrix remains **PARTIAL**.
+- Keep `safe`, `always`, top-level global-never precedence, blocked-tool rejection, Configuration UI/default behavior, confirmed AppArmor status, user-file/identity preservation, and live update detection explicitly **NOT RUN**. A legacy Bubble Card module YAML returned one 404 warning/error pair without preventing either viewport from rendering.
 
 ### Release evidence
 

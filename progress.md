@@ -4,8 +4,8 @@
 
 ## Project Status
 
-- 상태: **amd64 MVP/M2 PASS / public 0.4.0 Playwright 승인 정책 공개·자동 회귀 PASS / public 0.3.2 memory live PARTIAL(FAIL 0) / 실제 HAOS 0.4.0 NOT RUN**
-- 현재 마일스톤: **0.3.2 memory 실기 증거 반영 / 0.4.0 HAOS browser approval 수용 시험 대기**
+- 상태: **amd64 MVP/M2 PASS / public 0.4.0 Playwright 자동 회귀 PASS / 실제 HAOS `never` 14/16 승인 0회 PASS / 전체 승인 행렬 PARTIAL / public 0.3.2 memory live PARTIAL(FAIL 0)**
+- 현재 마일스톤: **0.3.2 memory·0.4.0 `never` 실기 증거 반영 / `safe`·`always`와 잔여 browser 수용 시험 대기**
 - 마지막 문서 기준일: **2026-07-16**
 - 저장소: public `Kanu-Coffee/codex-for-home-assistant`, default branch `main`
 
@@ -24,13 +24,24 @@
 
 ## Current Work
 
+### 2026-07-16 — public 0.4.0 실제 HAOS Playwright `never` 정책 수용 결과
+
+- 입력 증거: 사용자가 제공한 정제 보고서는 `2026-07-15T23:56:06Z`부터 `23:59:25Z`까지 public `0.4.0`의 관리형 자동 인증 `http://127.0.0.1:8099/` dashboard에서 비파괴 browser 동작을 실행했다. 실제 dashboard 이름·검색어·screenshot artifact는 저장소에 반입하지 않고 판정과 비식별 오류만 기록한다.
+- 판정: **실행 완료 / PASS (검증된 `never` 범위)**. `navigate`, `tabs`, `resize`, `snapshot`, `take_screenshot`, `console_messages`, `network_requests`, `hover`, `wait_for`, `click`, `type`, `press_key`, `fill_form`, `navigate_back` 14개는 MCP 승인 요청 0회로 성공했다. `select_option`은 안전한 비변경형 대상이 없어 **NOT TESTED**, 보고서에 실행 기록이 없는 `close`도 **NOT TESTED**다.
+- 렌더링·진단: desktop `1440x900`과 mobile `390x844`, 자동 인증, 검색 대화상자의 비파괴 click/type/form/key 경로가 동작했다. 사용자 지정 screenshot `filename`은 enforcement proxy가 `-32602`로 거부했고 인자 제거 후 성공했으므로 승인 실패가 아니라 의도된 artifact 경계로 판정한다. Dashboard의 legacy Bubble Card module YAML 404와 대응 console warning/error 1쌍은 남았지만 browser renderer나 `never` approval 실패로 확대하지 않는다.
+- 증거 경계: 전체 E2E-019는 **PARTIAL**이다. `safe`, `always`, top-level `codex_approval_policy=never` precedence, `select_option`, `close`, 금지 도구 거부, Configuration UI option 표시/default, live App update, AppArmor 활성 여부와 사용자 config/AGENTS/browser identity 보존은 이번 보고서에서 검증하지 않았다.
+- 검증 계획: README/App 문서/changelog, ADR-036, Phase 9, security와 E2E-019의 오래된 전체 `NOT RUN` 문구를 위 부분 실기 결과로 교정한다. Markdown/YAML, manifest, secret scan, pytest와 `git diff --check`를 실행하고 runtime code/image/version은 변경하지 않는다.
+- [x] README/App 문서/changelog, ADR-036, Phase 9, security와 E2E-019에서 `never` 실행 완료·14/16 승인 0회 PASS와 잔여 NOT TESTED/NOT RUN 항목을 일치시켰다.
+- [x] Windows Python 3.14에서 pytest **58 passed / 8 jq-dependent skipped**, YAML lint, Markdown 20 files/0 errors, manifest·secret scan과 `git diff --check`가 PASS했다. Runtime file을 바꾸지 않아 local image rebuild는 생략하고 PR Linux CI의 jq/App linter/full image smoke를 최종 회귀로 사용한다.
+- [ ] `never` 수용 증거 commit을 현재 draft PR #28에 push하고 Linux CI와 non-publishing Builder 결과를 기록한다.
+
 ### 2026-07-16 — public 0.3.2 실제 HAOS memory 재시험 증거 반영
 
 - 입력 증거: `codex-for-home-assistant-0.3.2-live-self-audit-2026-07-15.md`는 실제 HAOS App `0.3.2`, Core `2026.7.2`, Supervisor `2026.07.3`에서 실행한 정제된 자기점검 보고서다. 실제 identifier, state, credential, raw WebSocket/config/log는 저장소에 반입하지 않는다.
 - 결과: 최종 판정은 **PARTIAL, FAIL 0**이다. 실제로 재현된 automation related `unknown_error` 2/30은 config 2/2, config-derived relation 4/4와 다른 automation 28/28을 보존한 bounded warning으로 격리됐다. forced refresh/fresh revision, DB atomicity·WAL/FTS5, 실제 CLI/MCP, privacy, candidate lifecycle, restart 요청 후 fresh sync와 App restart persistence는 PASS했다.
 - 증거 경계: 선택한 immutable App payload 8개는 tag와 SHA-256이 일치했지만 Supervisor App info가 실제 OCI image ref/digest를 제공하지 않아 runtime manifest 확인은 NOT RUN이고, 보고서의 설치 전체/public image byte identity 항목은 PARTIAL이다. Core restart 요청 수락, daemon 생존과 요청 후 forced fresh sync는 PASS했지만 probe에 Core 단절이나 failed refresh가 없어 disconnect/reconnect와 LKG `stale/degraded` 순간은 NOT OBSERVED다. `config:null`도 NOT OBSERVED, 운영 오류 주입과 version-tagged `0.3.1 → 0.3.2` update 검증은 NOT RUN이다.
 - 개선 판단: 현재 `main`의 memory core/client/CLI/MCP/daemon은 `0.3.2` tag와 동일하고 보고서에 기능 실패가 없으므로 런타임 코드를 바꾸지 않는다. Docker API/추가 권한, 운영 장애 주입, downgrade도 도입하지 않는다. 대신 오래된 `0.3.2 live NOT RUN` 문서를 실제 결과로 교정하고, Core restart 중 stale/degraded 수용 기준은 실제 failed refresh가 관측된 경우로 조건화하며 immutable App payload 검사와 Supervisor/host runtime manifest 증거를 분리한다.
-- 검증 계획: 문서 간 판정·용어·버전 경계를 대조하고 Markdown/YAML, manifest, secret scan, pytest와 `git diff --check`를 실행한다. 이 증거를 `0.4.0` browser approval 실기 PASS나 실제 device control/update PASS로 확대하지 않는다.
+- 검증 계획: 문서 간 판정·용어·버전 경계를 대조하고 Markdown/YAML, manifest, secret scan, pytest와 `git diff --check`를 실행한다. 이 memory 증거를 `0.4.0` browser approval 실기 근거로 사용하지 않고 별도 `never` 보고서와 분리하며, 실제 device control/update PASS로 확대하지 않는다.
 - [x] README/App 문서/changelog, architecture/addon/security/decision/implementation/test 계약과 M2 상태에서 오래된 `0.3.2 live NOT RUN` 표현을 실제 PARTIAL(FAIL 0) 결과로 교정했다. 선택한 immutable App payload와 actual runtime manifest 증거를 분리하고 `docker_api`/host access 금지를 유지했다.
 - [x] Core restart 증거는 요청 수락·daemon process 생존·요청 후 forced fresh sync PASS와 disconnect/reconnect·LKG 상태 NOT OBSERVED로 분리했다. 독립 diff 검토에서 수치·판정·privacy·0.4.0 증거 경계를 다시 확인했다.
 - [x] Windows Python 3.14에서 pytest **58 passed / 8 jq-dependent skipped**, YAML lint, Markdown 20 files/0 errors, manifest·secret scan과 `git diff --check`가 PASS했다. 런타임 파일을 바꾸지 않아 local image rebuild는 생략하고 PR Linux CI의 jq/App linter/full image smoke를 최종 회귀로 사용한다.
@@ -49,7 +60,7 @@
 - [x] [PR #26](https://github.com/Kanu-Coffee/codex-for-home-assistant/pull/26)을 merge commit `bca612661692e3d66d239c06b57b52921ea56af6`로 `main`에 병합했고, 동일 SHA의 [main CI 29408206017](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/29408206017)이 PASS했다.
 - [x] merge SHA에 annotated `0.4.0` tag를 `2026-07-15T10:32:08Z`에 게시하고 공식 [Builder 29408467932](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/29408467932)로 generic/per-arch GHCR image를 발행했다. 공개 image 검증 뒤 [GitHub prerelease](https://github.com/Kanu-Coffee/codex-for-home-assistant/releases/tag/0.4.0)를 `2026-07-15T10:42:35Z`에 공개했다. 두 OCI index digest는 `sha256:758837276c4247a304c58791bddab5912977d3445801dcd832a638f9a2af9342`, linux/amd64 runtime manifest digest는 `sha256:b586727e9a2ca724f32f8255f692cd32104aeed45bc0e65b8c12cb3cc151373b`이며 익명 generic/per-arch tag 조회·pull, version/arch/source label과 mutable `latest` 부재를 확인했다.
 - [x] 정확한 public `0.4.0` image에서 browser-policy, 전체 browser/gateway/Core WebSocket/ttyd/SSH, memory, managed-auth, user-file와 public `0.3.2` → public `0.4.0` update smoke가 모두 PASS했다.
-- 실제 HAOS `0.4.0`의 Home Assistant Configuration UI mode 표시·popup 행렬, top-level global-never precedence, AppArmor `127.0.0.1:8099` dashboard와 live update 감지는 **NOT RUN**이다.
+- 실제 HAOS `0.4.0`의 `never` mode는 14개 도구의 MCP 승인 0회와 desktop/mobile `127.0.0.1:8099` dashboard 경로가 **PASS (검증 범위)**했다. `select_option`과 `close`, `safe`·`always`, top-level global-never precedence, Configuration UI/default, 금지 도구, AppArmor 활성 여부, user-file/identity 보존과 live update 감지는 **NOT TESTED/NOT RUN**이므로 전체 popup 행렬은 PARTIAL이다.
 
 ### 2026-07-15 — 0.3.1 실제 `search/related` 실패와 0.3.2 patch
 

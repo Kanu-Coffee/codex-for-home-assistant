@@ -1,6 +1,6 @@
 # test_plan.md — 검증 전략
 
-> 기존 browser/AppArmor 실기 대상은 public `0.2.3`이고 `0.2.4`는 그 결과를 기록한 validation/evidence release다. 검증형 HA 메모리는 public `0.3.0` 자동 회귀를 통과했지만 실제 HAOS read-only 감사의 catalog refresh는 FAIL했다. Public `0.3.1` 수정·공개 이미지 자동 회귀도 PASS했지만 후속 실제 HAOS/Core `2026.7.2` 재시험에서 automation-related 30건 중 2건이 `unknown_error`를 반환해 catalog는 다시 FAIL했다. Public `0.3.2`의 자동·공개 이미지 검증은 PASS했고 후속 실제 HAOS 재시험은 동일 2/30 오류 격리와 핵심 memory 경로를 PASS했지만 runtime digest와 순간 LKG 관측 증거가 없어 최종 PARTIAL(FAIL 0)이다. Public `0.4.0` 승인 정책의 정확한 공개 이미지 자동 검증은 PASS지만 새 HAOS UI/AppArmor 실기는 NOT RUN이다.
+> 기존 browser/AppArmor 실기 대상은 public `0.2.3`이고 `0.2.4`는 그 결과를 기록한 validation/evidence release다. 검증형 HA 메모리는 public `0.3.0` 자동 회귀를 통과했지만 실제 HAOS read-only 감사의 catalog refresh는 FAIL했다. Public `0.3.1` 수정·공개 이미지 자동 회귀도 PASS했지만 후속 실제 HAOS/Core `2026.7.2` 재시험에서 automation-related 30건 중 2건이 `unknown_error`를 반환해 catalog는 다시 FAIL했다. Public `0.3.2`의 자동·공개 이미지 검증은 PASS했고 후속 실제 HAOS 재시험은 동일 2/30 오류 격리와 핵심 memory 경로를 PASS했지만 runtime digest와 순간 LKG 관측 증거가 없어 최종 PARTIAL(FAIL 0)이다. Public `0.4.0` 승인 정책의 정확한 공개 이미지 자동 검증과 실제 HAOS `never` mode 14/16 도구·승인 0회는 PASS지만 전체 UI/AppArmor 행렬은 PARTIAL이다.
 
 ## 1. 테스트 계층
 
@@ -407,7 +407,7 @@ ha-api GET /states
 
 성공 기준: 문서화된 mode 행렬과 global-policy precedence가 실제 팝업에 일치하고 proxy allowlist·HA 권한·credential 경계는 변하지 않는다.
 
-실행 결과: 동일 merge SHA의 main CI [`29408206017`](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/29408206017)과 tag Builder [`29408467932`](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/29408467932), 정확한 public `0.4.0` image의 browser approval policy smoke, full browser/gateway/Core WebSocket/ttyd/SSH smoke와 public `0.3.2` → `0.4.0` update smoke는 **PASS**다. 실제 HAOS Configuration UI의 `safe`/`never`/`always` popup 행렬, `codex_approval_policy=never` precedence, AppArmor 활성 상태의 인증된 `127.0.0.1:8099` desktop/mobile dashboard·console·network 회귀와 live HA update 감지는 **NOT RUN**이다. 기존 public `0.2.3` browser/AppArmor 사용자 확인 PASS와 혼합하지 않는다.
+실행 결과: 동일 merge SHA의 main CI [`29408206017`](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/29408206017)과 tag Builder [`29408467932`](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/29408467932), 정확한 public `0.4.0` image의 browser approval policy smoke, full browser/gateway/Core WebSocket/ttyd/SSH smoke와 public `0.3.2` → `0.4.0` update smoke는 **PASS**다. 후속 실제 HAOS `never` run은 `navigate`, `tabs`, `resize`, `snapshot`, `take_screenshot`, `console_messages`, `network_requests`, `hover`, `wait_for`, `click`, `type`, `press_key`, `fill_form`, `navigate_back` 14개에서 승인 요청 0회로 **PASS (검증 범위)**했다. Desktop `1440x900`/mobile `390x844`, 자동 인증, 비파괴 검색 입력과 console/network 확인도 동작했다. 사용자 지정 screenshot `filename`의 `-32602` 거부는 의도된 proxy 경계이며 재시도는 성공했다. `select_option`은 안전한 target 부재, `close`는 실행 기록 부재로 **NOT TESTED**다. `safe`/`always`, top-level global-never precedence, 금지 도구, Configuration UI/default, AppArmor 활성 여부, user config/AGENTS/browser identity 보존과 live update는 **NOT RUN**이므로 E2E-019 전체는 **PARTIAL**이다. Dashboard의 legacy Bubble Card module YAML 404 한 건은 renderer 실패와 분리한다.
 
 ## 4. 회귀 테스트 우선순위
 
