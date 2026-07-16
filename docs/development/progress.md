@@ -4,8 +4,8 @@
 
 ## Project Status
 
-- 상태: **amd64 MVP/M2 PASS / public 0.5.0 정확 이미지 전체 회귀 PASS / local 0.6.0 feedback candidate 전체 회귀 PASS / 실제 HAOS `never` 14/16 승인 0회 PASS·전체 승인 행렬 PARTIAL / public 0.3.2 memory live PARTIAL(FAIL 0) / 0.5.0 자연어 memory live 수용 대기**
-- 현재 마일스톤: **0.5.0 tag·GHCR·prerelease 완료 / local 0.6.0 feedback 구현·검증 완료 / 실제 HAOS feedback·memory 수용과 배포 대기**
+- 상태: **amd64 MVP/M2 PASS / public 0.6.0 정확 이미지 전체 회귀 PASS / 실제 HAOS feedback live NOT RUN / 실제 HAOS `never` 14/16 승인 0회 PASS·전체 승인 행렬 PARTIAL / public 0.3.2 memory live PARTIAL(FAIL 0) / 0.5.0 자연어 memory live 수용 대기**
+- 현재 마일스톤: **0.6.0 tag·GHCR·prerelease 완료 / 실제 HAOS feedback·memory 수용 대기**
 - 마지막 문서 기준일: **2026-07-16**
 - 저장소: public `Kanu-Coffee/codex-for-home-assistant`, default branch `main`
 
@@ -35,6 +35,8 @@
 - [x] helper·GitHub CLI·Issue Forms와 0.6.0 packaging을 구현했다.
 - [x] 자동 회귀와 Docker/update smoke를 실행하고 미검증 경계를 기록했다.
 - 검증 결과: pytest **68 passed / 8 environment-dependent skipped**, Skill validator, YAML·Markdown 38 files, ShellCheck, Hadolint와 `git diff --check`가 PASS했다. Local Docker image index `sha256:9adf3fb63a78e2e6ca3410b0c28ad9ff5478392723741106acd44807734cb86f`에서 GitHub CLI 2.93.0·feedback helper, 전체 browser/gateway/Core WebSocket/ttyd/SSH, browser approval, memory, managed auth, user-file와 public `0.5.0` → local `0.6.0` update smoke가 모두 PASS했다.
+- 공개 릴리스: [PR #33](https://github.com/Kanu-Coffee/codex-for-home-assistant/pull/33)을 merge commit `8404f8e61394021d0acb08a67a021cf2ca641f3b`로 병합했고, 같은 SHA의 [main CI 29498705500](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/29498705500)이 PASS했다. Annotated `0.6.0` tag를 `2026-07-16T12:39:01Z`에 게시하고 [Builder 29498965561](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/29498965561)로 generic/per-arch GHCR 이미지를 발행한 뒤 [GitHub prerelease](https://github.com/Kanu-Coffee/codex-for-home-assistant/releases/tag/0.6.0)를 `2026-07-16T12:51:51Z`에 공개했다.
+- 공개 이미지 증거: generic과 amd64 OCI index digest는 `sha256:5c8dd2c1a1f96c9a994178b6077d82a7ab582d946ee95bdb61575587292ed845`, linux/amd64 runtime manifest digest는 `sha256:4c4efdf797a77393f6ac2ab85d41f404b86171665c3bf583ff33943cd3708911`이다. 빈 Docker credential로 manifest 조회·pull, version/arch/source label, mutable `latest` 부재를 확인했고, 정확한 공개 이미지에서 feedback, 전체 browser/gateway/Core WebSocket/ttyd/SSH, browser approval, memory, managed auth, user-file와 public `0.5.0` → public `0.6.0` update smoke가 모두 PASS했다. 저장소 Private vulnerability reporting도 활성 상태를 확인했다.
 - 미검증 경계: 실제 GitHub 이슈 생성과 실제 HAOS 설치 환경의 자연어 Skill 실행·진단·제출 흐름은 별도 명시 승인과 live 수용 전까지 **NOT RUN**이다. 자동 검증은 fake `gh`와 격리 container만 사용했으며 외부 이슈를 생성하지 않았다.
 
 ### 2026-07-16 — ChatGPT mobile Remote 직접 SSH 문서 정정

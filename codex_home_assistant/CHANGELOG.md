@@ -31,6 +31,15 @@ All notable changes to this App are documented in this file.
 ### Testing
 
 - Add schema/render/privacy fixtures, Skill and Issue Form contracts, fake-GitHub-CLI submission boundaries, and packaging/update persistence checks. A real GitHub test issue is intentionally **NOT RUN** without separate explicit approval.
+- Merge [PR #33](https://github.com/Kanu-Coffee/codex-for-home-assistant/pull/33) as `8404f8e61394021d0acb08a67a021cf2ca641f3b`; [main CI 29498705500](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/29498705500) passed before publication.
+- Verify the exact public image with feedback, browser-policy, full browser/gateway/Core WebSocket/ttyd/SSH, memory lifecycle/privacy/MCP/persistence, managed-auth, user-file, and public `0.5.0` to public `0.6.0` update smokes; all passed without creating an external issue.
+- Keep actual installed-HAOS natural-language Skill discovery, report generation, preview, fallback, and confirmed live submission explicitly **NOT RUN** until operating-environment acceptance.
+
+### Release evidence
+
+- Publish the annotated `0.6.0` tag at `2026-07-16T12:39:01Z`; [Builder 29498965561](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/29498965561) published the GHCR images, and the verified [GitHub prerelease](https://github.com/Kanu-Coffee/codex-for-home-assistant/releases/tag/0.6.0) was published at `2026-07-16T12:51:51Z`.
+- The generic and per-architecture tags share OCI index digest `sha256:5c8dd2c1a1f96c9a994178b6077d82a7ab582d946ee95bdb61575587292ed845`; the linux/amd64 runtime manifest digest is `sha256:4c4efdf797a77393f6ac2ab85d41f404b86171665c3bf583ff33943cd3708911`.
+- Confirm anonymous generic/per-architecture manifest access and pull, the expected version/architecture/source labels, the absence of a mutable `latest` tag, and enabled private vulnerability reporting for security findings.
 
 ## [0.5.0] - 2026-07-16
 
