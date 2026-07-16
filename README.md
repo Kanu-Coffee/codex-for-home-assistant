@@ -1,180 +1,226 @@
-<p align="center">
-  <img src="codex_home_assistant/logo.png" alt="Codex for Home Assistant logo" width="180">
+<p align="right">
+  <strong>한국어</strong> · <a href="README.en.md">English</a>
 </p>
 
-# Codex for Home Assistant
+<p align="center">
+  <img src="codex_home_assistant/logo.png" alt="Codex for Home Assistant 로고" width="180">
+</p>
 
-Home Assistant OS 안에서 OpenAI Codex CLI를 운영하기 위한 amd64 Home Assistant App MVP입니다.
+<h1 align="center">Codex for Home Assistant</h1>
 
-> 비공식 커뮤니티 프로젝트이며 OpenAI 또는 Home Assistant/Nabu Casa와 제휴하거나 이들의 보증을 받는 제품이 아닙니다.
+<p align="center">
+  Home Assistant 안에서 Codex와 대화하며 설정을 살펴보고,<br>
+  대시보드·자동화·엔티티·오류를 함께 정리하는 Home Assistant 앱입니다.
+</p>
 
-- Home Assistant Ingress 웹 터미널: nginx ACL → ttyd → 공유 tmux 세션
-- 공개키 전용 OpenSSH, desktop SSH 프로젝트와 mobile Remote 연결 기반
-- Home Assistant `/config` 전체 read-write
-- Home Assistant Core REST/WebSocket 접근
-- Supervisor API `manager` 운영 helper
-- Playwright MCP 기반 격리형 Headless Chromium UI 렌더링·진단
-- `0.3.0+`: 검증된 HA 구조 인덱스와 대화에서 배운 의미 정보를 `/data`에 보존하는 bounded memory
-- Codex 인증, 설정, SSH host key의 `/data` 영속화
-- 기본적으로 사용자 파일을 보존하고 구성에서 선택할 때만 현재 App 기본본으로 갱신하는 전역 Home Assistant 운영 가드레일
+<p align="center">
+  <a href="https://github.com/Kanu-Coffee/codex-for-home-assistant/releases"><img alt="GitHub Release" src="https://img.shields.io/github/v/release/Kanu-Coffee/codex-for-home-assistant?include_prereleases"></a>
+  <a href="https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/workflows/ci.yaml"><img alt="CI" src="https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/workflows/ci.yaml/badge.svg"></a>
+  <img alt="Architecture: amd64" src="https://img.shields.io/badge/architecture-amd64-blue">
+  <img alt="Stage: experimental" src="https://img.shields.io/badge/stage-experimental-orange">
+  <a href="LICENSE"><img alt="License: Apache-2.0" src="https://img.shields.io/badge/license-Apache--2.0-green"></a>
+</p>
 
-현재 공개 사전 릴리스는 [`0.5.0`](https://github.com/Kanu-Coffee/codex-for-home-assistant/releases/tag/0.5.0)이며, 같은 요청에서 명시적 사실을 감사 가능한 memory로 완료하고 새 MCP process에서 회상하는 흐름과 SQLite 동시 bootstrap/status 보완을 포함한 정확한 공개 이미지 자동 회귀가 PASS했습니다. 실제 HAOS에서 자연어 발화→same-request tool trace→새 task 회상과 안전한 지속 변경→fresh API 검증은 아직 **NOT RUN**입니다. 이전 public `0.3.1`의 실제 HAOS/Core `2026.7.2` 실기에서는 automation-related 30건 중 2건의 `unknown_error` 때문에 catalog bootstrap이 **FAIL**했지만, 후속 public `0.3.2` 실기에서는 같은 2/30 오류를 bounded warning으로 격리하고 catalog·DB·실제 CLI/MCP·privacy·candidate lifecycle·restart 요청 후 fresh sync·App restart persistence가 모두 PASS했습니다. `0.3.2`의 최종 실기 판정은 runtime OCI digest NOT RUN과 Core 단절/reconnect 및 LKG `stale/degraded` 미관측 때문에 **PARTIAL(FAIL 0)**입니다. `0.4.0`의 실제 HAOS `never` mode는 14개 도구에서 승인 요청 0회로 **PASS (검증 범위)**했고, `select_option`·`close`와 나머지 mode/UI/AppArmor/update 항목 때문에 전체 행렬은 **PARTIAL**입니다. `stage: experimental`, amd64 전용이며 Supervisor `admin`, Docker API, App `full_access`, host network는 사용하지 않습니다.
+<p align="center">
+  <a href="https://my.home-assistant.io/redirect/supervisor_add_addon_repository/?repository_url=https%3A%2F%2Fgithub.com%2FKanu-Coffee%2Fcodex-for-home-assistant"><img alt="Home Assistant에 앱 저장소 추가" src="https://my.home-assistant.io/badges/supervisor_add_addon_repository.svg"></a>
+</p>
 
-> 이 App은 `/config`의 비밀과 `SUPERVISOR_TOKEN`을 사용할 수 있는 강한 관리자 도구입니다. 신뢰하는 관리자만 사용하고 TCP 2223을 인터넷으로 직접 port-forward하지 마세요.
+> [!WARNING]
+> 이 앱은 `/config` 전체를 읽고 쓸 수 있고 Home Assistant Core 및 Supervisor `manager` API를 사용할 수 있는 강한 관리자 도구입니다. 중요한 변경 전에는 백업하고, 계획과 diff를 확인한 뒤 적용하세요. SSH 포트를 인터넷에 직접 공개하지 마세요.
 
-## Home Assistant에서 설치
+비공식 커뮤니티 프로젝트이며 OpenAI 또는 Home Assistant/Nabu Casa와 제휴하거나 보증받은 제품이 아닙니다. 현재는 **amd64 전용 experimental 릴리스**입니다.
 
-이 저장소는 Home Assistant App Store에 추가할 수 있는 public App 저장소입니다.
+## 실제 Web 터미널 미리보기
 
-```text
-https://github.com/Kanu-Coffee/codex-for-home-assistant
-```
+<table>
+  <tr>
+    <th>데스크톱</th>
+    <th>모바일</th>
+  </tr>
+  <tr>
+    <td><img src="docs/assets/web-terminal-preview.png" alt="Codex for Home Assistant Web 터미널 데스크톱 미리보기"></td>
+    <td width="31%"><img src="docs/assets/web-terminal-mobile-preview.png" alt="Codex for Home Assistant Web 터미널 모바일 미리보기"></td>
+  </tr>
+</table>
 
-[![Open your Home Assistant instance and add this App repository.](https://my.home-assistant.io/badges/supervisor_store.svg)](https://my.home-assistant.io/redirect/supervisor_store/?repository_url=https%3A%2F%2Fgithub.com%2FKanu-Coffee%2Fcodex-for-home-assistant)
+공개 `0.5.0` 이미지의 실제 Web 터미널을 비밀정보 없는 격리 Docker 환경에서 캡처했습니다. 실제 HAOS에서는 Home Assistant Ingress 안에 표시되며, 위 이미지에는 Home Assistant 사이드바와 Ingress frame이 포함되지 않았습니다.
 
-1. Home Assistant에서 **설정 → Apps → App store**를 엽니다.
-2. 우측 상단 메뉴의 **Repositories**에 위 URL을 추가합니다.
-3. 목록을 새로고침한 뒤 **Codex for Home Assistant**를 선택해 설치합니다.
-4. 공개키와 Network 포트를 설정하고 App을 시작합니다.
+## 무엇을 할 수 있나요?
 
-Supervisor는 public generic manifest `ghcr.io/kanu-coffee/codex-for-home-assistant:0.5.0`을 내려받습니다. 이 tag는 공식 Home Assistant builder action으로 게시됐으므로 App Store 설치 중 소스 컴파일을 요구하지 않습니다. 실제 HAOS 기능 결과는 `progress.md`의 M2 항목별 증거를 기준으로 합니다.
-
-기존 App은 삭제하지 말고 일반 업데이트하세요. 브라우저와 memory MCP는 image-owned system config로 제공되므로 `/data` 초기화나 MCP 재등록이 필요하지 않습니다. Public `0.2.2`에서 `0.2.3`으로 업데이트하는 첫 시작은 새 `codex_user_files_update_mode`가 없으므로 기본 `preserve`로 동작해 기존 user config/지침을 바꾸지 않습니다. `0.4.0` 업데이트에서 새 `browser_approval_policy`가 저장되어 있지 않으면 `safe`로 동작합니다. `0.5.0` 업데이트가 끝난 뒤 App을 재시작하고 실행 중이던 Codex를 종료한 다음 새 세션을 시작해야 새 memory 도구와 system guidance를 읽습니다.
-
-`0.2.3`에서는 Home Assistant App **구성**에서 현재 App 기본 사용자 파일을 선택적으로 받을 수 있습니다. `preserve`(기본)는 기존 파일을 그대로 두고, `refresh_agents`는 base `AGENTS.md`만, `refresh_all`은 base `AGENTS.md`와 user `config.toml`을 현재 App version에서 target별 한 번 reset합니다. config는 현재 approval/sandbox option을 반영한 App 기본본으로 생성됩니다. mode를 계속 두면 다음 App version에서도 한 번 다시 적용되므로 일회성 사용 뒤에는 `preserve`로 되돌리세요. `refresh_all`은 사용자 MCP/model/provider 설정을 제거할 수 있습니다. 갱신 전 원본은 `/data/codex/backups/user-files`의 root-only backup에 보관하며 `AGENTS.override.md`, 인증/session, SSH/browser identity와 Home Assistant `/config`는 건드리지 않습니다. symlink, 다중 hardlink와 비정상 file target은 따라가지 않고 거부합니다. 자세한 주의와 복구 절차는 [App 사용 설명서](codex_home_assistant/DOCS.md)를 따르세요.
-
-Public `0.5.0`으로 업데이트할 때 `refresh_agents` 또는 `refresh_all`을 계속 선택한 설치는 선택 target을 `0.5.0`에서 한 번 다시 갱신합니다. 재적용을 원하지 않으면 **업데이트 전** App **구성**에서 `preserve`로 저장하세요.
-
-설치, Codex device login, Windows SSH config, Remote SSH, API helper, 안전한 서비스 호출과 복구 절차는 [App 사용 설명서](codex_home_assistant/DOCS.md)를 따르세요.
-
-## 검증 기반 Home Assistant 메모리
-
-`0.3.0`부터 `/data/codex-ha-memory/memory.sqlite3`에 영역·장치·엔티티·자동화와 연결 관계의 정규화된 인덱스를 보존합니다. 별도 `ha-memoryd`가 빈 저장소에서도 시작 직후 Core WebSocket API로 첫 snapshot을 만들고 이후 주기적으로 갱신합니다. Core가 준비되지 않았거나 메모리 자체가 실패해도 Web UI, SSH, Codex와 browser 시작을 막지 않습니다. 정상 설치에서는 새 Codex 세션의 image-managed `ha_memory` MCP가 매 Home Assistant 요청에 질문과 관련된 작은 결과만 찾으므로 사용자가 DB 전체를 prompt에 넣거나 MCP를 수동 등록할 필요가 없습니다. `empty`·`degraded`·`stale` 상태는 “기억 없음”으로 오인하지 않고 사용자에게 준비 중·사용 불가 상태로 알립니다.
-
-사용자가 한 대상의 지속적인 별칭·용도·선호·관계·note를 명확히 설명하면 Codex는 `memory_remember_explicit` 한 번으로 같은 요청 안에서 기억을 완료하고 결과를 알려 줍니다. 내부에는 여전히 `pending candidate → verified → applied` 세 감사 단계가 각각 남습니다. 대상이나 의미가 모호하면 쓰지 않고 확인 질문을 하며, 일시 state·페이지/로그 내용·모델 추론은 이 명시 경로로 분류하지 않습니다. HA registry 구조는 fresh Core API가, HA 밖의 실제 용도와 선호는 사용자의 명시적 설명이 가장 높은 권위입니다. 같거나 더 강한 기존 근거와 다르면 자동 덮어쓰기 없이 conflict로 남고, 보류 후보는 대상별 bounded 조회·철회가 가능합니다.
-
-현재/과거 state 값과 timestamp, raw automation action/template, raw 대화, API 응답과 credential은 저장하지 않습니다. Entity별 memory와 candidate도 AGENTS 계열 파일에 쓰지 않고 SQLite workflow에만 둡니다. 지속적인 HA 설정·registry·automation 변경은 지원되는 expectation을 먼저 기록하고, 변경과 필요한 reload 뒤 fresh state를 비교합니다. SQLite에는 predicate digest, 검사한 field 이름과 일치 여부만 더 남깁니다. 표현할 수 없는 변경이나 memory 장애는 semantic memory를 갱신하지 않고 검증 공백을 밝힌 뒤 진행 여부를 확인합니다. `codex_change` 관계 후보는 동일 source·relation·target의 성공 predicate로만 검증되며, `ha-memory rollback`도 semantic memory event를 보상할 뿐 실제 HA catalog, 설정이나 기기 state를 되돌리지 않습니다.
-
-관리자용 확인 명령은 다음과 같습니다. 모든 search는 query 256자, 기본 8·최대 20 subject와 응답 32 KiB로 제한됩니다.
-
-```bash
-ha-memory status
-ha-memory search "주방 조명"
-ha-memory show entity:light.kitchen_main
-ha-memory remember --subject entity:light.kitchen_main --memory-type alias --key user_alias --value-json '"준비등"' --source-ref user-request:explicit-alias
-ha-memory candidate list --status pending --subject entity:light.kitchen_main --limit 20
-ha-memory conflicts --status open
-ha-memory history --subject entity:light.kitchen_main
-```
-
-후보 검증·적용, 변경 전후 기록과 rollback 절차는 [App 사용 설명서의 검증 기반 메모리 절](codex_home_assistant/DOCS.md#검증-기반-home-assistant-메모리)을 따르세요. `status`가 `empty`, `degraded` 또는 `stale`이면 last-known-good와 최근 실패 상태를 먼저 확인하고 DB를 삭제해 재생성하지 마세요.
-
-`0.3.1`에서는 unavailable automation이 Core에서 `config: null`을 반환해도 entity와 related graph를 유지합니다. Public `0.3.2`는 공식 `item_type=automation` 요청을 그대로 사용하면서 개별 related가 정상 result envelope에서 실기와 같은 `error.code=unknown_error`를 반환한 경우만 빈 enrichment와 최대 100개 warning으로 격리하고, 성공 config에서 직접 area/device/entity 관계를 유지합니다. Server/client timeout, unauthorized, invalid format, auth/transport/WebSocket close/protocol, malformed envelope/result와 config 실패는 계속 전체 snapshot을 fail closed합니다. daemon log에는 원격 응답이나 token 대신 allowlist code만 남고, memory endpoint는 고정 Supervisor proxy라 `HA_WS_URL` 환경변수로 변경할 수 없습니다.
-
-## HACS 지원 여부
-
-HACS가 지원하는 저장소 유형에는 Home Assistant App(구 Add-on)이 없으므로 이 저장소를 HACS custom/default repository로 등록할 수 없습니다. Integration이나 Dashboard로 잘못 등록해도 App 설치로 연결되지 않습니다. [HACS 공식 repository types](https://hacs.xyz/docs/use/repositories/type/) 대신 위 Home Assistant App repository 버튼이나 URL을 사용하세요.
-
-## 실제 브라우저로 웹 UI 확인
-
-`0.2.0` 이상 image에는 `@playwright/mcp`와 Alpine의 `chromium-headless-shell`이 포함됩니다. App의 `/etc/codex/config.toml`이 `playwright` MCP server를 system layer에 등록하며, `0.2.3`부터 같은 image-managed system layer와 `browser_navigate` 도구 설명이 Home Assistant 요청에는 `http://127.0.0.1:8099/`를 바로 사용하도록 Codex에 알려 줍니다. 따라서 별도 Vercel/범용 browser skill 탐색이나 MCP 재등록이 필요하지 않습니다. 업데이트 뒤 실행 중이던 Codex를 종료하고 새 세션을 시작하세요. 기본 `preserve`에서는 `/data/codex/config.toml`과 사용자 `AGENTS.md`도 그대로 보존됩니다.
-
-`0.4.0`부터 App **구성**의 `browser_approval_policy`로 Playwright 승인창을 조절합니다. 기본 `safe`는 탐색·탭·viewport·snapshot·screenshot·console/network 점검을 자동 승인하고 click·form·key·select·type은 확인합니다. `never`는 현재 허용된 16개 browser 도구를 자동 승인하고, `always`는 모두 확인합니다. 이 설정은 차단된 code 실행·file upload 도구를 새로 열지 않습니다. 최상위 `codex_approval_policy=never`는 Codex 전체 full-auto 정책이므로 해당 조합에서는 `safe`나 `always`도 MCP 팝업을 강제하지 못할 수 있습니다. 설정 저장 뒤 App을 재시작하고 새 Codex 세션을 시작하세요.
-
-Codex에 다음 URL 중 하나와 확인 항목을 자연어로 요청합니다.
-
-| 대상 | 브라우저에서 여는 URL |
+| 하고 싶은 일 | Codex와 함께 하는 방식 |
 | --- | --- |
-| App 컨테이너에서 실행한 개발 서버 | 서버가 출력한 정확한 주소. 예: `http://127.0.0.1:3000` |
-| Home Assistant 대시보드 | `http://127.0.0.1:8099` |
+| 모바일 대시보드 만들기 | 설치된 카드와 기존 대시보드를 조사하고, YAML 초안·diff를 만든 뒤 데스크톱/모바일 화면을 점검합니다. |
+| 자동화 만들기 | 생활 패턴과 현재 엔티티를 바탕으로 후보를 제안하고, 승인한 항목만 구현·검증합니다. |
+| 엔티티 정리하기 | 중복·미사용·참조 끊김 후보를 찾고 영향 범위를 보여 줍니다. 삭제나 registry 변경은 별도 확인 후 수행합니다. |
+| 오류 원인 찾기 | 설정 파일, `ha-config-check`, Core/App 로그와 상태를 함께 살펴보고 최소 수정안을 제안합니다. |
+| Home Assistant 직접 작업하기 | `/config` 파일과 지원되는 Core/Supervisor API를 이용해 변경하고, 가능한 경우 fresh API로 결과를 다시 확인합니다. |
+| 이동 중 이어서 작업하기 | Home Assistant 모바일 앱/웹의 Ingress 터미널을 사용하거나, 데스크톱 SSH 프로젝트를 ChatGPT 모바일 Remote에서 이어갑니다. |
+| 집의 맥락 기억시키기 | HA 구조와 사용자가 명시한 별칭·용도·선호를 이 프로젝트의 검증형 로컬 메모리에 보존해 다음 작업에서 관련 정보만 찾습니다. |
 
-`8099`는 Headless Chromium 전용 loopback gateway이며 외부 브라우저나 Ingress에서 여는 주소가 아닙니다. 기본 desktop viewport는 `1440x900`입니다. desktop screenshot과 console error/warning, 정적 리소스를 포함한 network request를 먼저 확인한 다음 `browser_resize`로 `390x844`로 바꾸어 mobile screenshot과 같은 진단을 다시 확인하도록 요청하세요. `browser_take_screenshot`, `browser_console_messages`, `browser_network_requests`가 각각 화면, 콘솔, URL·method·status 중심의 로딩 상태를 담당합니다. 민감 정보 노출을 줄이기 위해 상세 request/response header와 body를 반환하는 도구는 제공하지 않습니다. viewport resize는 반응형 layout 검사이며 mobile User-Agent, touch, 실제 기기 성능까지 에뮬레이션하지는 않습니다.
+Bubble Card, Mushroom 같은 커스텀 카드는 앱에 포함되지 않습니다. 이미 설치된 구성요소를 활용하거나 설치 계획을 먼저 검토하도록 요청하세요.
 
-`0.2.3`의 App 설정에는 **헤드리스 브라우저 자동 인증**이 기본 ON으로 제공됩니다. 신규 설치와 옵션 키가 없던 기존 설치 모두 App 시작 시 전용 활성·로컬 전용 `system-read-only` 사용자와 long-lived token을 자동 생성하거나 기존 관리 상태를 재사용하므로 `ha-browser-auth-setup`을 먼저 입력할 필요가 없습니다. 임시 비밀번호 credential과 OAuth refresh token은 자동 제거됩니다. 옵션을 OFF로 바꾸고 App을 재시작하면 다음 browser 세션부터 token 주입이 중지되고 일반 login page가 표시되지만, 관리형 identity는 다시 ON으로 복구할 수 있도록 보존됩니다. 완전히 삭제하려면 OFF로 저장하고 App과 기존 browser 세션을 재시작한 뒤 `ha-browser-auth-remove`를 실행합니다. 기존 마스킹 `home_assistant_browser_token`은 자동 인증이 ON일 때만 우선하는 수동 override로 유지됩니다.
+## 작동 방식
 
-Supervisor/system token은 Chromium에 전달하지 않습니다. App 시작과 각 MCP 시작 시 실제 사용자·credential·유일한 long-lived token을 교차검증하고 조금이라도 다르면 자동 로그인을 끕니다. App의 동적 Docker `/32`나 전체 Docker 대역을 `trusted_networks`/`trusted_proxies`에 추가하지 않고 기존 `homeassistant` provider와 Home Assistant 설정 파일을 변경하지 않습니다. 내부 Core가 HTTPS이면 image CA와 `homeassistant` hostname 검증에 실패할 때 우회하지 않고 fail closed합니다. 상세 절차와 수동 fallback은 [App 사용 설명서](codex_home_assistant/DOCS.md)를 따르세요.
+```mermaid
+flowchart LR
+    M["Home Assistant 모바일/웹"] -->|Ingress| T["공유 Web 터미널"]
+    P["ChatGPT 모바일 Remote"] --> D["Mac/Windows 데스크톱 앱"]
+    D -->|공개키 SSH| S["SSH shell / 원격 프로젝트"]
+    T --> C["Codex CLI"]
+    S --> C
+    C --> F["/config 읽기·수정"]
+    C --> A["Core·Supervisor API"]
+    C --> B["Headless browser 검증"]
+    C <--> H["검증형 HA memory"]
+```
+
+- **Web UI**는 Home Assistant Ingress 안에서 열리는 `ttyd` + `tmux` 터미널입니다. 별도 채팅형 GUI가 아닙니다.
+- **Codex**는 `/config`에서 실행되며 설정 파일, helper 명령, API와 Headless Chromium을 함께 사용할 수 있습니다.
+- **재접속**하면 같은 `tmux` 세션으로 돌아가므로 브라우저를 닫아도 앱이 실행 중인 동안 작업이 이어집니다.
+- **브라우저 검증**은 대시보드와 웹 UI의 데스크톱/모바일 레이아웃, console, network 오류를 확인하는 Codex 내부 도구입니다.
+
+## 5분 설치
+
+### 요구사항
+
+- Home Assistant OS 또는 Supervisor가 있는 설치 환경
+- **amd64** 장치
+- 공개 이미지를 내려받을 인터넷 연결
+- Codex를 사용할 수 있는 OpenAI/ChatGPT 계정
+
+### 설치와 첫 실행
+
+1. 위 **Home Assistant에 앱 저장소 추가** 버튼을 누르거나 App store의 **Repositories**에 다음 URL을 추가합니다.
+
+   ```text
+   https://github.com/Kanu-Coffee/codex-for-home-assistant
+   ```
+
+2. **Codex for Home Assistant**를 설치하고 시작합니다. 기본값은 `boot: manual`입니다.
+3. **OPEN WEB UI**를 누릅니다.
+4. 처음 한 번 Codex에 로그인합니다.
+
+   ```bash
+   ha-codex-login
+   ```
+
+5. 표시된 URL과 코드를 신뢰하는 브라우저에서 완료한 뒤 Codex를 시작합니다.
+
+   ```bash
+   ha-codex
+   ```
+
+6. 첫 요청은 읽기 전용 조사로 시작하는 편이 안전합니다.
+
+   ```text
+   현재 Home Assistant 구성을 읽기 전용으로 살펴봐 줘.
+   대시보드, 자동화, 엔티티와 최근 오류를 요약하되 아직 아무것도 수정하지 마.
+   ```
+
+전체 설치·로그인·SSH·업데이트 절차는 [한국어 사용 설명서](codex_home_assistant/DOCS.md)를 확인하세요.
+
+## 이렇게 요청해 보세요
+
+### Bubble Card 모바일 대시보드
 
 ```text
-http://127.0.0.1:3000을 열어 1440x900 desktop 화면을 캡처하고,
-console error/warning과 정적 파일을 포함한 실패 network request를 확인해 줘.
-그다음 390x844로 resize해 mobile 화면을 다시 캡처하고 같은 항목을 비교해 줘.
+Bubble Card가 이미 설치되어 있는지 먼저 확인해 줘.
+현재 대시보드를 백업한 뒤 자주 쓰는 조명, 공조, 보안 상태를 한 화면에 모은
+모바일 1열 대시보드를 설계해 줘. 먼저 계획과 YAML diff만 보여 주고,
+내가 승인하면 적용한 다음 390x844 화면과 오류를 검증해 줘.
 ```
 
-브라우저 context는 세션별로 격리되고 저장하지 않습니다. screenshot 등 파일 결과는 최대 50 MiB의 `/run/codex-ha/playwright-output`에만 두며 임의 `filename` 저장을 거부합니다. App 시작·재시작 때 기존 결과를 삭제하고 `/data`에는 보존하지 않습니다. 검증된 browser token의 exact 문자열은 MCP text output에서 마스킹하지만, 인코딩되거나 분할된 비밀과 대시보드 화면·console·network 결과 전체를 정화하는 기능은 아닙니다. 결과에는 entity, 위치, 내부 URL 등 민감한 정보가 보일 수 있으므로 Git, 이슈, 채팅에 올리기 전에 반드시 검토하세요. read-only user도 모든 entity state를 볼 수 있으며 custom integration의 권한 결함까지 막는 경계는 아니므로 단순 렌더링 요청을 제어 작업 승인으로 간주하지 않습니다.
+### 생활 패턴 기반 자동화 제안
 
-공개 [`0.5.0` GitHub Release](https://github.com/Kanu-Coffee/codex-for-home-assistant/releases/tag/0.5.0)가 게시됐습니다. 기능 merge [`110edf3`](https://github.com/Kanu-Coffee/codex-for-home-assistant/commit/110edf3aba42c5f33c011d75e9d05e4dd05b50f1)의 [main CI 29465342591](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/29465342591)과 공식 [Builder 29465483772](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/29465483772)가 PASS했습니다. 인증 없는 generic/per-arch 조회·pull, linux/amd64와 version/arch/source label, mutable `latest` 부재를 확인했으며 두 tag의 OCI index digest는 `sha256:193cfc7a7b678660b99f7017b6ac0f4261af59ba57832f8bdd82356ee982956a`, runtime manifest digest는 `sha256:d360419231ad1aa9140821dd95dda6c4ce74122439726c503c5f30083e682fd5`입니다. 정확한 공개 이미지에서 full browser/gateway/Core WebSocket/ttyd/SSH, browser approval policy, memory bootstrap/lifecycle/privacy/MCP/persistence, managed-auth, user-file update와 public `0.4.0` → public `0.5.0` update smoke가 **PASS**했습니다. 실제 HAOS의 새 자연어 memory 폐루프는 별도 실기 전까지 NOT RUN입니다. 이전 `0.4.0` HAOS `never` mode에서는 14개 허용 도구가 승인 요청 0회로 PASS했지만 `select_option`·`close`와 나머지 mode/UI/AppArmor/update 항목 때문에 전체 행렬은 PARTIAL이며, 이를 `0.5.0` memory 실기 증거와 혼합하지 않습니다.
-
-## 로컬 빌드
-
-```bash
-docker build \
-  --platform linux/amd64 \
-  --build-arg BUILD_ARCH=amd64 \
-  --tag codex-for-home-assistant:test \
-  codex_home_assistant
+```text
+평일에는 07:00에 일어나 08:10에 외출하고 보통 19:00에 귀가해.
+현재 엔티티와 자동화를 살펴보고 새로 만들 만한 자동화 5개를
+효과, 오작동 방지 조건, 필요한 센서와 함께 우선순위로 제안해 줘.
+지금은 파일을 수정하지 마.
 ```
 
-Docker가 있는 Linux 개발 환경에서는 전체 컨테이너 smoke test를 실행할 수 있습니다.
+### 엔티티·오류 정리
 
-```bash
-tests/docker-smoke.sh codex-for-home-assistant:test
-tests/memory-smoke.sh codex-for-home-assistant:test
+```text
+현재 대시보드, 자동화, 스크립트에서 참조되지 않는 엔티티 후보와
+unavailable/unknown 상태가 반복되는 항목을 조사해 줘.
+각 항목의 참조 위치와 정리 위험을 표로 보여 주고 삭제는 하지 마.
 ```
 
-정적·단위 검사:
+[더 많은 한국어 프롬프트 예시](docs/examples.ko.md) · [English examples](docs/examples.en.md)
 
-```bash
-python -m pip install -r requirements-dev.txt
-python -m pytest -ra
-yamllint -c .yamllint .
-shellcheck <scripts...>
-npx --yes markdownlint-cli2@0.23.0
-```
+## 모바일에서 사용하는 두 가지 방법
 
-GitHub Actions는 같은 amd64 build/smoke와 Home Assistant App linter를 실행하고, version과 동일한 Git tag에서만 public GHCR image와 generic manifest를 게시합니다.
+| 방법 | 준비 | 특징 |
+| --- | --- | --- |
+| Home Assistant Ingress | 앱 시작 후 **OPEN WEB UI** | 가장 간단합니다. HA 모바일 앱이나 모바일 웹 안에서 같은 터미널 세션을 사용합니다. |
+| ChatGPT 모바일 Remote | 데스크톱 앱, 공개키 SSH, Remote 페어링 | 휴대폰에서 새 작업·후속 지시·승인·결과 확인이 가능합니다. 휴대폰이 HAOS에 직접 연결되는 구조는 아닙니다. |
 
-## 주요 명령
+모바일 Remote의 연결 경로는 **ChatGPT 모바일 → 같은 계정/워크스페이스의 Mac 또는 Windows 데스크톱 앱 → SSH로 이 앱의 `/config`**입니다. 데스크톱 호스트가 켜져 있고 온라인이며 앱이 실행 중이어야 합니다. 기능 제공 여부는 ChatGPT 플랜·지역·workspace 정책과 앱 버전에 따라 달라질 수 있습니다. 자세한 설정은 [사용 설명서의 모바일 Remote 절](codex_home_assistant/DOCS.md#chatgpt-모바일-remote)를 확인하세요.
 
-| 명령 | 기능 |
+## 검증형 Home Assistant 메모리
+
+이 프로젝트의 `ha_memory`는 OpenAI Codex의 Memories 기능과 별개인 로컬 SQLite/MCP 워크플로입니다.
+
+- Core API로 확인한 area, device, entity, automation 구조를 `/data`에 인덱싱합니다.
+- 사용자가 명확히 말한 지속적인 별칭, 용도, 선호, note와 비정형 관계를 후보 → 검증 → 적용 단계로 기록합니다.
+- 매 요청에서 전체 DB를 넣지 않고 현재 질문과 관련된 작은 결과만 검색합니다.
+- raw 대화, 현재/과거 state 값, automation action/template 본문, token과 비밀번호는 저장하지 않습니다.
+- 구조 정보는 fresh Home Assistant API를 우선하며, 충돌은 조용히 덮어쓰지 않고 확인 대상으로 남깁니다.
+
+이는 모델 자체가 학습하거나 사람의 승인 없이 집을 운영한다는 뜻이 아닙니다. 현재 `0.5.0`은 experimental이며, 실제 HAOS의 자연어 기억→새 작업 회상 전체 흐름에는 아직 공개 검증 공백이 있습니다.
+
+## 주요 설정
+
+처음에는 기본값을 유지하는 것을 권장합니다.
+
+| 설정 | 기본값 | 용도 |
+| --- | --- | --- |
+| `authorized_keys` | `[]` | SSH 공개키. 비어 있으면 SSH만 비활성화됩니다. |
+| `web_terminal_auto_start_codex` | `false` | 새 Web 터미널 세션에서 Codex를 자동 시작합니다. |
+| `codex_approval_policy` | `on-request` | 명령 실행 승인 정책입니다. |
+| `codex_sandbox_mode` | `danger-full-access` | 앱 컨테이너 내부의 Codex 권한입니다. HAOS host의 `full_access`가 아닙니다. |
+| `browser_approval_policy` | `safe` | 조회·캡처는 자동 승인하고 클릭·입력은 확인합니다. |
+| `codex_user_files_update_mode` | `preserve` | 사용자 Codex 설정과 지침을 업데이트 중 보존합니다. |
+| `home_assistant_browser_auto_auth` | `true` | Headless browser용 local-only read-only HA 사용자를 관리합니다. |
+| `log_level` | `info` | Web 터미널 로그 수준입니다. |
+
+모든 허용값, 재시작 필요 여부와 `refresh_all` 주의사항은 [설정값 전체 안내](codex_home_assistant/DOCS.md#앱-설정)를 확인하세요.
+
+## 안전한 작업 습관
+
+1. 먼저 “읽기 전용으로 조사하고 아직 수정하지 마”라고 요청합니다.
+2. 변경 대상, 백업 방법, 예상 diff와 검증 방법을 확인합니다.
+3. 대시보드·자동화처럼 범위가 큰 작업은 작은 단위로 승인합니다.
+4. 적용 후 `ha-config-check`, fresh API 상태와 브라우저 화면을 확인합니다.
+5. 도어록, 경보, 차고문, 난방, 급수, host 재부팅과 backup 복원은 별도로 명시하고 직전 결과를 다시 검토합니다.
+
+`danger-full-access`는 앱 컨테이너 내부 정책이지만 `/config`가 read-write로 연결되어 있으므로 실질적인 Home Assistant 변경 권한은 큽니다. `secrets.yaml`, `.storage`, Recorder DB와 `SUPERVISOR_TOKEN`을 출력하거나 Git·이슈·채팅에 공유하지 마세요.
+
+## 현재 제한사항
+
+- amd64만 지원합니다. aarch64는 아직 지원하지 않습니다.
+- Home Assistant 앱(이전 명칭: Add-on)이므로 HACS로 설치할 수 없습니다.
+- 기본 `boot: manual`이며 아직 `stage: experimental`입니다.
+- Web UI는 터미널입니다. 전용 모바일 채팅 인터페이스가 아닙니다.
+- Bubble Card와 다른 커스텀 카드는 포함하지 않습니다.
+- Headless browser 자동 인증의 read-only 사용자는 모든 entity state를 볼 수 있으므로 screenshot과 진단 결과도 민감할 수 있습니다.
+- 자동 생성 결과는 환경과 요청에 따라 달라집니다. 적용 전 diff와 backup을 검토해야 합니다.
+
+## 문서와 지원
+
+| 문서 | 대상 |
 | --- | --- |
-| `ha-codex` | `/config`에서 Codex 실행 |
-| `ha-codex-login` | `codex login --device-auth` 실행 |
-| `ha-api` | Core REST API proxy 호출 |
-| `supervisor-api` | Supervisor API 호출 및 `result` 검사 |
-| `ha-config-check` | Home Assistant 설정 검사 |
-| `ha-core-logs` | Core 로그 조회 |
-| `ha-addon-logs` | 지정 App 로그 조회 |
-| `ha-browser-auth-ensure` | App 설정에 따라 dashboard 자동 인증 생성·재사용·비활성화 |
-| `ha-browser-auth-setup` | 자동 설정 실패 시 전용 identity를 수동 재시도·진단 |
-| `ha-memory status` | 영속 HA memory schema, refresh, conflict 상태 확인 |
-| `ha-memory search QUERY` | 검증된 관련 HA 구조와 applied memory만 bounded 검색 |
-| `ha-memory show SUBJECT` | 정확한 `kind:id` 한 대상의 canonical/applied context 확인 |
-| `ha-memory remember ...` | 사용자가 명확히 설명한 지속 사실을 감사 가능한 후보→검증→적용으로 한 번에 처리 |
-| `ha-memory candidate list ...` | 대상·상태별 bounded 후보 후속 조회 |
-| `ha-browser-auth-remove` | 자동 인증 OFF 상태에서 관리형 dashboard identity 안전 제거 |
-| `ha-browser-auth-status` | browser 자동 로그인 검증 상태 조회 |
+| [한국어 사용 설명서](codex_home_assistant/DOCS.md) | 설치, 설정, Web UI, SSH, Remote, 업데이트, 문제 해결 |
+| [English user guide](codex_home_assistant/DOCS.en.md) | English installation and operations guide |
+| [프롬프트 예시](docs/examples.ko.md) | 대시보드, 자동화, 정리, 진단 요청 모음 |
+| [지원 안내](SUPPORT.md) | 로그 수집, 민감정보 제거, 이슈 작성 |
+| [보안 정책](.github/SECURITY.md) | 권한 모델과 비공개 취약점 제보 |
+| [변경 기록](codex_home_assistant/CHANGELOG.md) | 버전별 기능·업그레이드 주의사항 |
+| [개발 문서](docs/development/README.md) | 아키텍처, 제품 계약, ADR, 테스트·검증 기록 |
 
-## 저장소 구조
+문제가 생기면 먼저 [지원 안내](SUPPORT.md)에 따라 비밀정보를 제거한 진단 자료를 준비한 뒤 [GitHub Issues](https://github.com/Kanu-Coffee/codex-for-home-assistant/issues)를 이용해 주세요. 보안 취약점은 공개 이슈가 아닌 [보안 정책](.github/SECURITY.md)의 비공개 경로로 제보해 주세요.
 
-```text
-codex_home_assistant/  Home Assistant App manifest, image, rootfs, docs
-tests/                 policy/unit/container smoke tests
-.github/workflows/     lint, amd64 build, container smoke CI
-AGENTS.md              에이전트 작업 진입점
-rules.md               최상위 개발·보안·검증 규칙
-progress.md            실제 완료/미검증 상태의 단일 기준
-```
+## 라이선스
 
-문서 우선순위와 전체 설계는 `AGENTS.md`의 읽기 순서를 따릅니다. 구현 상태는 [progress.md](progress.md), 권한과 위험은 [security.md](security.md), 검증 시나리오는 [test_plan.md](test_plan.md)를 기준으로 합니다.
-
-## 검증 경계
-
-로컬 Docker 검증은 image build, Codex 실행, S6 서비스, ttyd/nginx, 동일 tmux pane 재접속·resize, 공개키 sshd, 영속 데이터와 helper 오류 처리를 다룹니다. 실제 HAOS에서는 public 설치·시작, auto-start false/true, device-code 로그인과 재시작 인증 유지, Web UI 재접속·resize, `/config` 쓰기, Core REST 조회·저위험 service call, Supervisor 정보·로그 helper·설정 검사, SSH host identity 유지와 mobile Remote SSH 프로젝트 작업을 확인했습니다. amd64 M1/M2 수용 기준은 PASS입니다.
-
-Supervisor/Core/App start/stop/restart 실동작은 manager API 기능 범위에 포함되지만 운영 중단 위험이 있으므로 명시적인 유지보수 승인 없이 자동 실행하지 않습니다. Public `0.3.2` 실기에서는 승인된 Core restart 요청 수락, daemon process 생존, 요청 후 forced fresh sync와 App restart의 DB·applied memory·Codex 설정/인증·SSH identity 보존을 확인했습니다. 다만 probe에 Core 단절이 나타나지 않아 실제 disconnect/reconnect와 LKG `stale/degraded` 순간은 NOT OBSERVED였으며, 이를 장애 경로 PASS로 확대하지 않습니다.
-
-자세한 최신 결과와 명령 증거는 `progress.md`에 기록합니다.
-
-## License
-
-Project source is licensed under Apache License 2.0. Runtime dependency notices are in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+프로젝트 소스는 [Apache License 2.0](LICENSE)으로 배포됩니다. 런타임 의존성 고지는 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)를 확인하세요.

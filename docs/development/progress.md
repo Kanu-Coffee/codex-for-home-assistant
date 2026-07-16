@@ -24,6 +24,19 @@
 
 ## Current Work
 
+### 2026-07-16 — 사용자 중심 문서·저장소 정리
+
+- 목표: GitHub와 Home Assistant App 표면을 개발 증거 중심 문서에서 HAOS 사용자 중심의 설치·활용·설정·보안 가이드로 재구성하고, 런타임 동작을 바꾸지 않은 채 개발 잔여물을 정리한다.
+- 사전 감사: `origin/main` `2291455`, 추적 파일 131개와 두 registered worktree를 확인했다. Docker image에는 `rootfs/`와 Playwright package만 복사됨을 재확인하고 `rootfs`, Dockerfile, `config.yaml`, 번역, workflow, active runtime/contract test를 변경 범위에서 제외했다. 모든 추적 test/fixture는 CI 또는 smoke에 연결되어 있었고, 실제 로컬 잔여물은 ignored `.pytest_cache`와 `tests/__pycache__`뿐이었다.
+- 사용자 문서: 한국어 기본 `README.md`, App `README.md`와 `DOCS.md`를 서비스·활용 사례 중심으로 다시 작성하고 `README.en.md`, App `README.en.md`, `DOCS.en.md`, 한·영 prompt cookbook을 추가했다. 옵션의 실제 기본값, Ingress terminal 경계, Bubble Card 미포함, mobile Remote의 phone→desktop→SSH 구조, custom `ha_memory`와 OpenAI Memories의 구분, 실제 HAOS memory 수용 공백을 코드·공식 문서와 일치시켰다.
+- 운영 표면: `SUPPORT.md`, `.github/SECURITY.md`, `CONTRIBUTING.md`, 현재 workflow 기반 release guide와 문서 index를 추가했다. Public `0.5.0` image의 실제 ttyd/tmux 화면을 비밀 없는 격리 Docker에서 desktop/mobile로 캡처했으며, Home Assistant Ingress frame이 없는 preview라는 경계를 caption과 asset 문서에 기록했다.
+- 개발 기록: 활성 계약·ADR·증거 문서를 `docs/development/`, 초기 master prompt·구현/Git 계획과 과거 `0.4.0` 운영 문서를 `docs/archive/`로 이동하고 archive warning을 추가했다. 루트 문서 14개 hash를 중복 강제하던 `MANIFEST.md`와 전용 `tests/test_manifest.py`는 제거했다. Git이 blob 무결성을 제공하고 모든 Markdown에 lint·link 검증을 적용하므로 앱 runtime/기능 test는 유지하면서 문서 수정의 불필요한 checksum 결합만 없앴다.
+- 검증: 로컬 Markdown/HTML 상대 link와 heading anchor 33개 파일 전부 해석, markdownlint 33 files/0 errors, pytest **57 passed / 8 jq-dependent skipped**, `python -m yamllint`, secret scan 포함 계약 test와 `git diff --check`가 PASS했다. runtime/packaging 파일이 변경되지 않아 image rebuild와 container smoke는 실행하지 않았다.
+- [x] 사용자 랜딩·설치·설정·예시·지원·보안 문서를 한·영으로 제공한다.
+- [x] 개발·과거 기록을 분리하고 실제 CI test와 runtime file을 보존한다.
+- [x] 과장 없이 Web UI, Remote, dashboard/automation, browser와 memory 기능 경계를 설명한다.
+- [x] 실제 비밀 없는 desktop/mobile Web terminal preview와 provenance를 제공한다.
+
 ### 2026-07-16 — public 0.4.0 실제 HAOS Playwright `never` 정책 수용 결과
 
 - 입력 증거: 사용자가 제공한 정제 보고서는 `2026-07-15T23:56:06Z`부터 `23:59:25Z`까지 public `0.4.0`의 관리형 자동 인증 `http://127.0.0.1:8099/` dashboard에서 비파괴 browser 동작을 실행했다. 실제 dashboard 이름·검색어·screenshot artifact는 저장소에 반입하지 않고 판정과 비식별 오류만 기록한다.

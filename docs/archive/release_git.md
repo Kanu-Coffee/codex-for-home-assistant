@@ -1,5 +1,8 @@
 # release_git.md — GitHub 및 릴리스 운영
 
+> [!CAUTION]
+> 초기 Git/GHCR 운영 계획을 보관한 문서입니다. 현재 배포 계약은 `.github/workflows/`와 `docs/development/progress.md`를 기준으로 확인하세요.
+
 ## 1. 저장소 정책
 
 - 권장 이름: `codex-for-home-assistant`

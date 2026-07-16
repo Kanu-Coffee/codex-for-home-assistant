@@ -221,17 +221,17 @@ gh auth status
 - force push 금지
 - 생성물·인증·실제 HA 설정 커밋 금지
 
-### R-603 작업 완료 후 push
+### R-603 외부 Git 작업은 승인 범위에서 수행
 
-테스트와 문서 갱신 후 브랜치를 `origin`에 push한다. 가능한 경우 PR을 생성하고 검증 결과와 미검증 항목을 본문에 적는다.
+커밋, push, PR, merge와 release는 사용자가 요청하거나 명시적으로 승인한 범위에서만 수행한다. 로컬 변경 작업은 검증된 diff를 준비한 상태로 완료할 수 있으며, 외부 작업을 수행할 때는 검증 결과와 미검증 항목을 commit/PR 본문에 적는다. Force push는 별도의 명시적 승인 없이 사용하지 않는다.
 
 ### R-604 remote가 없을 때
 
-사용자의 GitHub 연동이 확인되고 현재 폴더가 새 프로젝트라면 기본적으로 private 저장소를 사용한다. 사용자가 명시적으로 public 배포를 승인한 이 프로젝트는 public `codex-for-home-assistant`를 `origin`으로 사용한다. 이미 저장소/remote가 있으면 새 저장소를 만들지 않는다.
+기존 저장소와 remote가 있으면 그대로 사용한다. Remote가 없더라도 사용자가 새 저장소 생성을 명시적으로 요청하기 전에는 private/public 저장소를 임의로 만들지 않는다. 이 프로젝트의 공식 remote는 public `Kanu-Coffee/codex-for-home-assistant`이지만, 연결·변경·push도 현재 요청 범위 안에서만 수행한다.
 
 ### R-605 HAOS 설치 테스트 전달
 
-사용자가 Home Assistant 웹에서 저장소를 연결해 설치·테스트할 수 있는 상태를 요청하면 기능 브랜치나 draft PR만으로 완료 처리하지 않는다. 자동 CI 통과와 미검증 항목 기록 후 변경을 `main`에 병합하고, 사용자가 승인한 public 저장소 URL에서 `repository.yaml`과 App 소스를 인증 없이 읽을 수 있는지 확인한다.
+사용자가 Home Assistant 웹에서 설치할 **공개 배포**까지 명시적으로 요청하면 기능 브랜치나 draft PR만으로 완료 처리하지 않는다. 별도 승인 범위에서 자동 CI, 미검증 항목, main merge, public 저장소의 `repository.yaml`과 App source 접근, versioned image와 App Store 노출을 확인한다. 로컬 구현·문서 작업 요청을 자동으로 public 배포 승인으로 확대하지 않는다.
 
 ## 8. 완료 정의
 
@@ -243,5 +243,5 @@ gh auth status
 4. `progress.md`가 실제 상태와 일치한다.
 5. 관련 문서와 changelog가 갱신됐다.
 6. Git diff를 검토했다.
-7. 커밋·push가 완료됐고 가능하면 PR이 생성됐다.
-8. HAOS 설치 테스트 전달이면 public 저장소와 `main` 병합까지 완료됐다.
+7. 요청된 경우에만 커밋·push·PR을 완료하고 결과를 기록했다.
+8. 공개 HAOS 설치 전달이 요청된 경우에만 public 저장소, `main` merge와 배포 표면을 확인했다.
