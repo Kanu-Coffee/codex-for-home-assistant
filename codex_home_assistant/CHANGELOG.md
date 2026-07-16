@@ -2,7 +2,7 @@
 
 All notable changes to this App are documented in this file.
 
-## [0.5.0] - Unreleased
+## [0.5.0] - 2026-07-16
 
 ### Added
 
@@ -16,6 +16,10 @@ All notable changes to this App are documented in this file.
 - Require model-visible memory guidance to search a small relevant subset first, disclose empty/degraded/stale status, finish direct explicit-user learning in the same request, keep entity data out of all AGENTS files, and report applied/conflict outcomes. Add a bounded `ha-memory remember` fallback when the optional MCP is unavailable and forbid weak existence/name checks as proof of unsupported automation logic changes.
 - Require supported pre-change expectations and post-reload fresh API verification for persistent Home Assistant configuration, registry, and automation mutations. Reads, diagnostics, catalog refreshes, and transient device-service tests remain outside that ledger; unsupported or unavailable verification leaves semantic memory unchanged and is disclosed before mutation.
 - Advance the released-image update regression to public `0.4.0` so the new memory tools are verified without losing the existing catalog/applied memory, user Codex files, authentication, SSH, browser identity, or browser approval policy.
+
+### Fixed
+
+- Wait up to five seconds for transient SQLite `BUSY`/`LOCKED` contention, retry only `search_fts`-scoped FTS5 diagnostics when `data_version` proves another connection committed during the check, serialize new schema initialization in one immediate transaction, and tolerate only normal WAL/SHM/journal disappearance during auxiliary-file inspection. Concurrent first catalog bootstrap and `ha-memory status` no longer report a healthy WAL/FTS5 store as `database_corrupt` or fail with `ENOENT`; malformed, unsafe, or stable integrity failures remain fail-closed.
 
 ### Security
 

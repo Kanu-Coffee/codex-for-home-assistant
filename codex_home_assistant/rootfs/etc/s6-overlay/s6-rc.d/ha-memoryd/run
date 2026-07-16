@@ -34,7 +34,9 @@ while true; do
     refresh_reason=
     if parsed_reason=$(printf '%s' "${refresh_output}" \
       | jq --exit-status --raw-output \
-        'if type == "object" and (.reason | type) == "string" then .reason else empty end' \
+        'if type == "object" and (.reason | type) == "string" then .reason
+         elif type == "object" and (.error | type) == "string" then .error
+         else empty end' \
         2>/dev/null); then
       refresh_reason=${parsed_reason}
     fi
@@ -56,13 +58,19 @@ while true; do
       ha_command_related_failed|\
       ha_command_failed|\
       ha_snapshot_incomplete|\
+      database_busy|\
+      database_corrupt|\
+      invalid_schema|\
+      unsupported_schema|\
+      migration_required|\
+      unsafe_storage|\
       ha_unavailable)
         ;;
       *)
         refresh_reason=ha_unavailable
         ;;
     esac
-    bashio::log.warning "Home Assistant memory refresh is unavailable (${refresh_reason}); preserving the last-known-good catalog and retrying in ${retry_seconds}s"
+    bashio::log.warning "Home Assistant memory refresh is unavailable (${refresh_reason}); leaving the existing store unchanged and retrying in ${retry_seconds}s"
     unset refresh_reason
     sleep "${retry_seconds}" &
     if (( retry_seconds < MAX_RETRY_SECONDS )); then

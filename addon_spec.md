@@ -294,7 +294,7 @@ nano 또는 vim
 - `/config` 쓰기 테스트는 안전한 임시 파일을 생성 후 삭제해 수행
 - 이전 기본 Playwright output을 init 시작 때 제거하고 `/run/codex-ha` 아래 `0700`으로 재생성한다. 검증된 browser token의 runtime file은 `0600`으로 만들고 browser profile을 `/data`에 만들지 않음
 - guarded `ha-memory init`이 링크를 따라가지 않고 `/data/codex-ha-memory`를 root-owned `0700`, database/WAL/SHM을 `0600`으로 만들거나 검증한다. unsafe path는 memory만 fail closed하며 main init은 계속된다. main init은 Core catalog를 동기화하지 않고 독립 S6 `ha-memoryd`가 retry 가능한 bootstrap/refresh를 담당한다.
-- `ha-memoryd`는 ttyd, ingress, sshd와 browser service의 dependency가 아니다. DB/Core/schema 실패는 catalog를 `degraded`/`stale`로 표시하거나 memory tool unavailable 오류를 반환하고 App의 기존 복구 표면은 계속 시작한다. daemon은 CLI 원문을 log하지 않고 closed allowlist의 token/DNS/transport/timeout/auth/protocol/command/snapshot reason만 기록한다.
+- `ha-memoryd`는 ttyd, ingress, sshd와 browser service의 dependency가 아니다. DB/Core/schema 실패는 catalog를 `degraded`/`stale`로 표시하거나 memory tool unavailable 오류를 반환하고 App의 기존 복구 표면은 계속 시작한다. Daemon은 CLI 원문을 log하지 않고 closed allowlist의 token/DNS/transport/timeout/auth/protocol/command/snapshot reason과 local database busy/corrupt/schema/storage code만 기록한다.
 
 ## 7.1 검증형 Home Assistant 메모리 계약
 
@@ -307,7 +307,7 @@ nano 또는 vim
 └─ memory.sqlite3-shm        # 존재 시 0600
 ```
 
-- SQLite는 FTS5, foreign key, check constraint와 WAL/busy-timeout transaction을 사용한다. v1 schema를 초기화·검증하고 알 수 없는 과거/미래 version은 자동 migration 없이 memory만 fail closed한다. scheduler/CLI/MCP는 같은 WAL database를 다중 process로 사용하고 별도 Unix socket writer를 만들지 않는다.
+- SQLite는 FTS5, foreign key, check constraint와 WAL/busy-timeout transaction을 사용한다. 모든 connection은 journal 설정과 read-only schema preflight 전에 5초 busy timeout을 적용한다. 기존 schema의 full `quick_check`는 lock-only 결과와 검사 중 `data_version`이 바뀌고 모든 row가 exact `search_fts` table 범위인 FTS5 진단만 bounded retry/`database_busy`로 분리하며, 새/빈 schema의 검사·초기화는 `BEGIN IMMEDIATE` 한 transaction에서 writer와 직렬화한다. 동시 connection 종료로 WAL/SHM/journal이 검사 도중 사라지는 경우만 해당 보조 파일에 한해 허용하고, 남아 있는 보조 파일은 type/link/owner/mode 검사를 모두 통과해야 한다. 다른 FTS5/일반 무결성 진단은 계속 corruption으로 fail closed한다. v1 schema를 초기화·검증하고 알 수 없는 과거/미래 version은 자동 migration 없이 memory만 fail closed한다. scheduler/CLI/MCP는 같은 WAL database를 다중 process로 사용하고 별도 Unix socket writer를 만들지 않는다.
 - 고정 table은 `metadata`, `sync_runs`, `catalog_objects`, `catalog_relations`, `catalog_revisions`, `memory_items`, `memory_evidence`, `conflicts`, `change_records`, `audit_events`, `audit_changes`, `search_fts`다.
 - `memory_items`는 candidate와 applied semantic fact를 통합한다. SQL check는 허용 status enum을 제한하고 application transaction이 `pending`, `verified`, `applied` 순서와 current-row/status precondition을 강제한다.
 - catalog snapshot은 staging normalization이 모두 성공한 뒤 하나의 `catalog_revisions` transaction으로 교체한다. 실패한 `sync_runs`는 closed machine error code만 기록하고 last-known-good catalog를 변경하지 않는다.

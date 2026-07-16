@@ -143,11 +143,14 @@ def test_memory_daemon_is_optional_to_terminal_and_ssh(rootfs: Path) -> None:
     assert ">/dev/null 2>&1" not in run_script
     assert "jq --exit-status --raw-output" in run_script
     assert ".reason" in run_script
+    assert ".error" in run_script
     assert ".warnings | length" in run_script
     assert "bounded warning(s)" in run_script
     assert "ha_token_unavailable" in run_script
     assert "ha_auth_rejected" in run_script
     assert "ha_command_automation_config_failed" in run_script
+    assert "database_busy" in run_script
+    assert "database_corrupt" in run_script
     assert "refresh_reason=ha_unavailable" in run_script
     assert all(
         "refresh_output" not in line

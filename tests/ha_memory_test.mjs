@@ -9,12 +9,14 @@ import {
   symlink,
   writeFile,
 } from "node:fs/promises";
-import { existsSync } from "node:fs";
+import fs, { existsSync } from "node:fs";
+import { syncBuiltinESMExports } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 import { DatabaseSync } from "node:sqlite";
+import { Worker } from "node:worker_threads";
 
 const MODULE_ROOT = process.env.HA_MEMORY_INSTALLED_TEST === "1"
   ? "file:///usr/local/share/codex-ha"
@@ -1436,4 +1438,294 @@ test("existing database schema preflight is fail-closed and read-only", async (t
     const after = await readFile(path);
     assert.deepEqual(after, before, `${item.name} must not be mutated during preflight`);
   }
+});
+
+test("database open waits for a transient SQLite writer lock", async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), "ha-memory-lock-"));
+  const dbPath = join(directory, "memory.sqlite3");
+  t.after(() => rm(directory, { recursive: true, force: true }));
+
+  const initialized = openMemoryDatabase(dbPath);
+  closeMemoryDatabase(initialized, dbPath);
+
+  const worker = new Worker(
+    `
+      const { DatabaseSync } = require("node:sqlite");
+      const { parentPort, workerData } = require("node:worker_threads");
+      const db = new DatabaseSync(workerData.dbPath);
+      db.exec("PRAGMA journal_mode = DELETE");
+      db.exec("BEGIN EXCLUSIVE");
+      db.prepare(
+        "UPDATE metadata SET value = value WHERE key = 'schema_version'",
+      ).run();
+      parentPort.postMessage("locked");
+      setTimeout(() => {
+        db.exec("COMMIT");
+        db.close();
+      }, workerData.holdMs);
+    `,
+    { eval: true, workerData: { dbPath, holdMs: 400 } },
+  );
+  t.after(() => worker.terminate());
+  const exitPromise = new Promise((resolve, reject) => {
+    worker.once("error", reject);
+    worker.once("exit", (code) => {
+      if (code === 0) resolve();
+      else reject(new Error(`SQLite lock worker exited with code ${code}`));
+    });
+  });
+  void exitPromise.catch(() => {});
+  const handshake = await new Promise((resolve, reject) => {
+    worker.once("message", resolve);
+    worker.once("error", reject);
+  });
+  assert.equal(handshake, "locked");
+
+  const startedAt = Date.now();
+  const reopened = openMemoryDatabase(dbPath);
+  const waitedMs = Date.now() - startedAt;
+  assert.equal(memoryStatus(reopened, dbPath).integrity, "ok");
+  closeMemoryDatabase(reopened, dbPath);
+  assert.ok(waitedMs >= 100, `database open waited only ${waitedMs}ms for the lock`);
+  await exitPromise;
+});
+
+test("integrity checks remain stable with a concurrent FTS5 writer", async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), "ha-memory-fts-race-"));
+  const dbPath = join(directory, "memory.sqlite3");
+  t.after(() => rm(directory, { recursive: true, force: true }));
+
+  const setup = openMemoryDatabase(dbPath);
+  setup.exec("BEGIN IMMEDIATE");
+  try {
+    const insert = setup.prepare(
+      "INSERT INTO search_fts(subject_key, content) VALUES(?, ?)",
+    );
+    for (let index = 0; index < 10_000; index += 1) {
+      insert.run(`entity:race_${index}`, `initial searchable value ${index}`);
+    }
+    setup.exec("COMMIT");
+  } catch (error) {
+    setup.exec("ROLLBACK");
+    throw error;
+  }
+  closeMemoryDatabase(setup, dbPath);
+
+  const stopSignal = new Int32Array(new SharedArrayBuffer(8));
+  const worker = new Worker(
+    `
+      const { DatabaseSync } = require("node:sqlite");
+      const { parentPort, workerData } = require("node:worker_threads");
+      const stop = new Int32Array(workerData.stopSignal);
+      const db = new DatabaseSync(workerData.dbPath, { timeout: 5000 });
+      const remove = db.prepare("DELETE FROM search_fts WHERE subject_key = ?");
+      const insert = db.prepare(
+        "INSERT INTO search_fts(subject_key, content) VALUES(?, ?)",
+      );
+      let iteration = 0;
+      while (Atomics.load(stop, 0) === 0 && iteration < 1_000_000) {
+        db.exec("BEGIN IMMEDIATE");
+        const subject = "entity:race_" + (iteration % 100);
+        remove.run(subject);
+        insert.run(subject, "updated searchable value " + iteration);
+        db.exec("COMMIT");
+        iteration += 1;
+        Atomics.store(stop, 1, iteration);
+        if (iteration === 25) parentPort.postMessage("writing");
+      }
+      db.close();
+    `,
+    { eval: true, workerData: { dbPath, stopSignal: stopSignal.buffer } },
+  );
+  t.after(() => worker.terminate());
+  const exitPromise = new Promise((resolve, reject) => {
+    worker.once("error", reject);
+    worker.once("exit", (code) => {
+      if (code === 0) resolve();
+      else reject(new Error(`FTS5 writer worker exited with code ${code}`));
+    });
+  });
+  void exitPromise.catch(() => {});
+  const handshake = await new Promise((resolve, reject) => {
+    worker.once("message", resolve);
+    worker.once("error", reject);
+  });
+  assert.equal(handshake, "writing");
+
+  const commitsBeforeChecks = Atomics.load(stopSignal, 1);
+  try {
+    for (let attempt = 0; attempt < 10; attempt += 1) {
+      const reopened = openMemoryDatabase(dbPath);
+      try {
+        assert.equal(memoryStatus(reopened, dbPath).integrity, "ok");
+      } finally {
+        closeMemoryDatabase(reopened, dbPath);
+      }
+    }
+  } finally {
+    Atomics.store(stopSignal, 0, 1);
+    Atomics.notify(stopSignal, 0);
+  }
+  assert.ok(Atomics.load(stopSignal, 1) > commitsBeforeChecks);
+  await exitPromise;
+});
+
+test("SQLite auxiliary files may disappear only during their own inspection", async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), "ha-memory-aux-disappear-"));
+  const dbPath = join(directory, "memory.sqlite3");
+  t.after(() => rm(directory, { recursive: true, force: true }));
+
+  const initialized = openMemoryDatabase(dbPath);
+  closeMemoryDatabase(initialized, dbPath);
+  const holdingConnection = new DatabaseSync(dbPath);
+  holdingConnection.exec("BEGIN");
+  holdingConnection.prepare("SELECT value FROM metadata WHERE key = ?").get(
+    "schema_version",
+  );
+  assert.equal(existsSync(`${dbPath}-shm`), true);
+
+  const originalLstatSync = fs.lstatSync;
+  let shmInspectionCount = 0;
+  let disappearanceInjected = false;
+  fs.lstatSync = (path, ...options) => {
+    if (path === `${dbPath}-shm`) {
+      shmInspectionCount += 1;
+      if (shmInspectionCount === 2) {
+        disappearanceInjected = true;
+        const error = new Error("simulated SQLite SHM cleanup");
+        error.code = "ENOENT";
+        throw error;
+      }
+    }
+    return originalLstatSync(path, ...options);
+  };
+  syncBuiltinESMExports();
+
+  let reopened;
+  try {
+    reopened = openMemoryDatabase(dbPath);
+    assert.equal(memoryStatus(reopened, dbPath).integrity, "ok");
+    assert.equal(disappearanceInjected, true);
+  } finally {
+    fs.lstatSync = originalLstatSync;
+    syncBuiltinESMExports();
+    if (reopened) closeMemoryDatabase(reopened, dbPath);
+    holdingConnection.exec("ROLLBACK");
+    holdingConnection.close();
+  }
+});
+
+test("concurrent opens tolerate normal SQLite auxiliary-file cleanup", async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), "ha-memory-aux-race-"));
+  const dbPath = join(directory, "memory.sqlite3");
+  t.after(() => rm(directory, { recursive: true, force: true }));
+
+  const initialized = openMemoryDatabase(dbPath);
+  closeMemoryDatabase(initialized, dbPath);
+
+  const workerCount = 8;
+  const iterations = 40;
+  const startSignal = new Int32Array(new SharedArrayBuffer(4));
+  const workers = Array.from({ length: workerCount }, () => new Worker(
+    `
+      const { parentPort, workerData } = require("node:worker_threads");
+      process.env.HA_MEMORY_TEST_MODE = "1";
+      // Worker threads cannot mutate the process-wide umask. The parent has
+      // already set it through the initial database open above.
+      process.umask = () => 0o077;
+      import(workerData.moduleUrl).then((memory) => {
+        parentPort.postMessage("ready");
+        const start = new Int32Array(workerData.startSignal);
+        while (Atomics.load(start, 0) === 0) Atomics.wait(start, 0, 0);
+        for (let iteration = 0; iteration < workerData.iterations; iteration += 1) {
+          const db = memory.openMemoryDatabase(workerData.dbPath);
+          try {
+            if (memory.memoryStatus(db, workerData.dbPath).integrity !== "ok") {
+              throw new Error("memory integrity was not ok");
+            }
+          } finally {
+            memory.closeMemoryDatabase(db, workerData.dbPath);
+          }
+        }
+      }).catch((error) => {
+        parentPort.postMessage({
+          error: error?.stack ?? String(error),
+          code: error?.code ?? null,
+        });
+        process.exitCode = 1;
+      });
+    `,
+    {
+      eval: true,
+      workerData: {
+        dbPath,
+        iterations,
+        moduleUrl: `${MODULE_ROOT}/ha-memory-core.mjs`,
+        startSignal: startSignal.buffer,
+      },
+    },
+  ));
+  t.after(() => Promise.all(workers.map((worker) => worker.terminate())));
+
+  await Promise.all(workers.map((worker) => new Promise((resolve, reject) => {
+    const onMessage = (message) => {
+      if (message === "ready") {
+        worker.off("error", reject);
+        resolve();
+      } else if (message?.error) {
+        reject(new Error(`${message.code ?? "unknown"}: ${message.error}`));
+      }
+    };
+    worker.on("message", onMessage);
+    worker.once("error", reject);
+  })));
+  const completionPromises = workers.map((worker) => new Promise((resolve, reject) => {
+    worker.on("message", (message) => {
+      if (message?.error) reject(new Error(`${message.code ?? "unknown"}: ${message.error}`));
+    });
+    worker.once("error", reject);
+    worker.once("exit", (code) => {
+      if (code === 0) resolve();
+      else reject(new Error(`SQLite auxiliary-file worker exited with code ${code}`));
+    });
+  }));
+  Atomics.store(startSignal, 0, 1);
+  Atomics.notify(startSignal, 0);
+  await Promise.all(completionPromises);
+});
+
+test("database corruption remains fail-closed and read-only", async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), "ha-memory-corrupt-"));
+  const dbPath = join(directory, "memory.sqlite3");
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  await writeFile(dbPath, "not-a-sqlite-database", { mode: 0o600 });
+  const before = await readFile(dbPath);
+
+  assert.throws(
+    () => openMemoryDatabase(dbPath),
+    (error) => error?.code === "database_corrupt",
+  );
+  assert.deepEqual(await readFile(dbPath), before);
+});
+
+test("stable FTS5 corruption remains fail-closed and read-only", async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), "ha-memory-fts-corrupt-"));
+  const dbPath = join(directory, "memory.sqlite3");
+  t.after(() => rm(directory, { recursive: true, force: true }));
+
+  const initialized = openMemoryDatabase(dbPath);
+  initialized.prepare(
+    "INSERT INTO search_fts(subject_key, content) VALUES(?, ?)",
+  ).run("entity:stable_corruption", "stable corruption sentinel");
+  closeMemoryDatabase(initialized, dbPath);
+  const corruptor = new DatabaseSync(dbPath, { defensive: false });
+  corruptor.exec("DELETE FROM search_fts_content");
+  corruptor.close();
+  const before = await readFile(dbPath);
+
+  assert.throws(
+    () => openMemoryDatabase(dbPath),
+    (error) => error?.code === "database_corrupt",
+  );
+  assert.deepEqual(await readFile(dbPath), before);
 });

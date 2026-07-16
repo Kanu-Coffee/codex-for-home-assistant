@@ -254,7 +254,7 @@ ha-memory rollback 12 --reason 'User withdrew the previously applied alias'
 
 Semantic conflict winner는 `candidate` 또는 `existing`이며 실제 사용자 지시에 따라 선택합니다. `ha` winner는 HA canonical/change-result conflict에서만 허용됩니다. Audit event는 before/after row를 보존하고 rollback은 현재 row가 해당 event 직후 상태와 같고 후속 dependency가 없을 때만 compensating event를 만듭니다. 원 event는 삭제하지 않고 rollback linkage를 기록합니다. 나중 변경으로 값이 달라졌으면 `rollback_diverged`로 거부합니다. HA-derived catalog revision, change-verification history, 실제 configuration/device state는 rollback 대상이 아니며 다음 fresh refresh로만 교정합니다.
 
-Memory DB가 unsafe/corrupt로 거부되면 App을 중지하고 `/data/codex-ha-memory`를 포함한 private backup을 먼저 확보하세요. DB/WAL을 임의 삭제·수정하거나 오래된 catalog로 HA를 되돌리지 말고, `ha-memory status`, 정제된 App log, App/Core version만 수집해 보고하세요. Store가 정상이고 Core만 일시 중단됐다면 last-known-good를 유지한 채 daemon이 재시도하므로 수동 초기화가 필요하지 않습니다.
+Memory DB가 unsafe/corrupt로 거부되면 App을 중지하고 `/data/codex-ha-memory`를 포함한 private backup을 먼저 확보하세요. DB/WAL을 임의 삭제·수정하거나 오래된 catalog로 HA를 되돌리지 말고, `ha-memory status`, 정제된 App log, App/Core version만 수집해 보고하세요. `database_busy`는 daemon/CLI/MCP의 정상 동시 접근이 5초 안에 해소되지 않았다는 재시도 가능 상태이며 corruption 판정이 아닙니다. Store가 정상이고 Core만 일시 중단됐다면 last-known-good를 유지한 채 daemon이 재시도하므로 수동 초기화가 필요하지 않습니다.
 
 ## Web UI와 공유 tmux 세션
 
