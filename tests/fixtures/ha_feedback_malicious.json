@@ -1,0 +1,62 @@
+{
+  "affected_feature": "Feedback privacy gate",
+  "summary": "Reject a report containing private runtime material",
+  "expected_behavior": "Validation stops before any public artifact is created.",
+  "actual_behavior": "The fixture intentionally contains multiple prohibited value classes.",
+  "reproduction_steps": [
+    "Pass the structured fixture to the local feedback collector."
+  ],
+  "cause_candidates": [
+    "Unknown: no root cause analysis is performed for a rejected privacy fixture."
+  ],
+  "checks": [
+    {
+      "name": "Privacy rejection",
+      "status": "NOT_RUN",
+      "evidence": "The collector must reject this fixture before reporting a result."
+    }
+  ],
+  "evidence": [
+    "ghp_ABCDEFGHIJKLMNOPQRSTUVWX",
+    "access_token: fixture-secret-value",
+    "\"password\": \"fixture-password\"",
+    "session=fixture-cookie-value",
+    "AKIAABCDEFGHIJKLMNOP",
+    "-----BEGIN OPENSSH PRIVATE K\u0045Y-----",
+    "Cookie: session=example-value",
+    "https://internal.example.invalid/private-path",
+    "192.168.10.42",
+    "fd00::1",
+    "resident@example.invalid",
+    "@resident-account serial_number: HAOS-ABCD-1234-EFGH eui64=00124B0001ABCDEF IMEI: 490154203237518",
+    "3232235818",
+    "user_id: resident-identifier",
+    "light.kitchen_main select.living_room assist_satellite.kitchen geo_location.fire_alert image_processing.driveway plant.office_fern ai_task.kitchen_agent",
+    "mqtt://broker.internal/topic",
+    "//internal.example.invalid/path",
+    "homeassistant.local:8123/api/states example.com/private/path",
+    "username: resident",
+    "AA:BB:CC:DD:EE:FF",
+    "AABBCCDDEEFF",
+    "AABBCCDDEEFF0011",
+    "/config/.storage/core.entity_registry",
+    "123e4567-e89b-12d3-a456-426614174000",
+    "bell\u0007character",
+    "c1\u0085character",
+    "bidi\u202ehidden",
+    "terminal\u001b[31mred\u001b[0m",
+    "AbCdEf0123456789AbCdEf0123456789AbCdEf0123456789AbCdEf0123456789ZZ",
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb_cccc"
+  ],
+  "unverified_scope": [],
+  "security_issue": false,
+  "environment": {
+    "app_version": "0.6.0",
+    "codex_version": "0.144.1",
+    "core_version": "2026.7.2",
+    "supervisor_version": "2026.07.3",
+    "os_version": "17.0",
+    "arch": "amd64",
+    "app_options": {}
+  }
+}

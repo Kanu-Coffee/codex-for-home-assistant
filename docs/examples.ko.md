@@ -21,6 +21,94 @@
 6. backup과 검증이 필요한 개선 후보
 ```
 
+## 버그와 기능 제안
+
+`$ha-feedback`은 이 앱 자체의 버그나 기능 제안을 읽기 전용으로 검증하고, 공개 가능한 보고서로 정리하는 preset입니다. 최초 요청은 조사와 보고서 작성만 승인하며 GitHub 제출은 승인하지 않습니다.
+
+### 버그 보고
+
+#### 버그 자연어 요청
+
+```text
+Codex for Home Assistant에서 다음 문제를 발견했어:
+<재현 가능한 증상, 발생 시점과 사용자 영향>
+
+$ha-feedback의 bug 흐름으로 읽기 전용 검증해 줘.
+앱과 Home Assistant 버전, 영향받는 경로, 최소 재현 단계, 예상 동작과
+실제 동작을 확인하고, 실행한 개별 검사는 PASS / FAIL / NOT_TESTED / NOT_RUN과
+근거로 구분해 줘. Home Assistant 파일, registry, 기기 상태, 앱 옵션을
+바꾸거나 재시작·업데이트·service call·수정을 실행하지 마.
+
+전체 로그와 원본 screenshot은 수집하지 말고 공개 가능한 최소 증거만 정제해.
+보안 취약점, 인증 우회 또는 자격증명 노출 가능성이 보이면 공개 보고서와
+GitHub 제출 흐름을 즉시 중단하고 비공개 보안 제보 경로만 안내해 줘.
+보고서 bundle을 만든 뒤 아직 제출하지 말고 최종 공개 preview를 보여 줘.
+```
+
+#### 버그 명시적 호출
+
+```text
+$ha-feedback bug <재현 가능한 증상과 영향을 한두 문장으로 작성>
+```
+
+### 기능 제안
+
+#### 기능 자연어 요청
+
+```text
+Codex for Home Assistant에 다음 기능을 제안하고 싶어:
+<누가 어떤 상황에서 무엇을 달성하려는지와 현재 막히는 점>
+
+$ha-feedback의 feature 흐름으로 읽기 전용 검증해 줘.
+현재 문서와 기능이 이미 지원하는 범위, 확인한 근거, 가능한 대안과 우회법,
+사용자에게 보일 제안 동작, 호환성·보안·개인정보 위험, 범위 밖 항목과
+관찰 가능한 수용 기준을 정리해 줘. Home Assistant 구성이나 상태를 바꾸지 말고
+기능을 구현하거나 설치하지도 마.
+
+실제 식별정보와 전체 로그·원본 screenshot은 포함하지 마. 보안 취약점,
+인증 우회 또는 자격증명 노출과 관련된 제안이면 공개 흐름을 중단하고
+비공개 보안 제보 경로만 안내해 줘. 보고서 bundle을 만든 뒤 아직 제출하지
+말고 최종 공개 preview를 보여 줘.
+```
+
+#### 기능 명시적 호출
+
+```text
+$ha-feedback feature <필요한 기능과 사용 사례를 한두 문장으로 작성>
+```
+
+### 생성되는 보고서와 제출 경계
+
+보고서 외에는 아무것도 변경하지 않으며, 실행별 bundle은 다음 경로에 생성됩니다.
+
+```text
+/config/codex-workspace/feedback/<UTC>-<kind>-<report-id>/
+```
+
+- `public-report.md`: 사람이 최종 확인하고 공개 이슈에 붙여 넣는 정제 보고서
+- `report.json`: 검사, 결과와 근거를 담은 구조화된 로컬 보고서
+- `submission.json`: 직접 제출 성공 뒤 이슈 번호, URL, 제출 시각만 기록하는 선택적 영수증
+
+세 파일 모두 token, credential, 내부 URL/IP, 사용자명과 실제 entity, device, area, 가족 정보를 포함하면 안 됩니다. 공개용은 `public-report.md`뿐이며 JSON이나 directory 전체를 첨부하지 마세요. 로그는 최초 오류 전후의 짧은 정제 구간을 별도로 preview하고 사용자가 포함을 확인한 경우에만 허용됩니다. Screenshot은 알림과 식별정보를 가린 별도 정제본을 사람이 이미지·metadata까지 확인한 뒤에만 수동 첨부하며, 원본이나 자동 첨부는 사용하지 않습니다.
+
+보안 취약점, 인증 우회 또는 자격증명 노출 가능성이 발견되면 공개 검색·제출을 멈추고 로컬 보고서를 공개하지 않은 채 [비공개 보안 제보](https://github.com/Kanu-Coffee/codex-for-home-assistant/security/advisories/new)를 사용합니다.
+
+제출 대상은 `Kanu-Coffee/codex-for-home-assistant`로 고정됩니다. 다음 명령은 연결 상태 확인, 사용자가 선택한 로그인, 로그아웃과 고정 Issue Form URL 확인에만 사용합니다.
+
+```bash
+ha-feedback github status
+ha-feedback github login
+ha-feedback github logout
+ha-feedback github url <report.json|report-directory>
+ha-feedback github submit <report.json|report-directory>
+```
+
+직접 제출을 선택한 경우 GitHub CLI 인증은 `/data/github-cli`에 영속합니다. Home Assistant App backup에 이 경로가 포함될 수 있으므로 backup도 민감자료로 취급하고, 직접 제출이 필요 없으면 로그인하지 마세요. 연결이 더 이상 필요하지 않으면 `ha-feedback github logout`을 사용합니다.
+
+Codex는 읽기 전용 상태·후보 검색 후 최종 repository, issue 종류, 제목과 공개 본문을 preview하고 “이 내용으로 제출해”처럼 별도의 명시적 확인을 받아야 합니다. Preview token은 암호학적으로 임의 생성되며 10분 뒤 만료되는 1회용입니다. 잘못되거나 만료되거나 이미 사용된 token 또는 실패한 확인 뒤에는 새 preview와 확인이 필요합니다. 후보 검색 또는 제출 직전 report ID 중복 검색이 불가능하면 이슈를 만들지 않고 Web Form으로 전환합니다.
+
+확인 후 두 검색과 GitHub CLI 연결이 모두 정상인 경우에만 helper가 검증한 본문을 `gh issue create --body-file -`의 stdin으로 전달합니다. 직접 제출은 자동 재시도하지 않습니다. `gh` 실패, 예상 밖 URL 또는 receipt 기록 실패가 생기면 hidden `.submission.lock`이 남아 같은 report의 직접 재시도를 막을 수 있습니다. Lock을 지우지 말고 기존 이슈를 먼저 검색한 뒤 `ha-feedback github url <report>`로 [Issue Form](https://github.com/Kanu-Coffee/codex-for-home-assistant/issues/new/choose)을 열어 보존된 `public-report.md`를 검토하고 수동으로 붙여 넣습니다.
+
 ## 대시보드
 
 ### Bubble Card 모바일 홈

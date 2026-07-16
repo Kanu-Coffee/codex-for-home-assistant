@@ -53,6 +53,7 @@ These images show the real Web terminal from the public `0.5.0` image, captured 
 | Create automations | Suggest candidates from your routines and current entities, then implement and verify only the items you approve. |
 | Clean up entities | Find duplicate, unused, or broken-reference candidates and show their impact. Deletion or registry changes require separate confirmation. |
 | Diagnose errors | Review configuration files, `ha-config-check`, Core/App logs, and current state together, then propose the smallest fix. |
+| Prepare app bug or improvement feedback | `$ha-feedback` checks only the app scope in read-only mode, produces a sanitized environment/evidence report, and asks you to review the final public body. |
 | Work directly on Home Assistant | Change `/config` files and use supported Core/Supervisor APIs, then recheck results through fresh APIs where possible. |
 | Continue while away from home | Use the Ingress terminal in the Home Assistant mobile app or website, or connect ChatGPT mobile Remote directly to the app's SSH endpoint. |
 | Preserve context about your home | Keep verified HA structure and user-stated aliases, purposes, and preferences in this project's local memory, then retrieve only relevant context for later work. |
@@ -70,6 +71,7 @@ flowchart LR
     C --> F["Read and edit /config"]
     C --> A["Core and Supervisor APIs"]
     C --> B["Headless browser validation"]
+    C --> R["Sanitized bug and feature reports"]
     C <--> H["Verified HA memory"]
 ```
 
@@ -148,6 +150,16 @@ as well as items that repeatedly become unavailable or unknown.
 Show each item's references and cleanup risk in a table. Do not delete anything.
 ```
 
+### Validate an app bug or feature request
+
+```text
+$ha-feedback bug The same symptom returns after reconnecting to the Web UI. Diagnose only the app in read-only mode and prepare a report.
+```
+
+```text
+$ha-feedback feature I have an improvement request for this app. Check current behavior and alternatives first, then prepare a proposal with acceptance criteria.
+```
+
 [More English prompt examples](docs/examples.en.md) · [한국어 프롬프트 예시](docs/examples.ko.md)
 
 ## Two ways to work from a phone
@@ -169,7 +181,7 @@ This project's `ha_memory` is a local SQLite/MCP workflow. It is separate from O
 - It does not store raw conversations, current or historical state values, automation action/template bodies, tokens, or passwords.
 - Fresh Home Assistant API data takes priority for structural facts. Conflicts remain visible for review instead of being silently overwritten.
 
-This does not mean the model trains itself or operates your home without approval. Version `0.5.0` remains experimental, and the complete natural-language memory-to-recall flow has not yet been publicly validated on real HAOS hardware.
+This does not mean the model trains itself or operates your home without approval. Version `0.6.0` remains experimental, and the complete natural-language memory-to-recall flow has not yet been publicly validated on real HAOS hardware.
 
 ## Key settings
 
@@ -215,12 +227,14 @@ See [all app settings](codex_home_assistant/DOCS.en.md#app-settings) for accepte
 | [English user guide](codex_home_assistant/DOCS.en.md) | Installation, settings, Web UI, SSH, Remote, updates, and troubleshooting |
 | [한국어 사용 설명서](codex_home_assistant/DOCS.md) | Korean installation and operations guide |
 | [Prompt examples](docs/examples.en.md) | Dashboard, automation, cleanup, and diagnostic requests |
-| [Support guide](SUPPORT.md) | Collecting logs, removing sensitive information, and opening an issue |
+| [Support guide](SUPPORT.md) | `$ha-feedback`, redaction, GitHub sign-in/submission, and fallback |
 | [Security policy](.github/SECURITY.md) | Permission model and private vulnerability reporting |
 | [Changelog](codex_home_assistant/CHANGELOG.md) | Features and upgrade notes by version |
 | [Development documentation](docs/development/README.md) | Architecture, product contract, ADRs, tests, and validation records |
 
 If something goes wrong, use the [support guide](SUPPORT.md) to prepare sanitized diagnostic information, then open a [GitHub Issue](https://github.com/Kanu-Coffee/codex-for-home-assistant/issues). Report vulnerabilities privately through the process in the [security policy](.github/SECURITY.md), not in a public issue.
+
+Direct GitHub submission through `$ha-feedback` requires a ten-minute single-use preview and separate confirmation. Search or external-result uncertainty never triggers an automatic retry; use the Issue Form fallback instead.
 
 ## License
 

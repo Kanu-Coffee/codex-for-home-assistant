@@ -1,0 +1,58 @@
+{
+  "affected_feature": "Ingress terminal reconnect",
+  "summary": "Ingress terminal does not recover after a brief connection loss",
+  "expected_behavior": "The existing terminal session should become usable again after connectivity returns.",
+  "actual_behavior": "The reconnect indicator remained visible while a fresh session opened normally.",
+  "reproduction_steps": [
+    "Open an authenticated Ingress terminal session.",
+    "Briefly interrupt the client connection without stopping the App.",
+    "Restore connectivity and observe the existing session."
+  ],
+  "cause_candidates": [
+    "Unconfirmed: the existing Ingress client reconnect state may not be clearing after transport recovery.",
+    "Unconfirmed: the failure may be limited to the original terminal session rather than the App service."
+  ],
+  "checks": [
+    {
+      "name": "Fresh session control",
+      "status": "PASS",
+      "evidence": "A fresh terminal session opened and accepted input."
+    },
+    {
+      "name": "Existing session reconnect",
+      "status": "FAIL",
+      "evidence": "The existing session remained on its reconnect indicator."
+    },
+    {
+      "name": "Mobile client comparison",
+      "status": "NOT_TESTED",
+      "evidence": "No mobile client was available for this observation."
+    },
+    {
+      "name": "Restart recovery",
+      "status": "NOT_RUN",
+      "evidence": "Restarting the App was outside the read-only validation scope."
+    }
+  ],
+  "evidence": [
+    "The first reconnect attempt remained pending.",
+    "A fresh terminal session remained available during the same observation."
+  ],
+  "unverified_scope": [
+    "The behavior on a mobile client was not observed.",
+    "No restart or update path was exercised."
+  ],
+  "security_issue": false,
+  "environment": {
+    "app_version": "0.6.0",
+    "codex_version": "0.144.1",
+    "core_version": "2026.7.2",
+    "supervisor_version": "2026.07.3",
+    "os_version": "17.0",
+    "arch": "amd64",
+    "app_options": {
+      "web_terminal_auto_start_codex": false,
+      "browser_approval_policy": "safe"
+    }
+  }
+}

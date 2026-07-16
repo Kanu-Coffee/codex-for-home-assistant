@@ -1,0 +1,8 @@
+---
+interface:
+  display_name: "Home Assistant Feedback"
+  short_description: "Validate and prepare safe Home Assistant feedback"
+  default_prompt: "Use $ha-feedback bug <symptom> or $ha-feedback feature <request> to prepare verified feedback."
+
+policy:
+  allow_implicit_invocation: true

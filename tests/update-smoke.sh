@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-RELEASE_IMAGE=${1:-ghcr.io/kanu-coffee/codex-for-home-assistant:0.4.0}
+RELEASE_IMAGE=${1:-ghcr.io/kanu-coffee/codex-for-home-assistant:0.5.0}
 CANDIDATE_IMAGE=${2:-codex-for-home-assistant:test}
 TEST_ID="codex-ha-update-${RANDOM}-$$"
 RELEASE_CONTAINER="${TEST_ID}-release"
@@ -14,6 +14,7 @@ AGENTS_OVERRIDE_MARKER="<!-- ${TEST_ID}-agents-override-marker -->"
 AUTH_MARKER="${TEST_ID}-auth-marker-not-a-credential"
 HA_CONFIG_MARKER="${TEST_ID}-home-assistant-config-marker"
 BROWSER_OPTION_MARKER="${TEST_ID}-browser-option-not-a-credential"
+GITHUB_CONFIG_MARKER="${TEST_ID}-github-config-marker-not-a-credential"
 POST_REFRESH_CONFIG_MARKER="# ${TEST_ID}-post-refresh-config-marker"
 POST_REFRESH_AGENTS_MARKER="<!-- ${TEST_ID}-post-refresh-agents-marker -->"
 
@@ -151,6 +152,11 @@ docker exec "${RELEASE_CONTAINER}" /bin/sh -c \
 printf '%s\n' "${HA_CONFIG_MARKER}" \
   | docker exec --interactive "${RELEASE_CONTAINER}" /bin/sh -c \
     'umask 077; cat > /config/.codex-ha-update-smoke-marker'
+docker exec "${RELEASE_CONTAINER}" /bin/sh -c '
+  install -d -m 0700 /data/github-cli
+  umask 077
+  printf "%s\n" "$1" > /data/github-cli/hosts.yml
+' sh "${GITHUB_CONFIG_MARKER}"
 
 docker exec "${RELEASE_CONTAINER}" jq --exit-status \
   --arg marker "${AUTH_MARKER}" \
@@ -176,6 +182,8 @@ HA_CONFIG_HASH_BEFORE=$(container_hash \
 HOST_KEY_BEFORE=$(host_key_fingerprint "${RELEASE_CONTAINER}")
 OPTIONS_HASH_BEFORE=$(container_hash \
   "${RELEASE_CONTAINER}" /data/options.json)
+GITHUB_CONFIG_HASH_BEFORE=$(container_hash \
+  "${RELEASE_CONTAINER}" /data/github-cli/hosts.yml)
 
 # Model a Home Assistant App update: replace only the container. The two named
 # volumes are not removed, reset, copied, or recreated between image versions.
@@ -205,6 +213,15 @@ start_app "${CANDIDATE_CONTAINER}" "${CANDIDATE_IMAGE}"
 [[ $(container_hash "${CANDIDATE_CONTAINER}" /data/options.json) \
   == "${OPTIONS_HASH_BEFORE}" ]] \
   || fail 'Home Assistant App options changed during image update'
+[[ $(container_hash "${CANDIDATE_CONTAINER}" /data/github-cli/hosts.yml) \
+  == "${GITHUB_CONFIG_HASH_BEFORE}" ]] \
+  || fail 'persistent GitHub CLI configuration changed during image update'
+[[ $(docker exec "${CANDIDATE_CONTAINER}" stat -c '%a:%U:%G' \
+  /data/github-cli) == 700:root:root ]] \
+  || fail 'persistent GitHub CLI directory is not private after update'
+[[ $(docker exec "${CANDIDATE_CONTAINER}" stat -c '%a:%U:%G' \
+  /data/github-cli/hosts.yml) == 600:root:root ]] \
+  || fail 'persistent GitHub CLI file is not private after update'
 docker exec "${CANDIDATE_CONTAINER}" jq --exit-status \
   'has("browser_approval_policy") | not' /data/options.json >/dev/null \
   || fail 'update unexpectedly inserted the new browser approval option'
@@ -241,9 +258,16 @@ docker exec --workdir /config "${CANDIDATE_CONTAINER}" \
           contains("http://127.0.0.1:8099/")
           and contains("image-managed")
           and contains("another browser skill or plugin")
+          and contains("$ha-feedback")
+          and contains("/usr/local/bin/ha-feedback")
         )
     ' >/dev/null \
   || fail 'updated image did not expose the canonical 8099 route to Codex'
+docker exec "${CANDIDATE_CONTAINER}" test -f \
+  /etc/codex/skills/ha-feedback/SKILL.md \
+  || fail 'updated image did not add the image-managed ha-feedback Skill'
+docker exec "${CANDIDATE_CONTAINER}" test -x /usr/local/bin/ha-feedback \
+  || fail 'updated image did not add the ha-feedback helper'
 docker exec "${CANDIDATE_CONTAINER}" jq --exit-status \
   --arg marker "${BROWSER_OPTION_MARKER}" \
   '.home_assistant_browser_token == $marker' /data/options.json >/dev/null \
@@ -363,6 +387,9 @@ docker exec "${CANDIDATE_CONTAINER}" /bin/sh -c '
 [[ $(host_key_fingerprint "${CANDIDATE_CONTAINER}") \
   == "${HOST_KEY_BEFORE}" ]] \
   || fail 'refresh_all changed the SSH host identity'
+[[ $(container_hash "${CANDIDATE_CONTAINER}" /data/github-cli/hosts.yml) \
+  == "${GITHUB_CONFIG_HASH_BEFORE}" ]] \
+  || fail 'refresh_all changed the GitHub CLI configuration'
 docker exec "${CANDIDATE_CONTAINER}" jq --exit-status \
   --arg marker "${BROWSER_OPTION_MARKER}" '
     .codex_user_files_update_mode == "refresh_all"
@@ -398,6 +425,8 @@ BACKUP_COUNT_AFTER_RESTART=$(docker exec "${CANDIDATE_CONTAINER}" find \
 [[ $(container_hash \
     "${CANDIDATE_CONTAINER}" /data/codex/AGENTS.override.md) \
   == "${AGENTS_OVERRIDE_HASH_BEFORE}" ]]
+[[ $(container_hash "${CANDIDATE_CONTAINER}" /data/github-cli/hosts.yml) \
+  == "${GITHUB_CONFIG_HASH_BEFORE}" ]]
 
 printf 'Update smoke passed: %s -> %s\n' \
   "${RELEASE_IMAGE}" "${CANDIDATE_IMAGE}"

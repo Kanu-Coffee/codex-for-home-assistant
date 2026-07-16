@@ -90,6 +90,9 @@ jobs:
             --tag codex-for-home-assistant:test \
             codex_home_assistant
 
+      - name: Run verified feedback delivery smoke tests
+        run: bash tests/feedback-smoke.sh codex-for-home-assistant:test
+
       - name: Run container smoke tests
         run: bash tests/docker-smoke.sh codex-for-home-assistant:test
 
@@ -105,8 +108,8 @@ jobs:
       - name: Run user-file update policy smoke tests
         run: bash tests/user-files-update-smoke.sh codex-for-home-assistant:test
 
-      - name: Verify update from released 0.4.0 preserves persistent data
+      - name: Verify update from released 0.5.0 preserves persistent data
         run: |
           bash tests/update-smoke.sh \
-            ghcr.io/kanu-coffee/codex-for-home-assistant:0.4.0 \
+            ghcr.io/kanu-coffee/codex-for-home-assistant:0.5.0 \
             codex-for-home-assistant:test

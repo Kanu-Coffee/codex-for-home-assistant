@@ -1,0 +1,60 @@
+{
+  "affected_feature": "Validated feedback reporting",
+  "summary": "Provide a guided workflow for verified App feedback",
+  "expected_behavior": "A user can prepare a privacy-safe report and review the exact payload before choosing a delivery route.",
+  "actual_behavior": "Users currently assemble feedback manually from separate observations and support guidance.",
+  "problem_statement": "App users need a repeatable way to distinguish observed behavior from assumptions before reporting a problem or proposal.",
+  "user_scenarios": [
+    "A user validates an App defect without changing Home Assistant.",
+    "A user compares a proposal with the current documented capability.",
+    "A user reviews the exact public payload before any external write."
+  ],
+  "current_workaround": "Users manually assemble reports from terminal observations and the support checklist.",
+  "existing_capability": "The support guide describes report content, but it does not produce a structured local bundle.",
+  "alternatives": [
+    "Use an unstructured issue body, which does not preserve check boundaries.",
+    "Attach complete diagnostics, which would collect more data than the report needs."
+  ],
+  "acceptance_criteria": [
+    "A bug or feature request creates one isolated report bundle.",
+    "No GitHub issue is created before the exact preview is confirmed.",
+    "Unavailable direct submission returns the manual Issue Form route."
+  ],
+  "compatibility_security_impact": "Existing Home Assistant configuration remains unchanged and persistent GitHub credentials remain opt-in.",
+  "validation_plan": [
+    "Validate both report kinds with local structured fixtures.",
+    "Reject privacy-sensitive input before creating public output.",
+    "Verify direct and manual delivery routes against one fixed repository."
+  ],
+  "checks": [
+    {
+      "name": "Current support guidance inspection",
+      "status": "PASS",
+      "evidence": "The support checklist defines required report facts and redaction boundaries."
+    },
+    {
+      "name": "Live external submission",
+      "status": "NOT_RUN",
+      "evidence": "An external write was outside the read-only proposal review."
+    }
+  ],
+  "evidence": [
+    "The existing support flow requires users to structure evidence manually."
+  ],
+  "unverified_scope": [
+    "No live external submission was attempted."
+  ],
+  "security_issue": false,
+  "environment": {
+    "app_version": "0.6.0",
+    "codex_version": "0.144.1",
+    "core_version": "2026.7.2",
+    "supervisor_version": "2026.07.3",
+    "os_version": "17.0",
+    "arch": "amd64",
+    "app_options": {
+      "codex_approval_policy": "on-request",
+      "codex_user_files_update_mode": "preserve"
+    }
+  }
+}

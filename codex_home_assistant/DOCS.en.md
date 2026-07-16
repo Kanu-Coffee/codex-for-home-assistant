@@ -6,7 +6,7 @@
 
 This guide explains how Home Assistant OS users can install the app, use Codex through the Web UI, SSH, or mobile Remote, and safely work on dashboards, automations, entities, and configuration errors.
 
-This guide applies to public app version `0.5.0`.
+This guide applies to app version `0.6.0`.
 
 > [!WARNING]
 > This app can read and write all of `/config` and use the Home Assistant Core and Supervisor `manager` APIs. Allow only trusted administrators to use it, and review a backup and diff before making changes. Never port-forward TCP `2223` directly to the internet.
@@ -328,7 +328,43 @@ ha-memory conflicts --status open
 
 Do not delete the memory database when its state is `empty`, `degraded`, or `stale`. It may still be learning the initial structure or recovering from a temporary Core connection failure, and it preserves the last successful snapshot.
 
-This feature does not mean the model trains itself or operates your home without approval. Version `0.5.0` remains experimental, and the complete natural-language memory-to-recall flow has not yet been publicly validated on real HAOS hardware.
+This feature does not mean the model trains itself or operates your home without approval. Version `0.6.0` remains experimental, and the complete natural-language memory-to-recall flow has not yet been publicly validated on real HAOS hardware.
+
+## App bug and feature reports
+
+Starting with `0.6.0`, the image-managed `$ha-feedback` Skill investigates app bugs and feature ideas in read-only mode and creates a sanitized report.
+
+```text
+$ha-feedback bug <observed symptom>
+$ha-feedback feature <improvement request>
+```
+
+- `bug` checks the app scope, collects an allowlisted environment summary, performs safe reproduction/diagnosis, compares expected and actual behavior, and records hypotheses and unverified scope.
+- `feature` checks current behavior and documentation, existing solutions and similar issues, the user problem and alternatives, then acceptance criteria and a validation plan.
+- The workflow never changes Home Assistant configuration, calls a service, reloads/restarts, updates, recovers, or restores anything.
+- Logs and screenshots are excluded by default. Even a short sanitized log excerpt is included only after its exact text is previewed separately and approved by the user. Screenshots and other files are never uploaded automatically; attach one through the Web Form only after reviewing it yourself.
+- A possible vulnerability stops all public search, preview, and submission. Use [private vulnerability reporting](https://github.com/Kanu-Coffee/codex-for-home-assistant/security/advisories/new).
+
+Reports are stored in a private bundle:
+
+```text
+/config/codex-workspace/feedback/<UTC>-<kind>-<report-id>/
+├── report.json
+├── public-report.md
+└── submission.json  # created only after a successful direct submission
+```
+
+Directories use `0700` and files use `0600`. Automated validation does not replace your final review of the entire `public-report.md` body. If the external issue-creation result is uncertain, the bundle may contain a hidden `.submission.lock` instead of a successful receipt; it blocks another direct submission of the same report.
+
+The target is fixed to `Kanu-Coffee/codex-for-home-assistant`. GitHub sign-in is optional:
+
+```bash
+ha-feedback github status
+ha-feedback github login
+ha-feedback github logout
+```
+
+Before signing in, review the warning that credentials under `/data/github-cli` can be included in Home Assistant App backups. The Skill shows similar issues and the exact repository, title, and body first, then uses a cryptographically random, ten-minute, single-use token and a separate confirmation of that preview in the current conversation. A wrong, expired, used, or failed confirmation requires a fresh preview. If candidate search or the final report-ID duplicate check is unavailable, it creates no issue. If authentication is unavailable or submission fails, it opens a short prefilled Issue Form without putting the long report in the URL; paste the preserved `public-report.md` manually. Confirmed direct submission sends the validated body to `gh issue create --body-file -` over stdin. Do not put PAT or token values in App settings.
 
 ## Safe change procedure
 
@@ -368,7 +404,7 @@ Use Home Assistant UI or API paths for `.storage` whenever possible, and never w
 4. Start the app after the update, exit the existing Codex process, and open a new session.
 5. Check `codex login status`, required MCP tools, and key settings.
 
-Normal updates are designed to preserve Codex authentication and settings, SSH host keys, and verified memory in `/data`. `codex_user_files_update_mode: preserve` is the default. If you leave `refresh_agents` or `refresh_all` selected when upgrading to the next version, the selected files refresh once again for that version. Return the setting to `preserve` after a one-time refresh.
+Normal updates are designed to preserve Codex authentication and settings, SSH host keys, verified memory, and the optional `/data/github-cli` login in `/data`. `codex_user_files_update_mode: preserve` is the default. If you leave `refresh_agents` or `refresh_all` selected when upgrading to the next version, the selected files refresh once again for that version. Return the setting to `preserve` after a one-time refresh.
 
 It is normal for Web UI/tmux and SSH connections to drop briefly during an update.
 
@@ -385,6 +421,12 @@ It is normal for Web UI/tmux and SSH connections to drop briefly during an updat
 | `ha-addon-logs SLUG` | Read logs for a named app |
 | `ha-memory status` | Check verified memory state |
 | `ha-memory search QUERY` | Search relevant HA structure and applied memory |
+| `ha-feedback collect bug\|feature --input FILE` | Create a sanitized feedback report from private JSON |
+| `ha-feedback validate REPORT` | Check schema, privacy, and rendered-body parity |
+| `ha-feedback render REPORT` | Regenerate public Markdown from validated JSON |
+| `ha-feedback github status\|login\|logout` | Manage optional GitHub CLI authentication |
+| `ha-feedback github url REPORT` | Show the short prefilled Issue Form fallback |
+| `ha-feedback github submit REPORT` | Preview candidates and the exact payload; submit only with a confirmed ten-minute, single-use token |
 | `ha-browser-auth-status` | Check Headless browser authentication |
 | `ha-browser-network-info` | Check the internal dashboard gateway connection |
 
@@ -442,6 +484,13 @@ ha-memory status
 
 Give Core time to become ready and check again. Do not directly delete or edit the database or WAL files. Collect the app version, Core version, and the status's closed error code, but do not share raw tokens or API responses.
 
+### Direct GitHub feedback submission fails
+
+- If `ha-feedback github status` reports unauthenticated, explicitly run `ha-feedback github login` or use the Issue Form fallback.
+- The helper does not automatically retry after authentication, candidate/duplicate search, or network failure. It preserves `public-report.md` so you can review it again and paste it into the Web Form.
+- If `gh` may have created an issue but the helper cannot confirm the returned URL or write `submission.json`, it retains a hidden `.submission.lock` and blocks direct retry for that report. Do not delete the lock. Search the fixed repository for the report ID first, then use the Web Form fallback.
+- Do not bypass the dedicated configuration with `GH_TOKEN` or `GITHUB_TOKEN`, and never print or include token values in a report.
+
 ### A setting was changed incorrectly
 
 1. Stop the related Codex task and automations.
@@ -472,7 +521,8 @@ Before uninstalling, decide how to handle any Codex configuration and authentica
 - It does not bundle or automatically install Bubble Card or other custom cards.
 - The Web UI is a terminal, not a dedicated chat interface.
 - Automation and dashboard results vary by environment and prompt and require human review.
-- Public validation of the complete `0.5.0` natural-language memory loop on real HAOS hardware is still incomplete.
+- Public validation of the complete `0.6.0` natural-language memory loop on real HAOS hardware is still incomplete.
+- Automated validation does not create a real GitHub issue without separate explicit approval.
 - Supervisor endpoints and OpenAI Remote availability can vary with Home Assistant/OpenAI versions and policies.
 
 Before requesting support, follow [SUPPORT.md](../SUPPORT.md) to remove tokens, internal URLs, entities, and user information. Use [GitHub Issues](https://github.com/Kanu-Coffee/codex-for-home-assistant/issues) for general problems and the private process in [SECURITY.md](../.github/SECURITY.md) for vulnerabilities.

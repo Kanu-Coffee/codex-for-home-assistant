@@ -21,6 +21,7 @@ Use Codex inside Home Assistant to inspect your setup and improve dashboards, au
 - **OPEN WEB UI** in the Home Assistant mobile app or website
 - Headless Chromium checks for desktop/mobile dashboard layouts and console/network errors
 - Project-local verified memory for HA structure and user-stated aliases, purposes, and preferences
+- `$ha-feedback` for read-only app bug validation and structured feature proposals
 
 > [!WARNING]
 > This app is a powerful administrative tool that can directly change your Home Assistant configuration. Back up important data and review the plan and diff before changes. Never expose the SSH port directly to the internet.
@@ -48,6 +49,12 @@ Based on my weekday wake, departure, and arrival times and my current sensors,
 suggest five useful automations with safeguards against false triggers.
 Do not edit any files yet.
 ```
+
+```text
+$ha-feedback bug Validate an app symptom in read-only mode and prepare a public-safe report.
+```
+
+Direct GitHub submission requires an available candidate search, a ten-minute single-use preview, and separate confirmation. Search or submission uncertainty never triggers an automatic retry; use the Issue Form fallback instead.
 
 See the [English user guide](DOCS.en.md) for installation, all settings, mobile Remote, updates, security, and troubleshooting. [한국어 사용 설명서](DOCS.md) is also available.
 

@@ -1,0 +1,135 @@
+---
+name: "기능 제안 / Feature request"
+description: "검증된 사용 사례, 대안과 수용 기준을 포함해 새 기능을 제안합니다. / Propose a feature with a verified use case, alternatives, and acceptance criteria."
+title: "[Feature] "
+labels:
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        기능 자체보다 해결하려는 문제와 검증 근거를 먼저 설명해 주세요. 제출 전 [지원 안내](https://github.com/Kanu-Coffee/codex-for-home-assistant/blob/main/SUPPORT.md)를 확인하세요.
+
+        Start with the problem and verification evidence rather than the feature itself. Review the [support guide](https://github.com/Kanu-Coffee/codex-for-home-assistant/blob/main/SUPPORT.md) before submitting.
+
+  - type: checkboxes
+    id: existing_request
+    attributes:
+      label: "기존 제안 확인 / Existing request check"
+      description: "동일하거나 유사한 제안이 이미 있는지 검색해 주세요. / Search for an existing identical or similar request."
+      options:
+        - label: "기존 이슈와 제안을 검색했습니다. / I searched the existing issues and requests."
+          required: true
+
+  - type: dropdown
+    id: verification_route
+    attributes:
+      label: "검증 경로 / Verification route"
+      description: "현재 기능과 문서를 조사한 경로를 선택하세요. Skill을 사용할 수 없다면 수동 조사와 검증 결과를 아래 보고서에 포함하세요. / Select how you investigated the current behavior and documentation. If the Skill was unavailable, include the manual investigation and verification below."
+      options:
+        - "Codex 검증 Skill 완료 / Codex verification Skill completed"
+        - "수동 검증 완료 / Manual verification completed"
+        - "Skill 사용 불가 - 수동 검증 완료 / Skill unavailable - manual verification completed"
+    validations:
+      required: true
+
+  - type: textarea
+    id: verification_report
+    attributes:
+      label: "검증 보고서 붙여넣기 / Paste the verification report"
+      description: "Codex가 생성한 정제된 분석 보고서를 붙여넣으세요. 수동 경로라면 확인한 문서/파일, 현재 지원 여부, 실험 결과, 대안과 제한사항을 같은 구조로 작성하세요. / Paste the sanitized Codex analysis. For a manual route, list the documents/files inspected, current support status, experiment results, alternatives, and limitations in the same structure."
+      placeholder: |
+        검증 경로 / Verification route:
+        Skill 사용 불가 사유 / Skill unavailable reason: N/A
+        확인한 자료 / Evidence inspected:
+        현재 지원 여부 / Current support status:
+        수행한 실험과 결과 / Experiments and results:
+        대안 / Alternatives:
+        위험 및 제한사항 / Risks and limitations:
+        권고 / Recommendation:
+    validations:
+      required: true
+
+  - type: input
+    id: app_version
+    attributes:
+      label: "검토 기준 앱 버전 / App version reviewed"
+      description: "현재 사용하거나 검토한 Codex for Home Assistant 버전을 입력하세요. / Enter the Codex for Home Assistant version currently used or reviewed."
+      placeholder: "예: 1.2.3 / Example: 1.2.3"
+    validations:
+      required: true
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: "환경 및 대상 경로 / Environment and target path"
+      description: "Home Assistant Core/OS 버전, 설치 방식, 아키텍처/장치와 관련 경로(Web UI, SSH, Remote, browser, memory 등)를 적으세요. / Include Home Assistant Core/OS versions, installation type, architecture/device, and relevant path (Web UI, SSH, Remote, browser, memory, etc.)."
+      placeholder: |
+        Home Assistant Core/OS:
+        설치 방식 / Installation type:
+        아키텍처/장치 / Architecture/device:
+        대상 경로 / Target path:
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem_and_use_case
+    attributes:
+      label: "문제와 사용 사례 / Problem and use case"
+      description: "누가, 어떤 상황에서, 무엇을 달성하려 하며 현재 무엇 때문에 막히는지 구체적으로 적으세요. / Explain who is trying to achieve what, in which situation, and what currently blocks them."
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposed_behavior
+    attributes:
+      label: "제안 동작 / Proposed behavior"
+      description: "사용자에게 보이는 동작과 기존 흐름이 어떻게 달라져야 하는지 설명하세요. / Describe the user-visible behavior and how the existing flow should change."
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: "검토한 대안과 현재 우회법 / Alternatives and current workarounds"
+      description: "이미 시도한 방법, 가능한 대안과 각각 충분하지 않은 이유를 적으세요. / List approaches already tried, possible alternatives, and why each is insufficient."
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance_criteria
+    attributes:
+      label: "수용 기준 및 검증 계획 / Acceptance criteria and validation plan"
+      description: "구현 완료를 판단할 관찰 가능한 조건과 테스트 방법을 적으세요. / List observable completion criteria and how the feature should be tested."
+      placeholder: |
+        - [ ] 기준 1 / Criterion 1
+        - [ ] 기준 2 / Criterion 2
+        검증 방법 / Validation method:
+    validations:
+      required: true
+
+  - type: textarea
+    id: compatibility_and_risks
+    attributes:
+      label: "호환성, 위험 및 범위 / Compatibility, risks, and scope"
+      description: "기존 사용자, 설정, 업데이트 보존, 보안/개인정보와 성능에 미칠 영향 및 범위 밖 항목을 적으세요. / Describe impacts on existing users, configuration, update persistence, security/privacy, performance, and any out-of-scope items."
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: redaction_confirmation
+    attributes:
+      label: "민감정보 제거 확인 / Redaction confirmation"
+      description: "제안과 검증 보고서에 token, 인증정보, 내부 URL/IP, 사용자명 또는 식별 가능한 Home Assistant 데이터가 없어야 합니다. / The request and verification report must not contain tokens, credentials, private URLs/IPs, usernames, or identifying Home Assistant data."
+      options:
+        - label: "최종 이슈 본문과 모든 첨부물을 검토했고 민감정보를 제거했습니다. / I reviewed the final issue body and every attachment and removed sensitive information."
+          required: true
+
+  - type: checkboxes
+    id: security_confirmation
+    attributes:
+      label: "보안 취약점 여부 / Security vulnerability check"
+      description: "제안의 근거가 보안 취약점, 인증 우회 또는 자격증명 노출이라면 [비공개 보안 제보](https://github.com/Kanu-Coffee/codex-for-home-assistant/security/advisories/new)를 이용하세요. / If this request is based on a vulnerability, authentication bypass, or credential exposure, use [private vulnerability reporting](https://github.com/Kanu-Coffee/codex-for-home-assistant/security/advisories/new)."
+      options:
+        - label: "이 제안은 보안 취약점 제보가 아닙니다. / I confirm that this request is not a security vulnerability report."
+          required: true
