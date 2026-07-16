@@ -30,6 +30,19 @@ All notable changes to this App are documented in this file.
 - This is a MINOR user-flow release. Normal App update preserves `/data/codex-ha-memory`, user Codex configuration, AGENTS files, authentication, SSH, and browser identity. Restart the App and start a new Codex session so the image-managed MCP tool list and developer guidance include the new memory workflow.
 - A retained `refresh_agents` or `refresh_all` selection applies its selected target once for `0.5.0`; choose `preserve` before update if that reset is not wanted.
 
+### Testing
+
+- Merge [PR #29](https://github.com/Kanu-Coffee/codex-for-home-assistant/pull/29) as `110edf3aba42c5f33c011d75e9d05e4dd05b50f1`; [main CI 29465342591](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/29465342591) passed before publication.
+- Pass ten Node/SQLite memory tests covering writer-lock wait, concurrent FTS5 commits, deterministic and stressed auxiliary-file cleanup, malformed databases, and stable FTS5 corruption; pass the full Python, App, YAML, Markdown, ShellCheck, Hadolint, manifest, and diff checks.
+- Verify the exact public image with browser-policy, full browser/gateway/Core WebSocket/ttyd/SSH, memory bootstrap/lifecycle/privacy/MCP/persistence, managed-auth, user-file, and public `0.4.0` to public `0.5.0` update smokes; all passed.
+- Keep actual HAOS natural-language same-request learning, new-task recall, and safe persistent-change fresh verification explicitly **NOT RUN** until the installed App is retested. Automation logic-only changes remain outside the supported expectation schema.
+
+### Release evidence
+
+- Publish the annotated `0.5.0` tag at `2026-07-16T01:59:38Z`; [Builder 29465483772](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/29465483772) then published the GHCR images, and the verified [GitHub prerelease](https://github.com/Kanu-Coffee/codex-for-home-assistant/releases/tag/0.5.0) was published at `2026-07-16T02:13:17Z`.
+- The generic and per-architecture tags share OCI index digest `sha256:193cfc7a7b678660b99f7017b6ac0f4261af59ba57832f8bdd82356ee982956a`; the linux/amd64 runtime manifest digest is `sha256:d360419231ad1aa9140821dd95dda6c4ce74122439726c503c5f30083e682fd5`.
+- Confirm anonymous generic/per-architecture tag access and pulls, the expected version/architecture/source labels, and the absence of a mutable `latest` tag.
+
 ## [0.4.0] - 2026-07-15
 
 ### Added

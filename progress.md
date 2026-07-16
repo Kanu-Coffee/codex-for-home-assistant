@@ -4,8 +4,8 @@
 
 ## Project Status
 
-- 상태: **amd64 MVP/M2 PASS / public 0.4.0 / 실제 HAOS `never` 14/16 승인 0회 PASS·전체 승인 행렬 PARTIAL / public 0.3.2 memory live PARTIAL(FAIL 0) / 0.5.0 메모리 후보 로컬 전체 회귀 PASS**
-- 현재 마일스톤: **0.5.0 release candidate 공개 준비 / 자연어·실제 HAOS 메모리와 잔여 browser 수용 시험 대기**
+- 상태: **amd64 MVP/M2 PASS / public 0.5.0 정확 이미지 전체 회귀 PASS / 실제 HAOS `never` 14/16 승인 0회 PASS·전체 승인 행렬 PARTIAL / public 0.3.2 memory live PARTIAL(FAIL 0) / 0.5.0 자연어 memory live 수용 대기**
+- 현재 마일스톤: **0.5.0 tag·GHCR·prerelease 완료 / 자연어·실제 HAOS 메모리와 잔여 browser 수용 시험 대기**
 - 마지막 문서 기준일: **2026-07-16**
 - 저장소: public `Kanu-Coffee/codex-for-home-assistant`, default branch `main`
 
@@ -59,6 +59,9 @@
 - [x] 명시적 사용자 사실의 결합 remember 경로와 bounded candidate list/reject MCP를 구현했다.
 - [x] 지속 변경·상태 고지·CLI fallback·AGENTS 비누적 지침과 계약 문서를 일치시켰다.
 - [x] source/installed image/container 회귀와 fresh bootstrap·새 MCP recall 증거를 통과했다.
+- [x] [PR #29](https://github.com/Kanu-Coffee/codex-for-home-assistant/pull/29)을 merge commit `110edf3aba42c5f33c011d75e9d05e4dd05b50f1`로 `main`에 병합했다. PR [CI 29465182662](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/29465182662), non-publishing [Builder 29465182788](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/29465182788)와 같은 merge SHA의 [main CI 29465342591](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/29465342591)이 모두 PASS했다.
+- [x] merge SHA에 annotated `0.5.0` tag를 `2026-07-16T01:59:38Z`에 게시하고 공식 [Builder 29465483772](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/29465483772)로 generic/per-arch GHCR image를 발행했다. 공개 image 검증 뒤 [GitHub prerelease](https://github.com/Kanu-Coffee/codex-for-home-assistant/releases/tag/0.5.0)를 `2026-07-16T02:13:17Z`에 공개했다. 두 OCI index digest는 `sha256:193cfc7a7b678660b99f7017b6ac0f4261af59ba57832f8bdd82356ee982956a`, linux/amd64 runtime manifest digest는 `sha256:d360419231ad1aa9140821dd95dda6c4ce74122439726c503c5f30083e682fd5`이며 익명 generic/per-arch 조회·pull, version/arch/source label과 mutable `latest` 부재를 확인했다.
+- [x] 정확한 public `0.5.0` image에서 browser-policy, 전체 browser/gateway/Core WebSocket/ttyd/SSH, memory bootstrap/lifecycle/privacy/MCP/persistence, managed-auth, user-file와 public `0.4.0` → public `0.5.0` update smoke가 모두 PASS했다.
 - [ ] 실제 HAOS에서 자연어 발화→same-request tool trace→새 task 회상과 안전한 persistent 설정 변경→fresh API 검증을 수행한다. Automation logic-only 변경은 현재 expectation 범위 밖임을 고지하고 semantic memory를 갱신하지 않는다.
 
 ### 2026-07-15 — Home Assistant UI의 Playwright 승인 정책과 0.4.0
@@ -448,6 +451,7 @@
 - [x] `0.3.0` 검증 기반 memory tag/GHCR/prerelease — 익명 linux/amd64 pull, 정확한 공개 이미지 memory/full/update 회귀와 동일 merge SHA main CI PASS; 실제 HAOS memory E2E는 NOT RUN
 - [x] `0.3.1` memory live-refresh patch tag/GHCR/prerelease — 익명 generic/per-arch pull, 정확한 공개 이미지 memory/full/update 회귀와 동일 merge SHA main CI PASS; 후속 실제 HAOS에서 catalog FAIL/Core restart PARTIAL/privacy PASS
 - [x] `0.3.2` automation related 격리 patch tag/GHCR/prerelease — 익명 generic/per-arch pull, 정확한 공개 이미지 memory/full/update 회귀와 동일 merge SHA main CI PASS; 후속 실제 HAOS/Core 2026.7.2 재시험은 핵심 memory·restart 후 fresh sync PASS, runtime digest와 Core disconnect/reconnect·LKG 관측 공백으로 PARTIAL(FAIL 0)
+- [x] `0.5.0` 검증형 memory 사용자 폐루프 tag/GHCR/prerelease — 익명 generic/per-arch pull, 정확한 공개 이미지 full/memory/browser-policy/managed-auth/user-file/public `0.4.0` update 회귀와 동일 merge SHA main CI PASS; 실제 HAOS 자연어 same-request 학습·새 task 회상·지속 변경 fresh 검증은 NOT RUN
 
 ## M3 — aarch64 및 안정화
 
