@@ -2,6 +2,36 @@
 
 All notable changes to this App are documented in this file.
 
+## [0.6.0] - 2026-07-16
+
+### Added
+
+- Add the image-managed `$ha-feedback` Skill with explicit `bug` and `feature` modes. It guides Codex through read-only investigation, honest `PASS`/`FAIL`/`NOT_TESTED`/`NOT_RUN` boundaries, structured privacy review, and bilingual report preparation.
+- Add the Node-based `ha-feedback` helper for allowlisted environment collection, schema validation, Markdown rendering, private report storage, GitHub authentication status/login/logout, random short-lived single-use submission previews, confirmed issue creation, and a short prefilled Issue Form fallback.
+- Add bilingual bug and feature Issue Forms, copyable Korean/English presets, and a manual reporting route for failures where Codex or the Skill cannot start.
+- Bundle the official GitHub CLI `2.93.0` linux amd64 archive with pinned SHA-256 verification.
+
+### Changed
+
+- Add feedback routing to both the new-installation base `AGENTS.md` and image-managed system developer instructions, so normal updates gain the route without replacing preserved user Codex files.
+- Store reports under `/config/codex-workspace/feedback` with private directory/file permissions. Store optional GitHub CLI credentials under `/data/github-cli`; this location can be included in Home Assistant App backups.
+
+### Security
+
+- Keep feedback investigation read-only: it never authorizes Home Assistant changes, service calls, reloads, restarts, updates, recovery, or restoration. Possible vulnerabilities stop before public issue search or submission and use GitHub private vulnerability reporting.
+- Collect only allowlisted version, architecture, and non-secret App option fields. Reject control/ANSI sequences, token and key patterns, cookies, long base64 blobs, URLs/IPs, and identifying Home Assistant values before public rendering or `gh` execution; logs and screenshots remain opt-in and are never uploaded automatically.
+- Remove `GH_TOKEN` and `GITHUB_TOKEN` from the GitHub CLI child environment, fix the destination repository and labels in code, and reject unsafe report/config links. Require a cryptographically random, payload-bound, 10-minute, single-use preview token after the user reviews the exact repository, title, label, and body.
+- Fail closed when candidate or remote report-ID duplicate search is unavailable. Pass the already validated Markdown to `gh issue create --body-file -` over stdin, serialize concurrent submissions with an exclusive claim, and retain a hidden `.submission.lock` after an uncertain external result so direct submission cannot retry automatically.
+
+### Upgrade notes
+
+- Normal update from `0.5.0` preserves Codex authentication/configuration/AGENTS, SSH identity, browser identity, memory, and Home Assistant files. Start a new Codex session to discover `$ha-feedback` and the new image-managed routing.
+- GitHub sign-in is optional. Before `ha-feedback github login`, review that `/data/github-cli` credentials may be present in App backups; use `ha-feedback github logout` to remove the persisted login.
+
+### Testing
+
+- Add schema/render/privacy fixtures, Skill and Issue Form contracts, fake-GitHub-CLI submission boundaries, and packaging/update persistence checks. A real GitHub test issue is intentionally **NOT RUN** without separate explicit approval.
+
 ## [0.5.0] - 2026-07-16
 
 ### Added

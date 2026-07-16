@@ -51,6 +51,16 @@ human review remain the controls for high-risk actions.
 - During a diagnostic, do not update Core, OS, Apps, custom integrations, or
   third-party repositories automatically. Present evidence and a rollback plan.
 
+## Feedback validation
+
+- When the user reports an App bug or proposes an App feature, route the work
+  through the image-managed `$ha-feedback` skill in `bug` or `feature` mode.
+- Use `/usr/local/bin/ha-feedback` as the only report and GitHub workflow
+  helper; do not call `gh` directly.
+- Keep validation observational. Stop public submission for security issues,
+  show candidate issues and the exact final payload, and require an explicit
+  current-turn confirmation before creating a GitHub issue.
+
 ## Validated Home Assistant memory
 
 - The persistent store is `/data/codex-ha-memory/memory.sqlite3`. Never read,

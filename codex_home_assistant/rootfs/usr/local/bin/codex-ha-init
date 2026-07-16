@@ -7,6 +7,7 @@ umask 077
 readonly RUNTIME_DIR=/run/codex-ha
 readonly DATA_HOME=/data/home
 readonly CODEX_DATA=/data/codex
+readonly GITHUB_CLI_DATA=/data/github-cli
 readonly SSH_DATA=/data/ssh
 readonly TMUX_DATA=/data/tmux
 readonly LEGACY_PLAYWRIGHT_SECRETS=${RUNTIME_DIR}/playwright-secrets.env
@@ -14,6 +15,7 @@ readonly PLAYWRIGHT_OUTPUT=${RUNTIME_DIR}/playwright-output
 readonly HA_RENDER_UPSTREAM=${RUNTIME_DIR}/home-assistant-render-upstream.conf
 readonly HA_BROWSER_AUTH_STATUS=${RUNTIME_DIR}/browser-auth-status.json
 readonly HA_BROWSER_NETWORK_STATUS=${RUNTIME_DIR}/browser-network-info.json
+readonly HA_FEEDBACK_OPTIONS=${RUNTIME_DIR}/ha-feedback-options.json
 
 rm -rf -- /run/codex-ha/playwright-output
 install -d -m 0700 \
@@ -26,6 +28,18 @@ install -d -m 0700 \
   /root/.ssh
 install -d -m 0755 /run/sshd
 
+if [[ -L "${GITHUB_CLI_DATA}" ]] || [[ -e "${GITHUB_CLI_DATA}" && ! -d "${GITHUB_CLI_DATA}" ]]; then
+  bashio::log.warning 'Persistent GitHub CLI storage is unsafe; ha-feedback GitHub login and direct submission will remain unavailable'
+elif [[ ! -e "${GITHUB_CLI_DATA}" ]]; then
+  install -d -m 0700 "${GITHUB_CLI_DATA}"
+elif [[ "$(stat -c '%u' "${GITHUB_CLI_DATA}")" != 0 ]]; then
+  bashio::log.warning 'Persistent GitHub CLI storage is not root-owned; ha-feedback will reject it without changing ownership'
+else
+  chmod 0700 "${GITHUB_CLI_DATA}"
+  find -P "${GITHUB_CLI_DATA}" -mindepth 1 -type d -exec chmod 0700 {} +
+  find -P "${GITHUB_CLI_DATA}" -mindepth 1 -type f -links 1 -exec chmod 0600 {} +
+fi
+
 # shellcheck source=/dev/null
 . /usr/local/lib/codex-ha/config.sh
 # shellcheck source=/dev/null
@@ -35,6 +49,30 @@ if ! codex_ha_config_validate; then
   bashio::log.fatal '/data/options.json is missing or invalid'
   exit 1
 fi
+
+feedback_options_tmp=$(mktemp "${RUNTIME_DIR}/.ha-feedback-options.XXXXXX")
+if ! jq --exit-status '
+    def option_string($key; $default):
+      (if has($key) then .[$key] else $default end)
+      | if type == "string" then . else error("invalid safe string option") end;
+    def option_bool($key; $default):
+      (if has($key) then .[$key] else $default end)
+      | if type == "boolean" then . else error("invalid safe boolean option") end;
+    {
+      web_terminal_auto_start_codex: option_bool("web_terminal_auto_start_codex"; false),
+      codex_approval_policy: option_string("codex_approval_policy"; "on-request"),
+      codex_sandbox_mode: option_string("codex_sandbox_mode"; "danger-full-access"),
+      browser_approval_policy: option_string("browser_approval_policy"; "safe"),
+      codex_user_files_update_mode: option_string("codex_user_files_update_mode"; "preserve"),
+      home_assistant_browser_auto_auth: option_bool("home_assistant_browser_auto_auth"; true)
+    }
+  ' /data/options.json > "${feedback_options_tmp}"; then
+  rm -f "${feedback_options_tmp}"
+  bashio::log.fatal 'Could not build the allowlisted ha-feedback option snapshot'
+  exit 1
+fi
+chmod 0600 "${feedback_options_tmp}"
+mv -f "${feedback_options_tmp}" "${HA_FEEDBACK_OPTIONS}"
 
 if [[ ! -d /config ]]; then
   bashio::log.fatal '/config is not mounted; map homeassistant_config to /config'

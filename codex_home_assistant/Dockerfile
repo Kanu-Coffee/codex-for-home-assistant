@@ -3,10 +3,12 @@ ARG BUILD_FROM=ghcr.io/home-assistant/base:3.24
 FROM ${BUILD_FROM}
 
 ARG BUILD_ARCH=amd64
-ARG BUILD_VERSION=0.5.0
+ARG BUILD_VERSION=0.6.0
 ARG TARGETARCH
 ARG CODEX_VERSION=0.144.1
 ARG CODEX_SHA256=84091ae20c65fcc7d4120db97d1bd57d7ff8df9c7609fb781c78c2ebbd4f5a28
+ARG GH_VERSION=2.93.0
+ARG GH_SHA256=02d1290eba130e0b896f3709ffff22e1c75a51475ddb70476a85abc6b5807af0
 ARG PLAYWRIGHT_MCP_VERSION=0.0.78
 ARG WS_VERSION=8.18.3
 
@@ -53,6 +55,16 @@ RUN apk add --no-cache \
     && rm -f "/tmp/${codex_archive}" /tmp/codex-x86_64-unknown-linux-musl \
     && codex_version_output="$(/usr/local/libexec/codex-real --version)" \
     && [[ "${codex_version_output}" == "codex-cli ${CODEX_VERSION}" ]] \
+    && gh_archive="gh_${GH_VERSION}_linux_amd64.tar.gz" \
+    && curl --fail --show-error --silent --location \
+      --output "/tmp/${gh_archive}" \
+      "https://github.com/cli/cli/releases/download/v${GH_VERSION}/${gh_archive}" \
+    && printf '%s  %s\n' "${GH_SHA256}" "/tmp/${gh_archive}" | sha256sum --check --strict - \
+    && tar --extract --gzip --file "/tmp/${gh_archive}" --directory /tmp \
+    && install -m 0755 "/tmp/gh_${GH_VERSION}_linux_amd64/bin/gh" /usr/local/bin/gh \
+    && rm -rf "/tmp/${gh_archive}" "/tmp/gh_${GH_VERSION}_linux_amd64" \
+    && gh_version_output="$(gh --version | head -n 1)" \
+    && [[ "${gh_version_output}" == "gh version ${GH_VERSION} "* ]] \
     && [[ "$(node -p "require('/usr/local/lib/codex-ha/playwright/package.json').dependencies['@playwright/mcp']")" == "${PLAYWRIGHT_MCP_VERSION}" ]] \
     && PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 npm_config_cache=/tmp/npm-cache \
       npm ci --prefix /usr/local/lib/codex-ha/playwright \
@@ -69,6 +81,8 @@ RUN apk add --no-cache \
 COPY rootfs /
 
 RUN printf '%s\n' "${BUILD_VERSION}" > /usr/local/share/codex-ha/app-version \
+    && find /etc/codex/skills/ha-feedback -type d -exec chmod 0755 {} + \
+    && find /etc/codex/skills/ha-feedback -type f -exec chmod 0644 {} + \
     && chmod 0755 \
       /etc/s6-overlay/s6-rc.d/codex-ha-init/run \
       /etc/s6-overlay/s6-rc.d/ha-memoryd/run \
@@ -90,21 +104,26 @@ RUN printf '%s\n' "${BUILD_VERSION}" > /usr/local/share/codex-ha/app-version \
       /usr/local/share/codex-ha/ha-memory-ha-client.mjs \
       /usr/local/share/codex-ha/ha-memory-mcp.mjs \
       /usr/local/share/codex-ha/ha-memory.mjs \
+      /usr/local/share/codex-ha/ha-feedback.mjs \
       /usr/local/share/codex-ha/playwright-init-page.ts \
       /usr/local/share/codex-ha/playwright-mcp-proxy.mjs \
       /usr/local/share/codex-ha/playwright-mcp.json \
       /usr/local/share/codex-ha/user-files-update.mjs \
       /usr/local/share/codex-ha/app-version
 
-RUN install -d -m 0700 /data/home /data/codex \
+RUN install -d -m 0700 /data/home /data/codex /data/github-cli \
     && codex_version_output="$(codex --version)" \
-    && [[ "${codex_version_output}" == "codex-cli ${CODEX_VERSION}" ]]
+    && [[ "${codex_version_output}" == "codex-cli ${CODEX_VERSION}" ]] \
+    && gh_version_output="$(gh --version | head -n 1)" \
+    && [[ "${gh_version_output}" == "gh version ${GH_VERSION} "* ]] \
+    && node --check /usr/local/share/codex-ha/ha-feedback.mjs \
+    && ha-feedback --help | grep -Fq 'ha-feedback github submit'
 
 LABEL \
   io.hass.version="${BUILD_VERSION}" \
   io.hass.type="app" \
   io.hass.arch="${BUILD_ARCH}" \
   org.opencontainers.image.title="Home Assistant App: Codex for Home Assistant" \
-  org.opencontainers.image.description="Codex CLI, Playwright browser, Ingress terminal, and public-key SSH for Home Assistant" \
+  org.opencontainers.image.description="Codex CLI, verified feedback reports, Playwright browser, Ingress terminal, and public-key SSH for Home Assistant" \
   org.opencontainers.image.source="https://github.com/Kanu-Coffee/codex-for-home-assistant" \
   org.opencontainers.image.licenses="Apache-2.0"

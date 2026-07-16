@@ -1,6 +1,6 @@
 # test_plan.md — 검증 전략
 
-> 기존 browser/AppArmor 실기 대상은 public `0.2.3`이고 `0.2.4`는 그 결과를 기록한 validation/evidence release다. 검증형 HA 메모리는 public `0.3.0` 자동 회귀를 통과했지만 실제 HAOS read-only 감사의 catalog refresh는 FAIL했다. Public `0.3.1` 수정·공개 이미지 자동 회귀도 PASS했지만 후속 실제 HAOS/Core `2026.7.2` 재시험에서 automation-related 30건 중 2건이 `unknown_error`를 반환해 catalog는 다시 FAIL했다. Public `0.3.2`의 자동·공개 이미지 검증은 PASS했고 후속 실제 HAOS 재시험은 동일 2/30 오류 격리와 핵심 memory 경로를 PASS했지만 runtime digest와 순간 LKG 관측 증거가 없어 최종 PARTIAL(FAIL 0)이다. Public `0.4.0` 승인 정책의 정확한 공개 이미지 자동 검증과 실제 HAOS `never` mode 14/16 도구·승인 0회는 PASS지만 전체 UI/AppArmor 행렬은 PARTIAL이다.
+> 기존 browser/AppArmor 실기 대상은 public `0.2.3`이고 `0.2.4`는 그 결과를 기록한 validation/evidence release다. 검증형 HA 메모리는 public `0.3.0` 자동 회귀를 통과했지만 실제 HAOS read-only 감사의 catalog refresh는 FAIL했다. Public `0.3.1` 수정·공개 이미지 자동 회귀도 PASS했지만 후속 실제 HAOS/Core `2026.7.2` 재시험에서 automation-related 30건 중 2건이 `unknown_error`를 반환해 catalog는 다시 FAIL했다. Public `0.3.2`의 자동·공개 이미지 검증은 PASS했고 후속 실제 HAOS 재시험은 동일 2/30 오류 격리와 핵심 memory 경로를 PASS했지만 runtime digest와 순간 LKG 관측 증거가 없어 최종 PARTIAL(FAIL 0)이다. Public `0.4.0` 승인 정책의 정확한 공개 이미지 자동 검증과 실제 HAOS `never` mode 14/16 도구·승인 0회는 PASS지만 전체 UI/AppArmor 행렬은 PARTIAL이다. `0.6.0` 검증형 App 피드백은 local privacy/fake-`gh`/container/update 회귀와 실제 HAOS·GitHub 외부 write를 분리하며 live issue creation은 별도 승인 전까지 **NOT RUN**이다.
 
 ## 1. 테스트 계층
 
@@ -21,6 +21,8 @@
 - 실행 파일 permission 검사
 - memory schema/status/command allowlist, S6 dependency와 optional STDIO MCP 정적 계약
 - memory source와 tool output에 raw state/비허용 attributes/config/conversation/secret 저장 경로가 없는지 검사
+- `$ha-feedback` Skill metadata/reference/routing, helper command/schema/status enum과 report renderer parity 검사
+- GitHub CLI `2.93.0` URL/SHA-256 pin, fixed repository/label과 feedback MCP/API/App route/service/hook/Action/telemetry/upload 부재 검사
 
 ### L2 로컬 컨테이너 테스트
 
@@ -53,6 +55,10 @@ Supervisor가 없어도 검증 가능한 항목:
 - candidate 상태 전이, fact-kind authority, conflict, change expectation, bounded search와 compensating rollback
 - 독립 `ha-memoryd` 실패 상태에서도 기존 S6/Web/SSH/browser smoke 성공
 - 기존 사용자 AGENTS/config preserve 상태의 image-managed `ha_memory` MCP와 developer instruction
+- Bug/feature fixture collect·validate·render와 exact `PASS`/`FAIL`/`NOT_TESTED`/`NOT_RUN`/overall 계산
+- Malicious feedback fixture privacy fail-closed, security private route와 logs/screenshots/raw response 자동 수집 부재
+- Report/GitHub config path의 owner/type/link/mode/root containment, `0700`/`0600`과 restart persistence
+- Fake `gh` auth/backup warning/env scrub/candidate·remote duplicate fail-closed/random 10분 one-use preview/current-turn confirmation/concurrent claim/stdin body/success/uncertain failure lock/fallback 계약
 - pulled GHCR image의 labels/platform 및 full smoke
 
 ### L3 Supervisor/App 개발 환경
@@ -72,6 +78,7 @@ Supervisor가 없어도 검증 가능한 항목:
 - 일반 업데이트 후 `/etc` browser 기본값 갱신과 `/data` 사용자 config/auth 비변경
 - 실제 Core WebSocket allowlist command와 automation relation 응답 호환성
 - Core restart 뒤 `ha-memoryd` 재연결, last-known-good와 App update memory persistence
+- HAOS App에서 image-managed Skill discovery, read-only report 생성, `/config` report와 `/data/github-cli` persistence 및 Issue Form fallback
 
 ### L4 실제 사용자 HAOS E2E
 
@@ -87,6 +94,8 @@ Supervisor가 없어도 검증 가능한 항목:
 - renderer 경로 전체의 Supervisor token 비노출
 - 실제 registry/automation first bootstrap과 bounded memory retrieval
 - 명시적 사용자 semantic candidate 적용, post-change fresh API verification과 non-fatal memory degradation
+- `$ha-feedback bug|feature` read-only 조사, 공개 보고서 검토와 명시적 외부-write confirmation
+- Fixed repository live issue creation은 별도 승인된 test issue에서만 실행하고 그렇지 않으면 `NOT RUN` 기록
 
 ## 2. 자동 테스트 케이스
 
@@ -147,6 +156,14 @@ Supervisor가 없어도 검증 가능한 항목:
 | AT-053 | live WebSocket 호환·안전 진단 | active unavailable automation의 legal `{config:null}`은 빈 config/bounded warning으로 index하고 actual installed `ws`가 Supervisor식 auth/snapshot을 완료. 한 automation의 official related 요청만 `unknown_error`여도 remote message 없이 config/직접 관계와 다른 automation을 보존하고 exact provenance를 기록. Server `timeout`/`unauthorized`/`invalid_format`/`home_assistant_error`는 같은 완화 경로로 들어가지 않고 snapshot을 거부. `HA_WS_URL` redirection과 implicit token 전달은 거부하고 token/DNS/transport/timeout/auth/protocol/고정 command/snapshot failure code를 DB·change·CLI에 보존하되 daemon은 원문/secret 없이 allowlist code만 log. non-object/malformed result는 protocol failure로 닫고 병렬 command 실패 뒤 pending timer를 모두 정리하며, last-known-good와 recovery refresh를 확인 |
 | AT-054 | Playwright 승인 정책 | App option/schema/번역 default safe, system default prompt와 16개 per-tool fallback, helper/config/proxy allowlist parity를 확인. disposable container의 fake `codex-real`은 missing/safe 11 approve+5 prompt, never 16 approve, always 16 prompt, 기존 2개를 포함한 총 19개 `-c`, 인수 pass-through를 검증하고 enum/type 오류는 78로 종료. 실제 pinned Codex는 모든 valid override를 parse하며 public `0.3.2` → 정확한 public `0.4.0` update는 option key를 삽입하지 않고 safe fallback을 사용. 동일 merge SHA main CI `29408206017`, tag Builder `29408467932`와 public browser approval policy/full/update smoke **PASS** |
 | AT-055 | 메모리 사용자 폐루프·첫 bootstrap | 빈 `/data`에서 image-managed `ha-memoryd` run이 수동 refresh 없이 first catalog를 만들고, installed MCP의 `memory_remember_explicit`가 한 호출로 applied와 3 audit IDs를 반환하며 다음 container의 새 MCP process `memory_search`에서 회상 가능. Pending observation은 exact-subject `memory_list_candidates` 20건 경계 안에서 보이고 `memory_reject_candidate` 뒤 사라짐. Prompt-input은 bounded search, memory 상태 고지, same-request remember·CLI fallback, mandatory supported persistent-change begin/verify, unsupported automation logic 대체 검증 금지와 AGENTS data 비누적 규칙을 model-visible developer context에 포함 |
+| AT-056 | 피드백 Skill·routing·surface | Skill metadata, bug/feature/submission reference와 agent prompt가 설치되고 explicit `$ha-feedback` 및 자연어 App feedback route가 system/base instruction에 존재. 기존 사용자 AGENTS/config는 preserve하며 feedback MCP, API, App/Ingress route, S6 service, hook/Action, telemetry와 upload endpoint는 없음 |
+| AT-057 | Bug/feature report schema·status·render | 두 fixture가 schema `1`과 kind별 필수 field를 통과하고 report ID/path를 생성. 각 check는 exact `PASS`/`FAIL`/`NOT_TESTED`/`NOT_RUN`만 허용하며 overall `FAIL`/`NOT_RUN`/`PARTIAL`/`PASS` 결정이 일치. `validate`와 `render`는 `report.json`과 `public-report.md` exact parity를 검사하고 hand-edited body를 거부 |
+| AT-058 | Privacy·security fail-closed | Malicious fixture의 control/ANSI, auth/cookie/secret/token/key/JWT/private key/base64 blob, URL/IP/email/UUID, HA user/entity/device/area ID와 auth/storage/secrets/database/backup path를 collect·validate·preview·submit 전에 차단. Logs/screenshots/raw response를 자동 수집하지 않고 security indicator는 public candidate/preview/url/submit 대신 private vulnerability route만 반환 |
+| AT-059 | Feedback path·permission·persistence | File input은 최대 256 KiB의 private regular single-link이고 stdin은 거부하며 report는 최대 512 KiB. Report root/bundle `0700`, JSON/Markdown/receipt/optional hidden claim `0600`, GitHub config와 runtime preview dir `0700`/files `0600`을 확인. Input의 group/other mode와 symlink/hardlink/FIFO, managed path symlink/root escape를 거부하고 real managed output mode만 private로 정규화하며 restart/container replacement 뒤 report와 safe gh config fixture를 보존하되 preview state는 재사용하지 않음 |
+| AT-060 | GitHub CLI pin·auth·환경 격리 | Dockerfile이 official `gh` `2.93.0` amd64 archive와 SHA-256 `02d1290eba130e0b896f3709ffff22e1c75a51475ddb70476a85abc6b5807af0`을 strict verify. Fake `gh` status/login/logout은 `GH_CONFIG_DIR=/data/github-cli`만 사용하고 backup plaintext-risk 거부/수락을 구분하며 `GH_TOKEN`, `GITHUB_TOKEN`, `SUPERVISOR_TOKEN`, `NODE_OPTIONS`, `BASH_ENV`, `ENV`를 child에서 제거 |
+| AT-061 | Candidate·preview·confirmation·duplicate | Fixed repository title search가 sanitized query로 최대 5개 candidate만 반환하고 hostile title을 report/prompt로 승격하지 않음. Candidate 검색 실패·malformed 결과는 token/create 없이 폴백. 무확인 submit은 preview-only이며 exact repo/title/label/body에 bind된 서로 다른 random token을 private runtime state에 저장. 10분 만료·single-use, 이전 turn/ambiguous confirmation, payload change, wrong/expired/used token, wrong repo/label/URL과 duplicate report/receipt를 거부하고 current-turn explicit confirmation만 허용. Confirmed submit 직전 remote exact report ID 검색도 unavailable이면 create 없이 fresh preview가 필요한 폴백을 반환 |
+| AT-062 | 직접 제출·Issue Form fallback | Fake success는 `Kanu-Coffee/codex-for-home-assistant`, `bug`/`enhancement`, `--body-file -`를 사용하고 검증한 exact Markdown이 stdin으로 전달되는지, fixed issue URL과 `0600` receipt를 검증. 같은 report/token의 concurrent submit은 exclusive claim으로 create 1회만 허용. `gh` nonzero, 예상 밖 URL 또는 receipt write 실패는 hidden `.submission.lock`을 보존해 direct retry를 차단하고, 미인증/검색 불가/실패는 자동 retry/token 요청 없이 report와 긴 body/secret 없는 짧은 Issue Form URL·exact copy path를 제공 |
+| AT-063 | Docker packaging·0.5.0 update 보존 | Image version `0.6.0`에 Skill/helper/`gh`가 지정 mode로 포함되고 Node syntax/help/fixture smoke 성공. Public `0.5.0` volume update에서 Codex auth/config/AGENTS, SSH host key, browser identity, memory와 Home Assistant marker가 byte/fingerprint 수준으로 보존되며 `/data/github-cli`는 새 설치에 private 생성되고 기존 safe login state는 보존 |
 
 ## 3. HAOS 수동/E2E 시나리오
 
@@ -410,6 +427,32 @@ ha-api GET /states
 
 실행 결과: 동일 merge SHA의 main CI [`29408206017`](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/29408206017)과 tag Builder [`29408467932`](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/29408467932), 정확한 public `0.4.0` image의 browser approval policy smoke, full browser/gateway/Core WebSocket/ttyd/SSH smoke와 public `0.3.2` → `0.4.0` update smoke는 **PASS**다. 후속 실제 HAOS `never` run은 `navigate`, `tabs`, `resize`, `snapshot`, `take_screenshot`, `console_messages`, `network_requests`, `hover`, `wait_for`, `click`, `type`, `press_key`, `fill_form`, `navigate_back` 14개에서 승인 요청 0회로 **PASS (검증 범위)**했다. Desktop `1440x900`/mobile `390x844`, 자동 인증, 비파괴 검색 입력과 console/network 확인도 동작했다. 사용자 지정 screenshot `filename`의 `-32602` 거부는 의도된 proxy 경계이며 재시도는 성공했다. `select_option`은 안전한 target 부재, `close`는 실행 기록 부재로 **NOT TESTED**다. `safe`/`always`, top-level global-never precedence, 금지 도구, Configuration UI/default, AppArmor 활성 여부, user config/AGENTS/browser identity 보존과 live update는 **NOT RUN**이므로 E2E-019 전체는 **PARTIAL**이다. Dashboard의 legacy Bubble Card module YAML 404 한 건은 renderer 실패와 분리한다.
 
+### E2E-020 검증형 App 피드백과 GitHub 제출 경계
+
+비민감 synthetic bug/feature만 사용하고 실제 Home Assistant entity/device/area/user ID, URL/IP, log, screenshot, credential을 보고서에 넣지 않는다.
+
+1. 기존 사용자 Codex auth/config/AGENTS, SSH/browser identity, memory와 `/config` marker가 있는 public `0.5.0` 설치를 `0.6.0`으로 일반 update하고 모두 보존되는지 확인한다.
+2. 새 Codex session에서 `$ha-feedback bug <synthetic symptom>`과 자연어 feature 요청을 각각 실행해 image-managed Skill route, read-only 범위와 check status 설명을 확인한다.
+3. Report bundle의 directory `0700`, `report.json`/`public-report.md` `0600`, schema/render parity, allowlisted version/options와 정확한 `PASS`/`FAIL`/`NOT_TESTED`/`NOT_RUN` reason을 확인한다.
+4. 조사 전후 Home Assistant config/registry/dashboard/automation/device, App/project marker, service history와 process lifecycle을 비교해 mutation, service call, reload/restart/update/recovery/restore가 없음을 확인한다.
+5. 비밀과 내부 식별자를 포함한 synthetic malicious request가 public report/search/preview/url/submit 전에 fail closed되고 private vulnerability route만 안내하는지 확인한다.
+6. `ha-feedback github status`의 미인증 경로에서 token/PAT를 요구하지 않고 exact report copy path와 긴 body 없는 Issue Form fallback을 보여 주는지 확인한다. 사용자가 browser에서 최종 제출하기 전 멈춘다.
+7. Login 검증을 선택한 경우 App backup 평문 credential 위험을 거부했을 때 아무 변경이 없고, 별도 승인한 browser/device login 뒤 `/data/github-cli` permission·restart persistence·logout 제거가 일치하는지 확인한다.
+8. 안전한 공개 report에서 candidate가 최대 5개이고 title을 instruction으로 실행하지 않으며 fixed repo/title/label/full body preview와 random 10분 1회용 confirmation token을 표시하는지 확인한다. 유력한 중복이면 제출을 중단하고 candidate 검색이 불가능하면 token/create 없이 Web Form으로 전환한다.
+9. 최초 요청이나 이전 turn의 동의가 아니라 preview 이후 현재 turn의 별도 명확한 확인만 인정하고, wrong/expired/used token과 실패한 confirmation 뒤에는 새 preview를 요구하는지 확인한다. 확인하지 않은 시험에서는 `submission.json`과 GitHub issue가 없어야 한다.
+10. Fake `gh`에서 remote exact report ID 검색 unavailable, concurrent submit, `--body-file -` stdin parity, create nonzero/예상 밖 URL/receipt 실패를 재현한다. Search unavailable은 create하지 않고, 불확실한 external result는 hidden `.submission.lock`으로 direct retry를 차단하며 모든 실패는 자동 재시도하지 않아야 한다.
+11. Maintainer가 test issue 외부 write를 별도로 승인한 경우에만 confirmed submit을 한 번 실행해 fixed repository URL과 `0600` receipt를 확인하고 test issue를 정리한다. 승인하지 않으면 이 단계는 `NOT RUN`으로 남긴다.
+12. 미인증/검색 불가/실패/duplicate fixture가 report를 보존하고 자동 retry·다른 repository·환경 token fallback을 하지 않으며 Codex/Web/SSH/browser/HA 기능을 중단시키지 않는지 확인한다.
+
+성공 기준:
+
+- Bug/feature report가 privacy/status/render/path 계약을 만족하고 조사 중 Home Assistant와 App 운영 상태를 변경하지 않음
+- GitHub candidate/preview/confirmation/direct-submit/fallback이 fixed repository와 external-write 경계를 지키며 security report는 public path로 나가지 않음
+- 일반 update와 App restart 뒤 기존 사용자 자료, report와 선택형 safe GitHub login state가 각 persistence 계약대로 유지됨
+- 자동 fixture·fake `gh` 성공과 실제 HAOS/live GitHub 결과를 별도 판정함
+
+실행 결과: 실제 HAOS report/persistence/fallback E2E와 실제 GitHub test issue creation은 **NOT RUN**이다. 특히 live issue는 공개 repository에 외부 변경을 남기므로 maintainer의 별도 승인 전까지 preview·fake `gh` 성공으로 대체하지 않는다.
+
 ## 4. 회귀 테스트 우선순위
 
 P0:
@@ -426,6 +469,9 @@ P0:
 - raw state/비허용 attributes/config/conversation/secret의 memory DB·FTS·로그 저장
 - post-change 검증 없는 memory apply, 잘못된 authority overwrite 또는 HA catalog rollback
 - memory scheduler/DB 장애로 App의 기존 Web/SSH/Codex/browser 부팅 실패
+- Feedback report에 credential/internal identifier/control sequence가 포함되거나 security report가 공개 route로 진행
+- 현재 turn의 exact preview confirmation 없이 GitHub issue 생성, fixed repository 우회 또는 상속 token 사용
+- Feedback read-only 조사 중 Home Assistant/App/project mutation, service/reload/restart/update/recovery 실행
 
 P1:
 
@@ -439,6 +485,8 @@ P1:
 - memory bootstrap/reconnect 실패, stale 상태 오표시 또는 last-known-good 손실
 - bounded search 한도 우회, pending/unresolved fact의 기본 context 노출
 - audit/conflict 누락 또는 compensating rollback revision 검사 실패
+- `$ha-feedback` routing/schema/render/status 오류, private permission·persistence 손실 또는 Issue Form fallback 실패
+- GitHub candidate prompt injection, duplicate detection/receipt 실패 또는 `/data/github-cli` backup 위험 경고 누락
 
 P2:
 

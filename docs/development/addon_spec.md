@@ -5,6 +5,10 @@
 ```text
 codex-for-home-assistant/
 ├─ .github/
+│  ├─ ISSUE_TEMPLATE/
+│  │  ├─ bug_report.yml
+│  │  ├─ feature_request.yml
+│  │  └─ config.yml
 │  ├─ workflows/
 │  │  ├─ ci.yaml
 │  │  ├─ builder.yaml
@@ -29,6 +33,7 @@ codex-for-home-assistant/
 │  └─ rootfs/
 │     ├─ etc/
 │     │  ├─ codex/config.toml
+│     │  ├─ codex/skills/ha-feedback/
 │     │  ├─ cont-init.d/ 또는 s6-rc.d/
 │     │  ├─ s6-overlay/s6-rc.d/ha-memoryd/
 │     │  ├─ services.d/ 또는 s6-rc.d/
@@ -38,6 +43,7 @@ codex-for-home-assistant/
 │        ├─ bin/
 │        │  ├─ ha-codex
 │        │  ├─ ha-codex-login
+│        │  ├─ ha-feedback
 │        │  ├─ ha-memory
 │        │  ├─ ha-memory-mcp
 │        │  ├─ ha-playwright-mcp
@@ -48,6 +54,7 @@ codex-for-home-assistant/
 │        │  ├─ ha-addon-logs
 │        │  └─ web-terminal-entrypoint
 │        └─ share/codex-ha/
+│           ├─ ha-feedback.mjs
 │           ├─ ha-memory-core.mjs
 │           ├─ ha-memory-ha-client.mjs
 │           ├─ ha-memory.mjs
@@ -86,9 +93,9 @@ M1에서 실제 검증 전에는 amd64만 표시한다.
 
 ```yaml
 name: Codex for Home Assistant
-version: "0.5.0"
+version: "0.6.0"
 slug: codex_home_assistant
-description: Codex CLI, Playwright browser, Ingress terminal, and SSH for Home Assistant
+description: Codex CLI, verified feedback, Playwright browser, Ingress terminal, and SSH for Home Assistant
 url: https://github.com/<owner>/codex-for-home-assistant
 stage: experimental
 startup: application
@@ -227,6 +234,8 @@ Settings → Apps → Codex for Home Assistant → Configuration/Network
 
 - bashio 표준 로그 수준
 
+피드백 기능은 새 App option을 추가하지 않는다. GitHub PAT/token을 `options.json`이나 shell environment에 받지 않고, 사용자가 명시적으로 실행한 `ha-feedback github login`의 GitHub CLI OAuth 상태만 `/data/github-cli`에 보존한다.
+
 ## 6. Dockerfile 요구사항
 
 ### Base image
@@ -271,6 +280,13 @@ nano 또는 vim
 
 `latest`만 의존하는 비재현 빌드는 release 전에 제거한다.
 
+### GitHub CLI 설치
+
+- 공식 GitHub CLI `2.93.0` linux amd64 archive `gh_2.93.0_linux_amd64.tar.gz`만 build 단계에서 내려받는다.
+- SHA-256 `02d1290eba130e0b896f3709ffff22e1c75a51475ddb70476a85abc6b5807af0`을 strict check한 뒤 `/usr/local/bin/gh`에 설치하고 `gh --version`으로 exact version을 검증한다.
+- Runtime download, package-manager floating version과 `latest` resolution은 금지한다.
+- `gh`는 `ha-feedback` helper의 fixed repository workflow에서만 사용한다. PAT를 App option에 넣거나 helper 밖에서 상속 token을 제출 경로로 사용하지 않는다.
+
 ### Playwright 설치
 
 - Microsoft `@playwright/mcp` `0.0.78`을 exact dependency로 사용하고 repository의 npm lockfile로 integrity와 transitive dependency를 고정한다.
@@ -298,8 +314,10 @@ nano 또는 vim
 - host key가 있으면 재생성하지 않음
 - authorized_keys는 App 옵션에서 원자적으로 렌더링
 - 빈/잘못된 키는 로그로 알려주되 토큰/키 전체를 출력하지 않음
+- `/data/github-cli`와 내부 directory는 root-owned `0700`, regular single-link file은 `0600`으로 생성·검증한다. Symlink/non-directory는 login/direct submission을 비활성화하고, non-root-owned root path는 자동 `chown`하지 않고 경고한 뒤 helper가 fail closed하도록 둔다.
+- `/config/codex-workspace/feedback`은 report 생성 시 helper가 관리한다. 각 report directory는 `0700`, `report.json`, `public-report.md`, optional `submission.json`은 `0600`이며 init이 기존 report를 삭제·내용 검사·자동 제출하지 않는다. 외부 submit 결과가 불확실한 bundle에는 direct retry를 막는 hidden `0600` `.submission.lock`이 남을 수 있으며 init은 이를 제거하지 않는다.
 - `/config` 쓰기 테스트는 안전한 임시 파일을 생성 후 삭제해 수행
-- 이전 기본 Playwright output을 init 시작 때 제거하고 `/run/codex-ha` 아래 `0700`으로 재생성한다. 검증된 browser token의 runtime file은 `0600`으로 만들고 browser profile을 `/data`에 만들지 않음
+- 이전 기본 Playwright output을 init 시작 때 제거하고 `/run/codex-ha` 아래 `0700`으로 재생성한다. Feedback preview state도 `/run/codex-ha/ha-feedback-previews` `0700` 아래에만 두며 App restart 때 폐기한다. 검증된 browser token과 preview file은 `0600`으로 만들고 browser profile을 `/data`에 만들지 않음
 - guarded `ha-memory init`이 링크를 따라가지 않고 `/data/codex-ha-memory`를 root-owned `0700`, database/WAL/SHM을 `0600`으로 만들거나 검증한다. unsafe path는 memory만 fail closed하며 main init은 계속된다. main init은 Core catalog를 동기화하지 않고 독립 S6 `ha-memoryd`가 retry 가능한 bootstrap/refresh를 담당한다.
 - `ha-memoryd`는 ttyd, ingress, sshd와 browser service의 dependency가 아니다. DB/Core/schema 실패는 catalog를 `degraded`/`stale`로 표시하거나 memory tool unavailable 오류를 반환하고 App의 기존 복구 표면은 계속 시작한다. Daemon은 CLI 원문을 log하지 않고 closed allowlist의 token/DNS/transport/timeout/auth/protocol/command/snapshot reason과 local database busy/corrupt/schema/storage code만 기록한다.
 
@@ -389,6 +407,33 @@ enabled_tools = [
 - image 기본 `AGENTS.md`에는 메모리 helper 경로와 규칙만 두고 entity별 alias·purpose·preference·relationship·candidate/catalog data를 어떤 AGENTS 계열 파일에도 쓰지 않는다.
 - 기존 base `AGENTS.md`와 user config는 기본 `preserve`에서 갱신되지 않는다. 따라서 `/etc/codex/config.toml`의 image-managed `ha_memory` MCP, developer instruction과 tool description에도 매 HA 요청의 관련 검색, 같은 요청의 explicit remember와 persistent-change fresh 검증을 제공한다.
 - memory MCP/scheduler 실패는 Codex 전체 startup 실패가 아니며 tool 오류 또는 `empty`/`degraded`/`stale` catalog 상태와 last successful refresh를 정제해 사용자에게 보고한다. 0건 결과를 memory 준비 완료의 증거로 간주하지 않는다.
+
+## 7.2 검증형 App 피드백 계약
+
+### Image payload와 routing
+
+- `/etc/codex/skills/ha-feedback`은 image-managed Skill 본문, `references/bug.md`, `references/feature.md`, `references/submission.md`와 agent metadata를 포함한다. Directory는 `0755`, file은 `0644`다.
+- `/usr/local/bin/ha-feedback`은 `0755`, `/usr/local/share/codex-ha/ha-feedback.mjs`는 `0644`이며 image build에서 Node syntax, `--help`, schema/status contract를 검사한다.
+- New-install base `AGENTS.md`와 `/etc/codex/config.toml`의 image-managed developer instruction은 명시적 `$ha-feedback bug|feature`와 자연어 App 피드백 요청을 Skill로 라우팅한다. 일반 update는 기존 사용자 `AGENTS.md`/`config.toml`을 바꾸지 않고 새 Codex session의 system layer로 이 route를 제공한다.
+- Feedback MCP, HTTP API, App/Ingress route, S6 service, webhook, GitHub Action, telemetry와 upload endpoint는 추가하지 않는다.
+
+### 조사와 report
+
+- Skill은 관찰 가능한 App 상태만 읽고 Home Assistant 설정·registry·dashboard·automation·device·App·프로젝트 변경, service call, reload/restart/update/recovery/restore/install/remove를 금지한다. 조사 중에는 report bundle만 쓰고, 제출 단계는 private runtime preview state와 bundle 내부 claim/receipt만 추가로 쓴다.
+- Draft JSON은 본문이나 사용자 자료를 argv에 넣지 않고 group/other access가 없는 `0600` regular single-link private file로 전달한 뒤 삭제한다. Helper는 `-` stdin을 거부하고 최대 256 KiB input, 최대 512 KiB report와 managed-root containment를 검사한다.
+- `collect bug|feature`, `validate`, `render`는 schema `1` report와 deterministic public Markdown을 생성한다. Bug는 비확정 `cause_candidates`, feature는 문제·시나리오·우회법·기존 기능·대안·수용 기준·영향·검증 계획을 필수로 가진다. Check status는 exact `PASS`, `FAIL`, `NOT_TESTED`, `NOT_RUN`; overall은 `FAIL`, `NOT_RUN`, `PARTIAL`, `PASS` 규칙으로 계산한다.
+- Environment는 App/Codex/Core/Supervisor/OS version, architecture와 여섯 safe App option만 allowlist한다. Init이 여섯 option만 `/run/codex-ha/ha-feedback-options.json` `0600`으로 투영하고 collector는 원본 `options.json`을 열지 않는다. 로그, screenshot, raw response, credential, URL/IP, HA user/entity/device/area identifier와 민감 path는 자동 수집하지 않는다.
+- Privacy scanner는 secret/auth/cookie/key/JWT/private-key pattern, URL/IP/email/UUID/HA identifier, storage/database/backup path, control/ANSI sequence를 collect·validate·preview·submit에서 차단한다. 보안 취약점 가능성은 public search/preview/URL/submit을 차단하고 private vulnerability report URL만 반환한다.
+
+### GitHub 인증과 제출
+
+- 대상은 `Kanu-Coffee/codex-for-home-assistant`, bug label은 `bug`, feature label은 `enhancement`로 compile-time 고정한다.
+- `ha-feedback github status|login|logout|url|submit`만 지원한다. Login/logout은 명시적 사용자 요청에서만 실행하며 `GH_CONFIG_DIR=/data/github-cli`를 사용한다. Login 전 App backup에 평문 credential이 포함될 수 있음을 확인받는다.
+- Helper는 `HOME`, locale, fixed `PATH`, `GH_CONFIG_DIR`, `NO_COLOR`만 새 child environment에 넣고 `GH_TOKEN`, `GITHUB_TOKEN`, `SUPERVISOR_TOKEN`, `NODE_OPTIONS`, `BASH_ENV`, `ENV` 등 상속 injection을 제거한다.
+- 무확인 `github submit`은 최대 5개 sanitized title candidate와 exact repo/title/label/body path를 보여 주는 preview다. Candidate 검색이 성공한 경우에만 payload에 결합한 cryptographically random token을 `/run/codex-ha/ha-feedback-previews`의 root-only state에 저장한다. Token은 10분 만료·1회용이며 wrong/expired/used token, confirmation 실패 또는 payload 변경 뒤에는 새 preview와 현재 사용자 turn의 별도 명확한 confirmation이 필요하다.
+- Confirmed submit은 먼저 exclusive `.submission.lock`으로 같은 report의 동시 흐름을 직렬화하고 remote exact report ID 중복 검색을 수행한다. 검색이 성공하고 중복이 없는 경우에만 이미 검증한 Markdown을 `gh issue create --body-file -`의 stdin으로 전달한다. 성공 URL과 private receipt를 모두 검증한 뒤 claim을 제거한다.
+- Candidate/remote 중복 검색 불가에서는 이슈를 만들지 않는다. `gh` 실패, 예상 밖 URL 또는 receipt write 실패는 외부 결과가 불확실하므로 `.submission.lock`을 보존해 direct retry를 차단한다. 이미 receipt/report ID가 있어도 자동 retry·중복 제출하지 않는다.
+- 미인증/검색 불가/실패 폴백은 짧은 Issue Form URL과 `public-report.md` 복사 경로를 제공한다. URL에는 긴 report body를 넣지 않고, 불확실한 external result에서는 기존 이슈를 먼저 확인한 뒤 브라우저 최종 제출은 사용자가 수행한다.
 
 ## 8. 웹 터미널 계약
 
@@ -483,9 +528,11 @@ Playwright MCP child는 Supervisor token을 받지 않는다. 검증된 dedicate
 
 `ha-memoryd`는 주기적 `ha-memory refresh` scheduler이고 `ws://supervisor/core/websocket`의 첫 auth frame에만 root-only runtime Supervisor credential을 사용한다. client는 image-pinned `ws` runtime의 handshake timeout, 32 MiB payload cap, compression off와 기본 TLS 검증을 사용한다. `HA_WS_URL` 환경 override, Upgrade authorization header와 direct-Core credential fallback은 허용하지 않는다. `ha-memory` CLI와 `ha_memory` MCP의 change verify도 같은 고정 HA client로 fresh response를 얻는다. credential은 부팅 때 생성한 ephemeral mode `0600` `/run/codex-ha/runtime.env`에서 process environment로 읽고 MCP wrapper는 최소 환경에서 필요한 값만 CLI child에 전달한다. token은 영속 `/data`, command argument, DB, audit, stdout/stderr, MCP tool output과 App log에 기록하지 않고 모델이 raw credential이나 WebSocket frame을 다루지 않는다.
 
+`ha-feedback`의 GitHub child는 위 shell/runtime environment를 전달하지 않는다. `GH_CONFIG_DIR=/data/github-cli`를 포함한 별도 최소 environment만 구성하고 `SUPERVISOR_TOKEN`, `GH_TOKEN`, `GITHUB_TOKEN`과 shell/Node startup injection 변수를 제거한다. GitHub credential은 root-only `/data/github-cli`에 평문으로 영속할 수 있지만 report, App log, argv 또는 Home Assistant option에는 복사하지 않는다.
+
 ## 13. App 문서/표현
 
-- `DOCS.md`: 설치, Web UI, 장치 코드 로그인, browser renderer, SSH, Remote SSH, API helper, 검증형 memory 검색·candidate·history/rollback, 위험 경고, 복구
+- `DOCS.md`: 설치, Web UI, 장치 코드 로그인, browser renderer, SSH, Remote SSH, API helper, 검증형 memory 검색·candidate·history/rollback, `$ha-feedback` report/preview/fallback, 위험 경고, 복구
 - `CHANGELOG.md`: Keep a Changelog 스타일
 - `icon.png`: 제공 원본을 왜곡 없이 축소하고 바깥 matte를 투명화한 128x128 RGBA PNG
 - `logo.png`: 같은 방식의 250x250 RGBA PNG (공식 문서는 다른 비율도 허용)
@@ -494,4 +541,4 @@ Playwright MCP child는 Supervisor token을 받지 않는다. 검증된 dedicate
 
 ## 14. Release image
 
-로컬 개발 단계에서는 `image`를 주석 처리한 local build를 허용한다. `0.1.3`부터 공식 Home Assistant builder actions `2026.06.0`으로 amd64 image와 generic manifest를 미리 빌드하고 `config.yaml`의 `image`에 `ghcr.io/kanu-coffee/codex-for-home-assistant`를 사용한다. Playwright renderer는 `0.2.0`, 최소권한 browser 경로는 `0.2.1`, 관리형 인증은 `0.2.2`, 기본 ON 자동 인증·Codex `8099` 라우팅과 선택형 user-file refresh는 `0.2.3`이다. `0.2.3`의 사용자 기능 포함은 이미 고정된 후보의 검증·배포 연속성을 위한 ADR-030의 1회 SemVer 예외이며, 이후 사용자 기능은 다시 MINOR 규칙을 따른다. 숫자 Git tag와 App version이 정확히 같을 때만 게시하고 기존 tag는 덮어쓰지 않는다. HAOS browser/AppArmor 실기는 public `0.2.3`에서 사용자 확인 PASS지만, Home Assistant `stage`는 별도 M3 평가 전까지 `experimental`을 유지한다.
+로컬 개발 단계에서는 `image`를 주석 처리한 local build를 허용한다. `0.1.3`부터 공식 Home Assistant builder actions `2026.06.0`으로 amd64 image와 generic manifest를 미리 빌드하고 `config.yaml`의 `image`에 `ghcr.io/kanu-coffee/codex-for-home-assistant`를 사용한다. Playwright renderer는 `0.2.0`, 최소권한 browser 경로는 `0.2.1`, 관리형 인증은 `0.2.2`, 기본 ON 자동 인증·Codex `8099` 라우팅과 선택형 user-file refresh는 `0.2.3`, 검증형 memory 사용자 폐루프는 `0.5.0`, 검증형 App 피드백 자동화는 `0.6.0`이다. `0.2.3`의 사용자 기능 포함은 이미 고정된 후보의 검증·배포 연속성을 위한 ADR-030의 1회 SemVer 예외이며, 이후 사용자 기능은 다시 MINOR 규칙을 따른다. 숫자 Git tag와 App version이 정확히 같을 때만 게시하고 기존 tag는 덮어쓰지 않는다. HAOS browser/AppArmor 실기는 public `0.2.3`에서 사용자 확인 PASS지만, Home Assistant `stage`는 별도 M3 평가 전까지 `experimental`을 유지한다. `0.6.0` live GitHub issue creation은 명시적 외부-write 승인 전까지 `NOT RUN`으로 유지한다.

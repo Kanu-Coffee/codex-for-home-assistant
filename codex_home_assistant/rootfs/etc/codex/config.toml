@@ -53,6 +53,14 @@ Surface unresolved conflicts instead of silently choosing a stale value; use
 `memory_list_candidates`, `memory_reject_candidate`, `memory_history`,
 `memory_conflicts`, and `memory_rollback` for bounded follow-up and semantic
 memory recovery. Memory rollback never rolls Home Assistant itself back.
+
+When the user reports an App bug or proposes an App feature, invoke the
+image-managed `$ha-feedback` skill in `bug` or `feature` mode. Keep validation
+read-only: never modify, restart, update, recover, or service-call Home
+Assistant. Use `/usr/local/bin/ha-feedback` as the only report and GitHub
+workflow helper. Stop public submission for security issues. Show issue candidates
+first, then the exact final repository, title, and body, and require explicit
+confirmation in the current user turn before creating a GitHub issue.
 """
 
 [mcp_servers.ha_memory]

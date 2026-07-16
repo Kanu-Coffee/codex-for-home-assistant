@@ -1,0 +1,9 @@
+---
+blank_issues_enabled: false
+contact_links:
+  - name: "지원 안내 / Support guide"
+    url: "https://github.com/Kanu-Coffee/codex-for-home-assistant/blob/main/SUPPORT.md"
+    about: "일반 지원 범위와 안전한 진단 자료 준비 방법을 확인하세요. / Review support scope and safe diagnostic preparation."
+  - name: "비공개 보안 제보 / Private vulnerability report"
+    url: "https://github.com/Kanu-Coffee/codex-for-home-assistant/security/advisories/new"
+    about: "보안 취약점, 인증 우회와 자격증명 노출은 공개 이슈 대신 이 경로로 제보하세요. / Report vulnerabilities, authentication bypasses, and credential exposure privately."

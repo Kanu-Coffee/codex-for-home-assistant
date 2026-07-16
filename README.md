@@ -53,6 +53,7 @@
 | 자동화 만들기 | 생활 패턴과 현재 엔티티를 바탕으로 후보를 제안하고, 승인한 항목만 구현·검증합니다. |
 | 엔티티 정리하기 | 중복·미사용·참조 끊김 후보를 찾고 영향 범위를 보여 줍니다. 삭제나 registry 변경은 별도 확인 후 수행합니다. |
 | 오류 원인 찾기 | 설정 파일, `ha-config-check`, Core/App 로그와 상태를 함께 살펴보고 최소 수정안을 제안합니다. |
+| 앱 버그·개선 제보 준비하기 | `$ha-feedback`이 앱 범위만 읽기 전용으로 점검하고 환경·검사·미검증 범위를 정제된 보고서로 만든 뒤, 공개 전 최종 본문을 다시 확인받습니다. |
 | Home Assistant 직접 작업하기 | `/config` 파일과 지원되는 Core/Supervisor API를 이용해 변경하고, 가능한 경우 fresh API로 결과를 다시 확인합니다. |
 | 이동 중 이어서 작업하기 | Home Assistant 모바일 앱/웹의 Ingress 터미널을 사용하거나, ChatGPT 모바일 Remote에서 HA 앱의 SSH endpoint에 직접 연결합니다. |
 | 집의 맥락 기억시키기 | HA 구조와 사용자가 명시한 별칭·용도·선호를 이 프로젝트의 검증형 로컬 메모리에 보존해 다음 작업에서 관련 정보만 찾습니다. |
@@ -70,6 +71,7 @@ flowchart LR
     C --> F["/config 읽기·수정"]
     C --> A["Core·Supervisor API"]
     C --> B["Headless browser 검증"]
+    C --> R["정제된 bug·feature 보고서"]
     C <--> H["검증형 HA memory"]
 ```
 
@@ -146,6 +148,16 @@ unavailable/unknown 상태가 반복되는 항목을 조사해 줘.
 각 항목의 참조 위치와 정리 위험을 표로 보여 주고 삭제는 하지 마.
 ```
 
+### 앱 버그 또는 기능 제안 검증
+
+```text
+$ha-feedback bug Web UI 재접속 뒤 같은 증상이 반복돼. 앱 범위만 읽기 전용으로 진단하고 보고서를 만들어 줘.
+```
+
+```text
+$ha-feedback feature 이 앱에서 개선하고 싶은 요청이 있어. 현재 기능과 대안을 먼저 확인하고 수용 기준이 있는 제안서로 만들어 줘.
+```
+
 [더 많은 한국어 프롬프트 예시](docs/examples.ko.md) · [English examples](docs/examples.en.md)
 
 ## 모바일에서 사용하는 두 가지 방법
@@ -167,7 +179,7 @@ unavailable/unknown 상태가 반복되는 항목을 조사해 줘.
 - raw 대화, 현재/과거 state 값, automation action/template 본문, token과 비밀번호는 저장하지 않습니다.
 - 구조 정보는 fresh Home Assistant API를 우선하며, 충돌은 조용히 덮어쓰지 않고 확인 대상으로 남깁니다.
 
-이는 모델 자체가 학습하거나 사람의 승인 없이 집을 운영한다는 뜻이 아닙니다. 현재 `0.5.0`은 experimental이며, 실제 HAOS의 자연어 기억→새 작업 회상 전체 흐름에는 아직 공개 검증 공백이 있습니다.
+이는 모델 자체가 학습하거나 사람의 승인 없이 집을 운영한다는 뜻이 아닙니다. 현재 `0.6.0`은 experimental이며, 실제 HAOS의 자연어 기억→새 작업 회상 전체 흐름에는 아직 공개 검증 공백이 있습니다.
 
 ## 주요 설정
 
@@ -213,12 +225,14 @@ unavailable/unknown 상태가 반복되는 항목을 조사해 줘.
 | [한국어 사용 설명서](codex_home_assistant/DOCS.md) | 설치, 설정, Web UI, SSH, Remote, 업데이트, 문제 해결 |
 | [English user guide](codex_home_assistant/DOCS.en.md) | English installation and operations guide |
 | [프롬프트 예시](docs/examples.ko.md) | 대시보드, 자동화, 정리, 진단 요청 모음 |
-| [지원 안내](SUPPORT.md) | 로그 수집, 민감정보 제거, 이슈 작성 |
+| [지원 안내](SUPPORT.md) | `$ha-feedback`, 민감정보 제거, GitHub 로그인·제출·폴백 |
 | [보안 정책](.github/SECURITY.md) | 권한 모델과 비공개 취약점 제보 |
 | [변경 기록](codex_home_assistant/CHANGELOG.md) | 버전별 기능·업그레이드 주의사항 |
 | [개발 문서](docs/development/README.md) | 아키텍처, 제품 계약, ADR, 테스트·검증 기록 |
 
 문제가 생기면 먼저 [지원 안내](SUPPORT.md)에 따라 비밀정보를 제거한 진단 자료를 준비한 뒤 [GitHub Issues](https://github.com/Kanu-Coffee/codex-for-home-assistant/issues)를 이용해 주세요. 보안 취약점은 공개 이슈가 아닌 [보안 정책](.github/SECURITY.md)의 비공개 경로로 제보해 주세요.
+
+`$ha-feedback`의 GitHub 직접 제출은 10분 만료·1회용 preview와 별도 확인을 요구하며, 검색 또는 외부 결과가 불확실하면 자동 재시도하지 않고 Issue Form으로 전환합니다.
 
 ## 라이선스
 

@@ -24,3 +24,6 @@ home-assistant_v2.db*
 # Local test output
 .test-tmp/
 *.log
+
+# Runtime feedback reports (private, never commit)
+/feedback/

@@ -1,0 +1,97 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+umask 077
+
+readonly STATE_DIR=/tmp/ha-feedback-fake-gh
+readonly LOG_FILE=${STATE_DIR}/calls.log
+readonly EMPTY_SHA256=e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+install -d -m 0700 "${STATE_DIR}"
+
+if [[ -n "${GH_TOKEN:-}" \
+  || -n "${GITHUB_TOKEN:-}" \
+  || -n "${SUPERVISOR_TOKEN:-}" \
+  || -n "${NODE_OPTIONS:-}" \
+  || -n "${BASH_ENV:-}" \
+  || -n "${ENV:-}" ]]; then
+  printf 'forbidden credential or startup environment reached fake gh\n' >&2
+  exit 88
+fi
+
+body_sha256=
+if [[ "${1:-} ${2:-}" == 'issue create' ]]; then
+  if [[ " $* " != *' --body-file - '* ]]; then
+    printf 'fake gh requires issue body on stdin\n' >&2
+    exit 64
+  fi
+  body_sha256=$(sha256sum | awk '{print $1}')
+  if [[ "${body_sha256}" == "${EMPTY_SHA256}" ]]; then
+    printf 'fake gh received an empty issue body\n' >&2
+    exit 65
+  fi
+fi
+
+printf -v call_line 'GH_CONFIG_DIR=%q' "${GH_CONFIG_DIR:-}"
+for argument in "$@"; do
+  printf -v escaped_argument '%q' "${argument}"
+  call_line+=" ARG=${escaped_argument}"
+done
+if [[ -n "${body_sha256}" ]]; then
+  call_line+=" STDIN_SHA256=${body_sha256}"
+fi
+printf '%s\n' "${call_line}" >> "${LOG_FILE}"
+
+case "${1:-} ${2:-}" in
+  'auth status')
+    if [[ -s "${GH_CONFIG_DIR:?}/hosts.yml" ]]; then
+      printf 'github.com authenticated\n'
+      exit 0
+    fi
+    printf 'not authenticated\n' >&2
+    exit 1
+    ;;
+  'auth login')
+    install -d -m 0700 "${GH_CONFIG_DIR:?}"
+    printf 'fake authenticated state; not a credential\n' > "${GH_CONFIG_DIR}/hosts.yml"
+    chmod 0600 "${GH_CONFIG_DIR}/hosts.yml"
+    exit 0
+    ;;
+  'auth logout')
+    rm -f -- "${GH_CONFIG_DIR:?}/hosts.yml"
+    exit 0
+    ;;
+  'issue list')
+    if [[ -e "${STATE_DIR}/fail-list" ]]; then
+      printf 'simulated issue list failure\n' >&2
+      exit 1
+    elif [[ -e "${STATE_DIR}/invalid-list" ]]; then
+      printf '{not-valid-json\n'
+    elif [[ -e "${STATE_DIR}/duplicate" && " $* " == *' in:body '* ]]; then
+      printf '[{"number":41,"url":"https://github.com/Kanu-Coffee/codex-for-home-assistant/issues/41"}]\n'
+    elif [[ " $* " == *' in:body '* ]]; then
+      printf '[]\n'
+    else
+      printf '[{"number":40,"title":"Existing safe report","url":"https://github.com/Kanu-Coffee/codex-for-home-assistant/issues/40","state":"OPEN","updatedAt":"2026-07-16T00:00:00Z"}]\n'
+    fi
+    exit 0
+    ;;
+  'issue create')
+    if [[ -e "${STATE_DIR}/slow-create" ]]; then
+      sleep 1
+    fi
+    if [[ -e "${STATE_DIR}/fail-create" ]]; then
+      printf 'simulated network failure\n' >&2
+      exit 1
+    fi
+    if [[ -e "${STATE_DIR}/unexpected-create" ]]; then
+      printf 'created, but issue location was not returned\n'
+      exit 0
+    fi
+    printf 'https://github.com/Kanu-Coffee/codex-for-home-assistant/issues/42\n'
+    exit 0
+    ;;
+  *)
+    printf 'unexpected fake gh command\n' >&2
+    exit 64
+    ;;
+esac

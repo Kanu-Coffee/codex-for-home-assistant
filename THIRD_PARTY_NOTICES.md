@@ -22,6 +22,15 @@ The Home Assistant base image itself includes S6 Overlay, Bashio, TempIO, Alpine
 
 The release archive is downloaded during the image build and verified against the SHA-256 value pinned in `codex_home_assistant/Dockerfile`.
 
+### GitHub CLI
+
+- Component: `gh 2.93.0`
+- Artifact: `gh_2.93.0_linux_amd64.tar.gz` from the official `v2.93.0` release
+- Source: <https://github.com/cli/cli>
+- License: MIT
+
+The official archive is downloaded during the image build and verified against the SHA-256 value `02d1290eba130e0b896f3709ffff22e1c75a51475ddb70476a85abc6b5807af0`, pinned in `codex_home_assistant/Dockerfile`. The App uses it only for opt-in GitHub authentication and confirmed feedback issue submission; credentials remain under the persistent root-only `/data/github-cli` directory.
+
 ### Playwright MCP runtime
 
 The locally built `0.2.1` amd64 candidate image pins the npm dependency graph with `codex_home_assistant/playwright/package-lock.json`:

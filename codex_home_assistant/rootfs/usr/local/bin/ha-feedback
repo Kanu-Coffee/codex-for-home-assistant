@@ -1,0 +1,19 @@
+#!/bin/bash -p
+set -Eeuo pipefail
+
+unset SUPERVISOR_TOKEN
+if [[ -r /run/codex-ha/runtime.env ]]; then
+  # shellcheck disable=SC1091
+  . /run/codex-ha/runtime.env
+fi
+
+# Privileged Bash ignores BASH_ENV and exported functions before this script
+# starts. The Node helper then receives only the fixed runtime it needs; test
+# overrides, GitHub tokens, and shell/Node startup injection are not inherited.
+exec /usr/bin/env -i \
+  HOME=/data/home \
+  LANG=C.UTF-8 \
+  LC_ALL=C.UTF-8 \
+  PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
+  SUPERVISOR_TOKEN="${SUPERVISOR_TOKEN:-}" \
+  /usr/bin/node /usr/local/share/codex-ha/ha-feedback.mjs "$@"

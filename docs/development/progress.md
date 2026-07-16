@@ -4,8 +4,8 @@
 
 ## Project Status
 
-- 상태: **amd64 MVP/M2 PASS / public 0.5.0 정확 이미지 전체 회귀 PASS / 실제 HAOS `never` 14/16 승인 0회 PASS·전체 승인 행렬 PARTIAL / public 0.3.2 memory live PARTIAL(FAIL 0) / 0.5.0 자연어 memory live 수용 대기**
-- 현재 마일스톤: **0.5.0 tag·GHCR·prerelease 완료 / 자연어·실제 HAOS 메모리와 잔여 browser 수용 시험 대기**
+- 상태: **amd64 MVP/M2 PASS / public 0.5.0 정확 이미지 전체 회귀 PASS / local 0.6.0 feedback candidate 전체 회귀 PASS / 실제 HAOS `never` 14/16 승인 0회 PASS·전체 승인 행렬 PARTIAL / public 0.3.2 memory live PARTIAL(FAIL 0) / 0.5.0 자연어 memory live 수용 대기**
+- 현재 마일스톤: **0.5.0 tag·GHCR·prerelease 완료 / local 0.6.0 feedback 구현·검증 완료 / 실제 HAOS feedback·memory 수용과 배포 대기**
 - 마지막 문서 기준일: **2026-07-16**
 - 저장소: public `Kanu-Coffee/codex-for-home-assistant`, default branch `main`
 
@@ -23,6 +23,19 @@
 - [x] 문서 주도 개발 파일 세트 작성
 
 ## Current Work
+
+### 2026-07-16 — HAOS Codex feedback automation 0.6.0
+
+- 목표: HAOS 안의 Codex가 앱 버그와 기능 제안을 읽기 전용으로 조사하고, 허용된 환경 정보만 포함한 정제 보고서를 생성한 뒤 사용자의 최종 확인을 거쳐 공식 GitHub 저장소로 제출하거나 Issue Form으로 안전하게 폴백하게 한다.
+- 범위: image-managed admin Skill `$ha-feedback`의 `bug`/`feature` 모드, `/usr/local/bin/ha-feedback` Node helper, Markdown/JSON 보고서와 privacy validation, opt-in `gh` 인증·제출, 한·영 preset·지원 문서, Issue Forms, runtime AGENTS/system routing, pinned GitHub CLI와 0.6.0 버전 계약을 포함한다.
+- 안전 경계: 진단 중 Home Assistant 설정 수정, 서비스 호출, 재시작, 업데이트, 복구와 외부 제출을 자동 실행하지 않는다. 공개 보고서는 allowlist 환경만 사용하고 token/cookie/key/auth/storage/database/backup/URL/IP/사용자·entity·device·area 식별자와 control sequence를 fail closed로 차단한다. 보안 취약점은 공개 이슈 제출을 중단한다.
+- 제출 경계: 대상은 `Kanu-Coffee/codex-for-home-assistant`로 고정한다. 인증된 사용자는 최종 제목·본문·라벨 미리보기와 확인 뒤 `gh`로 제출하고, 미인증 또는 실패 시 긴 본문을 URL에 싣지 않는 Issue Form과 복사용 `public-report.md`를 제공한다. 실제 GitHub 테스트 이슈는 별도 승인 없이는 생성하지 않는다.
+- 검증 계획: Skill 정적/명시 호출, bug·feature fixture schema/render/status 경계, malicious fixture redaction/fail-closed, fake `gh` 인증·거절·성공·실패·중복·고정 repo/label, path/symlink/permission, Docker package/persistence와 public 0.5.0 update 보존 회귀를 자동화한다. HAOS live 제출은 **NOT RUN**으로 분리한다.
+- [x] Skill·문서·runtime routing을 구현했다.
+- [x] helper·GitHub CLI·Issue Forms와 0.6.0 packaging을 구현했다.
+- [x] 자동 회귀와 Docker/update smoke를 실행하고 미검증 경계를 기록했다.
+- 검증 결과: pytest **68 passed / 8 environment-dependent skipped**, Skill validator, YAML·Markdown 38 files, ShellCheck, Hadolint와 `git diff --check`가 PASS했다. Local Docker image index `sha256:9adf3fb63a78e2e6ca3410b0c28ad9ff5478392723741106acd44807734cb86f`에서 GitHub CLI 2.93.0·feedback helper, 전체 browser/gateway/Core WebSocket/ttyd/SSH, browser approval, memory, managed auth, user-file와 public `0.5.0` → local `0.6.0` update smoke가 모두 PASS했다.
+- 미검증 경계: 실제 GitHub 이슈 생성과 실제 HAOS 설치 환경의 자연어 Skill 실행·진단·제출 흐름은 별도 명시 승인과 live 수용 전까지 **NOT RUN**이다. 자동 검증은 fake `gh`와 격리 container만 사용했으며 외부 이슈를 생성하지 않았다.
 
 ### 2026-07-16 — ChatGPT mobile Remote 직접 SSH 문서 정정
 
