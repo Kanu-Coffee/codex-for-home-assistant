@@ -1392,7 +1392,7 @@ function runTransaction(db, callback) {
 }
 
 function subjectExists(db, subject, activeOnly = true) {
-  if (subject.kind === "home") return true;
+  if (subject.kind === "home") return subject.id === "household";
   const suffix = activeOnly ? " AND active = 1" : "";
   return Boolean(
     db
@@ -2310,6 +2310,31 @@ function rejectTransientMemory(memoryType, memoryKey, value) {
   }
 }
 
+function rejectAmbiguousExplicitMemory(memoryType, memoryKey, value) {
+  rejectTransientMemory(memoryType, memoryKey, value);
+  const serialized = stableJson(value);
+  if (
+    /\b(today|tonight|currently|right now|at the moment|for now|temporarily|this (?:morning|afternoon|evening))\b|오늘|지금|현재|당분간|일시적|임시로/iu.test(
+      serialized,
+    )
+  ) {
+    throw new MemoryError(
+      "transient_rejected",
+      "A time-local statement cannot be applied as durable explicit memory",
+    );
+  }
+  if (
+    /\b(probably|maybe|perhaps|likely|i think|i guess|seems?|seems like)\b|아마도?|추정|것\s*같|거\s*같|듯해|듯하다|듯합니다/iu.test(
+      serialized,
+    )
+  ) {
+    throw new MemoryError(
+      "explicit_fact_ambiguous",
+      "An uncertain statement must remain a candidate until it has stronger evidence",
+    );
+  }
+}
+
 function normalizeCandidateMemoryValue(memoryType, value) {
   if (memoryType === "relationship") {
     const relationship = validateRelationshipValue(value);
@@ -2512,7 +2537,7 @@ export function proposeMemory(db, input) {
          WHERE subject_kind = ? AND subject_id = ? AND memory_type = ?
          AND memory_key = ? AND value_json = ?
          AND authority >= ?
-         AND status IN ('pending', 'verified', 'applied')
+         AND status IN ('pending', 'verified', 'applied', 'conflict')
        ORDER BY id DESC LIMIT 1`,
     )
     .get(
@@ -2534,7 +2559,7 @@ export function proposeMemory(db, input) {
            WHERE subject_kind = ? AND subject_id = ? AND memory_type = ?
            AND memory_key = ? AND value_json = ?
            AND authority >= ?
-           AND status IN ('pending', 'verified', 'applied')
+           AND status IN ('pending', 'verified', 'applied', 'conflict')
          ORDER BY id DESC LIMIT 1`,
       )
       .get(
@@ -3208,6 +3233,118 @@ export function applyMemoryCandidate(db, candidateIdValue) {
   });
 }
 
+export async function rememberExplicitMemory(db, input) {
+  const memoryType = safeText(input.memoryType, 40);
+  if (!MEMORY_TYPES.has(memoryType)) {
+    throw new MemoryError("invalid_memory_type", `Unsupported memory type: ${memoryType}`);
+  }
+  const memoryKey = validateMemoryKey(input.key);
+  if (input.value === undefined || input.value === null) {
+    throw new MemoryError("invalid_value", "Memory value must not be null");
+  }
+  const normalizedValue = normalizeCandidateMemoryValue(memoryType, input.value);
+  rejectAmbiguousExplicitMemory(memoryType, memoryKey, normalizedValue);
+
+  if (memoryType === "relationship") {
+    const { relation } = validateRelationshipValue(normalizedValue);
+    if (RESERVED_RELATIONSHIPS.has(relation)) {
+      throw new MemoryError(
+        "canonical_fact_requires_ha",
+        `Relationship ${relation} must be learned from fresh Home Assistant API evidence`,
+      );
+    }
+  }
+
+  const proposal = proposeMemory(db, {
+    subject: input.subject,
+    memoryType,
+    key: memoryKey,
+    value: normalizedValue,
+    source: "user_explicit",
+    sourceRef: input.sourceRef,
+  });
+  const auditEventIds = [];
+  if (proposal.audit_event_id) auditEventIds.push(proposal.audit_event_id);
+  let candidate = proposal.candidate;
+
+  if (candidate.status === "applied") {
+    return {
+      result: "already_applied",
+      candidate,
+      conflict_id: null,
+      deduplicated: true,
+      audit_event_ids: auditEventIds,
+    };
+  }
+
+  if (candidate.status === "conflict") {
+    const conflict = db
+      .prepare(
+        `SELECT id FROM conflicts
+         WHERE candidate_memory_id = ? AND status = 'open'
+         ORDER BY id DESC LIMIT 1`,
+      )
+      .get(candidate.id);
+    if (!conflict) {
+      throw new MemoryError(
+        "conflict_not_found",
+        `Memory candidate ${candidate.id} has no current conflict`,
+      );
+    }
+    return {
+      result: "conflict",
+      candidate,
+      conflict_id: conflict.id,
+      deduplicated: true,
+      audit_event_ids: auditEventIds,
+    };
+  }
+
+  if (candidate.status === "pending") {
+    const verification = await verifyMemoryCandidate(
+      db,
+      candidate.id,
+      "user_explicit",
+    );
+    if (verification.audit_event_id) {
+      auditEventIds.push(verification.audit_event_id);
+    }
+    candidate = verification.candidate;
+    if (!verification.verified) {
+      return {
+        result: "conflict",
+        candidate,
+        conflict_id: verification.conflict_id ?? null,
+        deduplicated: proposal.deduplicated,
+        audit_event_ids: auditEventIds,
+      };
+    }
+  }
+
+  if (candidate.status !== "verified") {
+    throw new MemoryError(
+      "candidate_not_verified",
+      `Memory candidate ${candidate.id} is ${candidate.status}, not ready to apply`,
+    );
+  }
+
+  const application = applyMemoryCandidate(db, candidate.id);
+  if (application.audit_event_id) auditEventIds.push(application.audit_event_id);
+  const result = application.candidate.status === "conflict"
+    ? "conflict"
+    : application.result === "duplicate"
+      ? "already_applied"
+      : "applied";
+  return {
+    result,
+    application_result: application.result ?? result,
+    candidate: application.candidate,
+    conflict_id: application.conflict_id ?? null,
+    deduplicated: proposal.deduplicated,
+    audit_event_ids: auditEventIds,
+  };
+}
+
 export function rejectMemoryCandidate(db, candidateIdValue, reasonValue) {
   const candidateId = parsePositiveId(candidateIdValue, "Candidate ID");
   let candidate = readAuditedRow(db, "memory_items", candidateId);
@@ -3284,13 +3421,19 @@ export function listMemoryCandidates(db, options = {}) {
   if (!allowedStatuses.has(status)) {
     throw new MemoryError("invalid_status", `Unsupported candidate status: ${status}`);
   }
-  const limit = boundedResultLimit(options.limit, 20, 100);
+  const limit = boundedResultLimit(options.limit, 20, 20);
+  const subject = parseSubject(options.subject);
+  const rows = db
+    .prepare(
+      `SELECT * FROM memory_items
+       WHERE status = ? AND subject_kind = ? AND subject_id = ?
+       ORDER BY id DESC LIMIT ?`,
+    )
+    .all(status, subject.kind, subject.id, limit);
   return {
     status,
-    candidates: db
-      .prepare("SELECT * FROM memory_items WHERE status = ? ORDER BY id DESC LIMIT ?")
-      .all(status, limit)
-      .map(candidateView),
+    subject: subject.key,
+    candidates: rows.map(candidateView),
   };
 }
 

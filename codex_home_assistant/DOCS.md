@@ -121,6 +121,7 @@ Codex 공식 [AGENTS.md 지침 계층](https://developers.openai.com/codex/agent
 - 기본 파일을 비활성화하려면 삭제 대신 빈 `/data/codex/AGENTS.md`를 두면 init이 보존하고 Codex는 빈 지침을 건너뜁니다.
 - 한 번 생성된 파일은 사용자 소유 설정으로 취급되어 기본 `preserve`에서는 다음 App 업데이트의 템플릿 변경을 자동 병합하지 않습니다. 수동 비교 후 필요한 문장만 반영하거나, 의도적으로 전체 base를 reset하려면 `refresh_agents`를 사용하세요.
 - `/config` 아래에 둔 프로젝트/디렉터리별 지침은 더 나중에 적용되어 전역 지침보다 우선할 수 있습니다.
+- AGENTS 계열 파일은 규칙과 helper 위치만 담는 곳입니다. Entity별 별칭·용도·선호·관계·candidate나 catalog 값을 누적하지 말고 검증형 SQLite memory workflow를 사용하세요.
 - 이 파일은 방어 심층화 지침이지 강제 보안 경계가 아닙니다. App 옵션의 approval/sandbox, App 권한 경계와 사람의 검토를 계속 사용해야 합니다.
 - App 업데이트 뒤 이미 실행 중인 Codex에는 소급 적용되지 않으므로 새 Codex 세션을 시작하세요.
 
@@ -165,42 +166,54 @@ ha-memory show automation:automation.kitchen_motion_lights
 | `degraded` | 첫 성공 snapshot 전에 Core/validation 실패가 있었습니다. |
 | `stale` | 이전 성공 snapshot은 보존됐지만 가장 최근 refresh가 실패했습니다. |
 
+Codex는 `empty`·`degraded`·`stale`을 단순한 검색 결과 0건과 구분해 사용자에게 첫 학습 진행 중 또는 일시적인 memory 불가 상태로 알려야 합니다. DB를 직접 읽거나 삭제해 이를 우회하지 마세요.
+
 `last_sync.error_code`와 실패한 CLI JSON의 `reason`은 다음 closed code만 사용합니다: `ha_token_unavailable`, `ha_ws_runtime_unavailable`, `ha_dns_failed`, `ha_transport_failed`, `ha_timeout`, `ha_auth_rejected`, `ha_protocol_error`, `ha_ws_closed`, 고정 command별 `ha_command_*_failed`, `ha_command_failed`, `ha_snapshot_incomplete`, fallback `ha_unavailable`. `ha-memoryd`는 captured CLI 원문·remote message를 log하지 않고 이 allowlist reason만 기록하며 알 수 없는 값은 `ha_unavailable`로 축약합니다. 따라서 App log와 status의 code를 먼저 확인하고 DB를 삭제하거나 token을 출력해 진단하지 마세요.
 
 ### Candidate → verified → applied
 
-대화에서 얻은 별칭, 실제 용도, 선호, note, HA schema 밖 관계는 먼저 candidate로만 기록합니다. 다음 예시는 사용자가 주방 조명을 “준비등”이라고 명시한 경우입니다. JSON string은 shell에서 바깥 single quote와 안쪽 double quote를 모두 유지해야 합니다.
+사용자가 한 exact subject의 비민감하고 지속적인 별칭, 실제 용도, 선호, note 또는 HA schema 밖 관계를 명확히 설명하면 새 Codex 세션은 `memory_remember_explicit` MCP를 같은 요청에서 호출하고 applied/already-known/conflict 결과를 짧게 알려야 합니다. Optional MCP가 unavailable이면 같은 필드의 bounded `ha-memory remember` CLI를 사용합니다. 대상이나 의미가 모호하면 candidate를 쓰지 않고 한 번 확인합니다. 현재 state, “지금/오늘” 같은 일시 정보와 “probably/아마” 같은 불확실성, 페이지·로그 내용, observation과 모델 inference를 user-explicit로 분류해서는 안 되며, 명백한 시간·불확실성 표현은 server도 적용 전에 거부합니다.
+
+MCP 장애 때만 다음 CLI fallback을 사용합니다. Server가 source를 `user_explicit`로 고정하고 기존 candidate→verified→applied 함수를 순서대로 실행하므로 호출은 하나지만 세 audit event와 상태 전이는 생략되지 않습니다. JSON string은 shell에서 바깥 single quote와 안쪽 double quote를 모두 유지해야 합니다.
 
 `--source-ref`와 evidence `--detail`은 대화 문장을 복사하는 칸이 아닙니다. 공백 없는 소문자 구조화 label만 허용되며 길이는 200 bytes 이하입니다. 예: `user-request:explicit-alias`, `observation:sample-2`.
 
 ```bash
-ha-memory candidate add \
+ha-memory remember \
   --subject entity:light.kitchen_main \
   --memory-type alias \
   --key user_alias \
   --value-json '"준비등"' \
-  --source user_explicit \
   --source-ref 'user-request:explicit-alias'
-
-ha-memory candidate verify 1 --method user_explicit
-ha-memory candidate apply 1
 ```
 
-명시적 user 설명은 그 semantic fact의 권위 근거입니다. Observation/inference candidate는 서로 다른 observation evidence가 최소 2개 있어야 `repeated_observation`으로 검증할 수 있습니다. `belongs_to`, `located_in`, `references` 같은 canonical 관계는 `--method ha_api`가 fresh Core snapshot과 일치해야 합니다. 검증은 적용과 별도 단계이므로 verified candidate도 `candidate apply` 전에는 search 결과에 나타나지 않습니다.
+새 semantic key는 alias `user_alias`, 실제 용도 `user_purpose`, 설정 선호 `user_preference.<setting>`, note `user_note.<topic>`, 사용자 의미 관계 `user_relationship.<relation>`을 우선 사용합니다. 기존 값을 정정할 때는 search/show에 나온 같은 key를 재사용해야 conflict authority 검사가 작동합니다. 집 전체 선호의 유일한 home subject는 `home:household`이며 임의 `home:*`은 거부됩니다. Alias array는 일부 patch가 아니라 사용자가 의도한 전체 alias 집합이어야 합니다.
+
+명시적 user 설명은 그 semantic fact의 권위 근거입니다. 동일 fact를 다시 remember하면 `already_applied`이고, 같거나 더 높은 기존 근거와 다른 값은 conflict입니다. `belongs_to`, `located_in`, `references` 같은 canonical 관계는 explicit remember가 생성 전에 거부하며 별도 candidate를 `--method ha_api`로 fresh Core snapshot과 검증해야 합니다. Observation/inference candidate는 아래처럼 서로 다른 observation evidence가 최소 2개 있어야 `repeated_observation`으로 검증할 수 있습니다. Verified candidate도 explicit apply 전에는 search 결과에 나타나지 않습니다.
 
 ```bash
+ha-memory candidate add \
+  --subject entity:light.kitchen_main \
+  --memory-type preference \
+  --key user_preference.evening_scene \
+  --value-json '"부드러운 저녁 조명"' \
+  --source observation \
+  --source-ref 'observation:evening-scene-1'
 ha-memory candidate evidence 2 \
   --evidence-type observation \
   --detail 'observation:independent-second-sample'
 ha-memory candidate verify 2 --method repeated_observation
-ha-memory candidate list --status pending --limit 20
+ha-memory candidate list \
+  --status pending \
+  --subject entity:light.kitchen_main \
+  --limit 20
 ```
 
 같은 subject/type/key에 값이 다르면 source authority를 비교합니다. Explicit user memory는 observation/inference보다 높고 자동으로 낮은 authority를 supersede하더라도 resolved conflict 이력을 남깁니다. 같거나 더 높은 기존 근거, HA canonical 관계 불일치 또는 사라진 HA subject는 open conflict가 되며 사용자의 명시적인 판단 없이 조용히 선택하지 않습니다.
 
 ### 변경 전후 fresh API 검증
 
-Codex가 HA 설정, registry 또는 automation을 바꾸기 전 영향 subject와 closed-schema expectation을 commit하고, 변경 명령이 성공한 뒤 별도의 fresh Core API snapshot으로 같은 expectation을 확인합니다. 명령 exit 0, 작성한 YAML, 의도한 값은 검증 증거가 아닙니다.
+Codex가 지속적인 HA 설정, registry 또는 automation을 바꾸기 전 영향 subject와 지원되는 closed-schema expectation을 반드시 commit하고, 변경과 필요한 reload 뒤 별도의 fresh Core API snapshot으로 같은 expectation을 확인합니다. 단순 조회·진단·catalog refresh와 원래부터 memory에 저장하지 않는 일시적 device-service 시험은 이 ledger 대상이 아닙니다. Expectation이 변경의 실제 결과를 표현할 수 없거나 memory가 unavailable이면 semantic memory를 갱신하지 않으며, Codex는 검증 공백과 미반영을 먼저 밝히고 사용자가 계속 진행할지 확인해야 합니다. 현재 schema는 automation trigger/condition/action/template logic을 표현하지 못하므로 logic-only 변경에 `exists`나 `name` 같은 약한 검사를 대신 사용해서는 안 됩니다. 명령 exit 0, 작성한 YAML, 의도한 값은 검증 증거가 아닙니다.
 
 ```bash
 EXPECTATIONS='{

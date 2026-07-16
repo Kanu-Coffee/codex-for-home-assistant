@@ -353,7 +353,10 @@ default_tools_approval_mode = "writes"
 enabled_tools = [
   "memory_search",
   "memory_show",
+  "memory_remember_explicit",
   "memory_propose",
+  "memory_list_candidates",
+  "memory_reject_candidate",
   "memory_add_evidence",
   "memory_verify_candidate",
   "memory_apply_candidate",
@@ -368,16 +371,17 @@ enabled_tools = [
 ```
 
 - MCP는 container-local STDIO이고 HTTP/SSE listener나 host/Ingress port를 갖지 않는다. system config의 `env -i`로 시작한 wrapper가 root-only `/run/codex-ha/runtime.env`를 source하고 fresh verify CLI child에 필요한 allowlist 환경만 넘긴다.
-- tool 표면은 `memory_search`, `memory_show`, `memory_propose`, `memory_add_evidence`, `memory_verify_candidate`, `memory_apply_candidate`, `memory_begin_change`, `memory_verify_change`, `memory_status`, `memory_history`, `memory_conflicts`, `memory_resolve_conflict`, `memory_rollback`이다. 모든 input은 고정 JSON schema와 size/current-row/status 검사를 통과한다.
-- CLI의 candidate 값은 `ha-memory candidate add --value-json`, change 시작 대상과 pre-change 기대값은 `ha-memory change begin --subjects-json --expect-json`, fresh 재검증은 `ha-memory change verify --expect-json`으로 전달한다. begin은 기존/생성 예정 subject와 closed-schema expectation의 digest·field-only summary를 먼저 저장한다. verify는 같은 계약만 fresh API와 비교하고 raw expectation 값/state/attributes/config를 보존하지 않는다. `codex_change` relationship candidate에는 동일 source·relation·target의 성공한 존재 predicate만 evidence로 연결한다.
+- tool 표면은 `memory_search`, `memory_show`, `memory_remember_explicit`, `memory_propose`, `memory_list_candidates`, `memory_reject_candidate`, `memory_add_evidence`, `memory_verify_candidate`, `memory_apply_candidate`, `memory_begin_change`, `memory_verify_change`, `memory_status`, `memory_history`, `memory_conflicts`, `memory_resolve_conflict`, `memory_rollback`이다. 모든 input은 고정 JSON schema와 size/current-row/status 검사를 통과한다. Candidate list는 exact subject/status와 최대 20건으로 제한한다.
+- `memory_remember_explicit`와 CLI fallback `ha-memory remember`는 한 exact subject에 사용자가 직접·명확하게 설명한 지속 사실만 받는다. Source를 server-side `user_explicit`로 고정하고 기존 propose→verify→apply transaction을 호출해 세 audit event를 보존하며 applied/already-applied/conflict를 반환한다. Transient key/value, 명백한 시간·불확실성 표현과 reserved canonical relation은 candidate 생성 전에 server가 거부하고, 그 밖의 대상·의미 ambiguity는 tool 밖에서 한 번 확인한다. Household subject는 `home:household`만 허용한다.
+- 관찰·추론 candidate 값은 `ha-memory candidate add --value-json`, change 시작 대상과 pre-change 기대값은 `ha-memory change begin --subjects-json --expect-json`, fresh 재검증은 `ha-memory change verify --expect-json`으로 전달한다. 지속 configuration/registry/automation mutation은 지원되는 expectation으로 begin을 먼저 실행하고 mutation/reload 뒤 verify한다. Read/diagnostic/catalog refresh/transient device test는 제외한다. 표현 불가 또는 unavailable이면 semantic memory를 갱신하지 않고 검증 공백을 먼저 밝힌다. Begin은 기존/생성 예정 subject와 closed-schema expectation의 digest·field-only summary를 먼저 저장한다. Verify는 같은 계약만 fresh API와 비교하고 raw expectation 값/state/attributes/config를 보존하지 않는다. `codex_change` relationship candidate에는 동일 source·relation·target의 성공한 존재 predicate만 evidence로 연결한다.
 - search/show는 exact identifier/alias와 FTS5 rank를 사용한다. Query 최대 256자, search 기본 8·최대 20 subject와 JSON 32 KiB, subject별 outgoing/incoming relation 각각 기본 12개, applied memory 20개, open conflict 10개가 상한이고 exact show relation은 각각 30개다. exact show/history/conflict는 row/field limit와 MCP 2 MiB hard ceiling을 사용한다. pending/evidence/audit/full catalog는 기본 search에서 제외한다.
 - mutation은 actor/source/before/after를 가진 history-preserving `audit_events`/`audit_changes`를 남긴다. rollback은 current-row precondition을 확인해 compensating event와 원 event linkage를 추가하며 `catalog_*`나 실제 HA를 변경하지 않는다.
 
 ### Codex instruction과 기존 설치
 
-- image 기본 `AGENTS.md`에는 메모리 helper 경로, bounded lookup, candidate와 post-change 검증 규칙만 두고 entity별 data를 쓰지 않는다.
-- 기존 base `AGENTS.md`와 user config는 기본 `preserve`에서 갱신되지 않는다. 따라서 `/etc/codex/config.toml`의 image-managed `ha_memory` MCP, developer instruction과 tool description에도 매 HA 요청의 관련 검색과 변경 후 fresh 검증을 제공한다.
-- memory MCP/scheduler 실패는 Codex 전체 startup 실패가 아니며 tool 오류 또는 `empty`/`degraded`/`stale` catalog 상태와 last successful refresh를 정제해 보고한다.
+- image 기본 `AGENTS.md`에는 메모리 helper 경로와 규칙만 두고 entity별 alias·purpose·preference·relationship·candidate/catalog data를 어떤 AGENTS 계열 파일에도 쓰지 않는다.
+- 기존 base `AGENTS.md`와 user config는 기본 `preserve`에서 갱신되지 않는다. 따라서 `/etc/codex/config.toml`의 image-managed `ha_memory` MCP, developer instruction과 tool description에도 매 HA 요청의 관련 검색, 같은 요청의 explicit remember와 persistent-change fresh 검증을 제공한다.
+- memory MCP/scheduler 실패는 Codex 전체 startup 실패가 아니며 tool 오류 또는 `empty`/`degraded`/`stale` catalog 상태와 last successful refresh를 정제해 사용자에게 보고한다. 0건 결과를 memory 준비 완료의 증거로 간주하지 않는다.
 
 ## 8. 웹 터미널 계약
 

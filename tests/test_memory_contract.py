@@ -183,14 +183,23 @@ def test_system_config_registers_optional_memory_mcp(rootfs: Path) -> None:
     instructions = " ".join(config["developer_instructions"].lower().split())
     for required in (
         "/data/codex-ha-memory/memory.sqlite3",
-        "ha-memory search",
-        "ha-memory candidate verify",
-        "ha-memory candidate apply",
-        "ha-memory change begin",
-        "ha-memory change verify",
+        "memory_search",
+        "memory_remember_explicit",
+        "memory_list_candidates",
+        "memory_reject_candidate",
+        "memory_begin_change",
+        "memory_verify_change",
+        "ha-memory remember",
+        "home:household",
+        "empty",
+        "degraded",
+        "stale",
+        "agents.override.md",
         "home assistant api",
     ):
         assert required in instructions
+    assert "when practical" not in instructions
+    assert "never substitute an exists/name check" in instructions
 
     memory_mcp = config["mcp_servers"]["ha_memory"]
     assert memory_mcp["command"] == "/usr/bin/env"
@@ -205,7 +214,10 @@ def test_system_config_registers_optional_memory_mcp(rootfs: Path) -> None:
     assert set(memory_mcp["enabled_tools"]) == {
         "memory_search",
         "memory_show",
+        "memory_remember_explicit",
         "memory_propose",
+        "memory_list_candidates",
+        "memory_reject_candidate",
         "memory_add_evidence",
         "memory_verify_candidate",
         "memory_apply_candidate",
@@ -226,9 +238,28 @@ def test_memory_mcp_exposes_only_the_structured_protocol(rootfs: Path) -> None:
 
     for method in ("initialize", "ping", "tools/list", "tools/call"):
         assert f'"{method}"' in mcp
+    for tool in (
+        "memory_remember_explicit",
+        "memory_list_candidates",
+        "memory_reject_candidate",
+    ):
+        assert f'name: "{tool}"' in mcp
+    assert 'const SERVER_VERSION = "1.1.0"' in mcp
     assert 'required: ["summary", "subjects", "expectations"]' in mcp
     assert "Unsupported argument" in mcp
     assert "HA_MEMORY_INSTALLED_TEST" not in mcp
+
+    search_case = mcp.split('case "memory_search":', 1)[1].split(
+        'case "memory_show"', 1
+    )[0]
+    assert 'requireString(args, "subject", {' in search_case
+    assert "optional: true" in search_case
+
+    list_case = mcp.split('case "memory_list_candidates":', 1)[1].split(
+        'case "memory_reject_candidate"', 1
+    )[0]
+    assert 'requireString(args, "subject", { maxLength: 512 })' in list_case
+    assert "optional: true" not in list_case
 
 
 def test_memory_ha_client_uses_the_fixed_snapshot_allowlist(rootfs: Path) -> None:
@@ -263,24 +294,36 @@ def test_default_guidance_defines_verified_memory_workflow(rootfs: Path) -> None
     guidance = (
         rootfs / "usr/local/share/codex-ha/AGENTS.md"
     ).read_text(encoding="utf-8")
-    normalized = " ".join(guidance.lower().split())
+    memory_guidance = guidance.split("## Validated Home Assistant memory", 1)[1].split(
+        "## Browser validation", 1
+    )[0]
+    normalized = " ".join(memory_guidance.lower().split())
 
     assert "/data/codex-ha-memory/memory.sqlite3" in normalized
     assert "ha-memory search" in normalized
-    assert "ha-memory candidate verify" in normalized
-    assert "ha-memory candidate apply" in normalized
+    assert "memory_remember_explicit" in normalized
+    assert "ha-memory remember" in normalized
     assert re.search(
         r"candidate.{0,160}verified.{0,160}applied",
         normalized,
     )
 
-    assert "ha-memory change begin" in normalized
-    assert "ha-memory change verify" in normalized
+    assert "memory_begin_change" in normalized
+    assert "memory_verify_change" in normalized
+    assert "every persistent home assistant" in normalized
+    assert "when practical" not in normalized
+    assert "never use a weaker exists/name check" in normalized
     assert "home assistant api" in normalized
     _assert_nearby_terms(
         normalized,
-        r"ha-memory change verify",
+        r"memory_verify_change",
         (r"after|following", r"fresh", r"home assistant api"),
+    )
+
+    _assert_nearby_terms(
+        normalized,
+        r"agents\.md",
+        (r"never", r"entity-specific", r"aliases|preferences|relationships"),
     )
 
     _assert_nearby_terms(

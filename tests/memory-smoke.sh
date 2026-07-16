@@ -126,13 +126,29 @@ assert_json 'ha-memory init did not create an empty, private store' \
     and .integrity == "ok"' \
   "${INIT_OUTPUT}"
 
-REFRESH_OUTPUT=$(docker exec "${FIRST_CONTAINER}" ha-memory refresh --force) \
-  || fail 'fixture-backed catalog refresh failed'
-assert_json 'catalog refresh did not index the fixture' \
-  '.status == "success"
-    and .object_count >= 8
-    and .relation_count >= 6' \
-  "${REFRESH_OUTPUT}"
+docker exec --detach --env S6_KEEP_ENV=1 "${FIRST_CONTAINER}" \
+  /etc/s6-overlay/s6-rc.d/ha-memoryd/run >/dev/null \
+  || fail 'first-run memory daemon did not start'
+BOOTSTRAP_STATUS=
+for _ in $(seq 1 50); do
+  BOOTSTRAP_STATUS=$(docker exec "${FIRST_CONTAINER}" ha-memory status) \
+    || fail 'ha-memory status failed while waiting for automatic bootstrap'
+  if printf '%s\n' "${BOOTSTRAP_STATUS}" \
+    | docker exec --interactive "${FIRST_CONTAINER}" \
+      jq --exit-status \
+        '.catalog_status == "ready"
+          and .last_successful_sync.object_count >= 8
+          and .last_successful_sync.relation_count >= 6' >/dev/null; then
+    break
+  fi
+  sleep 0.2
+done
+assert_json 'first-run daemon did not create the catalog without a manual refresh' \
+  '.catalog_status == "ready"
+    and .last_sync.status == "success"
+    and .last_successful_sync.object_count >= 8
+    and .last_successful_sync.relation_count >= 6' \
+  "${BOOTSTRAP_STATUS}"
 
 if FAILURE_OUTPUT=$(docker exec \
   --env HA_MEMORY_TEST_FIXTURE= \
@@ -168,16 +184,18 @@ assert_json 'catalog search did not return the fixture entity within its bound' 
     and any(.results[]; .subject == "entity:light.kitchen_main")' \
   "${SEARCH_OUTPUT}"
 
-CANDIDATE_OUTPUT=$(docker exec "${FIRST_CONTAINER}" ha-memory candidate add \
+CANDIDATE_OUTPUT=$(docker exec "${FIRST_CONTAINER}" ha-memory remember \
   --subject entity:light.kitchen_main \
   --memory-type alias \
   --key household_name \
   --value-json '"Persistent smoke alias"' \
-  --source user_explicit \
   --source-ref memory-smoke-request) \
-  || fail 'memory candidate creation failed'
-assert_json 'new memory was not kept pending' \
-  '.candidate.status == "pending" and .deduplicated == false' \
+  || fail 'explicit memory remember workflow failed'
+assert_json 'explicit memory did not complete the audited lifecycle' \
+  '.result == "applied"
+    and .candidate.status == "applied"
+    and .deduplicated == false
+    and (.audit_event_ids | length) == 3' \
   "${CANDIDATE_OUTPUT}"
 CANDIDATE_ID=$(printf '%s\n' "${CANDIDATE_OUTPUT}" \
   | docker exec --interactive "${FIRST_CONTAINER}" \
@@ -185,29 +203,6 @@ CANDIDATE_ID=$(printf '%s\n' "${CANDIDATE_OUTPUT}" \
   || fail 'memory candidate response omitted its ID'
 [[ "${CANDIDATE_ID}" =~ ^[1-9][0-9]*$ ]] \
   || fail 'memory candidate returned an invalid ID'
-
-EVIDENCE_OUTPUT=$(docker exec "${FIRST_CONTAINER}" ha-memory candidate evidence \
-  "${CANDIDATE_ID}" \
-  --evidence-type manual_review \
-  --detail memory-smoke-review) \
-  || fail 'memory candidate evidence command failed'
-assert_json 'candidate evidence was not recorded' \
-  '.candidate_id > 0 and .evidence_id > 0' \
-  "${EVIDENCE_OUTPUT}"
-
-VERIFY_OUTPUT=$(docker exec "${FIRST_CONTAINER}" ha-memory candidate verify \
-  "${CANDIDATE_ID}" --method user_explicit) \
-  || fail 'memory candidate verification failed'
-assert_json 'candidate did not reach the verified state' \
-  '.verified == true and .candidate.status == "verified"' \
-  "${VERIFY_OUTPUT}"
-
-APPLY_OUTPUT=$(docker exec "${FIRST_CONTAINER}" ha-memory candidate apply \
-  "${CANDIDATE_ID}") \
-  || fail 'memory candidate apply failed'
-assert_json 'verified candidate did not become applied memory' \
-  '.result == "applied" and .candidate.status == "applied"' \
-  "${APPLY_OUTPUT}"
 
 STATUS_OUTPUT=$(docker exec "${FIRST_CONTAINER}" ha-memory status) \
   || fail 'ha-memory status failed'
@@ -250,6 +245,21 @@ docker exec "${FIRST_CONTAINER}" /bin/sh -ceu '
   done
 ' || fail 'raw transient fixture data reached durable SQLite bytes'
 
+PENDING_OUTPUT=$(docker exec "${FIRST_CONTAINER}" ha-memory candidate add \
+  --subject entity:light.kitchen_main \
+  --memory-type note \
+  --key user_note.mcp_follow_up \
+  --value-json '"MCP follow-up candidate"' \
+  --source observation \
+  --source-ref observation:mcp-follow-up-1) \
+  || fail 'MCP follow-up candidate creation failed'
+PENDING_ID=$(printf '%s\n' "${PENDING_OUTPUT}" \
+  | docker exec --interactive "${FIRST_CONTAINER}" \
+    jq --exit-status --raw-output '.candidate.id') \
+  || fail 'MCP follow-up candidate response omitted its ID'
+[[ "${PENDING_ID}" =~ ^[1-9][0-9]*$ ]] \
+  || fail 'MCP follow-up candidate returned an invalid ID'
+
 MCP_OUTPUT=$(
   printf '%s\n' \
     '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"memory-smoke","version":"1.0.0"}}}' \
@@ -257,15 +267,23 @@ MCP_OUTPUT=$(
     '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"memory_search","arguments":{"query":"Kitchen Main","limit":3}}}' \
     '{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"memory_search","arguments":{"query":"Kitchen Main","unexpected":true}}}' \
     '{"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"memory_propose","arguments":{"subject":"entity:light.kitchen_main","memory_type":"note","key":"invalid_shape","value":[],"source":"inference","source_ref":"memory-smoke-invalid"}}}' \
+    '{"jsonrpc":"2.0","id":6,"method":"tools/call","params":{"name":"memory_list_candidates","arguments":{"status":"pending","subject":"entity:light.kitchen_main","limit":5}}}' \
+    "{\"jsonrpc\":\"2.0\",\"id\":7,\"method\":\"tools/call\",\"params\":{\"name\":\"memory_reject_candidate\",\"arguments\":{\"candidate_id\":\"${PENDING_ID}\",\"reason\":\"user_withdrew_candidate\"}}}" \
+    '{"jsonrpc":"2.0","id":8,"method":"tools/call","params":{"name":"memory_list_candidates","arguments":{"status":"pending","subject":"entity:light.kitchen_main","limit":5}}}' \
+    '{"jsonrpc":"2.0","id":9,"method":"tools/call","params":{"name":"memory_remember_explicit","arguments":{"subject":"home:household","memory_type":"preference","key":"user_preference.mcp_smoke","value":"Keep the MCP smoke preference","source_ref":"user-request:mcp-smoke"}}}' \
     'null' \
     | docker exec --interactive "${FIRST_CONTAINER}" ha-memory-mcp
 ) || fail 'ha-memory MCP initialize/tools/list exchange failed'
 assert_json 'ha-memory MCP did not advertise its bounded memory tools' \
-  'length == 6
+  'length == 10
     and .[0].id == 1
     and .[0].result.serverInfo.name == "codex-ha-memory"
+    and .[0].result.serverInfo.version == "1.1.0"
     and .[1].id == 2
     and any(.[1].result.tools[]; .name == "memory_search")
+    and any(.[1].result.tools[]; .name == "memory_remember_explicit")
+    and any(.[1].result.tools[]; .name == "memory_list_candidates")
+    and any(.[1].result.tools[]; .name == "memory_reject_candidate")
     and any(.[1].result.tools[]; .name == "memory_apply_candidate")
     and any(.[1].result.tools[]; .name == "memory_verify_change")
     and .[2].id == 3
@@ -276,8 +294,23 @@ assert_json 'ha-memory MCP did not advertise its bounded memory tools' \
     and .[3].error.code == -32602
     and .[4].id == 5
     and .[4].error.code == -32602
-    and .[5].id == null
-    and .[5].error.code == -32600' \
+    and .[5].id == 6
+    and .[5].result.isError == false
+    and (.[5].result.structuredContent.result.candidates | length) == 1
+    and .[5].result.structuredContent.result.candidates[0].id > 0
+    and .[6].id == 7
+    and .[6].result.isError == false
+    and .[6].result.structuredContent.result.candidate.status == "rejected"
+    and .[7].id == 8
+    and .[7].result.isError == false
+    and (.[7].result.structuredContent.result.candidates | length) == 0
+    and .[8].id == 9
+    and .[8].result.isError == false
+    and .[8].result.structuredContent.result.result == "applied"
+    and .[8].result.structuredContent.result.candidate.status == "applied"
+    and (.[8].result.structuredContent.result.audit_event_ids | length) == 3
+    and .[9].id == null
+    and .[9].error.code == -32600' \
   "$(printf '%s\n' "${MCP_OUTPUT}" \
     | docker exec --interactive "${FIRST_CONTAINER}" jq --slurp '.')"
 
@@ -288,7 +321,7 @@ PERSISTED_STATUS=$(docker exec "${SECOND_CONTAINER}" ha-memory status) \
   || fail 'persisted memory status failed after container replacement'
 assert_json 'catalog or applied memory did not survive container replacement' \
   '.catalog_status == "ready"
-    and .memory_counts.applied == 1
+    and .memory_counts.applied == 2
     and .last_sync.status == "success"
     and .last_successful_sync.id > 0' \
   "${PERSISTED_STATUS}"
@@ -303,7 +336,43 @@ assert_json 'applied memory was not searchable after container replacement' \
       and any(.memories[];
         .key == "household_name"
         and .value == "Persistent smoke alias"
-        and .source == "user_explicit"))' \
+      and .source == "user_explicit"))' \
   "${PERSISTED_SEARCH}"
+
+PERSISTED_MCP_SEARCH=$(docker exec "${SECOND_CONTAINER}" \
+  ha-memory search 'Keep the MCP smoke preference') \
+  || fail 'persisted MCP memory search failed after container replacement'
+assert_json 'MCP-applied memory was not searchable after container replacement' \
+  '.result_count >= 1
+    and any(.results[];
+      .subject == "home:household"
+      and any(.memories[];
+        .key == "user_preference.mcp_smoke"
+        and .value == "Keep the MCP smoke preference"
+        and .source == "user_explicit"))' \
+  "${PERSISTED_MCP_SEARCH}"
+
+PERSISTED_MCP_RECALL=$(
+  printf '%s\n' \
+    '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"memory-restart-smoke","version":"1.0.0"}}}' \
+    '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"memory_search","arguments":{"query":"Keep the MCP smoke preference","subject":"home:household","limit":3}}}' \
+    'null' \
+    | docker exec --interactive "${SECOND_CONTAINER}" ha-memory-mcp
+) || fail 'new MCP process could not recall persisted memory'
+assert_json 'new MCP process did not recall the MCP-applied fact' \
+  'length == 3
+    and .[0].id == 1
+    and .[1].id == 2
+    and .[1].result.isError == false
+    and any(.[1].result.structuredContent.result.results[];
+      .subject == "home:household"
+      and any(.memories[];
+        .key == "user_preference.mcp_smoke"
+        and .value == "Keep the MCP smoke preference"
+        and .source == "user_explicit"))
+    and .[2].id == null
+    and .[2].error.code == -32600' \
+  "$(printf '%s\n' "${PERSISTED_MCP_RECALL}" \
+    | docker exec --interactive "${SECOND_CONTAINER}" jq --slurp '.')"
 
 printf 'Home Assistant memory smoke passed: index, lifecycle, privacy, MCP, persistence\n'

@@ -4,8 +4,8 @@
 
 ## Project Status
 
-- 상태: **amd64 MVP/M2 PASS / public 0.4.0 Playwright 자동 회귀 PASS / 실제 HAOS `never` 14/16 승인 0회 PASS / 전체 승인 행렬 PARTIAL / public 0.3.2 memory live PARTIAL(FAIL 0)**
-- 현재 마일스톤: **0.3.2 memory·0.4.0 `never` 실기 증거 반영 / `safe`·`always`와 잔여 browser 수용 시험 대기**
+- 상태: **amd64 MVP/M2 PASS / public 0.4.0 / 실제 HAOS `never` 14/16 승인 0회 PASS·전체 승인 행렬 PARTIAL / public 0.3.2 memory live PARTIAL(FAIL 0) / 0.5.0 메모리 후보 로컬 전체 회귀 PASS**
+- 현재 마일스톤: **0.5.0 release candidate 공개 준비 / 자연어·실제 HAOS 메모리와 잔여 browser 수용 시험 대기**
 - 마지막 문서 기준일: **2026-07-16**
 - 저장소: public `Kanu-Coffee/codex-for-home-assistant`, default branch `main`
 
@@ -46,6 +46,18 @@
 - [x] Core restart 증거는 요청 수락·daemon process 생존·요청 후 forced fresh sync PASS와 disconnect/reconnect·LKG 상태 NOT OBSERVED로 분리했다. 독립 diff 검토에서 수치·판정·privacy·0.4.0 증거 경계를 다시 확인했다.
 - [x] Windows Python 3.14에서 pytest **58 passed / 8 jq-dependent skipped**, YAML lint, Markdown 20 files/0 errors, manifest·secret scan과 `git diff --check`가 PASS했다. 런타임 파일을 바꾸지 않아 local image rebuild는 생략하고 PR Linux CI의 jq/App linter/full image smoke를 최종 회귀로 사용한다.
 - [x] 증거 commit `1117b688522b1e645fa2633e67e266cd1e3e3e77`을 `agent/record-0.3.2-live-audit`에 push하고 draft [PR #28](https://github.com/Kanu-Coffee/codex-for-home-assistant/pull/28)을 열었다. PR [CI 29460043342](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/29460043342)의 Linux jq 포함 lint/unit, App linter, amd64 full browser/memory/managed-auth/user-file/public `0.3.2` update smoke와 non-publishing [Builder 29460043413](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/29460043413)이 PASS했다.
+
+### 2026-07-16 — 지속 개선형 HA 메모리 사용자 흐름 재감사와 보완
+
+- 목표 재감사: 0.4.0의 catalog, candidate authority, bounded search, fresh change verification, audit/conflict/rollback 엔진은 구현돼 있었으나 실제 사용자가 체감하는 자연어 대화 폐루프는 지침과 다중 MCP 호출에 의존했다. 특히 빈 `/data`의 daemon 첫 bootstrap, 명시 사실의 같은 요청 내 반영과 후보 후속 관리가 자동 증거에서 비어 있어 사용자 목표 기준 **PARTIAL**이었다.
+- 사용자 흐름 개선: 명시적이고 비민감하며 지속적인 별칭·용도·선호·note·사용자 의미 관계는 한 MCP/CLI 호출로 받되 내부적으로 기존 `pending → verified → applied` 감사 이벤트를 모두 보존한다. 시간·불확실성 표현, transient/inference, 임의 `home:*`과 HA canonical 관계는 이 경로로 적용하지 않는다. 같은 권위의 기존 값과 충돌하면 자동 덮어쓰기 없이 conflict로 남기며 같은 correction 재시도는 기존 candidate/conflict를 반환해 중복을 만들지 않는다.
+- 지속 변경 경계: 지속 HA 설정·registry·automation 변경은 지원되는 closed expectation으로 변경 전에 기록하고 변경/reload 뒤 fresh Core API로 검증한다. 단순 조회·진단·catalog refresh와 일시적 device service 시험은 제외한다. Expectation으로 표현할 수 없거나 memory가 unavailable이면 semantic memory를 갱신하지 않고 검증 불가를 사용자에게 밝힌 뒤 진행 여부를 확인한다. 현재 schema는 automation trigger/condition/action/template logic 자체를 표현하지 못하므로 `exists`/`name`으로 대체 검증하지 않으며 실제 logic 변경은 live acceptance까지 **PARTIAL**로 남긴다.
+- 운영 지침: 모든 HA 요청의 bounded search, `empty/stale/degraded` 상태 고지, entity별 데이터의 AGENTS 계열 파일 비누적, 새로 배운 내용·검증 결과·미반영 conflict의 짧은 사용자 보고를 system developer instruction과 기본 AGENTS에 고정한다.
+- 자동 검증: Node/SQLite memory 4/4, Python 전체 58 PASS·8 environment skip, YAML·Markdown 20 files·ShellCheck·Hadolint와 `git diff --check` PASS. 새 amd64 image의 Docker/Playwright/ttyd/Core WebSocket smoke, browser approval, 빈 store memory daemon bootstrap·MCP remember/list/reject·새 MCP process recall·container replacement persistence, managed browser auth, user-file preserve와 public 0.4.0→0.5.0 update smoke가 모두 PASS했다.
+- [x] 명시적 사용자 사실의 결합 remember 경로와 bounded candidate list/reject MCP를 구현했다.
+- [x] 지속 변경·상태 고지·CLI fallback·AGENTS 비누적 지침과 계약 문서를 일치시켰다.
+- [x] source/installed image/container 회귀와 fresh bootstrap·새 MCP recall 증거를 통과했다.
+- [ ] 실제 HAOS에서 자연어 발화→same-request tool trace→새 task 회상과 안전한 persistent 설정 변경→fresh API 검증을 수행한다. Automation logic-only 변경은 현재 expectation 범위 밖임을 고지하고 semantic memory를 갱신하지 않는다.
 
 ### 2026-07-15 — Home Assistant UI의 Playwright 승인 정책과 0.4.0
 

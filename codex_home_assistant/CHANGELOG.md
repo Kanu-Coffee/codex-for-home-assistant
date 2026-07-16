@@ -2,6 +2,30 @@
 
 All notable changes to this App are documented in this file.
 
+## [0.5.0] - Unreleased
+
+### Added
+
+- Add `memory_remember_explicit` and the matching `ha-memory remember` fallback. One unambiguous durable fact stated directly by the user now runs the existing audited pending→verified→applied transitions in a single tool call, fixes provenance to `user_explicit`, rejects transient values, obvious temporal/uncertainty wording, noncanonical home subjects, and canonical HA relationships, resumes an existing pending/verified duplicate, and returns applied/already-applied/conflict explicitly.
+- Add bounded `memory_list_candidates` and `memory_reject_candidate` MCP tools, including exact-subject filtering, so a pending or conflicted candidate can be followed up or withdrawn in a later request without dumping the store.
+- Make repeated unresolved corrections return the existing candidate/conflict without adding duplicate rows, and normalize lower-authority provenance upgrades to the compound tool's stable `applied` result while retaining the detailed application result.
+- Add an installed-image smoke that launches the image-managed `ha-memoryd` run contract against an empty store and waits for the first catalog without a manual refresh.
+
+### Changed
+
+- Require model-visible memory guidance to search a small relevant subset first, disclose empty/degraded/stale status, finish direct explicit-user learning in the same request, keep entity data out of all AGENTS files, and report applied/conflict outcomes. Add a bounded `ha-memory remember` fallback when the optional MCP is unavailable and forbid weak existence/name checks as proof of unsupported automation logic changes.
+- Require supported pre-change expectations and post-reload fresh API verification for persistent Home Assistant configuration, registry, and automation mutations. Reads, diagnostics, catalog refreshes, and transient device-service tests remain outside that ledger; unsupported or unavailable verification leaves semantic memory unchanged and is disclosed before mutation.
+- Advance the released-image update regression to public `0.4.0` so the new memory tools are verified without losing the existing catalog/applied memory, user Codex files, authentication, SSH, browser identity, or browser approval policy.
+
+### Security
+
+- Keep the compound explicit-memory path on the same transient-value, source authority, canonical-relationship, conflict, audit, and rollback validators as the separate candidate tools. It does not add a listener, permission, raw transcript field, or path for state/API/config payload persistence.
+
+### Upgrade notes
+
+- This is a MINOR user-flow release. Normal App update preserves `/data/codex-ha-memory`, user Codex configuration, AGENTS files, authentication, SSH, and browser identity. Restart the App and start a new Codex session so the image-managed MCP tool list and developer guidance include the new memory workflow.
+- A retained `refresh_agents` or `refresh_all` selection applies its selected target once for `0.5.0`; choose `preserve` before update if that reset is not wanted.
+
 ## [0.4.0] - 2026-07-15
 
 ### Added

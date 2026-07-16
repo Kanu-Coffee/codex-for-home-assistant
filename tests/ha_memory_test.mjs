@@ -28,6 +28,7 @@ const {
   applyMemoryCandidate,
   beginMemoryChange,
   closeMemoryDatabase,
+  listMemoryCandidates,
   listMemoryConflicts,
   memoryHistory,
   memoryStatus,
@@ -37,6 +38,7 @@ const {
   rejectMemoryCandidate,
   refreshMemory,
   resolveMemoryConflict,
+  rememberExplicitMemory,
   rollbackMemoryEvent,
   searchMemory,
   showMemorySubject,
@@ -168,6 +170,245 @@ test("automation config fallback keeps direct references with exact provenance",
   assert.deepEqual(normalized.warnings, [
     "automation_related_unavailable:automation.partial",
   ]);
+});
+
+test("explicit user memory closes in one audited call and candidate follow-up stays bounded", async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), "ha-memory-explicit-"));
+  const dbPath = join(directory, "memory.sqlite3");
+  const fixturePath = join(directory, "ha-snapshot.json");
+  const previousEnvironment = {
+    HA_MEMORY_DB: process.env.HA_MEMORY_DB,
+    HA_MEMORY_TEST_FIXTURE: process.env.HA_MEMORY_TEST_FIXTURE,
+    HA_MEMORY_TEST_MODE: process.env.HA_MEMORY_TEST_MODE,
+  };
+  await copyFile(SOURCE_FIXTURE, fixturePath);
+  process.env.HA_MEMORY_DB = dbPath;
+  process.env.HA_MEMORY_TEST_FIXTURE = fixturePath;
+  process.env.HA_MEMORY_TEST_MODE = "1";
+  let db = openMemoryDatabase(dbPath);
+  t.after(async () => {
+    if (db) closeMemoryDatabase(db, dbPath);
+    for (const [key, value] of Object.entries(previousEnvironment)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+    await rm(directory, { recursive: true, force: true });
+  });
+  await refreshMemory(db, { force: true });
+
+  const remembered = await rememberExplicitMemory(db, {
+    subject: "entity:light.kitchen_main",
+    memoryType: "alias",
+    key: "user_alias",
+    value: "Preparation light",
+    sourceRef: "user-request:explicit-alias",
+  });
+  assert.equal(remembered.result, "applied");
+  assert.equal(remembered.candidate.status, "applied");
+  assert.equal(remembered.audit_event_ids.length, 3);
+  assert.ok(searchMemory(db, "Preparation light", { limit: 8 }).result_count > 0);
+
+  const repeated = await rememberExplicitMemory(db, {
+    subject: "entity:light.kitchen_main",
+    memoryType: "alias",
+    key: "user_alias",
+    value: "Preparation light",
+    sourceRef: "user-request:explicit-alias-repeat",
+  });
+  assert.equal(repeated.result, "already_applied");
+  assert.equal(repeated.deduplicated, true);
+  assert.deepEqual(repeated.audit_event_ids, []);
+
+  await assert.rejects(
+    rememberExplicitMemory(db, {
+      subject: "entity:light.kitchen_main",
+      memoryType: "note",
+      key: "current_state",
+      value: "Currently bright",
+      sourceRef: "user-request:transient-note",
+    }),
+    (error) => error?.code === "transient_rejected",
+  );
+  for (const [value, expectedCode, sourceRef] of [
+    ["Today the kitchen is bright", "transient_rejected", "user-request:today-note"],
+    ["오늘은 주방이 밝아", "transient_rejected", "user-request:korean-today-note"],
+    ["Probably used for preparation", "explicit_fact_ambiguous", "user-request:probably-note"],
+    ["아마 준비할 때 쓰는 것 같아", "explicit_fact_ambiguous", "user-request:korean-probably-note"],
+  ]) {
+    await assert.rejects(
+      rememberExplicitMemory(db, {
+        subject: "entity:light.kitchen_main",
+        memoryType: "note",
+        key: "user_note.explicit_guard",
+        value,
+        sourceRef,
+      }),
+      (error) => error?.code === expectedCode,
+    );
+  }
+  const durableExplicit = await rememberExplicitMemory(db, {
+    subject: "entity:light.kitchen_main",
+    memoryType: "purpose",
+    key: "user_purpose",
+    value: "Usually used for food preparation",
+    sourceRef: "user-request:durable-purpose",
+  });
+  assert.equal(durableExplicit.result, "applied");
+
+  const observedPurpose = proposeMemory(db, {
+    subject: "entity:sensor.office_temperature",
+    memoryType: "purpose",
+    key: "user_purpose",
+    value: "Usually used to monitor cooking temperature",
+    source: "observation",
+    sourceRef: "observation:cooking-temperature-1",
+  });
+  addMemoryEvidence(
+    db,
+    observedPurpose.candidate.id,
+    "observation",
+    "observation:cooking-temperature-2",
+  );
+  const observedVerification = await verifyMemoryCandidate(
+    db,
+    observedPurpose.candidate.id,
+    "repeated_observation",
+  );
+  assert.equal(observedVerification.verified, true);
+  assert.equal(applyMemoryCandidate(db, observedPurpose.candidate.id).result, "applied");
+  const authorityUpgrade = await rememberExplicitMemory(db, {
+    subject: "entity:sensor.office_temperature",
+    memoryType: "purpose",
+    key: "user_purpose",
+    value: "Usually used to monitor cooking temperature",
+    sourceRef: "user-request:confirmed-cooking-temperature",
+  });
+  assert.equal(authorityUpgrade.result, "applied");
+  assert.equal(authorityUpgrade.application_result, "provenance_upgraded");
+  assert.equal(authorityUpgrade.candidate.status, "applied");
+  await assert.rejects(
+    rememberExplicitMemory(db, {
+      subject: "entity:light.kitchen_main",
+      memoryType: "relationship",
+      key: "user_relationship.belongs_to",
+      value: { relation: "belongs_to", target: "device:dev_kitchen" },
+      sourceRef: "user-request:canonical-relation",
+    }),
+    (error) => error?.code === "canonical_fact_requires_ha",
+  );
+  const missingRelationshipTarget = await rememberExplicitMemory(db, {
+    subject: "entity:light.kitchen_main",
+    memoryType: "relationship",
+    key: "user_relationship.paired_with",
+    value: { relation: "paired_with", target: "device:missing_device" },
+    sourceRef: "user-request:missing-relationship-target",
+  });
+  assert.equal(missingRelationshipTarget.result, "conflict");
+  assert.equal(missingRelationshipTarget.candidate.status, "conflict");
+  assert.ok(missingRelationshipTarget.conflict_id > 0);
+  await assert.rejects(
+    rememberExplicitMemory(db, {
+      subject: "home:anything",
+      memoryType: "preference",
+      key: "user_preference.invalid_home",
+      value: "Use an invented household subject",
+      sourceRef: "user-request:invalid-home-subject",
+    }),
+    (error) => error?.code === "subject_not_found",
+  );
+  assert.throws(
+    () => listMemoryCandidates(db, { status: "pending", limit: 20 }),
+    (error) => error?.code === "invalid_subject",
+  );
+  assert.equal(
+    listMemoryCandidates(db, {
+      status: "pending",
+      subject: "entity:light.kitchen_main",
+      limit: 20,
+    }).candidates.length,
+    0,
+  );
+
+  const pending = propose(db, {
+    memoryType: "note",
+    key: "user_note.follow_up",
+    value: "A durable observation awaiting another sample",
+    source: "observation",
+    sourceRef: "observation:follow-up-1",
+  });
+  const scopedPending = listMemoryCandidates(db, {
+    status: "pending",
+    subject: "entity:light.kitchen_main",
+    limit: 20,
+  });
+  assert.equal(scopedPending.subject, "entity:light.kitchen_main");
+  assert.deepEqual(
+    scopedPending.candidates.map((candidate) => candidate.id),
+    [pending.candidate.id],
+  );
+  assert.equal(
+    listMemoryCandidates(db, {
+      status: "pending",
+      subject: "entity:sensor.kitchen_temperature",
+      limit: 20,
+    }).candidates.length,
+    0,
+  );
+  rejectMemoryCandidate(db, pending.candidate.id, "user_withdrew_candidate");
+
+  const correction = await rememberExplicitMemory(db, {
+    subject: "entity:light.kitchen_main",
+    memoryType: "alias",
+    key: "user_alias",
+    value: "Cooking light",
+    sourceRef: "user-request:explicit-alias-correction",
+  });
+  assert.equal(correction.result, "conflict");
+  assert.equal(correction.candidate.status, "conflict");
+  assert.ok(correction.conflict_id > 0);
+  const openConflictCount = listMemoryConflicts(db, { status: "open" }).conflicts.length;
+  const repeatedCorrection = await rememberExplicitMemory(db, {
+    subject: "entity:light.kitchen_main",
+    memoryType: "alias",
+    key: "user_alias",
+    value: "Cooking light",
+    sourceRef: "user-request:explicit-alias-correction-repeat",
+  });
+  assert.equal(repeatedCorrection.result, "conflict");
+  assert.equal(repeatedCorrection.candidate.id, correction.candidate.id);
+  assert.equal(repeatedCorrection.conflict_id, correction.conflict_id);
+  assert.equal(repeatedCorrection.deduplicated, true);
+  assert.deepEqual(repeatedCorrection.audit_event_ids, []);
+  assert.equal(
+    listMemoryConflicts(db, { status: "open" }).conflicts.length,
+    openConflictCount,
+  );
+  const contestedSubject = showMemorySubject(db, "entity:light.kitchen_main");
+  assert.equal(
+    contestedSubject.memories.some((memory) => memory.key === "user_alias"),
+    false,
+  );
+  assert.ok(contestedSubject.conflicts.length > 0);
+
+  closeMemoryDatabase(db, dbPath);
+  db = null;
+  const cliRemembered = await executeMemoryCli([
+    "remember",
+    "--db",
+    dbPath,
+    "--subject",
+    "home:household",
+    "--memory-type",
+    "preference",
+    "--key",
+    "user_preference.quiet_hours",
+    "--value-json",
+    '"Keep notifications quiet overnight"',
+    "--source-ref",
+    "user-request:quiet-hours",
+  ]);
+  assert.equal(cliRemembered.result, "applied");
+  assert.equal(cliRemembered.candidate.subject, "home:household");
 });
 
 test("validated Home Assistant memory lifecycle is durable, bounded, and fail-safe", async (t) => {

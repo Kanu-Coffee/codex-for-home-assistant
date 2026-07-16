@@ -31,6 +31,8 @@ Supervisor는 public GHCR에서 현재 공개 version `0.4.0`의 amd64 image를 
 - 구성의 `codex_user_files_update_mode`로 base `AGENTS.md` 또는 base 지침과 user `config.toml`을 현재 App 기본본으로 선택 갱신할 수 있습니다.
 - `ha-api`, `supervisor-api`, `ha-config-check`, `ha-core-logs`, `ha-addon-logs`를 제공합니다.
 - `ha-memoryd`는 고정 Supervisor WebSocket proxy와 image-pinned `ws`로 catalog를 갱신합니다. Unavailable automation의 legal null config를 유지하고, public `0.3.2`는 공식 automation-related payload가 실기와 같은 `unknown_error`로 거부된 경우만 config-derived 관계와 bounded warning으로 격리합니다. 다른 server command code, server/client timeout, unauthorized, invalid format, transport/protocol/malformed/config 실패는 계속 fail closed하며 원문·token 없이 closed status code로 구분합니다.
+- 새 Codex 세션은 모든 HA 요청에서 관련 memory만 먼저 찾습니다. 사용자가 한 exact subject의 지속 사실을 명확히 설명하면 `memory_remember_explicit` 한 호출 안에서 감사 가능한 candidate→verified→applied를 완료하고 결과를 알립니다. 모호하거나 일시적인 정보는 쓰지 않으며 entity별 데이터는 AGENTS 계열 파일에 누적하지 않습니다.
+- 지속 HA 설정·registry·automation 변경은 변경 전 supported expectation과 변경 후 fresh Core API 검증을 사용합니다. 표현 불가 또는 memory 장애에서는 semantic memory를 갱신하지 않고 검증 공백을 알립니다.
 - Supervisor `admin`, Docker API, App `full_access`, host network는 사용하지 않습니다.
 
 ## Browser renderer 빠른 사용법
