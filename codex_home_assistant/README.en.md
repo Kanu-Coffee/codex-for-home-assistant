@@ -14,7 +14,7 @@ Use Codex inside Home Assistant to inspect your setup and improve dashboards, au
 
 ## Key features
 
-- Codex CLI with read-write access to all of `/config`
+- Codex CLI with read-write access to `/config` except root or nested `secrets.yaml` files and `.storage`
 - Home Assistant Core API and Supervisor `manager` helpers
 - Shared `tmux` Web terminal that resumes after you close and reopen the browser
 - Public-key-only SSH for direct ChatGPT mobile Remote access to the bundled Codex environment
@@ -24,17 +24,19 @@ Use Codex inside Home Assistant to inspect your setup and improve dashboards, au
 - `$ha-feedback` for read-only app bug validation and structured feature proposals
 
 > [!WARNING]
-> This app is a powerful administrative tool that can directly change your Home Assistant configuration. Back up important data and review the plan and diff before changes. Never expose the SSH port directly to the internet.
+> This app is a powerful administrative tool that can change Home Assistant configuration and consume raw Core/Supervisor API responses. Unprotected `/config` paths, APIs, logs, and browser output may contain sensitive information. Back up important data and review the plan and diff before changes. Never expose the SSH port directly to the internet.
 
 ## Quick start
 
-1. Install and start the app. It is currently **amd64-only**, `stage: experimental`, and `boot: manual`.
+1. Install and start the app. Public `0.6.0` is **amd64-only**. Development candidate `0.7.0-dev.1` appears in HAOS as **Codex for Home Assistant (DEV)** and in the sidebar as **Codex DEV**, and declares `amd64` and 64-bit `aarch64`. It remains `stage: experimental` and `boot: manual`, and native ARM CI and real HAOS acceptance are not complete. The sensitive-path protections below describe this DEV candidate and are not retroactive changes to public `0.6.0`. A remote HAOS installation cannot succeed unless the exact `0.7.0-dev.1` GHCR tag has been published.
 2. Select **OPEN WEB UI**.
 3. Sign in once with `ha-codex-login`.
 4. Run `ha-codex`.
 5. Start with: “Inspect my current setup in read-only mode and do not change anything yet.”
 
 If you do not need SSH, leave `authorized_keys` empty. The Web UI will continue to work.
+
+Custom AppArmor and `/etc/codex/requirements.toml` block access to every `secrets.yaml` and `/config/.storage` content. Only validator-required `.storage` directory listing remains in the AppArmor profile, while managed requirements also deny Codex directory reads. Init and every Codex launch fail closed on symlinks, special files, or multiple hardlinks. The rest of `/config` remains read-write, and this is not complete DLP against a post-check external hardlink, values copied to unprotected paths, or raw API responses.
 
 ## Example requests
 

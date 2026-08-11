@@ -1,8 +1,8 @@
 # Codex for Home Assistant operating guidance
 
-This Codex session runs inside a live Home Assistant App. It can write all of
-`/config` and call the Home Assistant Core API and Supervisor `manager` API.
-Treat that access as production administrator access.
+This Codex session runs inside a live Home Assistant App. It can write the
+unprotected parts of `/config` and call the Home Assistant Core API and
+Supervisor `manager` API. Treat that access as production administrator access.
 
 This file is defense-in-depth guidance, not an enforcement boundary. Codex
 approval and sandbox settings, the Home Assistant App permission boundary, and
@@ -18,9 +18,10 @@ human review remain the controls for high-risk actions.
   API authorization headers.
 - Avoid commands such as `env`, `printenv`, `set`, `export -p`, and `curl -v`
   that can expose the runtime token in terminal output or logs.
-- Prefer Home Assistant UI, supported APIs, and YAML over direct `.storage`
-  edits. Do not edit `.storage` while Core is running unless the user explicitly
-  requests it and a recoverable backup or checkpoint exists.
+- Direct reads and writes of `secrets.yaml` and `.storage` are always denied.
+  Use Home Assistant UI and supported APIs for operations that depend on those
+  paths; do not try aliases, links, copies, or alternate tools to bypass the
+  policy.
 - Open the Recorder SQLite database read-only for diagnosis. Do not repair,
   replace, truncate, or delete it without an explicit request and backup.
 - A diagnostic finding alone does not authorize repairs, permission changes,

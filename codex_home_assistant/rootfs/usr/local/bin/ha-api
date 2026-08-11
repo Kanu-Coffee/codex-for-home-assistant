@@ -1,13 +1,26 @@
-#!/usr/bin/env bash
+#!/bin/bash -p
 set -Eeuo pipefail
+
+unset BASH_ENV ENV SUPERVISOR_TOKEN \
+  http_proxy https_proxy all_proxy no_proxy \
+  HTTP_PROXY HTTPS_PROXY ALL_PROXY NO_PROXY CURL_HOME
+export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+# shellcheck source=/dev/null
+. /usr/local/lib/codex-ha/supervisor-credential.sh
+codex_ha_load_supervisor_credential /run/codex-ha/runtime.env || true
 
 # These variables are consumed by the sourced client library.
 # shellcheck disable=SC2034
-API_PROGRAM_NAME=ha-api
+readonly API_PROGRAM_NAME=ha-api
 # shellcheck disable=SC2034
-API_BASE_URL=${HA_URL:-http://supervisor/core/api}
+readonly API_BASE_URL=http://supervisor/core/api
 # shellcheck disable=SC2034
-API_CHECK_RESULT=false
+readonly API_CHECK_RESULT=false
+# shellcheck disable=SC2034
+readonly API_CURL_BIN=/usr/bin/curl
+# shellcheck disable=SC2034
+readonly API_RUNTIME_DIR=/tmp
 # shellcheck source=/dev/null
 . /usr/local/lib/codex-ha/api-client.sh
 api_main "$@"

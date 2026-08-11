@@ -14,7 +14,7 @@ Home Assistant 안에서 Codex와 대화하며 설정을 살펴보고 대시보�
 
 ## 주요 기능
 
-- `/config` 전체를 읽고 수정하는 Codex CLI
+- root·중첩 `secrets.yaml`과 `.storage`를 제외한 `/config`를 읽고 수정하는 Codex CLI
 - Home Assistant Core API와 Supervisor `manager` helper
 - 브라우저를 닫았다 다시 열어도 이어지는 공유 `tmux` Web 터미널
 - ChatGPT 모바일 Remote가 앱 내장 Codex에 직접 연결할 수 있는 공개키 전용 SSH
@@ -24,17 +24,19 @@ Home Assistant 안에서 Codex와 대화하며 설정을 살펴보고 대시보�
 - 앱 버그와 기능 제안을 읽기 전용으로 검증하고 정제된 보고서로 만드는 `$ha-feedback`
 
 > [!WARNING]
-> 이 앱은 Home Assistant 설정을 직접 바꿀 수 있는 강한 관리자 도구입니다. 중요한 변경 전에는 backup을 만들고 계획과 diff를 확인하세요. SSH 포트를 인터넷에 직접 공개하지 마세요.
+> 이 앱은 Home Assistant 설정과 원시 Core/Supervisor API 응답을 다루는 강한 관리자 도구입니다. 보호 경로 외 `/config`와 API·로그·브라우저 결과에는 민감정보가 있을 수 있습니다. 중요한 변경 전에는 backup을 만들고 계획과 diff를 확인하세요. SSH 포트를 인터넷에 직접 공개하지 마세요.
 
 ## 빠른 시작
 
-1. 앱을 설치하고 시작합니다. 현재 **amd64 전용**, `stage: experimental`, `boot: manual`입니다.
+1. 앱을 설치하고 시작합니다. 공개 `0.6.0`은 **amd64 전용**입니다. 개발 후보 `0.7.0-dev.1`은 HAOS의 App 이름에 **Codex for Home Assistant (DEV)**, 사이드바에 **Codex DEV**로 표시되고 `amd64`와 64비트 `aarch64`를 선언합니다. `stage: experimental`, `boot: manual`이며 ARM native CI와 실제 HAOS 검증은 아직 완료되지 않았습니다. 아래 민감 경로 보호도 이 DEV 후보 기준이며 공개 `0.6.0`에 소급 적용되지 않습니다. 정확한 `0.7.0-dev.1` GHCR tag가 발행되지 않았다면 원격 HAOS 설치는 성공할 수 없습니다.
 2. **OPEN WEB UI**를 누릅니다.
 3. 처음 한 번 `ha-codex-login`으로 로그인합니다.
 4. `ha-codex`를 실행합니다.
 5. “현재 구성을 읽기 전용으로 살펴보고 아직 수정하지 마”라고 시작해 보세요.
 
 SSH를 사용하지 않는다면 `authorized_keys`를 비워 둬도 됩니다. Web UI는 그대로 동작합니다.
+
+Custom AppArmor와 `/etc/codex/requirements.toml`은 모든 `secrets.yaml`과 `/config/.storage` content 접근을 차단합니다. Validator용 `.storage` directory listing만 AppArmor profile에 남기고 managed requirements는 Codex의 directory read도 거부합니다. Init과 매 Codex 실행은 symlink·특수 파일·다중 hardlink를 fail closed 검사합니다. 나머지 `/config`는 RW이며 검사 후 외부 hardlink 추가나 비보호 경로로 복사된 값, API raw 응답까지 막는 완전한 DLP는 아닙니다.
 
 ## 활용 예시
 

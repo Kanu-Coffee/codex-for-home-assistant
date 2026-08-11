@@ -2,5 +2,7 @@
 # shellcheck shell=bash
 set -Eeuo pipefail
 
+unset SUPERVISOR_TOKEN
+
 bashio::log.info 'Starting the authenticated Ingress reverse proxy'
 exec nginx -c /etc/nginx/nginx.conf -g 'daemon off;'

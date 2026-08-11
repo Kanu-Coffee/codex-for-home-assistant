@@ -1,21 +1,22 @@
 ---
-name: Codex for Home Assistant
-version: "0.6.0"
+name: Codex for Home Assistant (DEV)
+version: "0.7.0-dev.1"
 slug: codex_home_assistant
-description: Codex CLI with verified feedback, browser, terminal, and SSH for Home Assistant
+description: "[DEV] Codex CLI with verified feedback, browser, terminal, and SSH for Home Assistant"
 url: https://github.com/Kanu-Coffee/codex-for-home-assistant
 stage: experimental
 boot: manual
 init: false
 arch:
   - amd64
+  - aarch64
 image: ghcr.io/kanu-coffee/codex-for-home-assistant
 
 ingress: true
 ingress_port: 7681
 ingress_stream: true
 panel_icon: mdi:console
-panel_title: Codex
+panel_title: Codex DEV
 
 ports:
   22/tcp: 2223
@@ -36,7 +37,7 @@ options:
   web_terminal_auto_start_codex: false
   tmux_session_name: codex-ha
   codex_approval_policy: on-request
-  codex_sandbox_mode: danger-full-access
+  codex_sandbox_mode: workspace-write
   browser_approval_policy: safe
   codex_user_files_update_mode: preserve
   home_assistant_browser_auto_auth: true

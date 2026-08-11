@@ -53,17 +53,20 @@ def test_s6_entrypoints_have_container_executable_policy(
 def test_codex_release_is_pinned_and_checksum_verified(addon_root: Path) -> None:
     dockerfile = (addon_root / "Dockerfile").read_text(encoding="utf-8")
     version_match = re.search(r"^ARG CODEX_VERSION=([^\s]+)$", dockerfile, re.MULTILINE)
-    checksum_match = re.search(
-        r"^ARG CODEX_SHA256=([0-9a-f]{64})$", dockerfile, re.MULTILINE
+    checksum_matches = dict(
+        re.findall(
+            r"^ARG CODEX_SHA256_(AMD64|AARCH64)=([0-9a-f]{64})$",
+            dockerfile,
+            re.MULTILINE,
+        )
     )
 
     assert version_match
     assert version_match.group(1) == "0.144.1"
-    assert checksum_match
-    assert (
-        checksum_match.group(1)
-        == "84091ae20c65fcc7d4120db97d1bd57d7ff8df9c7609fb781c78c2ebbd4f5a28"
-    )
+    assert checksum_matches == {
+        "AMD64": "84091ae20c65fcc7d4120db97d1bd57d7ff8df9c7609fb781c78c2ebbd4f5a28",
+        "AARCH64": "b9f8ef5f98e46ced4dbbd3756a4223e3ee299a457ff488a3305bea455da8b5b8",
+    }
     assert "rust-v${CODEX_VERSION}" in dockerfile
     assert "sha256sum --check --strict" in dockerfile
     assert 'codex_version_output="$(/usr/local/libexec/codex-real --version)"' in dockerfile

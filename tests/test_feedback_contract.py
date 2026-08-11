@@ -189,28 +189,31 @@ def test_feedback_helper_is_pinned_and_image_managed(
     repository_root: Path,
     rootfs: Path,
 ) -> None:
-    assert addon_config["version"] == "0.6.0"
     assert "/feedback/" in (repository_root / ".gitignore").read_text(
         encoding="utf-8"
     )
     dockerfile = (addon_root / "Dockerfile").read_text(encoding="utf-8")
-    assert "ARG BUILD_VERSION=0.6.0" in dockerfile
-    assert "ARG GH_VERSION=2.93.0" in dockerfile
+    assert f'ARG BUILD_VERSION={addon_config["version"]}' in dockerfile
+    assert "ARG GH_VERSION=2.97.0" in dockerfile
     assert (
-        "ARG GH_SHA256="
-        "02d1290eba130e0b896f3709ffff22e1c75a51475ddb70476a85abc6b5807af0"
+        "ARG GH_SHA256_AMD64="
+        "a2c9b8497e1f85b1ad0dfcb78b5a622e098801b8e461e459e88e1ee12f018112"
     ) in dockerfile
-    assert 'gh_archive="gh_${GH_VERSION}_linux_amd64.tar.gz"' in dockerfile
+    assert (
+        "ARG GH_SHA256_AARCH64="
+        "73ea440ecad9c9e284429997ee6f93577bc6f7bc6fba357ef62c53ad8fb641a5"
+    ) in dockerfile
+    assert 'gh_archive="gh_${GH_VERSION}_linux_${gh_arch}.tar.gz"' in dockerfile
     assert (
         '"https://github.com/cli/cli/releases/download/'
         'v${GH_VERSION}/${gh_archive}"'
     ) in dockerfile
     assert (
-        '"${GH_SHA256}" "/tmp/${gh_archive}" '
+        '"${gh_sha256}" "/tmp/${gh_archive}" '
         "| sha256sum --check --strict -"
     ) in dockerfile
     assert (
-        'install -m 0755 "/tmp/gh_${GH_VERSION}_linux_amd64/bin/gh" '
+        'install -m 0755 "/tmp/gh_${GH_VERSION}_linux_${gh_arch}/bin/gh" '
         "/usr/local/bin/gh"
     ) in dockerfile
     assert dockerfile.count('"gh version ${GH_VERSION} "') >= 2
@@ -252,7 +255,7 @@ def test_feedback_helper_is_pinned_and_image_managed(
         'const DEFAULT_REPORT_ROOT = "/config/codex-workspace/feedback"',
         'const DEFAULT_GH_CONFIG_DIR = "/data/github-cli"',
         'const DEFAULT_GH_BIN = "/usr/local/bin/gh"',
-        'const DEFAULT_PREVIEW_ROOT = "/run/codex-ha/ha-feedback-previews"',
+        'const DEFAULT_PREVIEW_ROOT = "/tmp/codex-ha-feedback-previews"',
         "const PREVIEW_TTL_MS = 10 * 60 * 1000",
         'path.join(reportDirectory, "submission.json")',
         'path.join(reportDirectory, ".submission.lock")',
@@ -265,8 +268,19 @@ def test_feedback_helper_is_pinned_and_image_managed(
         "submission.json does not match the successful receipt schema",
         "duplicate_check_unavailable_no_create",
         "github_issue_create_failed_no_retry",
+        'if (githubCommand === "storage-init")',
+        "config_directory: ensureGhConfig()",
+        "if ((stat.mode & 0o777) !== mode) fs.chmodSync(absolute, mode)",
+        "if ((stat.mode & 0o777) !== 0o700) fs.chmodSync(directory, 0o700)",
+        "if ((targetStat.mode & 0o777) !== 0o600) fs.chmodSync(target, 0o600)",
     ):
         assert required in helper
+
+    init_script = (rootfs / "usr/local/bin/codex-ha-init").read_text(
+        encoding="utf-8"
+    )
+    assert "/usr/local/bin/ha-feedback github storage-init" in init_script
+    assert "GITHUB_CLI_DATA" not in init_script
 
 
 @pytest.mark.parametrize(

@@ -43,11 +43,16 @@
 
 ## 현재 배포 제약
 
-- `amd64` 전용
+- Public `0.6.0`은 검증된 `amd64` release; dev/Unreleased는 `amd64`, `aarch64` 후보
+- Native aarch64 CI와 실제 aarch64 HAOS 수용은 아직 `NOT RUN`; armv7/32-bit ARM 미지원
 - `stage: experimental`
 - 기본 `boot: manual`
 - public GHCR version tag 기반 배포
-- Supervisor `manager`, `/config` read-write
+- Supervisor `manager`, 고정 민감 경로 밖의 `/config` read-write
+- AppArmor가 root/nested `secrets.yaml`과 `.storage` content를 차단하고 managed Codex requirements가 `.storage` directory read도 차단; validator용 AppArmor listing allowance는 profile 범위에 남음
+- Init/Codex launch가 보호 tree의 symlink·special-file·pre-existing-hardlink를 fail closed 검사; post-check external hardlink TOCTOU와 비보호 copy는 잔여 한계
+- 기본/강제 Codex sandbox는 network-enabled `workspace-write`; legacy danger option은 호환 입력만 유지
+- Interactive/Codex/S6에 ambient `SUPERVISOR_TOKEN`을 상속하지 않지만 root process의 runtime credential 직접 read와 raw API response는 잔여 위험
 - `hassio_role: admin`, Docker API, `full_access`, host network와 AppArmor 비활성화는 사용하지 않음
 
 과거 MVP 프롬프트와 초기 구현·Git 운영 계획은 [archive](../archive/README.md)에 보존되어 있으며 현재 지침으로 사용하지 않습니다.

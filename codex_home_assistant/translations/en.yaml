@@ -14,7 +14,12 @@ configuration:
     description: Controls when interactive Codex asks before running commands.
   codex_sandbox_mode:
     name: Codex sandbox mode
-    description: danger-full-access applies only inside this App container, not to the HAOS host.
+    description: >-
+      workspace-write is enforced so the image-managed sensitive-path policy
+      remains active, with network access retained. The legacy
+      danger-full-access value is accepted during upgrades but is enforced as
+      workspace-write. Restart the App and start a new Codex session after a
+      change.
   browser_approval_policy:
     name: Headless browser approval policy
     description: >-

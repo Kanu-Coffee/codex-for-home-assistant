@@ -5,6 +5,7 @@ name: Builder
   pull_request:
     branches:
       - main
+      - dev
     paths:
       - ".github/workflows/build-app.yaml"
       - ".github/workflows/builder.yaml"
@@ -28,7 +29,7 @@ jobs:
       app_version: ${{ fromJSON(steps.info.outputs.version) }}
     steps:
       - name: Check out repository
-        uses: actions/checkout@v7.0.0
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
       - name: Get app information
         id: info
@@ -38,7 +39,9 @@ jobs:
 
       - name: Validate image and release tag
         env:
+          APP_DESCRIPTION: ${{ fromJSON(steps.info.outputs.description) }}
           APP_IMAGE: ${{ fromJSON(steps.info.outputs.image) }}
+          APP_NAME: ${{ fromJSON(steps.info.outputs.name) }}
           APP_VERSION: ${{ fromJSON(steps.info.outputs.version) }}
           RELEASE_TAG: ${{ github.ref_name }}
         run: |
@@ -48,9 +51,63 @@ jobs:
             exit 1
           fi
 
+          if [[ ! "${APP_VERSION}" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-dev\.[1-9][0-9]*)?$ ]]; then
+            echo "App version must be X.Y.Z or a numbered X.Y.Z-dev.N build" >&2
+            exit 1
+          fi
+
+          if [[ "${APP_VERSION}" =~ -dev\.[1-9][0-9]*$ ]]; then
+            expected_name="Codex for Home Assistant (DEV)"
+            expected_repository_name="name: Codex for Home Assistant (DEV)"
+            expected_panel_title="panel_title: Codex DEV"
+            expected_oci_title='  org.opencontainers.image.title="Home Assistant App: Codex for Home Assistant (DEV)"'
+            expected_motd="Codex for Home Assistant (DEV)"
+            if [[ "${APP_DESCRIPTION}" != "[DEV] "* ]]; then
+              echo "DEV App description must start with [DEV]" >&2
+              exit 1
+            fi
+          else
+            expected_name="Codex for Home Assistant"
+            expected_repository_name="name: Codex for Home Assistant"
+            expected_panel_title="panel_title: Codex"
+            expected_oci_title='  org.opencontainers.image.title="Home Assistant App: Codex for Home Assistant"'
+            expected_motd="Codex for Home Assistant"
+            if [[ "${APP_DESCRIPTION}" == "[DEV] "* ]]; then
+              echo "Stable App description must not start with [DEV]" >&2
+              exit 1
+            fi
+          fi
+          if [[ "${APP_NAME}" != "${expected_name}" ]]; then
+            echo "App name does not match the release channel" >&2
+            exit 1
+          fi
+          if [[ "$(grep --count '^name:' repository.yaml)" -ne 1 ]] \
+            || ! grep --fixed-strings --line-regexp --quiet \
+              "${expected_repository_name}" repository.yaml; then
+            echo "Repository name does not match the release channel" >&2
+            exit 1
+          fi
+          if [[ "$(grep --count '^panel_title:' codex_home_assistant/config.yaml)" -ne 1 ]] \
+            || ! grep --fixed-strings --line-regexp --quiet \
+              "${expected_panel_title}" codex_home_assistant/config.yaml; then
+            echo "Panel title does not match the release channel" >&2
+            exit 1
+          fi
+          if [[ "$(grep --count 'org.opencontainers.image.title=' codex_home_assistant/Dockerfile)" -ne 1 ]] \
+            || ! grep --fixed-strings --line-regexp --quiet \
+              "${expected_oci_title} \\" codex_home_assistant/Dockerfile; then
+            echo "OCI title does not match the release channel" >&2
+            exit 1
+          fi
+          IFS= read -r motd_title < codex_home_assistant/rootfs/etc/motd
+          if [[ "${motd_title}" != "${expected_motd}" ]]; then
+            echo "MOTD title does not match the release channel" >&2
+            exit 1
+          fi
+
           if [[ "${GITHUB_EVENT_NAME}" == "push" ]]; then
-            if [[ ! "${RELEASE_TAG}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-              echo "Release tag must be a non-dev semantic version" >&2
+            if [[ ! "${RELEASE_TAG}" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-dev\.[1-9][0-9]*)?$ ]]; then
+              echo "Release tag must be X.Y.Z or a numbered X.Y.Z-dev.N build" >&2
               exit 1
             fi
             if [[ "${RELEASE_TAG}" != "${APP_VERSION}" ]]; then
@@ -58,38 +115,6 @@ jobs:
               exit 1
             fi
           fi
-
-  release-guard:
-    name: Reject an existing version tag
-    if: github.event_name == 'push'
-    needs: validate
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: read
-    env:
-      APP_VERSION: ${{ needs.validate.outputs.app_version }}
-      GH_TOKEN: ${{ github.token }}
-    steps:
-      - name: Check generic and architecture package tags
-        run: |
-          for package in \
-            codex-for-home-assistant \
-            amd64-codex-for-home-assistant; do
-            error_file=$(mktemp)
-            if tags=$(gh api --paginate \
-              "/users/Kanu-Coffee/packages/container/${package}/versions" \
-              --jq '.[].metadata.container.tags[]?' 2>"$error_file"); then
-              if grep -Fxq "$APP_VERSION" <<< "$tags"; then
-                echo "Refusing to overwrite ${package}:${APP_VERSION}" >&2
-                exit 1
-              fi
-            elif ! grep -Fq '(HTTP 404)' "$error_file"; then
-              cat "$error_file" >&2
-              exit 1
-            fi
-            rm -f "$error_file"
-          done
 
   build-app:
     name: Build codex_home_assistant without publishing
@@ -106,10 +131,10 @@ jobs:
   publish-app:
     name: Build and publish codex_home_assistant
     if: github.event_name == 'push'
-    needs:
-      - validate
-      - release-guard
+    needs: validate
     permissions:
+      artifact-metadata: write
+      attestations: write
       contents: read
       id-token: write
       packages: write

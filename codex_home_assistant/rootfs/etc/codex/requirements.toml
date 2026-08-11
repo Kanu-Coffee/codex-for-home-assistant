@@ -1,0 +1,10 @@
+# Image-managed, admin-enforced filesystem policy. Codex requirements are
+# additive and user/project config cannot weaken these read denials.
+allowed_sandbox_modes = ["read-only", "workspace-write"]
+
+[permissions.filesystem]
+deny_read = [
+  "/config/secrets.yaml",
+  "/config/**/secrets.yaml",
+  "/config/.storage",
+]

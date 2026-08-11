@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/bin/bash -p
 set -Eeuo pipefail
 
 if (( $# != 0 )); then
@@ -6,10 +6,34 @@ if (( $# != 0 )); then
   exit 64
 fi
 
-if [[ -r /run/codex-ha/runtime.env ]]; then
-  # shellcheck disable=SC1091
-  . /run/codex-ha/runtime.env
-fi
+unset BASH_ENV ENV NODE_OPTIONS NODE_PATH SUPERVISOR_TOKEN
+export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+# shellcheck source=/dev/null
+. /usr/local/lib/codex-ha/supervisor-credential.sh
+codex_ha_load_supervisor_credential /run/codex-ha/runtime.env || true
 
-unset NODE_OPTIONS NODE_PATH
-exec /usr/bin/node /usr/local/share/codex-ha/ha-memory-mcp.mjs
+memory_env=(
+  HOME="${HOME:-/data/home}"
+  LANG=C.UTF-8
+  LC_ALL=C.UTF-8
+  PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+  SUPERVISOR_TOKEN="${SUPERVISOR_TOKEN:-}"
+)
+readonly TEST_MARKER=/run/codex-ha/allow-memory-test-fixture
+readonly TEST_FIXTURE=/tmp/ha-memory-snapshot.json
+test_marker_metadata=
+if [[ "${HA_MEMORY_TEST_MODE:-}" == 1 \
+    && "${HA_MEMORY_TEST_FIXTURE:-}" == "${TEST_FIXTURE}" \
+    && ! -L "${TEST_MARKER}" \
+    && -f "${TEST_MARKER}" \
+    && -r "${TEST_MARKER}" ]] \
+  && test_marker_metadata=$(stat -c '%u:%a:%h' -- "${TEST_MARKER}" 2>/dev/null) \
+  && [[ "${test_marker_metadata}" == "$(id -u):600:1" ]]; then
+  memory_env+=(
+    HA_MEMORY_TEST_MODE=1
+    HA_MEMORY_TEST_FIXTURE="${TEST_FIXTURE}"
+  )
+fi
+unset HA_MEMORY_TEST_MODE HA_MEMORY_TEST_FIXTURE test_marker_metadata
+exec /usr/bin/env -i "${memory_env[@]}" \
+  /usr/bin/node /usr/local/share/codex-ha/ha-memory-mcp.mjs

@@ -30,9 +30,9 @@
 
 어느 하나를 제거하거나 별도 제품으로 분리하지 않는다.
 
-### R-102 `/config` 전체를 RW로 제공한다
+### R-102 `/config` mount는 RW로 제공하고 고정 민감 경로를 강제 차단한다
 
-`homeassistant_config`를 컨테이너 `/config`에 `read_only: false`로 매핑한다. 경로별 읽기·쓰기 분리, SMB 배포 단계, 진단 전용 복제본은 도입하지 않는다.
+`homeassistant_config`를 컨테이너 `/config`에 `read_only: false`로 매핑한다. 일반 YAML, package, dashboard와 custom component의 직접 작업 가용성은 유지한다. 다만 custom AppArmor와 Codex 관리자 requirements는 루트·중첩 `secrets.yaml`과 `/config/.storage` content를 항상 차단하고 managed requirements는 Codex directory read도 거부한다. Validator용 AppArmor directory listing allowance는 profile 범위에 남긴다. 이 고정 예외를 제거하거나 사용자 설정으로 우회하지 않는다.
 
 ### R-103 API는 전체 운영형으로 제공한다
 
@@ -106,6 +106,15 @@ Codex 인증 디렉터리와 SSH 키는 최소 권한으로 생성한다.
 
 일반 조명·스위치·테스트용 엔티티는 범위를 명확히 하고 실행 전후 상태를 기록해 자동 검증할 수 있다.
 
+### R-206 민감 경로·Supervisor credential 경계
+
+- `secrets.yaml`과 `.storage` content 접근은 AppArmor와 `/etc/codex/requirements.toml` 양쪽에서 차단한다. Validator에 필요한 `.storage` directory listing operation은 AppArmor profile에 남으므로 같은 profile의 root shell에서 entry 이름이 보일 수 있지만, managed requirements는 Codex directory read도 거부한다.
+- App init과 매 Codex launch에서 보호 tree의 symlink, 특수 파일과 link count가 1이 아닌 파일을 값·경로 원문 없이 검사하고 unsafe shape이면 fail closed한다.
+- 정책은 pathname 기반이므로 검사 뒤 외부 process가 hardlink를 추가하는 TOCTOU와 사용자가 비보호 경로로 값을 복사한 경우까지 차단한다고 표현하지 않는다.
+- Web/SSH/Codex와 장기 scheduler는 `SUPERVISOR_TOKEN`을 ambient 환경으로 상속하지 않는다. API/browser/memory 등 용도가 고정된 image helper만 root-only fixed runtime path를 실행 시 읽고 필요한 process lifetime으로 제한한다. Direct API helper는 추가로 file owner/type/link/mode를 검증한다.
+- Core/Supervisor helper의 전체 API와 raw response 계약은 유지하므로 API·로그·browser를 완전한 정제 경계로 표현하지 않는다.
+- Interactive process가 root이고 runtime credential 파일을 직접 읽을 수 있는 잔여 위험을 문서에서 숨기지 않는다.
+
 ## 4. 코드 규칙
 
 ### R-301 셸 스크립트
@@ -128,7 +137,7 @@ Codex 인증 디렉터리와 SSH 키는 최소 권한으로 생성한다.
 
 - `config.yaml`은 최신 공식 스키마를 따른다.
 - `repository.yaml`, `DOCS.md`, `CHANGELOG.md`, 번역 파일을 제공한다.
-- `config.yaml`에 나열하는 아키텍처는 실제 CI와 실기 검증을 통과한 것만 포함한다.
+- 개발 후보는 새 아키텍처를 `config.yaml`과 native CI matrix에 함께 추가할 수 있지만 검증 상태를 `NOT RUN`으로 명시한다. Public 지원 완료와 release는 native CI와 실제 HAOS 수용을 모두 통과한 아키텍처만 주장한다.
 - 과거 `build.yaml` 관행을 복사하지 말고 현재 공식 builder 방식을 확인한다.
 
 ### R-304 오류 처리
@@ -172,14 +181,17 @@ target별 version 1회 기록을 만든 뒤 허용된 파일을 기본본으로 
 
 ### R-404 권한 정책
 
-사용자가 요청한 운영형 기능을 위해 컨테이너 내부에서 Codex가 `/config`와 내부 API에 접근할 수 있어야 한다. 기본 초안은 다음이다.
+사용자가 요청한 운영형 기능을 위해 컨테이너 내부에서 Codex가 보호 경로 외 `/config`와 내부 API에 접근할 수 있어야 한다. 기본·강제 정책은 다음이다.
 
 ```toml
 approval_policy = "on-request"
-sandbox_mode = "danger-full-access"
+sandbox_mode = "workspace-write"
+
+[sandbox_workspace_write]
+network_access = true
 ```
 
-여기서 `danger-full-access`는 **App 컨테이너 내부 Codex 샌드박스 기준**이다. Home Assistant App 자체에는 `full_access: true`를 주지 않는다. 실제로 `workspace-write + network_access`가 HAOS 컨테이너 안에서 안정적으로 동작하면 ADR을 갱신해 더 제한적인 기본값으로 바꿀 수 있다.
+기존 `options.json`의 `danger-full-access` 문자열은 schema 호환을 위해 입력만 허용하고 실제 실행은 `workspace-write`로 변환한다. `/etc/codex/requirements.toml`의 허용 sandbox와 민감 경로 deny는 사용자·프로젝트 config가 완화할 수 없다. Home Assistant App 자체에는 `full_access: true`를 주지 않는다.
 
 ## 6. 테스트 규칙
 
@@ -188,6 +200,8 @@ sandbox_mode = "danger-full-access"
 - Markdown/YAML 형식 검사
 - `shellcheck`
 - Docker build 또는 빌드 불가 사유 기록
+- aarch64 변경은 native ARM build/runtime 또는 미실행 사유 기록
+- custom AppArmor parse와 보호 경로 deny contract
 - `sshd -t`
 - Codex 바이너리 `--version`
 - 시작 스크립트 단위 테스트

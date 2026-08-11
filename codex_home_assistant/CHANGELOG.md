@@ -2,6 +2,42 @@
 
 All notable changes to this App are documented in this file.
 
+## [0.7.0-dev.1] - Unreleased
+
+### Added
+
+- Add `aarch64` alongside `amd64` in the App manifest. The Docker build selects checksum-pinned Codex `0.144.1` and GitHub CLI `2.97.0` artifacts for each architecture and rejects every unsupported target, including 32-bit `armv7`.
+- Add a custom AppArmor profile that keeps ordinary `/config` paths read-write while denying root and nested `secrets.yaml`, `.storage` content operations, and cross-process environment reads. Only `.storage` directory traversal/listing needed by the image validator remains available; managed Codex requirements independently deny Codex reads.
+- Add image-managed `/etc/codex/requirements.toml` rules that users and projects cannot weaken, independently denying reads of the protected Home Assistant paths and disallowing `danger-full-access`; the App wrapper still enforces network-enabled `workspace-write`.
+- Add a fail-closed sensitive-path shape check at app initialization and every Codex launch. It rejects protected symlinks, special files, and files with a link count other than one without printing protected paths or values.
+- Add native `ubuntu-24.04-arm` CI for aarch64 build and runtime/version/label checks, AppArmor policy parsing, multi-architecture contracts, sensitive-path policy tests, and Supervisor credential-boundary tests.
+- Add weekly Dependabot updates for GitHub Actions and the Playwright npm runtime. Generate an SPDX SBOM for each architecture, block publication on Critical findings, report High/Critical findings, retain Cosign signing, and attach build-provenance and SBOM attestations to published images.
+
+### Changed
+
+- Identify this development candidate in HAOS as **Codex for Home Assistant (DEV)**, use **Codex DEV** for the sidebar panel, prefix the App description with `[DEV]`, and advance every image/package version surface to `0.7.0-dev.1`. The stable slug and GHCR image repository remain unchanged; remote installation still requires publication of the exact versioned image.
+- Make network-enabled `workspace-write` the Codex default and enforced sandbox. Continue to accept the legacy `danger-full-access` App option so existing `options.json` remains valid, but convert it to `workspace-write` at initialization and launch.
+- Remove ambient `SUPERVISOR_TOKEN` inheritance from Web terminals, SSH, Codex, ingress, and the long-running memory scheduler. Purpose-specific API/browser/memory helpers load the root-only runtime credential when launched while preserving the existing Core/Supervisor method, path, body, and raw-response interfaces.
+- Run token-bearing shell and Node helpers through fixed privileged interpreters and clean child environments. Use private curl header files, ignore user curl configuration and proxies for fixed Supervisor endpoints, move sandbox scratch state to `/tmp`, and expose only the persistent memory directory as an additional Codex write root.
+- Pin third-party GitHub Actions used by CI and image publishing to immutable commit SHAs, and run CI/Builder validation for `dev` as well as the existing release paths.
+- Publish only through run-scoped staging tags and immutable digest artifacts. Sign and attest the verified per-architecture digests and generic manifest before a final, fail-closed, idempotent version-tag promotion.
+
+### Security
+
+- Upgrade the shared privileged WebSocket runtime from `ws` `8.18.3` to `8.21.0`, fixing High-severity `GHSA-96hv-2xvq-fx4p` reported by the candidate SBOM scan.
+- Upgrade GitHub CLI from `2.93.0` to `2.97.0` with architecture-specific SHA-256 verification.
+- Remove the unused `/usr/bin/tempio` inherited from the base image. Grype `0.110` reported seven Critical findings for its embedded `golang.org/x/crypto` `v0.31.0`; the official TempIO `2026.07.0` replacement candidate carried the same findings, and neither the repository nor the base init path uses the executable.
+- The fixed file deny is defense in depth, not complete data-loss prevention. Recorder data and other unprotected `/config` paths remain read-write, and raw API responses, logs, state attributes, or authenticated browser views can still contain sensitive values.
+- Interactive processes still run as root. Removing the ambient token and blocking `/proc/*/environ` reduces accidental disclosure, but a malicious or explicitly directed root process retains residual access to `/run/codex-ha/runtime.env`.
+- Optional GitHub CLI credentials remain private-mode state used through a cleaned `ha-feedback` environment, but root Codex can still read `/data/github-cli` directly. A stronger boundary requires a prestarted credential broker because the Codex bwrap sandbox uses `no_new_privs` and cannot transition into a more-permissive AppArmor child.
+- The file controls remain pathname-based. They do not guarantee against an external process adding a hardlink after validation (TOCTOU), or a user copying a protected value into an ordinary unprotected `/config` path.
+
+### Testing
+
+- Pass all 110 Python unit/contract tests, YAML and 50-file Markdown lint, ShellCheck, Hadolint, actionlint, AppArmor parsing, the exact Home Assistant App linter, and `git diff --check`. Build the final local amd64 image and pass feedback, Docker/ttyd/SSH/Core API, browser approval, memory, managed browser auth, user-file, managed Codex sandbox, and public `0.5.0` update smoke tests.
+- Scan the final local amd64 image with Grype `0.110.0`: Critical 0, High 72, Medium 31, Low 2, and Unknown 1. This is local evidence only; the native aarch64 and release workflow scans remain unexecuted.
+- Native aarch64 CI, an exact `0.7.0-dev.1` GHCR image and published multi-architecture manifest, and real 64-bit Raspberry Pi HAOS installation/AppArmor/runtime acceptance are **NOT RUN** for this DEV candidate. No commit, push, pull request, merge, tag, image publication, attestation publication, or release has been performed for these changes.
+
 ## [0.6.0] - 2026-07-16
 
 ### Added

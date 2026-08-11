@@ -2,6 +2,7 @@
 set -Eeuo pipefail
 
 IMAGE=${1:-codex-for-home-assistant:test}
+DOCKER_PLATFORM=${DOCKER_PLATFORM:-linux/amd64}
 TEST_ID="codex-ha-memory-smoke-${RANDOM}-$$"
 FIRST_CONTAINER="${TEST_ID}-first"
 SECOND_CONTAINER="${TEST_ID}-second"
@@ -35,7 +36,7 @@ fail() {
 start_container() {
   local name=$1
   docker run --detach \
-    --platform linux/amd64 \
+    --platform "${DOCKER_PLATFORM}" \
     --name "${name}" \
     --env HA_MEMORY_TEST_MODE=1 \
     --env HA_MEMORY_TEST_FIXTURE="${FIXTURE_PATH}" \
@@ -56,6 +57,23 @@ assert_json() {
     || fail "${description}"
 }
 
+enable_memory_test_fixture() {
+  local container=$1
+  docker exec "${container}" /bin/sh -ceu '
+    marker=/run/codex-ha/allow-memory-test-fixture
+    install -d -m 0700 /run/codex-ha
+    install -o 0 -g 0 -m 0600 /dev/null "${marker}"
+    test ! -L "${marker}"
+    test "$(stat -c "%u:%a:%h" "${marker}")" = 0:600:1
+  '
+}
+
+disable_memory_test_fixture() {
+  local container=$1
+  docker exec "${container}" rm -f -- \
+    /run/codex-ha/allow-memory-test-fixture
+}
+
 docker image inspect "${IMAGE}" >/dev/null 2>&1 \
   || fail "image not found: ${IMAGE}"
 docker volume create "${DATA_VOLUME}" >/dev/null
@@ -64,30 +82,30 @@ docker volume create "${UNSAFE_CONFIG_VOLUME}" >/dev/null
 
 printf '%s' '{"authorized_keys":[],"web_terminal_auto_start_codex":false,"tmux_session_name":"memory-path-safety","codex_approval_policy":"on-request","codex_sandbox_mode":"danger-full-access","log_level":"info"}' \
   | docker run --rm --interactive \
-    --platform linux/amd64 \
+    --platform "${DOCKER_PLATFORM}" \
     --entrypoint /bin/sh \
     --volume "${UNSAFE_DATA_VOLUME}:/data" \
     "${IMAGE}" \
     -ceu 'cat > /data/options.json; mkdir /data/memory-link-target; chmod 0755 /data/memory-link-target; ln -s /data/memory-link-target /data/codex-ha-memory'
 docker run --rm \
-  --platform linux/amd64 \
+  --platform "${DOCKER_PLATFORM}" \
   --volume "${UNSAFE_DATA_VOLUME}:/data" \
   --volume "${UNSAFE_CONFIG_VOLUME}:/config" \
   --entrypoint /bin/sh \
   "${IMAGE}" -c 'mkdir -p /run/s6/container_environment; exec /usr/local/bin/codex-ha-init' >/dev/null \
   || fail 'unsafe memory symlink made the main App init fail'
-[[ $(docker run --rm --platform linux/amd64 --entrypoint stat \
+[[ $(docker run --rm --platform "${DOCKER_PLATFORM}" --entrypoint stat \
   --volume "${UNSAFE_DATA_VOLUME}:/data" "${IMAGE}" \
   -c '%a' /data/memory-link-target) == 755 ]] \
   || fail 'main App init followed or chmodded an unsafe memory symlink'
 docker run --rm \
-  --platform linux/amd64 \
+  --platform "${DOCKER_PLATFORM}" \
   --entrypoint /bin/sh \
   --volume "${UNSAFE_DATA_VOLUME}:/data" \
   "${IMAGE}" \
   -ceu 'rm /data/codex-ha-memory; : > /data/codex-ha-memory; chmod 0600 /data/codex-ha-memory'
 docker run --rm \
-  --platform linux/amd64 \
+  --platform "${DOCKER_PLATFORM}" \
   --volume "${UNSAFE_DATA_VOLUME}:/data" \
   --volume "${UNSAFE_CONFIG_VOLUME}:/config" \
   --entrypoint /bin/sh \
@@ -126,6 +144,7 @@ assert_json 'ha-memory init did not create an empty, private store' \
     and .integrity == "ok"' \
   "${INIT_OUTPUT}"
 
+enable_memory_test_fixture "${FIRST_CONTAINER}"
 docker exec --detach --env S6_KEEP_ENV=1 "${FIRST_CONTAINER}" \
   /etc/s6-overlay/s6-rc.d/ha-memoryd/run >/dev/null \
   || fail 'first-run memory daemon did not start'
@@ -150,6 +169,7 @@ assert_json 'first-run daemon did not create the catalog without a manual refres
     and .last_successful_sync.relation_count >= 6' \
   "${BOOTSTRAP_STATUS}"
 
+disable_memory_test_fixture "${FIRST_CONTAINER}"
 if FAILURE_OUTPUT=$(docker exec \
   --env HA_MEMORY_TEST_FIXTURE= \
   --env SUPERVISOR_TOKEN= \
@@ -170,6 +190,7 @@ assert_json 'failed refresh did not preserve and diagnose the last-known-good ca
     and .last_sync.error_code == "ha_token_unavailable"
     and .last_successful_sync.id > 0' \
   "${FAILURE_STATUS}"
+enable_memory_test_fixture "${FIRST_CONTAINER}"
 RECOVERY_OUTPUT=$(docker exec "${FIRST_CONTAINER}" ha-memory refresh --force) \
   || fail 'fixture-backed catalog did not recover after an injected failure'
 assert_json 'recovered catalog refresh was not successful' \

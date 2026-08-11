@@ -38,7 +38,8 @@ api_main() {
   local response_file
   local http_status
   local curl_status
-  local curl_bin=${CURL_BIN:-curl}
+  local curl_bin=${API_CURL_BIN:-${CURL_BIN:-curl}}
+  local runtime_dir=${API_RUNTIME_DIR:-${TMPDIR:-/tmp}}
   local -a curl_args
 
   while (( $# > 0 )); do
@@ -111,7 +112,7 @@ api_main() {
     return 78
   fi
 
-  request_dir=$(mktemp -d)
+  request_dir=$(mktemp -d "${runtime_dir%/}/.codex-ha-api.XXXXXX")
   chmod 0700 "${request_dir}"
   header_file="${request_dir}/headers"
   response_file="${request_dir}/response"
@@ -120,8 +121,10 @@ api_main() {
   chmod 0600 "${header_file}"
 
   curl_args=(
+    --disable
     --silent
     --show-error
+    --noproxy '*'
     --request "${method}"
     --header "@${header_file}"
     --header "Accept: ${accept}"

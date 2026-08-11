@@ -327,7 +327,7 @@ start_app "${CANDIDATE_CONTAINER}" "${CANDIDATE_IMAGE}"
 CANDIDATE_VERSION=$(docker image inspect --format \
   '{{index .Config.Labels "io.hass.version"}}' "${CANDIDATE_IMAGE}")
 docker exec "${CANDIDATE_CONTAINER}" /bin/sh -c '
-  printf '\''approval_policy = "on-request"\nsandbox_mode = "danger-full-access"\ncli_auth_credentials_store = "file"\ncheck_for_update_on_startup = false\n'\'' \
+  printf '\''approval_policy = "on-request"\nsandbox_mode = "workspace-write"\ncli_auth_credentials_store = "file"\ncheck_for_update_on_startup = false\n\n[sandbox_workspace_write]\nnetwork_access = true\n'\'' \
     | cmp -s - /data/codex/config.toml
 ' || fail 'refresh_all did not install the image default Codex config'
 docker exec "${CANDIDATE_CONTAINER}" cmp -s \

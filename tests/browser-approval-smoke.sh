@@ -2,6 +2,7 @@
 set -Eeuo pipefail
 
 IMAGE=${1:-codex-for-home-assistant:test}
+DOCKER_PLATFORM=${DOCKER_PLATFORM:-linux/amd64}
 TEST_ID="codex-ha-browser-approval-${RANDOM}-$$"
 CONTAINERS=()
 
@@ -52,7 +53,7 @@ start_probe() {
   local options_json=$2
 
   docker create \
-    --platform linux/amd64 \
+    --platform "${DOCKER_PLATFORM}" \
     --name "${name}" \
     --entrypoint /bin/sleep \
     "${IMAGE}" infinity >/dev/null
@@ -101,10 +102,15 @@ probe_policy() {
   output=$(docker exec --workdir /config "${name}" \
     codex __probe__ passthrough-value)
 
-  [[ $(grep -Fxc 'ARG=<-c>' <<< "${output}" || true) -eq 19 ]] \
-    || fail "${policy} did not emit exactly 19 -c arguments"
+  [[ $(grep -Fxc 'ARG=<-c>' <<< "${output}" || true) -eq 20 ]] \
+    || fail "${policy} did not emit exactly 20 -c arguments"
   assert_config_once "${output}" 'approval_policy="on-request"'
-  assert_config_once "${output}" 'sandbox_mode="danger-full-access"'
+  assert_config_once "${output}" 'sandbox_mode="workspace-write"'
+  assert_config_once "${output}" 'sandbox_workspace_write.network_access=true'
+  [[ $(grep -Fxc 'ARG=<--add-dir>' <<< "${output}" || true) -eq 1 ]] \
+    || fail "${policy} did not emit one managed memory writable-root flag"
+  [[ $(grep -Fxc 'ARG=</data/codex-ha-memory>' <<< "${output}" || true) -eq 1 ]] \
+    || fail "${policy} did not emit the managed memory writable root"
   assert_config_once "${output}" \
     'mcp_servers.playwright.default_tools_approval_mode="prompt"'
   [[ $(grep -Fxc 'ARG=<__probe__>' <<< "${output}" || true) -eq 1 ]]
