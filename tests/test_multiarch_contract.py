@@ -131,6 +131,9 @@ def test_managed_sandbox_smoke_allows_nested_root_uid_mapping(
     # bubblewrap maps UID 0 into its child namespace. Some hosted Docker
     # runners omit it from the container's effective default set.
     assert "--cap-add SETFCAP" in smoke
+    assert "HostConfig.Privileged" in smoke
+    assert "HostConfig.CapAdd" in smoke
+    assert "'[\"CAP_SETFCAP\"]'" in smoke
 
 
 def test_native_arm_ci_runs_current_smokes_but_not_amd64_update_fixture(

@@ -66,6 +66,11 @@ docker create \
   --tmpfs /config:rw,nosuid,nodev,size=16m \
   --entrypoint /bin/sleep \
   "${IMAGE}" infinity >/dev/null
+[[ "$(docker inspect --format '{{.HostConfig.Privileged}}' "${CONTAINER}")" == false ]] \
+  || fail 'managed sandbox test container unexpectedly became privileged'
+[[ "$(docker inspect --format '{{json .HostConfig.CapAdd}}' "${CONTAINER}")" \
+  == '["CAP_SETFCAP"]' ]] \
+  || fail 'managed sandbox test container capability additions are not bounded'
 docker start "${CONTAINER}" >/dev/null
 
 docker cp tests/fixtures/fake-gh \
