@@ -34,9 +34,11 @@ All notable changes to this App are documented in this file.
 
 ### Testing
 
-- Pass all 110 Python unit/contract tests, YAML and 50-file Markdown lint, ShellCheck, Hadolint, actionlint, AppArmor parsing, the exact Home Assistant App linter, and `git diff --check`. Build the final local amd64 image and pass feedback, Docker/ttyd/SSH/Core API, browser approval, memory, managed browser auth, user-file, managed Codex sandbox, and public `0.5.0` update smoke tests.
+- Pass all 111 Python unit/contract tests, YAML and 50-file Markdown lint, ShellCheck, Hadolint, actionlint, AppArmor parsing, the exact Home Assistant App linter, and `git diff --check`. Build the final local amd64 image and pass feedback, Docker/ttyd/SSH/Core API, browser approval, memory, managed browser auth, user-file, managed Codex sandbox, and public `0.5.0` update smoke tests.
 - Scan the final local amd64 image with Grype `0.110.0`: Critical 0, High 72, Medium 31, Low 2, and Unknown 1. This is local evidence only; the native aarch64 and release workflow scans remain unexecuted.
-- Native aarch64 CI, an exact `0.7.0-dev.1` GHCR image and published multi-architecture manifest, and real 64-bit Raspberry Pi HAOS installation/AppArmor/runtime acceptance are **NOT RUN** for this DEV candidate. No commit, push, pull request, merge, tag, image publication, attestation publication, or release has been performed for these changes.
+- Push DEV candidate commit `7eeb329e409a26c8601b7adeaa1d52023bc2c0d9` to remote `dev`. [CI 31547358759](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/31547358759) passed the App config and lint/unit jobs; both architecture jobs built their images and passed every smoke step scheduled before the managed Codex sandbox check, then failed that check with `bwrap: setting up uid map: Permission denied`. The amd64 public `0.5.0` update step was skipped, so the overall CI result is **FAIL**.
+- Add `CAP_SETFCAP` only to the disposable managed-sandbox test container because Linux 5.12 and newer require it when bubblewrap maps container UID 0 into a child user namespace. This does not change the Home Assistant App manifest or runtime privileges. The corrected local managed-sandbox smoke and its contract test pass; remote PR revalidation remains pending.
+- An exact `0.7.0-dev.1` GHCR image and published multi-architecture manifest, native/release scans, and real 64-bit Raspberry Pi HAOS installation/AppArmor/runtime acceptance remain **NOT RUN**. No pull request, merge, `0.7.0-dev.1` tag, image or attestation publication, or release has been performed.
 
 ## [0.6.0] - 2026-07-16
 

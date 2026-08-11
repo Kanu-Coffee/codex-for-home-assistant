@@ -120,6 +120,19 @@ def test_container_smokes_use_an_overridable_docker_platform(
         assert "--platform linux/amd64" not in script
 
 
+def test_managed_sandbox_smoke_allows_nested_root_uid_mapping(
+    repository_root: Path,
+) -> None:
+    smoke = (repository_root / "tests/managed-sandbox-smoke.sh").read_text(
+        encoding="utf-8"
+    )
+
+    # Linux 5.12+ requires CAP_SETFCAP in the parent user namespace when
+    # bubblewrap maps UID 0 into its child namespace. Some hosted Docker
+    # runners omit it from the container's effective default set.
+    assert "--cap-add SETFCAP" in smoke
+
+
 def test_native_arm_ci_runs_current_smokes_but_not_amd64_update_fixture(
     repository_root: Path,
 ) -> None:

@@ -52,8 +52,12 @@ if docker info --format '{{json .SecurityOptions}}' 2>/dev/null \
   SECURITY_OPTIONS+=(--security-opt apparmor=unconfined)
 fi
 
+# Linux 5.12+ requires CAP_SETFCAP in the parent namespace when bubblewrap
+# maps container UID 0 into a child user namespace. This is confined to the
+# disposable test container and does not change the Home Assistant App manifest.
 docker create \
   --platform "${DOCKER_PLATFORM}" \
+  --cap-add SETFCAP \
   "${SECURITY_OPTIONS[@]}" \
   --name "${CONTAINER}" \
   --add-host homeassistant:127.0.0.1 \
