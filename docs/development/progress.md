@@ -4,8 +4,8 @@
 
 ## Project Status
 
-- 상태: **public 0.6.0 amd64 정확 이미지 전체 회귀 PASS / DEV 0.7.0-dev.1 `Codex for Home Assistant (DEV)` amd64+aarch64·민감 경로·공급망 후보 구현·post-bump local amd64 image/smoke PASS / PR CI 31548711591 amd64+aarch64 전체 PASS·Builder 31548711713 양 architecture SBOM/Critical gate PASS / GHCR publish·aarch64 HAOS·새 AppArmor HAOS 실기 NOT RUN / 실제 HAOS feedback live NOT RUN / 실제 HAOS `never` 14/16 승인 0회 PASS·전체 승인 행렬 PARTIAL / public 0.3.2 memory live PARTIAL(FAIL 0) / 0.5.0 자연어 memory live 수용 대기**
-- 현재 마일스톤: **DEV 0.7.0-dev.1 멀티아키텍처·민감정보 경계 안정화 / dev 병합·tag publish·HAOS 실기 검증 대기**
+- 상태: **public 0.6.0 amd64 정확 이미지 전체 회귀 PASS / DEV 0.7.0-dev.1 `Codex for Home Assistant (DEV)` amd64+aarch64·민감 경로·공급망 후보 구현·post-bump local amd64 image/smoke PASS / PR CI 31548711591 amd64+aarch64 전체 PASS·Builder 31548711713 양 architecture SBOM/Critical gate PASS / PR #35 dev 병합·dev CI 31549518729 전체 PASS / GHCR publish·aarch64 HAOS·새 AppArmor HAOS 실기 NOT RUN / 실제 HAOS feedback live NOT RUN / 실제 HAOS `never` 14/16 승인 0회 PASS·전체 승인 행렬 PARTIAL / public 0.3.2 memory live PARTIAL(FAIL 0) / 0.5.0 자연어 memory live 수용 대기**
+- 현재 마일스톤: **DEV 0.7.0-dev.1 멀티아키텍처·민감정보 경계 안정화 / tag publish·HAOS 실기 검증 대기**
 - 마지막 문서 기준일: **2026-08-12**
 - 저장소: public `Kanu-Coffee/codex-for-home-assistant`, default branch `main`
 
@@ -43,7 +43,7 @@
 - 첫 PR 재검증: [PR #35](https://github.com/Kanu-Coffee/codex-for-home-assistant/pull/35)의 [CI 31547993600](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/31547993600)은 explicit `CAP_SETFCAP`이 이미 Docker 기본 capability라 hosted Ubuntu AppArmor의 unprofiled-userns 제한을 해결하지 못함을 확인했다. 두 architecture job은 같은 managed sandbox 단계에서 FAIL했다. [Builder 31547993837](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/31547993837)은 reusable build/manifest가 PR caller의 read-only permission보다 높은 write scope를 정적으로 요구해 workflow graph validation에서 startup failure가 났다.
 - CI·Builder 보완: Capability 우회를 제거하고 AppArmor stable `4.0.3`의 official `bwrap-userns-restrict`를 immutable commit·SHA-256으로 검증해 ephemeral CI host에만 load한다. Test container는 privileged/SYS_ADMIN 없이 유지한다. Reusable build/manifest는 caller permission을 상속해 PR은 `contents:read`·`packages:read`, tag publish만 package/OIDC/attestation/artifact-metadata write를 받는다. [CI 31548711591](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/31548711591)은 App validation, lint/unit, amd64 전체 smoke/update와 native aarch64 build/smoke를 모두 PASS했다. [Builder 31548711713](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/31548711713)은 두 architecture image의 SBOM 생성과 Critical gate를 publish 없이 PASS했다.
 - 검증 경계: exact `0.7.0-dev.1` GHCR image·published multi-architecture manifest, 실제 aarch64 HAOS 설치·Ingress/SSH/Codex/API/browser, 실제 HAOS AppArmor/managed requirements와 release signing/attestation은 **NOT RUN**이다. Local Docker smoke는 AppArmor를 활성화하지 않으므로 구현·parser·정적 계약을 HAOS 실기 PASS로 확대하지 않는다.
-- 전달 경계: commit `7eeb329e409a26c8601b7adeaa1d52023bc2c0d9`을 remote `dev`에 push하고 PR #35를 열었다. Merge, `0.7.0-dev.1` tag, GHCR publish와 GitHub release는 수행하지 않았고 `main`과 public `0.6.0` image는 변경하지 않았다.
+- 전달 경계: [PR #35](https://github.com/Kanu-Coffee/codex-for-home-assistant/pull/35)를 `dev`에 merge commit `5a74e2f4dfe994d789044e17722adc9b2b1699cb`로 병합했고 [dev CI 31549518729](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/31549518729)이 전체 PASS했다. `0.7.0-dev.1` tag, GHCR publish와 GitHub release는 아직 수행하지 않았고 `main`과 public `0.6.0` image는 변경하지 않았다.
 
 ### 2026-07-16 — HAOS Codex feedback automation 0.6.0
 
