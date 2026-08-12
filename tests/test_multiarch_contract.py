@@ -120,22 +120,6 @@ def test_container_smokes_use_an_overridable_docker_platform(
         assert "--platform linux/amd64" not in script
 
 
-def test_managed_sandbox_smoke_allows_nested_root_uid_mapping(
-    repository_root: Path,
-) -> None:
-    smoke = (repository_root / "tests/managed-sandbox-smoke.sh").read_text(
-        encoding="utf-8"
-    )
-
-    # Linux 5.12+ requires CAP_SETFCAP in the parent user namespace when
-    # bubblewrap maps UID 0 into its child namespace. Some hosted Docker
-    # runners omit it from the container's effective default set.
-    assert "--cap-add SETFCAP" in smoke
-    assert "HostConfig.Privileged" in smoke
-    assert "HostConfig.CapAdd" in smoke
-    assert "'[\"CAP_SETFCAP\"]'" in smoke
-
-
 def test_native_arm_ci_runs_current_smokes_but_not_amd64_update_fixture(
     repository_root: Path,
 ) -> None:
@@ -149,3 +133,23 @@ def test_native_arm_ci_runs_current_smokes_but_not_amd64_update_fixture(
     for script_name in ARCHITECTURE_NEUTRAL_SMOKES:
         assert f"bash tests/{script_name}" in arm_job
     assert "tests/update-smoke.sh" not in arm_job
+
+
+def test_ci_loads_checksum_pinned_bubblewrap_userns_profile(
+    repository_root: Path,
+) -> None:
+    workflow = (
+        repository_root / ".github/workflows/ci.yaml"
+    ).read_text(encoding="utf-8")
+
+    profile_commit = "b4dfdf50f50ed1d64161424d036a2453645f0cfe"
+    profile_sha256 = (
+        "a964037f6cf0df1099f14226b037eaedde6237c86e715188e93eb460b30be859"
+    )
+    assert workflow.count("Load CI-only bubblewrap user namespace profile") == 2
+    assert workflow.count(profile_commit) == 2
+    assert workflow.count(profile_sha256) == 2
+    assert workflow.count("sha256sum --check --strict") == 2
+    assert workflow.count('apparmor_parser --replace "${profile_path}"') == 2
+    assert "--cap-add SYS_ADMIN" not in workflow
+    assert "--privileged" not in workflow

@@ -145,6 +145,7 @@
 - App version과 정확히 같은 stable `X.Y.Z` 또는 번호형 DEV `X.Y.Z-dev.N` Git tag에서만 image 게시. `N`은 1 이상의 정수이며 DEV tag는 repository/App 표시명의 `(DEV)`, `Codex DEV` panel, `[DEV]` description, OCI title과 MOTD를 함께 강제
 - 모든 third-party GitHub Action을 immutable commit SHA로 고정하고 weekly Dependabot PR로 갱신 검토
 - 장기 registry credential 대신 repository-scoped `GITHUB_TOKEN` 사용
+- PR non-publishing build는 `contents:read`·`packages:read`만 받고, reusable workflow가 caller scope를 높이지 않도록 한다. Package/OIDC/attestation/artifact-metadata write는 release tag publication caller에만 부여한다.
 - 기존 version tag 덮어쓰기 금지
 - amd64/aarch64 각 image에 SPDX SBOM을 생성하고 Critical vulnerability가 있으면 publication 전 build를 차단하며 High/Critical 결과를 함께 보고
 - 검증한 per-arch digest를 immutable workflow artifact로 manifest job에 전달하고, run-scoped staging tag가 그 digest와 일치하는지 확인한 뒤에만 서명·attestation과 manifest 입력으로 사용

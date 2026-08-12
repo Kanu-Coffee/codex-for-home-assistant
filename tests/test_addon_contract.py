@@ -307,6 +307,33 @@ def test_registry_release_workflow_is_tag_gated(repository_root: Path) -> None:
     )
 
 
+def test_reusable_build_workflow_cannot_elevate_caller_permissions(
+    repository_root: Path,
+) -> None:
+    workflow_root = repository_root / ".github" / "workflows"
+    with (workflow_root / "builder.yaml").open(encoding="utf-8") as stream:
+        builder = yaml.safe_load(stream)
+    with (workflow_root / "build-app.yaml").open(encoding="utf-8") as stream:
+        build_app = yaml.safe_load(stream)
+
+    assert builder["jobs"]["build-app"]["permissions"] == {
+        "contents": "read",
+        "packages": "read",
+    }
+    assert builder["jobs"]["publish-app"]["permissions"] == {
+        "artifact-metadata": "write",
+        "attestations": "write",
+        "contents": "read",
+        "id-token": "write",
+        "packages": "write",
+    }
+    assert build_app["jobs"]["prepare"]["permissions"] == {
+        "contents": "read"
+    }
+    assert "permissions" not in build_app["jobs"]["build"]
+    assert "permissions" not in build_app["jobs"]["manifest"]
+
+
 def test_registry_publish_happens_only_after_local_vulnerability_gates(
     repository_root: Path,
 ) -> None:
