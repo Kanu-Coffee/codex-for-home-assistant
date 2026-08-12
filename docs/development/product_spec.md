@@ -311,8 +311,8 @@ App 시작 로그는 Codex readiness와 loopback gateway 구성을 토큰 없이
 ### NFR-005 플랫폼
 
 - Public `0.6.0`: amd64 검증·지원
-- Unreleased M3 candidate: `amd64`, 64비트 `aarch64`; 공식 Codex/GitHub CLI artifact를 아키텍처별 checksum으로 고정
-- aarch64는 native ARM CI와 실제 Raspberry Pi HAOS/AppArmor/SSH/browser 수용 전까지 지원 완료로 표시하지 않음
+- DEV `0.7.0-dev.1` M3 candidate: `amd64`, 64비트 `aarch64`; 공식 Codex/GitHub CLI artifact를 아키텍처별 checksum으로 고정
+- aarch64 native ARM CI와 공개 image 검증은 통과했지만 실제 Raspberry Pi HAOS/AppArmor/SSH/browser 수용 전까지 HAOS platform acceptance 완료로 표시하지 않음
 - 32비트 `armv7`은 Home Assistant base와 공식 Codex artifact 계약 밖이므로 비지원
 - Alpine system Chromium 조합은 Playwright upstream의 공식 Linux 배포 대상이 아니므로 로컬 amd64 container 검증과 별개로 실제 HAOS/AppArmor 검증 전에는 지원 완료로 표시하지 않음
 

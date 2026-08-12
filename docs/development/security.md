@@ -414,7 +414,7 @@ AppArmor와 managed requirements가 고정한 `secrets.yaml`·`.storage` 밖의 
 
 ## 8. 실기 검증 경계
 
-Unreleased custom AppArmor와 `requirements.toml`은 기존 public `0.2.3`의 “기본 AppArmor에서 Chromium이 실행됨” 증거와 다른 보안 profile이다. AppArmor parser와 contract test가 통과하더라도 실제 HAOS에서 root·nested `secrets.yaml`과 `.storage` content, symlink/hardlink 및 `/proc/*/environ` 접근 거부, Codex `.storage` directory read 거부, 문서화된 validator listing allowance, 일반 YAML RW와 Codex/SSH/browser/memory/API 가용성을 다시 확인하기 전에는 실기 PASS로 올리지 않는다. 동일하게 aarch64 native CI와 64비트 Raspberry Pi HAOS 설치·runtime은 현재 **NOT RUN**이다.
+DEV custom AppArmor와 `requirements.toml`은 기존 public `0.2.3`의 “기본 AppArmor에서 Chromium이 실행됨” 증거와 다른 보안 profile이다. AppArmor parser와 contract test가 통과하더라도 실제 HAOS에서 root·nested `secrets.yaml`과 `.storage` content, symlink/hardlink 및 `/proc/*/environ` 접근 거부, Codex `.storage` directory read 거부, 문서화된 validator listing allowance, 일반 YAML RW와 Codex/SSH/browser/memory/API 가용성을 다시 확인하기 전에는 실기 PASS로 올리지 않는다. Aarch64 native CI와 공개 image 검증은 PASS했지만 64비트 Raspberry Pi HAOS 설치·runtime은 현재 **NOT RUN**이다.
 
 Supply-chain workflow도 실제 PR/tag run 전에는 SBOM, scan, Cosign 또는 attestation이 발행·PASS했다고 기록하지 않는다. Public `0.6.0` image와 과거 attestation 상태를 Unreleased workflow의 증거로 재사용하지 않는다.
 

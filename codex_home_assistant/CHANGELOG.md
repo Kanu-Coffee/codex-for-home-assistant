@@ -42,6 +42,12 @@ All notable changes to this App are documented in this file.
 - Merge [PR #35](https://github.com/Kanu-Coffee/codex-for-home-assistant/pull/35) into `dev` as `5a74e2f4dfe994d789044e17722adc9b2b1699cb`. [dev CI 31549518729](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/31549518729) then passed App validation, lint/unit, full amd64 smoke/update, and native aarch64 build/smoke on that merge commit.
 - At candidate validation time, an exact `0.7.0-dev.1` GHCR image, published multi-architecture manifest, release signing/attestation, and real 64-bit Raspberry Pi HAOS installation/AppArmor/runtime acceptance remained **NOT RUN**.
 
+### Release evidence
+
+- Publish annotated tag `0.7.0-dev.1` at commit `0982ae1af67ba3c819360ddee9ee906730269652`. [Builder 31550037239](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/31550037239) passed both architecture SBOM/Critical gates, digest signing, per-architecture provenance/SBOM attestations, generic-manifest signing/provenance, and final fail-closed tag promotion. High findings remain reported as non-blocking; the Critical gates passed.
+- Verify anonymous access to the generic, amd64, and aarch64 tags. The generic manifest digest is `sha256:703fd667d21c2b101b546652f9b781725a31b071377bf205cd130640e79d5ae5`; its only descriptors are linux/amd64 `sha256:e19882421cc86ac1042a6c512c808db35bb4b506134db482f2a5d6c9f78606b2` and linux/arm64 `sha256:dc43af845b5b60749e0599047f2cfeaa2ec0838b2783826ad872da2e990c27c5`. Both images expose the expected DEV name, version, architecture, title, and source labels.
+- Keep real 64-bit Raspberry Pi HAOS installation, AppArmor loading, and end-to-end runtime acceptance **NOT RUN**. No GitHub Release was required or created for the `#dev` repository installation path.
+
 ## [0.6.0] - 2026-07-16
 
 ### Added

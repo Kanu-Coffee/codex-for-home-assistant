@@ -28,7 +28,7 @@ Home Assistant 안에서 Codex와 대화하며 설정을 살펴보고 대시보�
 
 ## 빠른 시작
 
-1. 앱을 설치하고 시작합니다. 공개 `0.6.0`은 **amd64 전용**입니다. 개발 후보 `0.7.0-dev.1`은 HAOS의 App 이름에 **Codex for Home Assistant (DEV)**, 사이드바에 **Codex DEV**로 표시되고 `amd64`와 64비트 `aarch64`를 선언합니다. `stage: experimental`, `boot: manual`이며 ARM native CI와 실제 HAOS 검증은 아직 완료되지 않았습니다. 아래 민감 경로 보호도 이 DEV 후보 기준이며 공개 `0.6.0`에 소급 적용되지 않습니다. 정확한 `0.7.0-dev.1` GHCR tag가 발행되지 않았다면 원격 HAOS 설치는 성공할 수 없습니다.
+1. 앱을 설치하고 시작합니다. 공개 `0.6.0`은 **amd64 전용**입니다. 개발 후보 `0.7.0-dev.1`은 HAOS의 App 이름에 **Codex for Home Assistant (DEV)**, 사이드바에 **Codex DEV**로 표시되고 `amd64`와 64비트 `aarch64`를 지원합니다. `stage: experimental`, `boot: manual`이며 native ARM CI와 정확한 공개 멀티아키 GHCR tag 검증은 통과했습니다. 실제 Raspberry Pi HAOS 설치·AppArmor·런타임 수용은 아직 완료되지 않았습니다. 아래 민감 경로 보호도 이 DEV 후보 기준이며 공개 `0.6.0`에 소급 적용되지 않습니다.
 2. **OPEN WEB UI**를 누릅니다.
 3. 처음 한 번 `ha-codex-login`으로 로그인합니다.
 4. `ha-codex`를 실행합니다.

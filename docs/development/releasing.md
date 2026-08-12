@@ -38,8 +38,8 @@ DEV version에서는 추가로 `repository.yaml`과 `config.yaml`의 표시명�
 1. 기능 브랜치에서 변경 범위와 사용자 영향을 검토합니다.
 2. 로컬에서 관련 unit/contract/lint와 가능한 smoke를 실행합니다.
 3. PR에서 `ci.yaml`의 lint, pytest, AppArmor parser, App linter와 amd64 image full smoke를 확인합니다.
-4. Native `ubuntu-24.04-arm` job의 aarch64 build, image architecture/label, Codex/GitHub CLI/Node/Chromium runtime, `/usr/bin/tempio` 부재와 architecture-neutral 7개 smoke를 독립적으로 확인합니다. Workflow wiring은 구현됐지만 첫 원격 실행과 실제 aarch64 HAOS 수용은 별도 결과로 남깁니다.
-5. 앱 경로가 바뀐 PR은 `builder.yaml`이 non-publishing amd64/aarch64 image build, architecture별 SPDX SBOM 생성, Critical 차단과 High/Critical 보고를 수행합니다.
+4. Native `ubuntu-24.04-arm` job의 aarch64 build, image architecture/label, Codex/GitHub CLI/Node/Chromium runtime, `/usr/bin/tempio` 부재와 architecture-neutral 7개 smoke를 독립적으로 확인합니다. DEV `0.7.0-dev.1`은 [dev CI 31549518729](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/31549518729)에서 amd64와 native aarch64 full smoke를 PASS했으며 실제 aarch64 HAOS 수용은 별도 결과로 남깁니다.
+5. 앱 경로가 바뀐 PR은 `builder.yaml`이 non-publishing amd64/aarch64 image build, architecture별 SPDX SBOM 생성, Critical 차단과 High/Critical 보고를 수행합니다. `0.7.0-dev.1` 후보의 이 dry-run은 [Builder 31548711713](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/31548711713)에서 PASS했습니다.
 6. Dependabot의 action-pin 및 Playwright npm 갱신도 일반 PR과 같은 review/CI를 거칩니다. Third-party action은 full commit SHA, npm runtime은 lockfile exact version/integrity에 고정됐는지 확인합니다.
 7. HAOS에서만 확인 가능한 경로는 PASS로 추정하지 않고 `NOT RUN` 또는 `PARTIAL`로 남깁니다.
 
@@ -75,7 +75,9 @@ DEV version에서는 추가로 `repository.yaml`과 `config.yaml`의 표시명�
 
 검증에 실제 token, `/config`, entity, 내부 URL이나 screenshot을 반입하지 마세요. 결과는 [progress.md](progress.md)에 PASS/PARTIAL/NOT RUN 경계를 유지해 기록합니다.
 
-DEV `0.7.0-dev.1` workflow는 아직 native aarch64 CI, GHCR publish, signing/attestation과 실제 aarch64 HAOS에서 실행되지 않았습니다. Exact DEV tag 이미지의 외부 publish도 **NOT RUN**입니다. Workflow 구현이나 public `0.6.0`의 과거 amd64 증거를 `0.7.0-dev.1` multi-arch release PASS로 재사용하지 않습니다.
+DEV `0.7.0-dev.1`의 native amd64/aarch64 CI는 [dev CI 31549518729](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/31549518729)에서 PASS했습니다. [Tag Builder 31550037239](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/31550037239)는 두 architecture의 SPDX SBOM과 Critical gate, Cosign signature, provenance/SBOM attestation, generic manifest signature/provenance와 final tag promotion을 모두 PASS했습니다. High 이상 scan 경고는 두 architecture에 비차단으로 남았지만 Critical publication gate는 통과했습니다.
+
+최종 digest는 generic `sha256:703fd667d21c2b101b546652f9b781725a31b071377bf205cd130640e79d5ae5`, amd64 `sha256:e19882421cc86ac1042a6c512c808db35bb4b506134db482f2a5d6c9f78606b2`, aarch64 `sha256:dc43af845b5b60749e0599047f2cfeaa2ec0838b2783826ad872da2e990c27c5`다. 실제 Raspberry Pi/aarch64 HAOS 설치·시작·업데이트와 새 AppArmor/managed-requirements의 HAOS runtime acceptance는 **NOT RUN**입니다. Public `0.6.0`의 과거 amd64 증거는 그대로 유지하며 DEV publish 결과를 그 stable release의 사실로 소급하지 않습니다.
 
 ## 롤백 원칙
 

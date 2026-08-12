@@ -161,7 +161,7 @@
 - Codex config는 `approval_policy`, `sandbox_mode`, workspace-write network access와 file credential store를 지원한다. System-managed `requirements.toml`은 허용 sandbox와 filesystem deny를 사용자 설정보다 강하게 제한할 수 있다.
 - Supervisor 2026.04부터 legacy `build.yaml`과 자동 `BUILD_FROM` 주입을 사용하지 않으며 Dockerfile이 build source of truth다.
 - 현재 generic Home Assistant Alpine base는 `3.24`, builder composite actions는 `2026.06.0`이다.
-- Codex CLI `0.144.1`과 GitHub CLI `2.97.0`은 amd64/aarch64 공식 release artifact와 고정 SHA-256을 architecture별로 사용한다. 사용하지 않는 base TempIO executable은 final image에서 제거한다. Dev/Unreleased aarch64 후보의 native CI·HAOS 수용은 별도 미검증 상태다.
+- Codex CLI `0.144.1`과 GitHub CLI `2.97.0`은 amd64/aarch64 공식 release artifact와 고정 SHA-256을 architecture별로 사용한다. 사용하지 않는 base TempIO executable은 final image에서 제거한다. DEV `0.7.0-dev.1`의 native aarch64 CI와 image 발행은 PASS했으며 실제 HAOS 수용은 별도 미검증 상태다.
 - 직접 Remote SSH는 remote login shell의 PATH에서 `codex`를 찾고 HA App에 저장된 Codex 인증을 요구한다.
 - Supervisor Core/App 로그 endpoint는 `Accept: text/plain` 또는 `text/x-log`를 사용하며 JSON Accept만 보내면 협상이 실패할 수 있다.
 - Codex는 `CODEX_HOME`의 `AGENTS.md`를 전역 지침으로 읽고 프로젝트 root부터 현재 디렉터리까지 더 가까운 지침을 뒤에 결합한다.

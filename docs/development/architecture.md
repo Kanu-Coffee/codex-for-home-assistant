@@ -555,6 +555,6 @@ ChatGPT mobile Remote (선택)
 - 공개 이슈 repository는 `Kanu-Coffee/codex-for-home-assistant`로 고정하고 외부 write는 random 10분 1회용 preview, 현재 대화 confirmation, remote duplicate fail-closed와 exclusive claim 뒤에만 허용한다.
 - 피드백 조사에는 App의 일반 운영 권한이 존재하더라도 Home Assistant mutation, service call, reload/restart, update, recovery와 restore를 사용하지 않는다.
 - App 소스 저장소와 실제 HA `/config` 저장소는 별개일 수 있다.
-- Public `0.6.0`은 linux/amd64다. Unreleased candidate는 official Home Assistant base가 제공하는 linux/amd64와 linux/arm64만 사용하고 App arch 이름은 `amd64`, `aarch64`로 고정한다.
+- Public `0.6.0`은 linux/amd64다. 발행된 DEV `0.7.0-dev.1` 후보는 official Home Assistant base가 제공하는 linux/amd64와 linux/arm64만 사용하고 App arch 이름은 `amd64`, `aarch64`로 고정한다.
 - Dockerfile은 Codex `x86_64-unknown-linux-musl`/`aarch64-unknown-linux-musl`과 GitHub CLI `2.97.0`의 `linux_amd64`/`linux_arm64`를 아키텍처별 checksum으로 검증한다. 사용하지 않고 Critical findings가 남는 base `/usr/bin/tempio`는 final image에서 제거한다. 그 밖의 target은 build를 중단하며 armv7은 지원하지 않는다.
-- aarch64 지원 완료에는 native `ubuntu-24.04-arm` build/runtime와 실제 64비트 Raspberry Pi HAOS의 AppArmor, Codex, SSH, memory와 browser 수용이 필요하다. 현재 Unreleased 구현에서는 **NOT RUN**이다.
+- Native `ubuntu-24.04-arm` build/runtime는 [dev CI 31549518729](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/31549518729)에서 PASS했다. 실제 64비트 Raspberry Pi HAOS의 AppArmor, Codex, SSH, memory와 browser 수용은 아직 **NOT RUN**이다.

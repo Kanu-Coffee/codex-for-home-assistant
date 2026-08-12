@@ -293,11 +293,11 @@ hassio_role: manager
 
 ## ADR-038 amd64+aarch64 후보와 검증 기반 공개 지원
 
-- 상태: Implemented for DEV `0.7.0-dev.1`; native ARM/HAOS acceptance NOT RUN
+- 상태: Implemented and published for DEV `0.7.0-dev.1`; native ARM CI PASS, HAOS acceptance NOT RUN
 - 결정: App 후보의 `arch`를 `amd64`, `aarch64`로 선언한다. Dockerfile은 `BUILD_ARCH`별로 Codex CLI `0.144.1` musl과 GitHub CLI `2.97.0` official binary·SHA-256을 명시적으로 선택하고 그 밖의 architecture를 다운로드 전에 거부한다. Armv7과 32-bit ARM은 지원하지 않는다.
 - 이유: 64-bit Raspberry Pi 계열 등 aarch64 HAOS에서 동일 App 기능을 제공하려면 upstream이 배포하는 native artifact와 architecture별 재현 가능한 checksum이 필요하다. QEMU-only 결과는 native runtime과 HAOS integration을 충분히 대변하지 않는다.
-- 공개 경계: public `0.6.0`은 기존 amd64 release와 증거를 그대로 유지한다. DEV `0.7.0-dev.1`의 aarch64 선언은 지원 후보이며, native ARM runner의 image/full smoke와 실제 aarch64 HAOS의 설치·Ingress/SSH/Codex/API/browser·restart/update 수용 전에는 공개 지원 완료나 release PASS로 표시하지 않는다.
-- CI 결정: amd64 기존 회귀와 독립된 native aarch64 job을 두고 image architecture/label, Codex/GitHub CLI/Node/Chromium runtime과 architecture-neutral 7개 smoke를 실행한다. Full-smoke parity wiring은 구현됐지만 현재 기록 시점에는 원격 job을 실행하지 않았고 실제 HAOS 수용도 별도다.
+- 공개 경계: public `0.6.0`은 기존 amd64 release와 증거를 그대로 유지한다. DEV `0.7.0-dev.1`의 automated release publication과 native aarch64 CI는 PASS했지만, 실제 aarch64 HAOS의 설치·Ingress/SSH/Codex/API/browser·restart/update 수용 전에는 aarch64 HAOS platform acceptance 완료로 표시하지 않는다.
+- CI 결정: amd64 기존 회귀와 독립된 native aarch64 job을 두고 image architecture/label, Codex/GitHub CLI/Node/Chromium runtime과 architecture-neutral 7개 smoke를 실행한다. [Dev CI 31549518729](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/31549518729)에서 amd64와 native aarch64 full smoke가 PASS했으며 실제 HAOS 수용은 별도다.
 
 ## ADR-039 고정 민감 경로, managed sandbox와 private Supervisor credential
 
@@ -308,13 +308,15 @@ hassio_role: manager
 - credential 결정: init는 Supervisor credential을 mode `0600` fixed runtime file에 두고 S6 container environment에서 제거한다. Interactive/Web/SSH/Codex와 장기 scheduler는 ambient `SUPERVISOR_TOKEN`을 상속하지 않는다. 용도가 고정된 API/browser/memory helper만 실행 시 이 파일을 읽고 필요한 process lifetime으로 제한한다. Direct API helper는 공통 owner/type/link/mode validator와 고정 Core/Supervisor endpoint를 사용한다. 이 결정은 ADR-005를 대체한다.
 - 가용성 이유: 일반 `/config` 수정, manager API raw request, browser/memory와 기존 운영 helper를 유지하면서 자주 사용되는 정적 credential store의 우발적 모델 노출 범위를 줄인다. 범용 read-only proxy로 제품 기능을 축소하지 않는다.
 - 명시적 비보장: API helper는 raw response를 유지하므로 호출한 endpoint가 민감정보를 돌려주면 모델에 노출될 수 있다. Container interactive process가 root인 구조도 유지되므로 `/run/codex-ha/runtime.env`와 `/data/github-cli`를 의도적으로 직접 읽을 수 있다. File controls는 pathname 기반이라 preflight 뒤 외부 hardlink TOCTOU와 보호 값의 비보호 path 복사도 보장하지 않는다. Ambient env 제거, AppArmor 고정 경로와 managed requirements는 완전한 DLP·root 격리가 아니며 GitHub credential의 완전 격리에는 별도 broker가 필요하다.
-- 검증 경계: AppArmor parser/negative fixture, nested path 우회, 일반 `/config` RW, managed config precedence, legacy option, ambient environment와 helper credential loader를 자동·container·실제 HAOS에서 각각 검사한다. 현재 native ARM/실제 HAOS 통합 시나리오는 **NOT RUN**이다.
+- 검증 경계: AppArmor parser/negative fixture, nested path 우회, 일반 `/config` RW, managed config precedence, legacy option, ambient environment와 helper credential loader를 자동·container·실제 HAOS에서 각각 검사한다. Amd64와 native aarch64 자동 image/full smoke는 [dev CI 31549518729](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/31549518729)에서 PASS했지만, 실제 HAOS의 custom AppArmor/managed requirements와 helper 통합 수용은 **NOT RUN**이다.
 
 ## ADR-040 multi-arch 공급망 증거와 자동 갱신
 
-- 상태: Implemented for Unreleased workflow; release execution NOT RUN
+- 상태: Implemented and exercised for DEV `0.7.0-dev.1`
 - 결정: Third-party GitHub Actions는 full commit SHA로 고정한다. Builder는 architecture별 SPDX SBOM을 만들고 Critical 취약점을 publication 전 차단하며 High/Critical 결과를 보고한다. 검증 digest는 immutable Actions artifact로 job 사이에 전달하고 exact digest만으로 generic manifest를 만든다. Per-arch에는 Cosign/provenance/SBOM, generic에는 Cosign/provenance를 먼저 발행한 뒤 최종 version tag를 마지막에 digest-equality 방식으로 승격한다.
 - 자동 갱신: Dependabot은 GitHub Actions와 `/codex_home_assistant/playwright` npm 생태계를 weekly로 점검한다. Action pin과 Playwright/`ws` 갱신 PR은 일반 CI와 native architecture 회귀를 통과한 뒤 수동 검토한다.
 - 불필요 binary 결정: Grype `0.110`이 base에서 상속한 TempIO와 official `2026.07.0` 교체 후보 모두의 embedded `golang.org/x/crypto` `v0.31.0`에서 Critical 7건을 보고했다. Repository와 base init 경로에 사용처가 없으므로 version 교체 대신 final image에서 `/usr/bin/tempio`를 제거하고 image contract가 부재를 확인한다.
 - 이유: architecture별 외부 binary, container base와 build action이 늘어날수록 digest·구성요소·출처 증거와 취약점 차단을 같은 release 계약으로 관리해야 한다.
-- 검증·전달 경계: Workflow와 정책은 구현됐지만 실제 release tag에서 SBOM/scan/sign/signature/attestation 검증은 아직 실행하지 않았다. 이 작업은 외부 push, PR, merge, package publish, tag 또는 release를 수행하지 않으며 기존 `0.6.0` 결과를 소급 변경하지 않는다.
+- 실행 증거: [Tag Builder 31550037239](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/31550037239)는 두 architecture의 SPDX SBOM, Critical gate, Cosign signature, provenance/SBOM attestation, verified digest 기반 generic manifest, generic signature/provenance와 final-last promotion을 PASS했다. High 이상 scan 경고는 비차단으로 남았고 Critical publication gate는 통과했다.
+- digest: Generic `sha256:703fd667d21c2b101b546652f9b781725a31b071377bf205cd130640e79d5ae5`, amd64 `sha256:e19882421cc86ac1042a6c512c808db35bb4b506134db482f2a5d6c9f78606b2`, aarch64 `sha256:dc43af845b5b60749e0599047f2cfeaa2ec0838b2783826ad872da2e990c27c5`다.
+- 검증·전달 경계: 이 release evidence는 실제 Raspberry Pi/aarch64 HAOS 설치나 custom AppArmor/managed requirements의 HAOS runtime acceptance를 대체하지 않는다. Public `0.6.0`의 과거 amd64 결과는 그대로 유지하며 DEV `0.7.0-dev.1`의 multi-arch 증거를 소급 적용하지 않는다.

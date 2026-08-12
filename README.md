@@ -23,12 +23,14 @@
 
 <p align="center">
   <a href="https://my.home-assistant.io/redirect/supervisor_add_addon_repository/?repository_url=https%3A%2F%2Fgithub.com%2FKanu-Coffee%2Fcodex-for-home-assistant"><img alt="Home Assistant에 앱 저장소 추가" src="https://my.home-assistant.io/badges/supervisor_add_addon_repository.svg"></a>
+  <br>
+  <a href="https://my.home-assistant.io/redirect/supervisor_add_addon_repository/?repository_url=https%3A%2F%2Fgithub.com%2FKanu-Coffee%2Fcodex-for-home-assistant%23dev"><strong>DEV #dev 저장소를 Home Assistant에 추가</strong></a>
 </p>
 
 > [!WARNING]
 > 이 앱은 보호된 `secrets.yaml`·`.storage`를 제외한 `/config`를 읽고 쓸 수 있고 Home Assistant Core 및 Supervisor `manager` API를 사용할 수 있는 강한 관리자 도구입니다. API 응답·로그·브라우저 화면에는 여전히 민감정보가 포함될 수 있습니다. 중요한 변경 전에는 백업하고, 계획과 diff를 확인한 뒤 적용하세요. SSH 포트를 인터넷에 직접 공개하지 마세요.
 
-비공식 커뮤니티 프로젝트이며 OpenAI 또는 Home Assistant/Nabu Casa와 제휴하거나 보증받은 제품이 아닙니다. 공개 `0.6.0`은 **amd64 전용 experimental 릴리스**입니다. 현재 개발 후보 `0.7.0-dev.1`은 HAOS에서 **Codex for Home Assistant (DEV)**, 사이드바에서 **Codex DEV**로 표시되며 `amd64`와 64비트 `aarch64`를 선언합니다. Native ARM CI와 Raspberry Pi HAOS 실기는 아직 완료되지 않았습니다. 아래의 custom AppArmor·managed requirements 보호도 이 DEV 후보 기준이며 공개 `0.6.0`에 소급 적용되지 않습니다.
+비공식 커뮤니티 프로젝트이며 OpenAI 또는 Home Assistant/Nabu Casa와 제휴하거나 보증받은 제품이 아닙니다. 공개 `0.6.0`은 **amd64 전용 experimental 릴리스**입니다. 현재 개발 후보 `0.7.0-dev.1`은 HAOS에서 **Codex for Home Assistant (DEV)**, 사이드바에서 **Codex DEV**로 표시되며 `amd64`와 64비트 `aarch64`를 지원합니다. Native ARM CI와 멀티아키 GHCR 발행은 통과했지만 실제 Raspberry Pi HAOS 수용은 아직 완료되지 않았습니다. 아래의 custom AppArmor·managed requirements 보호도 이 DEV 후보 기준이며 공개 `0.6.0`에 소급 적용되지 않습니다.
 
 ## 실제 Web 터미널 미리보기
 
@@ -91,7 +93,7 @@ flowchart LR
 
 ### 설치와 첫 실행
 
-1. 위 **Home Assistant에 앱 저장소 추가** 버튼을 누르거나 App store의 **Repositories**에 다음 URL을 추가합니다.
+1. 위 저장소 추가 버튼을 누르거나 App store의 **Repositories**에 다음 URL을 추가합니다.
 
    ```text
    https://github.com/Kanu-Coffee/codex-for-home-assistant
@@ -127,7 +129,7 @@ flowchart LR
 전체 설치·로그인·SSH·업데이트 절차는 [한국어 사용 설명서](codex_home_assistant/DOCS.md)를 확인하세요.
 
 > [!NOTE]
-> 공개 `0.6.0` 이미지는 amd64만 제공합니다. DEV `0.7.0-dev.1`은 정확히 같은 GHCR tag가 발행되어야 HAOS에서 설치할 수 있으며, 현재 외부 image 발행과 aarch64 실기 검증은 **NOT RUN**입니다.
+> 공개 `0.6.0` 이미지는 amd64만 제공합니다. DEV `0.7.0-dev.1`의 공개 멀티아키 GHCR tag는 발행·익명 조회 검증을 마쳤습니다. Native aarch64 CI도 통과했지만 실제 Raspberry Pi HAOS 설치·AppArmor·런타임 수용은 아직 **NOT RUN**입니다.
 
 ## 이렇게 요청해 보세요
 
@@ -223,7 +225,7 @@ Custom AppArmor와 Codex 관리자 요구사항이 루트·중첩 `secrets.yaml`
 
 ## 현재 제한사항
 
-- 공개 `0.6.0`은 amd64 전용입니다. **Codex for Home Assistant (DEV)** `0.7.0-dev.1`은 64비트 aarch64를 포함하지만 native ARM CI와 실제 Raspberry Pi HAOS 수용은 아직 **NOT RUN**입니다. 32비트 armv7은 지원하지 않습니다.
+- 공개 `0.6.0`은 amd64 전용입니다. **Codex for Home Assistant (DEV)** `0.7.0-dev.1`은 native ARM CI와 공개 멀티아키 이미지 검증을 통과했지만 실제 Raspberry Pi HAOS 수용은 아직 **NOT RUN**입니다. 32비트 armv7은 지원하지 않습니다.
 - Home Assistant 앱(이전 명칭: Add-on)이므로 HACS로 설치할 수 없습니다.
 - 기본 `boot: manual`이며 아직 `stage: experimental`입니다.
 - Web UI는 터미널입니다. 전용 모바일 채팅 인터페이스가 아닙니다.

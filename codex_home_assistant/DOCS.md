@@ -20,7 +20,7 @@
 - 앱 이미지와 Codex 인증에 필요한 인터넷 연결
 - Codex를 사용할 수 있는 OpenAI/ChatGPT 계정
 
-현재 DEV `0.7.0-dev.1`은 `stage: experimental`, `boot: manual`입니다. aarch64를 선언하지만 native ARM CI와 실제 Raspberry Pi HAOS 수용은 아직 **NOT RUN**입니다. 공개 `0.6.0`은 amd64 전용이며 HACS 설치는 지원하지 않습니다.
+현재 DEV `0.7.0-dev.1`은 `stage: experimental`, `boot: manual`입니다. Native ARM CI와 공개 amd64+aarch64 image 발행·익명 조회 검증은 통과했지만 실제 Raspberry Pi HAOS 수용은 아직 **NOT RUN**입니다. 공개 `0.6.0`은 amd64 전용이며 HACS 설치는 지원하지 않습니다.
 
 ### 이 앱이 제공하는 것
 
@@ -39,6 +39,8 @@ Web UI는 별도 채팅형 화면이 아니라 `ttyd`와 공유 `tmux` 세션으
 
 [![Home Assistant에 앱 저장소 추가](https://my.home-assistant.io/badges/supervisor_add_addon_repository.svg)](https://my.home-assistant.io/redirect/supervisor_add_addon_repository/?repository_url=https%3A%2F%2Fgithub.com%2FKanu-Coffee%2Fcodex-for-home-assistant)
 
+[DEV `#dev` 저장소를 Home Assistant에 바로 추가](https://my.home-assistant.io/redirect/supervisor_add_addon_repository/?repository_url=https%3A%2F%2Fgithub.com%2FKanu-Coffee%2Fcodex-for-home-assistant%23dev)
+
 버튼을 사용할 수 없다면 다음 URL을 복사합니다.
 
 ```text
@@ -54,10 +56,10 @@ https://github.com/Kanu-Coffee/codex-for-home-assistant#dev
 1. Home Assistant에서 **설정 → Apps → App store**를 엽니다.
 2. 우측 상단 메뉴의 **Repositories**에 공개판은 기본 URL, DEV는 `#dev` URL을 추가합니다.
 3. App store를 새로고침합니다. 공개판은 **Codex for Home Assistant**, DEV `0.7.0-dev.1`은 **Codex for Home Assistant (DEV)**로 표시되어야 합니다.
-4. **Install**을 누릅니다. 공개 `0.6.0`은 GHCR의 미리 빌드된 amd64 이미지를 사용하므로 HA 장치에서 소스를 빌드하지 않습니다. DEV 설치도 `config.yaml`과 일치하는 `0.7.0-dev.1` GHCR tag가 먼저 발행되어야 하며, 현재 외부 publish는 **NOT RUN**입니다.
+4. **Install**을 누릅니다. 공개 `0.6.0`은 GHCR의 미리 빌드된 amd64 이미지를 사용하므로 HA 장치에서 소스를 빌드하지 않습니다. DEV도 `config.yaml`과 일치하는 공개 `0.7.0-dev.1` amd64+aarch64 GHCR tag를 사용합니다.
 5. 처음에는 기본 설정을 유지한 채 앱을 시작합니다.
 
-공개 `0.6.0` 앱이 목록에 보이지 않으면 장치 아키텍처가 amd64인지 확인하세요. DEV 이름이 보여도 정확한 GHCR tag가 없으면 원격 설치할 수 없고, aarch64 선언이 공개·검증 완료를 의미하지도 않습니다. 설치 실패 시 App/Supervisor 로그를 보존하되 token, 내부 URL과 개인 정보를 공유하지 마세요.
+공개 `0.6.0` 앱이 목록에 보이지 않으면 장치 아키텍처가 amd64인지 확인하세요. DEV image는 공개·익명 조회 가능하지만 실제 Raspberry Pi HAOS 수용은 아직 완료되지 않았습니다. 설치 실패 시 App/Supervisor 로그를 보존하되 token, 내부 URL과 개인 정보를 공유하지 마세요.
 
 ## 첫 실행
 
@@ -538,7 +540,7 @@ Core가 준비될 시간을 두고 다시 확인합니다. DB/WAL을 직접 삭�
 
 ## 제한사항과 지원
 
-- 공개 `0.6.0`은 amd64 전용입니다. **Codex for Home Assistant (DEV)** `0.7.0-dev.1`은 64비트 aarch64를 선언하지만 native ARM CI와 실제 Raspberry Pi HAOS 수용은 아직 **NOT RUN**이며 armv7은 지원하지 않습니다.
+- 공개 `0.6.0`은 amd64 전용입니다. **Codex for Home Assistant (DEV)** `0.7.0-dev.1`은 native ARM CI와 공개 멀티아키 image 검증을 통과했지만 실제 Raspberry Pi HAOS 수용은 아직 **NOT RUN**이며 armv7은 지원하지 않습니다.
 - `secrets.yaml`과 `.storage` content 접근은 차단하고 managed requirements는 Codex directory read도 거부하지만, AppArmor validator allowance 때문에 root shell의 `.storage` entry listing은 남습니다. 원시 API·로그·브라우저 결과의 민감값은 정화하지 않으며 root interactive process가 private runtime credential 파일을 직접 읽을 수 있는 잔여 위험도 있습니다.
 - Bubble Card와 다른 custom card를 포함하거나 자동 설치하지 않습니다.
 - 별도 채팅형 Web UI가 아닌 터미널 UI입니다.

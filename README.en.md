@@ -23,12 +23,14 @@
 
 <p align="center">
   <a href="https://my.home-assistant.io/redirect/supervisor_add_addon_repository/?repository_url=https%3A%2F%2Fgithub.com%2FKanu-Coffee%2Fcodex-for-home-assistant"><img alt="Add the app repository to Home Assistant" src="https://my.home-assistant.io/badges/supervisor_add_addon_repository.svg"></a>
+  <br>
+  <a href="https://my.home-assistant.io/redirect/supervisor_add_addon_repository/?repository_url=https%3A%2F%2Fgithub.com%2FKanu-Coffee%2Fcodex-for-home-assistant%23dev"><strong>Add the DEV #dev repository to Home Assistant</strong></a>
 </p>
 
 > [!WARNING]
 > This app can read and write `/config` except for protected `secrets.yaml` and `.storage` paths, and it can use the Home Assistant Core and Supervisor `manager` APIs. API responses, logs, and browser views can still contain sensitive information. Back up your system and review the plan and diff before important changes. Never expose its SSH port directly to the internet.
 
-This is an unofficial community project. It is not affiliated with or endorsed by OpenAI, Home Assistant, or Nabu Casa. Public `0.6.0` is an **experimental amd64-only release**. The current development candidate, `0.7.0-dev.1`, appears in HAOS as **Codex for Home Assistant (DEV)** and in the sidebar as **Codex DEV**; it declares `amd64` and 64-bit `aarch64`. Native ARM CI and Raspberry Pi HAOS acceptance are not complete. The custom AppArmor and managed-requirements protections described below also belong to this DEV candidate and are not retroactive changes to public `0.6.0`.
+This is an unofficial community project. It is not affiliated with or endorsed by OpenAI, Home Assistant, or Nabu Casa. Public `0.6.0` is an **experimental amd64-only release**. The current development candidate, `0.7.0-dev.1`, appears in HAOS as **Codex for Home Assistant (DEV)** and in the sidebar as **Codex DEV**; it supports `amd64` and 64-bit `aarch64`. Native ARM CI and multi-architecture GHCR publication passed, but real Raspberry Pi HAOS acceptance is not complete. The custom AppArmor and managed-requirements protections described below also belong to this DEV candidate and are not retroactive changes to public `0.6.0`.
 
 ## Real Web terminal preview
 
@@ -91,7 +93,7 @@ flowchart LR
 
 ### Install and start
 
-1. Use the **Add the app repository to Home Assistant** button above, or add this URL under **Repositories** in the App store:
+1. Use one of the repository buttons above, or add this URL under **Repositories** in the App store:
 
    ```text
    https://github.com/Kanu-Coffee/codex-for-home-assistant
@@ -128,7 +130,7 @@ flowchart LR
 See the [English user guide](codex_home_assistant/DOCS.en.md) for complete installation, sign-in, SSH, update, and recovery instructions.
 
 > [!NOTE]
-> The public `0.6.0` image is amd64-only. HAOS can install DEV `0.7.0-dev.1` only after the exact matching GHCR tag is published; external image publication and real aarch64 acceptance are currently **NOT RUN**.
+> The public `0.6.0` image is amd64-only. The public multi-architecture GHCR tag for DEV `0.7.0-dev.1` has been published and verified anonymously. Native aarch64 CI also passed, while real Raspberry Pi HAOS installation, AppArmor, and runtime acceptance remain **NOT RUN**.
 
 ## Prompts to try
 
@@ -225,7 +227,7 @@ App initialization and every Codex launch inspect protected paths for symlinks, 
 
 ## Current limitations
 
-- Public `0.6.0` is amd64-only. **Codex for Home Assistant (DEV)** `0.7.0-dev.1` includes 64-bit aarch64, but native ARM CI and real Raspberry Pi HAOS acceptance are still **NOT RUN**. 32-bit armv7 is not supported.
+- Public `0.6.0` is amd64-only. **Codex for Home Assistant (DEV)** `0.7.0-dev.1` passed native ARM CI and public multi-architecture image verification, while real Raspberry Pi HAOS acceptance remains **NOT RUN**. 32-bit armv7 is not supported.
 - This is a Home Assistant App (formerly called an Add-on), so it cannot be installed through HACS.
 - The default is `boot: manual`, and the release stage remains `experimental`.
 - The Web UI is a terminal, not a dedicated mobile chat interface.

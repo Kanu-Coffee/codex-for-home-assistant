@@ -20,7 +20,7 @@ The current public installation baseline is app version `0.6.0`. The `amd64 + aa
 - Internet access for the app image and Codex authentication
 - An OpenAI/ChatGPT account with access to Codex
 
-DEV `0.7.0-dev.1` is currently `stage: experimental` and `boot: manual`. It declares aarch64, but native ARM CI and real Raspberry Pi HAOS acceptance are still **NOT RUN**. Public `0.6.0` is amd64-only, and HACS installation is not supported.
+DEV `0.7.0-dev.1` is currently `stage: experimental` and `boot: manual`. Native ARM CI and public amd64+aarch64 image publication and anonymous inspection passed, while real Raspberry Pi HAOS acceptance remains **NOT RUN**. Public `0.6.0` is amd64-only, and HACS installation is not supported.
 
 ### What the app provides
 
@@ -39,6 +39,8 @@ The Web UI is a terminal built with `ttyd` and a shared `tmux` session, not a de
 
 [![Add the app repository to Home Assistant](https://my.home-assistant.io/badges/supervisor_add_addon_repository.svg)](https://my.home-assistant.io/redirect/supervisor_add_addon_repository/?repository_url=https%3A%2F%2Fgithub.com%2FKanu-Coffee%2Fcodex-for-home-assistant)
 
+[Add the DEV `#dev` repository directly to Home Assistant](https://my.home-assistant.io/redirect/supervisor_add_addon_repository/?repository_url=https%3A%2F%2Fgithub.com%2FKanu-Coffee%2Fcodex-for-home-assistant%23dev)
+
 If the button does not work, copy this URL:
 
 ```text
@@ -54,10 +56,10 @@ https://github.com/Kanu-Coffee/codex-for-home-assistant#dev
 1. In Home Assistant, open **Settings → Apps → App store**.
 2. Open the menu in the upper-right corner and add the main URL for the public app or the `#dev` URL for DEV under **Repositories**.
 3. Refresh the App store. The public app appears as **Codex for Home Assistant**; DEV `0.7.0-dev.1` must appear as **Codex for Home Assistant (DEV)**.
-4. Select **Install**. Public `0.6.0` uses a prebuilt amd64 image from GHCR, so your HA device does not compile the source. DEV installation likewise requires an exact matching `0.7.0-dev.1` GHCR tag, and external publication is currently **NOT RUN**.
+4. Select **Install**. Public `0.6.0` uses a prebuilt amd64 image from GHCR, so your HA device does not compile the source. DEV uses the public `0.7.0-dev.1` amd64+aarch64 GHCR tag matching `config.yaml`.
 5. Start the app with its default settings for the first run.
 
-If public `0.6.0` does not appear, confirm that the device is amd64. Seeing the DEV name does not make it installable without the exact GHCR tag, and its aarch64 declaration does not mean publication or acceptance is complete. If installation fails, keep the App and Supervisor logs, but do not share tokens, internal URLs, or personal information.
+If public `0.6.0` does not appear, confirm that the device is amd64. The DEV image is public and anonymously readable, but real Raspberry Pi HAOS acceptance is not complete. If installation fails, keep the App and Supervisor logs, but do not share tokens, internal URLs, or personal information.
 
 ## First run
 
@@ -541,7 +543,7 @@ Before uninstalling, decide how to handle any Codex configuration and authentica
 
 ## Limitations and support
 
-- Public `0.6.0` is amd64-only. **Codex for Home Assistant (DEV)** `0.7.0-dev.1` declares 64-bit aarch64, but native ARM CI and real Raspberry Pi HAOS acceptance are still **NOT RUN**; armv7 is unsupported.
+- Public `0.6.0` is amd64-only. **Codex for Home Assistant (DEV)** `0.7.0-dev.1` passed native ARM CI and public multi-architecture image verification, while real Raspberry Pi HAOS acceptance remains **NOT RUN**; armv7 is unsupported.
 - `secrets.yaml` and `.storage` content access is blocked and managed requirements also deny Codex directory reads, but the AppArmor validator allowance leaves `.storage` entry listing available to a root shell. Sensitive raw API, log, and browser output is not sanitized, and a root interactive process also retains residual access to the private runtime credential file.
 - It does not bundle or automatically install Bubble Card or other custom cards.
 - The Web UI is a terminal, not a dedicated chat interface.
