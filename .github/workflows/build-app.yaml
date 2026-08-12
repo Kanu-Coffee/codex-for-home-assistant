@@ -17,6 +17,8 @@ jobs:
     if: github.repository == 'Kanu-Coffee/codex-for-home-assistant'
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    permissions:
+      contents: read
     outputs:
       architectures: ${{ steps.info.outputs.architectures }}
       build_matrix: ${{ steps.matrix.outputs.matrix }}
@@ -82,12 +84,6 @@ jobs:
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.prepare.outputs.build_matrix) }}
-    permissions:
-      artifact-metadata: write
-      attestations: write
-      contents: read
-      id-token: write
-      packages: write
     steps:
       - name: Check out repository
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -240,12 +236,6 @@ jobs:
     if: inputs.publish
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    permissions:
-      artifact-metadata: write
-      attestations: write
-      contents: read
-      id-token: write
-      packages: write
     steps:
       - name: Download verified architecture digests
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0

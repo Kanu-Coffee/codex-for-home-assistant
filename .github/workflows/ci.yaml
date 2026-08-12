@@ -132,6 +132,23 @@ jobs:
       - name: Run user-file update policy smoke tests
         run: bash tests/user-files-update-smoke.sh codex-for-home-assistant:test
 
+      - name: Load CI-only bubblewrap user namespace profile
+        env:
+          BWRAP_PROFILE_SHA256: a964037f6cf0df1099f14226b037eaedde6237c86e715188e93eb460b30be859
+          BWRAP_PROFILE_URL: "https://gitlab.com/apparmor/apparmor/-/raw/\
+            b4dfdf50f50ed1d64161424d036a2453645f0cfe/\
+            profiles/apparmor/profiles/extras/bwrap-userns-restrict"
+        run: |
+          profile_path=$(mktemp)
+          trap 'rm -f -- "${profile_path}"' EXIT
+          curl --disable --fail --location --proto '=https' --tlsv1.2 \
+            --output "${profile_path}" "${BWRAP_PROFILE_URL}"
+          printf '%s  %s\n' "${BWRAP_PROFILE_SHA256}" "${profile_path}" \
+            | sha256sum --check --strict -
+          sudo apparmor_parser --replace "${profile_path}"
+          sudo grep --fixed-strings --quiet \
+            'bwrap (enforce)' /sys/kernel/security/apparmor/profiles
+
       - name: Run managed Codex sandbox smoke tests
         run: bash tests/managed-sandbox-smoke.sh codex-for-home-assistant:test
 
@@ -207,6 +224,23 @@ jobs:
 
       - name: Run user-file update policy smoke tests
         run: bash tests/user-files-update-smoke.sh codex-for-home-assistant:aarch64-test
+
+      - name: Load CI-only bubblewrap user namespace profile
+        env:
+          BWRAP_PROFILE_SHA256: a964037f6cf0df1099f14226b037eaedde6237c86e715188e93eb460b30be859
+          BWRAP_PROFILE_URL: "https://gitlab.com/apparmor/apparmor/-/raw/\
+            b4dfdf50f50ed1d64161424d036a2453645f0cfe/\
+            profiles/apparmor/profiles/extras/bwrap-userns-restrict"
+        run: |
+          profile_path=$(mktemp)
+          trap 'rm -f -- "${profile_path}"' EXIT
+          curl --disable --fail --location --proto '=https' --tlsv1.2 \
+            --output "${profile_path}" "${BWRAP_PROFILE_URL}"
+          printf '%s  %s\n' "${BWRAP_PROFILE_SHA256}" "${profile_path}" \
+            | sha256sum --check --strict -
+          sudo apparmor_parser --replace "${profile_path}"
+          sudo grep --fixed-strings --quiet \
+            'bwrap (enforce)' /sys/kernel/security/apparmor/profiles
 
       - name: Run managed Codex sandbox smoke tests
         run: bash tests/managed-sandbox-smoke.sh codex-for-home-assistant:aarch64-test

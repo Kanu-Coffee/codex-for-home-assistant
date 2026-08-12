@@ -2,7 +2,7 @@
 
 All notable changes to this App are documented in this file.
 
-## [0.7.0-dev.1] - Unreleased
+## [0.7.0-dev.1] - 2026-08-12
 
 ### Added
 
@@ -34,9 +34,12 @@ All notable changes to this App are documented in this file.
 
 ### Testing
 
-- Pass all 110 Python unit/contract tests, YAML and 50-file Markdown lint, ShellCheck, Hadolint, actionlint, AppArmor parsing, the exact Home Assistant App linter, and `git diff --check`. Build the final local amd64 image and pass feedback, Docker/ttyd/SSH/Core API, browser approval, memory, managed browser auth, user-file, managed Codex sandbox, and public `0.5.0` update smoke tests.
+- Pass all 112 Python unit/contract tests, YAML and 50-file Markdown lint, ShellCheck, Hadolint, actionlint, AppArmor parsing, the exact Home Assistant App linter, and `git diff --check`. Build the final local amd64 image and pass feedback, Docker/ttyd/SSH/Core API, browser approval, memory, managed browser auth, user-file, managed Codex sandbox, and public `0.5.0` update smoke tests.
 - Scan the final local amd64 image with Grype `0.110.0`: Critical 0, High 72, Medium 31, Low 2, and Unknown 1. This is local evidence only; the native aarch64 and release workflow scans remain unexecuted.
-- Native aarch64 CI, an exact `0.7.0-dev.1` GHCR image and published multi-architecture manifest, and real 64-bit Raspberry Pi HAOS installation/AppArmor/runtime acceptance are **NOT RUN** for this DEV candidate. No commit, push, pull request, merge, tag, image publication, attestation publication, or release has been performed for these changes.
+- Push DEV candidate commit `7eeb329e409a26c8601b7adeaa1d52023bc2c0d9` to remote `dev`. [CI 31547358759](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/31547358759) passed the App config and lint/unit jobs; both architecture jobs built their images and passed every smoke step scheduled before the managed Codex sandbox check, then failed that check with `bwrap: setting up uid map: Permission denied`. The amd64 public `0.5.0` update step was skipped, so the overall CI result is **FAIL**.
+- Open [PR #35](https://github.com/Kanu-Coffee/codex-for-home-assistant/pull/35) for release validation. Its first complete [CI 31547993600](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/31547993600) proved that explicitly adding the already-default `CAP_SETFCAP` did not resolve the hosted Ubuntu AppArmor user-namespace restriction: both architecture jobs failed the same managed sandbox step. [Builder 31547993837](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/31547993837) separately failed workflow graph validation because the reusable workflow tried to elevate the PR caller's read-only token.
+- Replace the ineffective capability experiment with AppArmor stable `4.0.3`'s official bubblewrap user-namespace profile, fetched only on CI hosts from an immutable commit and verified by SHA-256 before loading. Keep the test container unprivileged. Make the reusable build inherit the caller's token: PR dry-runs remain read-only, while only tag publication receives package, OIDC, attestation, and artifact-metadata write scopes. [CI 31548711591](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/31548711591) passed App validation, lint/unit, the full amd64 smoke/update path, and the native aarch64 build/smoke path. [Builder 31548711713](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/31548711713) generated and scanned both architecture images without publishing; both Critical gates passed.
+- An exact `0.7.0-dev.1` GHCR image, published multi-architecture manifest, release signing/attestation, and real 64-bit Raspberry Pi HAOS installation/AppArmor/runtime acceptance remain **NOT RUN**. PR #35 is open; no merge, `0.7.0-dev.1` tag, image publication, or release has been performed.
 
 ## [0.6.0] - 2026-07-16
 
