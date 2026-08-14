@@ -213,7 +213,7 @@ jobs:
 
       - name: Attest architecture build provenance
         if: inputs.publish
-        uses: actions/attest@59d89421af93a897026c735860bf21b6eb4f7b26 # v4.1.0
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:
           subject-name: ${{ matrix.image }}
           subject-digest: ${{ steps.publish-image.outputs.digest }}
@@ -221,7 +221,7 @@ jobs:
 
       - name: Attest architecture SBOM
         if: inputs.publish
-        uses: actions/attest@59d89421af93a897026c735860bf21b6eb4f7b26 # v4.1.0
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:
           subject-name: ${{ matrix.image }}
           subject-digest: ${{ steps.publish-image.outputs.digest }}
@@ -387,7 +387,7 @@ jobs:
         run: cosign sign --yes "${IMAGE}@${DIGEST}"
 
       - name: Attest multi-architecture manifest provenance
-        uses: actions/attest@59d89421af93a897026c735860bf21b6eb4f7b26 # v4.1.0
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:
           subject-name: ${{ needs.prepare.outputs.registry_prefix }}/${{ needs.prepare.outputs.image_name }}
           subject-digest: ${{ steps.manifest-digest.outputs.digest }}
