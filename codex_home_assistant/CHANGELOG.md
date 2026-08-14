@@ -11,7 +11,7 @@ All notable changes to this App are documented in this file.
 
 ### Changed
 
-- Publish the app as **Codex for Home Assistant**, use **Codex** for the sidebar, set `stage: stable`, and use version `0.7.0` throughout the app, image, and package metadata. The persistent slug and GHCR image repository are unchanged.
+- Publish the app as **Codex for Home Assistant**, use **Codex** for the sidebar, omit the stable manifest's `stage` key so Supervisor applies its default stable channel, and use version `0.7.0` throughout the app, image, and package metadata. The persistent slug and GHCR image repository are unchanged.
 - Enforce network-enabled `workspace-write` for Codex. A stored legacy `danger-full-access` option is accepted only for compatibility and is converted to `workspace-write` at initialization and launch.
 - Remove ambient `SUPERVISOR_TOKEN` inheritance from Web, SSH, Codex, Ingress, and the long-running memory scheduler. Purpose-specific helpers retain their fixed Core/Supervisor interfaces and load the private runtime credential only when launched.
 - Preserve the exact `automation/config: not_found` bounded-warning handling and privacy-minimized Ingress logging introduced in `0.7.0-dev.2`.

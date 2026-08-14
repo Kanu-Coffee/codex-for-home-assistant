@@ -74,7 +74,7 @@ jobs:
             expected_name="Codex for Home Assistant"
             expected_repository_name="name: Codex for Home Assistant"
             expected_panel_title="panel_title: Codex"
-            expected_stage="stable"
+            expected_stage=""
             expected_oci_title='  org.opencontainers.image.title="Home Assistant App: Codex for Home Assistant"'
             expected_oci_description='  org.opencontainers.image.description="Codex CLI with verified feedback '
             expected_oci_description+='reports, Playwright browser, Ingress terminal, and public-key SSH '
@@ -101,10 +101,15 @@ jobs:
             echo "Panel title does not match the release channel" >&2
             exit 1
           fi
-          if [[ "$(grep --count '^stage:' codex_home_assistant/config.yaml)" -ne 1 ]] \
-            || ! grep --fixed-strings --line-regexp --quiet \
-              "stage: ${expected_stage}" codex_home_assistant/config.yaml; then
-            echo "App stage does not match the release channel" >&2
+          if [[ -n "${expected_stage}" ]]; then
+            if [[ "$(grep --count '^stage:' codex_home_assistant/config.yaml)" -ne 1 ]] \
+              || ! grep --fixed-strings --line-regexp --quiet \
+                "stage: ${expected_stage}" codex_home_assistant/config.yaml; then
+              echo "App stage does not match the release channel" >&2
+              exit 1
+            fi
+          elif grep --quiet '^stage:' codex_home_assistant/config.yaml; then
+            echo "Stable App must use the implicit stable stage" >&2
             exit 1
           fi
           if [[ "$(grep --count 'org.opencontainers.image.title=' codex_home_assistant/Dockerfile)" -ne 1 ]] \

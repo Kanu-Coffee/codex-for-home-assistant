@@ -102,7 +102,6 @@ version: "0.7.0"
 slug: codex_home_assistant
 description: "Codex CLI with verified feedback, browser, terminal, and SSH for Home Assistant"
 url: https://github.com/<owner>/codex-for-home-assistant
-stage: stable
 startup: application
 boot: manual
 init: false
@@ -564,4 +563,4 @@ Playwright MCP child는 Supervisor token을 받지 않는다. 검증된 dedicate
 
 `0.7.0`의 payload lineage는 [dev CI 31549518729](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/31549518729)에서 native amd64/aarch64 full smoke를 PASS했다. [Tag Builder 31550037239](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/31550037239)는 후보 payload의 architecture별 SPDX SBOM, Critical 차단·High/Critical 보고, per-architecture Cosign/provenance/SBOM attestation, generic Cosign/provenance와 final tag promotion을 PASS했다. 후속 실제 amd64 HAOS 보고서는 `0.7.0-dev.2`의 App/Ingress/browser/memory와 AppArmor profile 적용을 확인했다. 실제 Raspberry Pi/aarch64 HAOS와 syscall-level 전체 음성 행렬은 **NOT RUN**이며, 2026-08-14 릴리스 승인에서 이 공백을 명시적으로 수용했지만 실행 결과로 확대하지 않는다.
 
-Playwright renderer는 `0.2.0`, 최소권한 browser 경로는 `0.2.1`, 관리형 인증은 `0.2.2`, 기본 ON 자동 인증·Codex `8099` 라우팅과 선택형 user-file refresh는 `0.2.3`, 검증형 memory 사용자 폐루프는 `0.5.0`, 검증형 App 피드백 자동화는 `0.6.0`, 멀티아키텍처·고정 민감 경로 차단 안정판은 `0.7.0`이다. Stable `X.Y.Z` 또는 `N >= 1` 번호형 DEV `X.Y.Z-dev.N` Git tag와 App version이 정확히 같을 때만 게시하며, DEV version은 repository/App 표시명, panel, description, OCI title과 MOTD에 DEV 표식을 함께 가져야 한다. Stable version에는 이 표식을 남기지 않는다. Generic, amd64와 aarch64 package의 기존 tag는 덮어쓰지 않는다. Home Assistant `stage`는 `stable`이다. `0.6.0` live GitHub issue creation은 명시적 외부-write 승인 전까지 `NOT RUN`으로 유지한다.
+Playwright renderer는 `0.2.0`, 최소권한 browser 경로는 `0.2.1`, 관리형 인증은 `0.2.2`, 기본 ON 자동 인증·Codex `8099` 라우팅과 선택형 user-file refresh는 `0.2.3`, 검증형 memory 사용자 폐루프는 `0.5.0`, 검증형 App 피드백 자동화는 `0.6.0`, 멀티아키텍처·고정 민감 경로 차단 안정판은 `0.7.0`이다. Stable `X.Y.Z` 또는 `N >= 1` 번호형 DEV `X.Y.Z-dev.N` Git tag와 App version이 정확히 같을 때만 게시하며, DEV version은 repository/App 표시명, panel, description, OCI title과 MOTD에 DEV 표식을 함께 가져야 한다. Stable version에는 이 표식을 남기지 않는다. Generic, amd64와 aarch64 package의 기존 tag는 덮어쓰지 않는다. Stable manifest는 `stage` 키를 생략해 Supervisor 기본 stable 채널을 사용하며 DEV manifest만 `stage: experimental`을 명시한다. `0.6.0` live GitHub issue creation은 명시적 외부-write 승인 전까지 `NOT RUN`으로 유지한다.

@@ -332,7 +332,7 @@ hassio_role: manager
 ## ADR-042 stable 0.7.0 승격과 aarch64 수용 예외
 
 - 상태: Accepted for stable `0.7.0` on 2026-08-14
-- 결정: App/repository 표면을 **Codex for Home Assistant**, panel **Codex**, version `0.7.0`, `stage: stable`로 승격하고 main base repository URL을 안정판 설치 경로로 사용한다. Stable metadata와 사용자 문서에는 DEV 표시명·prefix·canary 설치 버튼을 포함하지 않는다. 영속 slug와 GHCR image repository는 유지한다.
+- 결정: App/repository 표면을 **Codex for Home Assistant**, panel **Codex**, version `0.7.0`으로 승격하고 main base repository URL을 안정판 설치 경로로 사용한다. Stable manifest는 `stage` 키를 생략해 Supervisor 기본 stable 채널을 사용하며 DEV manifest만 `stage: experimental`을 명시한다. Stable metadata와 사용자 문서에는 DEV 표시명·prefix·canary 설치 버튼을 포함하지 않는다. 영속 slug와 GHCR image repository는 유지한다.
 - 플랫폼 결정: `amd64`와 64비트 `aarch64`를 stable 지원 대상으로 선언한다. Aarch64는 native ARM CI, architecture-neutral full smoke, 공개 multi-architecture manifest와 architecture별 SBOM/Critical gate/signing·attestation payload evidence를 통과했다. 실제 Raspberry Pi/aarch64 HAOS는 **NOT RUN**이다.
 - 규칙 예외: Maintainer는 실제 aarch64 HAOS 수용을 public 지원 전제조건으로 둔 R-303에 대해 `0.7.0` 한정의 좁은 위험 예외를 명시적으로 승인했다. 미실행 항목을 PASS로 바꾸지 않으며 이후 base, Codex binary, architecture 또는 핵심 runtime 변경에 이 예외를 자동 재사용하지 않는다.
 - 보안 결정: Custom AppArmor와 managed requirements는 root/nested `secrets.yaml`과 `/config/.storage` content를 정상적인 Codex 직접 파일 접근에서 명시적으로 거부한다. 따라서 그 경로로 content가 Codex에 전달되지 않는다. 일반 `/config` RW와 manager API 가용성은 유지한다.

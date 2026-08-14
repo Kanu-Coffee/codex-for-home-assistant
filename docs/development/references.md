@@ -150,7 +150,7 @@
 ## 근거로 확정한 핵심 사항
 
 - Home Assistant App은 container image이며 repository root에 `repository.yaml`이 필요하다.
-- App configuration의 `stage`는 `stable`, `experimental`, `deprecated`를 지원하고 기본값은 `stable`이다. Stable `0.7.0`은 이를 명시적으로 사용한다.
+- App configuration의 `stage`는 `stable`, `experimental`, `deprecated`를 지원하고 기본값은 `stable`이다. Stable `0.7.0` manifest는 이 키를 생략해 기본값을 사용하고 DEV manifest만 `stage: experimental`을 명시한다.
 - App presentation 문서는 branch suffix repository를 canary 채널로 분리하고 서로 다른 표시명을 사용하도록 안내한다. Stable 사용자 설치는 base repository URL만 제공하며 DEV channel 규칙과 과거 증거는 engineering 문서에만 남긴다.
 - `map`의 `homeassistant_config`는 `read_only: false`와 custom container path를 지원한다.
 - exposed host port는 `ports` mapping 및 App Network UI에서 관리한다.

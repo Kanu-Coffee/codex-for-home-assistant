@@ -8,7 +8,7 @@ Codex for Home Assistant는 `/config` read-write, Home Assistant Core API와 Sup
 
 ### 지원 범위
 
-보안 수정은 원칙적으로 [가장 최근 공개 릴리스](https://github.com/Kanu-Coffee/codex-for-home-assistant/releases)를 대상으로 합니다. 안정판은 `stage: stable`이며 amd64와 64비트 aarch64를 지원합니다. 이전 버전에서 문제가 발생했다면 최신 릴리스에서도 재현되는지 비밀정보 없이 확인해 주세요.
+보안 수정은 원칙적으로 [가장 최근 공개 릴리스](https://github.com/Kanu-Coffee/codex-for-home-assistant/releases)를 대상으로 합니다. 안정판 manifest는 `stage` 키를 생략해 Supervisor의 기본 stable 채널을 사용하며 amd64와 64비트 aarch64를 지원합니다. 이전 버전에서 문제가 발생했다면 최신 릴리스에서도 재현되는지 비밀정보 없이 확인해 주세요.
 
 ### 비공개 제보
 

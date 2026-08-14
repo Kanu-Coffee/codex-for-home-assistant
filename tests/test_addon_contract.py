@@ -38,7 +38,7 @@ def test_release_is_multiarch_with_generic_registry_image(
         == "ghcr.io/kanu-coffee/codex-for-home-assistant"
     )
     assert "{arch}" not in addon_config["image"]
-    assert addon_config["stage"] == "stable"
+    assert "stage" not in addon_config
 
 
 def test_stable_release_is_visible_in_home_assistant_and_image(
@@ -177,7 +177,12 @@ def _convert_stable_fixture_to_dev(fixture: Path) -> None:
     config.write_text(
         config.read_text(encoding="utf-8")
         .replace('description: "Codex CLI', 'description: "[DEV] Codex CLI')
-        .replace("stage: stable", "stage: experimental")
+        .replace(
+            "url: https://github.com/Kanu-Coffee/"
+            "codex-for-home-assistant\n",
+            "url: https://github.com/Kanu-Coffee/"
+            "codex-for-home-assistant\nstage: experimental\n",
+        )
         .replace("panel_title: Codex", "panel_title: Codex DEV"),
         encoding="utf-8",
     )
@@ -302,8 +307,10 @@ def test_builder_channel_guard_rejects_stable_metadata_mismatch(
         (
             "stable-stage-file",
             "codex_home_assistant/config.yaml",
-            "stage: stable",
-            "stage: experimental",
+            "url: https://github.com/Kanu-Coffee/"
+            "codex-for-home-assistant\n",
+            "url: https://github.com/Kanu-Coffee/"
+            "codex-for-home-assistant\nstage: experimental\n",
         ),
         (
             "stable-oci-description",
@@ -353,6 +360,7 @@ def test_registry_release_workflow_is_tag_gated(repository_root: Path) -> None:
         "Repository name does not match the release channel",
         "Panel title does not match the release channel",
         "App stage does not match the release channel",
+        "Stable App must use the implicit stable stage",
         "OCI title does not match the release channel",
         "OCI description does not match the release channel",
         "MOTD title does not match the release channel",

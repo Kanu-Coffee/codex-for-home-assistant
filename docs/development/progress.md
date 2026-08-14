@@ -32,7 +32,7 @@
 - Custom AppArmor와 managed requirements는 root·nested `secrets.yaml`과 `/config/.storage` content를 정상적인 Codex 직접 파일 접근에서 명시적으로 거부하므로 그 경로로 내용이 Codex에 전달되지 않는 stable 계약으로 승격한다. 이는 완전한 DLP가 아니다. API·로그·인증 browser raw response, 사용자가 비보호 경로로 복사한 값, root interactive process의 runtime credential 직접 read와 pathname hardlink TOCTOU는 잔여 경계로 유지한다.
 - 실제 read syscall 수준의 전체 음성 행렬, Web/SSH root-shell과 모든 alias/special/helper 조합, 독립 post-publication Cosign/attestation 확인, feedback live 제출과 일부 UI/semantic-memory acceptance는 실행하지 않았다. 사용자는 2026-08-14 이 나머지 공백을 stable 승격 위험으로 승인했다. 이 항목들은 **waived/accepted**이며 `PASS` 또는 실행 완료로 바꾸지 않는다.
 - 실제 Raspberry Pi/64-bit aarch64 HAOS 설치·Ingress·SSH·Codex·API·browser 수용도 **NOT RUN**이다. Maintainer는 native `ubuntu-24.04-arm` CI, architecture-neutral full smoke와 공개 멀티아키텍처 image 검증을 근거로 `0.7.0` aarch64 지원을 선언하는 R-303의 좁은 1회 예외를 승인했다. 이후 architecture/runtime 변경에는 이 예외를 자동 재사용하지 않는다.
-- 안정판 표면은 **Codex for Home Assistant**, panel **Codex**, version `0.7.0`, `stage: stable`, base repository URL로 정리한다. Stable 사용자 문서에는 DEV 버튼·표시명·canary 설치 지시를 싣지 않고, 과거 후보 증거와 채널 규칙만 engineering history에 보존한다.
+- 안정판 표면은 **Codex for Home Assistant**, panel **Codex**, version `0.7.0`, base repository URL로 정리한다. Stable manifest는 `stage` 키를 생략해 Supervisor 기본 stable 채널을 사용하고 DEV manifest만 `stage: experimental`을 명시한다. Stable 사용자 문서에는 DEV 버튼·표시명·canary 설치 지시를 싣지 않고, 과거 후보 증거와 채널 규칙만 engineering history에 보존한다.
 - local 검증: Python unit/contract **114 passed**, Home Assistant memory core 10개와 source client 12개, YAML/Markdown/ShellCheck/Hadolint/actionlint/AppArmor parser, `git diff --check`를 통과했다. Final local amd64 stable image `sha256:c89ffb18f929a513481e202f208ee13d7abd0e1a836ea278a8156bb970555fb6`의 `0.7.0` label·baked version·MOTD와 DEV/experimental 표식 부재를 확인했고, feedback·full Docker runtime·browser approval·memory·managed browser auth·user-file·managed Codex sandbox/sensitive path 및 exact public `0.6.0` → local `0.7.0` update/persistence 8개 smoke가 PASS했다. Architecture metadata mismatch build도 artifact 설치 전에 fail closed했다.
 - 현재 전달 상태: stable source/documentation PR, main CI, annotated `0.7.0` tag, tag Builder의 amd64+aarch64 publish/signing/attestation, 익명 manifest 확인과 GitHub Release는 이 변경 시점에 아직 실행 전이며 완료 후 exact run/SHA/digest를 별도 기록한다.
 
@@ -546,7 +546,7 @@
 - [x] SBOM·취약점 scan·Cosign/provenance/SBOM attestation·action SHA pin·Dependabot workflow 구현
 - [x] Release workflow 실행에서 multi-arch manifest와 SBOM/scan/signing/attestation 단계 검증 — latest DEV [Builder 31760484384](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/31760484384) PASS; 독립 post-publication signature/attestation 검증은 NOT RUN
 - [ ] 설치·복구 UX 개선
-- [x] stage를 stable로 승격 — 2026-08-14 사용자 승인, 남은 NOT RUN 항목은 위험 수용으로 기록
+- [x] stable 채널로 승격 — stable manifest는 `stage` 키를 생략해 Supervisor 기본값 사용, 2026-08-14 사용자 승인과 남은 NOT RUN 위험 수용 기록
 
 ## Open Questions / Required Spikes
 

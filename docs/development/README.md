@@ -45,7 +45,7 @@
 
 - Stable `0.7.0`은 `amd64`, 64비트 `aarch64` release; native aarch64 CI와 멀티아키 GHCR 검증은 `PASS`
 - 실제 Raspberry Pi/aarch64 HAOS 수용은 `NOT RUN`; 2026-08-14 릴리스 승인에서 이 공백을 명시적으로 수용했으며 실행한 것으로 표기하지 않음. Armv7/32-bit ARM은 미지원
-- `stage: stable`
+- Stable manifest는 `stage` 키를 생략해 Supervisor 기본 stable 채널 사용; DEV manifest만 `stage: experimental` 명시
 - 기본 `boot: manual`
 - public GHCR version tag 기반 배포
 - Supervisor `manager`, 고정 민감 경로 밖의 `/config` read-write

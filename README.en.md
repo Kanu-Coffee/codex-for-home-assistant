@@ -221,7 +221,7 @@ App initialization and every Codex launch inspect protected paths for symlinks, 
 
 - Stable `0.7.0` supports amd64 and 64-bit aarch64. Native aarch64 CI and image validation passed, but a real Raspberry Pi/aarch64 HAOS run remains **NOT RUN** and was accepted as a release validation gap. 32-bit armv7 is not supported.
 - This is a Home Assistant App (formerly called an Add-on), so it cannot be installed through HACS.
-- The default is `boot: manual`, and the release stage is `stable`.
+- The default is `boot: manual`. The stable manifest omits the `stage` key and therefore uses the Supervisor's default stable channel.
 - The Web UI is a terminal, not a dedicated mobile chat interface.
 - Bubble Card and other custom cards are not bundled.
 - The read-only user used for Headless browser authentication can see all entity states, so screenshots and diagnostics may still be sensitive.

@@ -4,7 +4,6 @@ version: "0.7.0"
 slug: codex_home_assistant
 description: "Codex CLI with verified feedback, browser, terminal, and SSH for Home Assistant"
 url: https://github.com/Kanu-Coffee/codex-for-home-assistant
-stage: stable
 boot: manual
 init: false
 arch:

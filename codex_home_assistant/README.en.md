@@ -28,7 +28,7 @@ Use Codex inside Home Assistant to inspect your setup and improve dashboards, au
 
 ## Quick start
 
-1. Install and start stable `0.7.0`. It supports `amd64` and 64-bit `aarch64`, with `stage: stable` and `boot: manual`. Native ARM CI and multi-architecture image validation passed. A real Raspberry Pi/aarch64 HAOS run was not performed; release approval explicitly accepted that gap based on the automated evidence.
+1. Install and start stable `0.7.0`. It supports `amd64` and 64-bit `aarch64`. The manifest omits the `stage` key and therefore uses the Supervisor's default stable channel; `boot: manual` remains explicit. Native ARM CI and multi-architecture image validation passed. A real Raspberry Pi/aarch64 HAOS run was not performed; release approval explicitly accepted that gap based on the automated evidence.
 2. Select **OPEN WEB UI**.
 3. Sign in once with `ha-codex-login`.
 4. Run `ha-codex`.

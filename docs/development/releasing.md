@@ -35,6 +35,8 @@ Supervisor는 `config.yaml`의 `image`와 `version`으로 미리 빌드된 image
 
 DEV version에서는 추가로 `repository.yaml`과 `config.yaml`의 표시명이 `Codex for Home Assistant (DEV)`, panel이 `Codex DEV`, description이 `[DEV]`로 시작하고 Docker OCI title과 MOTD도 `(DEV)`인지 검사합니다. Stable version에는 이 DEV 표식을 남기지 않습니다. `slug: codex_home_assistant`와 GHCR image 경로는 두 채널에서 고정합니다.
 
+Stable manifest는 `stage` 키를 생략해 Supervisor 기본 stable 채널을 사용합니다. DEV manifest만 `stage: experimental`을 명시하며, 채널 계약 검사는 stable에서 키가 없고 DEV에서 값이 정확한지 각각 확인합니다.
+
 ## Pull request 단계
 
 1. 기능 브랜치에서 변경 범위와 사용자 영향을 검토합니다.

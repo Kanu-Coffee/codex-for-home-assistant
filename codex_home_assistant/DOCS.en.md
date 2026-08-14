@@ -20,7 +20,7 @@ The current stable installation baseline is app version `0.7.0`. HAOS displays t
 - Internet access for the app image and Codex authentication
 - An OpenAI/ChatGPT account with access to Codex
 
-Stable `0.7.0` uses `stage: stable` and `boot: manual`. The candidate payload lineage passed native ARM CI, public amd64+aarch64 image publication, and anonymous inspection. A real Raspberry Pi/aarch64 HAOS run remains **NOT RUN**; release approval explicitly accepted that gap based on the automated evidence. HACS installation is not supported.
+The stable `0.7.0` manifest omits the `stage` key and therefore uses the Supervisor's default stable channel; `boot: manual` remains explicit. The candidate payload lineage passed native ARM CI, public amd64+aarch64 image publication, and anonymous inspection. A real Raspberry Pi/aarch64 HAOS run remains **NOT RUN**; release approval explicitly accepted that gap based on the automated evidence. HACS installation is not supported.
 
 ### What the app provides
 

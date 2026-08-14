@@ -219,7 +219,7 @@ Custom AppArmor와 Codex 관리자 요구사항이 루트·중첩 `secrets.yaml`
 
 - 안정판 `0.7.0`은 amd64와 64비트 aarch64를 지원합니다. Native aarch64 CI와 이미지 검증은 통과했지만 실제 Raspberry Pi/aarch64 HAOS 실기는 **NOT RUN**이며 이 공백은 릴리스 승인 과정에서 수용됐습니다. 32비트 armv7은 지원하지 않습니다.
 - Home Assistant 앱(이전 명칭: Add-on)이므로 HACS로 설치할 수 없습니다.
-- 기본 `boot: manual`이며 `stage: stable`입니다.
+- 기본 `boot: manual`이며, stable manifest는 `stage` 키를 생략해 Supervisor의 기본 stable 채널을 사용합니다.
 - Web UI는 터미널입니다. 전용 모바일 채팅 인터페이스가 아닙니다.
 - Bubble Card와 다른 커스텀 카드는 포함하지 않습니다.
 - Headless browser 자동 인증의 read-only 사용자는 모든 entity state를 볼 수 있으므로 screenshot과 진단 결과도 민감할 수 있습니다.

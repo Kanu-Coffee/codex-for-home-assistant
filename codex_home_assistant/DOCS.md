@@ -20,7 +20,7 @@
 - 앱 이미지와 Codex 인증에 필요한 인터넷 연결
 - Codex를 사용할 수 있는 OpenAI/ChatGPT 계정
 
-안정판 `0.7.0`은 `stage: stable`, `boot: manual`입니다. 후보 payload 계보의 Native ARM CI와 공개 amd64+aarch64 image 발행·익명 조회 검증은 통과했습니다. 실제 Raspberry Pi/aarch64 HAOS 실기는 **NOT RUN**이며, 이 공백은 자동 검증 결과를 근거로 릴리스 승인 과정에서 명시적으로 수용됐습니다. HACS 설치는 지원하지 않습니다.
+안정판 `0.7.0` manifest는 `stage` 키를 생략해 Supervisor의 기본 stable 채널을 사용하며 `boot: manual`입니다. 후보 payload 계보의 Native ARM CI와 공개 amd64+aarch64 image 발행·익명 조회 검증은 통과했습니다. 실제 Raspberry Pi/aarch64 HAOS 실기는 **NOT RUN**이며, 이 공백은 자동 검증 결과를 근거로 릴리스 승인 과정에서 명시적으로 수용됐습니다. HACS 설치는 지원하지 않습니다.
 
 ### 이 앱이 제공하는 것
 
