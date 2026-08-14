@@ -6,6 +6,6 @@
   "license": "Apache-2.0",
   "dependencies": {
     "@playwright/mcp": "0.0.78",
-    "ws": "8.21.0"
+    "ws": "8.21.3"
   }
 }
