@@ -147,6 +147,27 @@
 
 이 프로젝트는 SSH/Web Terminal/Inress 패턴을 참고할 수 있으나, 불필요한 `host_network`, `docker_api`, host hardware 권한까지 복사하지 않는다. 라이선스와 attribution 요구를 확인하고 코드를 가져오면 준수한다.
 
+## Stable 0.7.0 공개 증거
+
+- Stable source PR와 CI
+  - https://github.com/Kanu-Coffee/codex-for-home-assistant/pull/38
+  - https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/31783339660
+  - https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/31783339839
+  - https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/31783664590
+
+- Stable tag Builder
+  https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/31783958477
+
+- GitHub artifact attestations
+  - https://github.com/Kanu-Coffee/codex-for-home-assistant/attestations/40691611
+  - https://github.com/Kanu-Coffee/codex-for-home-assistant/attestations/40691626
+  - https://github.com/Kanu-Coffee/codex-for-home-assistant/attestations/40691515
+  - https://github.com/Kanu-Coffee/codex-for-home-assistant/attestations/40691531
+  - https://github.com/Kanu-Coffee/codex-for-home-assistant/attestations/40692045
+
+- Non-prerelease latest GitHub Release
+  https://github.com/Kanu-Coffee/codex-for-home-assistant/releases/tag/0.7.0
+
 ## 근거로 확정한 핵심 사항
 
 - Home Assistant App은 container image이며 repository root에 `repository.yaml`이 필요하다.
@@ -166,7 +187,7 @@
 - Codex config는 `approval_policy`, `sandbox_mode`, workspace-write network access와 file credential store를 지원한다. System-managed `requirements.toml`은 허용 sandbox와 filesystem deny를 사용자 설정보다 강하게 제한할 수 있다.
 - Supervisor 2026.04부터 legacy `build.yaml`과 자동 `BUILD_FROM` 주입을 사용하지 않으며 Dockerfile이 build source of truth다.
 - 현재 generic Home Assistant Alpine base는 `3.24`, builder composite actions는 `2026.06.0`이다.
-- Codex CLI `0.144.1`과 GitHub CLI `2.97.0`은 amd64/aarch64 공식 release artifact와 고정 SHA-256을 architecture별로 사용한다. 사용하지 않는 base TempIO executable은 final image에서 제거한다. Stable `0.7.0` payload lineage의 native aarch64 CI와 멀티아키 image 발행은 PASS했다. 후속 실제 amd64 HAOS 보고서는 profile 적용·일반 `/config` RW·App/Ingress/browser/memory를 관측했다. 실제 read syscall 전체 음성 행렬과 Raspberry Pi/aarch64 HAOS는 NOT RUN이며 2026-08-14 maintainer 위험 수용 대상으로 남는다.
+- Codex CLI `0.144.1`과 GitHub CLI `2.97.0`은 amd64/aarch64 공식 release artifact와 고정 SHA-256을 architecture별로 사용한다. 사용하지 않는 base TempIO executable은 final image에서 제거한다. Stable `0.7.0`은 native aarch64 CI, tag Builder, generic/architecture image 발행과 익명 manifest/config/layer 조회를 PASS했다. `gh attestation verify`와 Cosign `3.0.3`으로 provenance/SBOM과 exact workflow identity, source ref, digest도 독립 검증했다. 후속 실제 amd64 HAOS 보고서는 profile 적용·일반 `/config` RW·App/Ingress/browser/memory를 관측했다. 실제 read syscall 전체 음성 행렬과 Raspberry Pi/aarch64 HAOS는 NOT RUN이며 2026-08-14 maintainer 위험 수용 대상으로 남는다.
 - 직접 Remote SSH는 remote login shell의 PATH에서 `codex`를 찾고 HA App에 저장된 Codex 인증을 요구한다.
 - Supervisor Core/App 로그 endpoint는 `Accept: text/plain` 또는 `text/x-log`를 사용하며 JSON Accept만 보내면 협상이 실패할 수 있다.
 - Codex는 `CODEX_HOME`의 `AGENTS.md`를 전역 지침으로 읽고 프로젝트 root부터 현재 디렉터리까지 더 가까운 지침을 뒤에 결합한다.

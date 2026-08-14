@@ -1,6 +1,6 @@
 # test_plan.md — 검증 전략
 
-> Stable `0.7.0`은 후보 payload lineage의 native amd64/aarch64 full smoke, multi-architecture Builder/SBOM/Critical gate/signing·attestation과 실제 amd64 HAOS의 App·Ingress·browser·memory ready/fresh·AppArmor profile 적용 증거를 기반으로 승격한다. Root/nested `secrets.yaml`과 `/config/.storage` content는 AppArmor와 managed requirements가 정상적인 Codex 직접 파일 접근에서 명시적으로 거부하므로 그 경로로 내용이 Codex에 전달되지 않는다. Syscall-level 전체 음성 행렬과 실제 Raspberry Pi/aarch64 HAOS는 **NOT RUN**이며, maintainer가 2026-08-14 그 공백을 좁은 stable release 위험으로 승인했다. 이를 PASS로 기록하거나 이후 변경에 자동 재사용하지 않는다. 이전 browser, memory, feedback, approval evidence의 PASS/PARTIAL/NOT RUN 경계도 그대로 유지한다.
+> Stable `0.7.0`은 후보 payload lineage와 exact stable PR/main CI, native amd64/aarch64 full smoke, multi-architecture Builder/SBOM/Critical gate/signing·attestation 및 실제 amd64 HAOS의 App·Ingress·browser·memory ready/fresh·AppArmor profile 적용 증거를 기반으로 발행됐다. Root/nested `secrets.yaml`과 `/config/.storage` content는 AppArmor와 managed requirements가 정상적인 Codex 직접 파일 접근에서 명시적으로 거부하므로 그 경로로 내용이 Codex에 전달되지 않는다. Syscall-level 전체 음성 행렬과 실제 Raspberry Pi/aarch64 HAOS는 **NOT RUN**이며, maintainer가 2026-08-14 그 공백을 좁은 stable release 위험으로 승인했다. 이를 PASS로 기록하거나 이후 변경에 자동 재사용하지 않는다. 이전 browser, memory, feedback, approval evidence의 PASS/PARTIAL/NOT RUN 경계도 그대로 유지한다.
 
 ## 1. 테스트 계층
 
@@ -200,7 +200,7 @@ Supervisor가 없어도 검증 가능한 항목:
 - Web UI 버튼 표시
 - SSH keys 미설정 경고 외 치명적 오류 없음
 
-실행 결과: 후보 GHCR publish와 native 양 architecture 회귀는 **PASS**했다. 후속 실제 amd64 HAOS `0.7.0-dev.2` 보고서는 App started, AppArmor profile 적용, 일반 `/config` RW, Ingress/browser와 ready/fresh memory를 확인했다. Stable `0.7.0` exact tag 설치/노출은 tag publication 뒤 별도 기록한다. 실제 aarch64 HAOS와 syscall-level 전체 음성 행렬은 **NOT RUN**이며 2026-08-14 maintainer 위험 수용 대상이다.
+실행 결과: Exact stable source는 [PR #38](https://github.com/Kanu-Coffee/codex-for-home-assistant/pull/38)의 [CI 31783339660](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/31783339660), [Builder 31783339839](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/31783339839), merge `bc4cfcb7eda82d00de5cd92df5acf80df6ac2650`의 [main CI 31783664590](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/31783664590)를 **PASS**했다. Annotated tag와 exact `0.7.0` multi-architecture image도 발행됐지만 stable App Store 노출·설치 자체는 **NOT RUN**이다. 후속 실제 amd64 HAOS `0.7.0-dev.2` 보고서는 App started, AppArmor profile 적용, 일반 `/config` RW, Ingress/browser와 ready/fresh memory를 확인했다. 실제 aarch64 HAOS와 syscall-level 전체 음성 행렬은 **NOT RUN**이며 2026-08-14 maintainer 위험 수용 대상이다.
 
 ### E2E-002 웹 터미널 기본 모드
 
@@ -498,7 +498,7 @@ ha-api GET /states
 - ambient token 제거와 private helper credential 사용은 확인하되 raw API/root credential-file 잔여 위험은 숨기지 않음
 - 실제 HAOS 결과, native CI 결과와 공급망 publish/attestation 결과를 각각 독립 판정
 
-실행 결과: Native aarch64 build와 full smoke는 [dev CI 31549518729](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/31549518729)에서 **PASS**했다. 후보 payload의 aarch64 build, SPDX SBOM, Critical gate, signing, provenance/SBOM attestation과 final tag promotion도 [Builder 31550037239](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/31550037239)에서 **PASS**했다. 실제 amd64 HAOS에서는 AppArmor profile, protected-tree preflight, 일반 `/config` RW, App/Ingress/browser/memory가 관측됐다. 실제 read syscall 음성 출력, Web/SSH root-shell deny, alias/special fixture와 전체 ambient token/helper 행렬은 **PARTIAL/NOT RUN**이고 실제 Raspberry Pi/aarch64 HAOS는 **NOT RUN**이다. Maintainer는 2026-08-14 이를 stable `0.7.0`의 좁은 위험 수용으로 승인했으며 PASS로 변경하지 않았다.
+실행 결과: Native aarch64 build와 full smoke는 후보 [dev CI 31549518729](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/31549518729)와 exact stable [PR CI 31783339660](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/31783339660), [main CI 31783664590](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/31783664590)에서 **PASS**했다. [Tag Builder 31783958477](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/31783958477)은 stable aarch64 build, SPDX SBOM, Critical gate, signing, provenance/SBOM attestation와 final promotion을 **PASS**했다. 익명 manifest/config/각 8개 layer 조회와 `gh attestation verify`, exact identity/source-ref/digest를 고정한 Cosign `3.0.3` 독립 검증도 **PASS**했다. Stable generic/amd64/aarch64 digest는 각각 `sha256:95bd8d04c34a3b3cebe463b03c6d2e6b73f1847e2529d9c9ff08a6f64fa700ef`, `sha256:19c48ec0e4cc1748296925442563190b3953677bb784279c4d40bff0de224e92`, `sha256:d054f142330b4ee24954d7ca9b6e209e066575e775950eccfff754bad798b75a`다. 실제 amd64 HAOS에서는 AppArmor profile, protected-tree preflight, 일반 `/config` RW, App/Ingress/browser/memory가 관측됐다. 실제 read syscall 음성 출력, Web/SSH root-shell deny, alias/special fixture와 전체 ambient token/helper 행렬은 **PARTIAL/NOT RUN**이고 실제 Raspberry Pi/aarch64 HAOS는 **NOT RUN**이다. Maintainer는 2026-08-14 이를 stable `0.7.0`의 좁은 위험 수용으로 승인했으며 PASS로 변경하지 않았다.
 
 ## 4. 회귀 테스트 우선순위
 

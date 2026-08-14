@@ -153,6 +153,8 @@
 - generic/per-arch GHCR package public visibility와 인증 없는 architecture별 pull 확인
 - pull한 image의 `io.hass.version`, `io.hass.arch`, source label과 container smoke 검증
 
+Stable `0.7.0`은 [PR CI 31783339660](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/31783339660), non-publishing [Builder 31783339839](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/31783339839)와 merge `bc4cfcb7eda82d00de5cd92df5acf80df6ac2650`의 [main CI 31783664590](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/31783664590)를 통과했다. Annotated tag object `24386ac011336c2b50f60762144569118762e2f7`은 그 merge로 peel되고, [Tag Builder 31783958477](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/31783958477)은 양 architecture SBOM/Critical gate, signing/attestation와 final promotion을 완료했다. 익명 generic/architecture manifest, config와 architecture별 8개 layer를 확인했고 `gh attestation verify`와 Cosign `3.0.3` exact identity/source-ref/digest 독립 검증도 PASS했다. 이 공급망 증거는 아래 HAOS/AppArmor 실기 공백을 대체하지 않는다.
+
 ### T-009 브라우저/MCP 공격 표면과 prompt injection
 
 브라우저가 여는 페이지의 DOM, 접근성 snapshot, console, network 응답은 신뢰할 수 없는 입력이다. 페이지에 적힌 지시를 사용자 또는 프로젝트 지시로 승격하지 않는다.
@@ -417,7 +419,7 @@ AppArmor와 managed requirements가 고정한 `secrets.yaml`·`.storage` 밖의 
 
 Stable `0.7.0`의 custom AppArmor와 `requirements.toml`은 기존 public `0.2.3`의 “기본 AppArmor에서 Chromium이 실행됨” 증거와 다른 보안 profile이다. 후보 실기에서 Supervisor가 custom profile을 load했고, protected-tree preflight와 일반 `/config` RW, App/Ingress 시작이 성공했으며 새 Codex session이 root·nested `secrets.yaml`과 `.storage` 직접 접근을 고정 정책으로 거부한다고 보고했다. 후속 `0.7.0-dev.2` amd64 보고서는 App 시작, profile 적용, `/config` RW, Ingress/browser와 ready/fresh memory를 확인했다. 이는 **관측 범위 PASS**다. 구현 계약상 AppArmor와 managed requirements는 정상적인 Codex 직접 파일 접근에서 보호 content를 명시적으로 거부하므로 그 경로로 내용이 Codex에 전달되지 않는다. 다만 실제 secret 원문을 사용하지 않은 syscall-level negative output, Web/SSH root-shell 전체 content deny, symlink/hardlink/special fixture와 `/proc/*/environ`의 실제 HAOS 전체 행렬은 **NOT RUN/PARTIAL**이며, API·로그·browser raw response, 비보호 copy, root runtime credential과 pathname TOCTOU는 이 보장의 밖이다. Aarch64 native CI와 공개 image 검증은 PASS했지만 64비트 Raspberry Pi/aarch64 HAOS runtime은 **NOT RUN**이다. Maintainer는 2026-08-14 이 공백을 stable release 위험으로 명시적으로 수용했으며 시험을 PASS로 바꾸지 않았다.
 
-Supply-chain workflow도 실제 PR/tag run 전에는 SBOM, scan, Cosign 또는 attestation이 발행·PASS했다고 기록하지 않는다. 과거 image와 attestation 상태를 새 stable tag workflow의 증거로 재사용하지 않는다.
+Supply-chain workflow는 실제 PR/tag run 전에는 SBOM, scan, Cosign 또는 attestation이 발행·PASS했다고 기록하지 않고 과거 image 증거를 새 tag에 재사용하지 않는다. Stable `0.7.0`은 exact tag run 뒤 generic `sha256:95bd8d04c34a3b3cebe463b03c6d2e6b73f1847e2529d9c9ff08a6f64fa700ef`, amd64 `sha256:19c48ec0e4cc1748296925442563190b3953677bb784279c4d40bff0de224e92`, aarch64 `sha256:d054f142330b4ee24954d7ca9b6e209e066575e775950eccfff754bad798b75a`에 대해 발행·익명 조회·signature/attestation 독립 검증까지 완료했다.
 
 Codex bwrap command는 `no_new_privs`로 실행되므로 credential을 다시 허용하는 더 강한 AppArmor child 전이는 사용할 수 없다. `/data/github-cli`까지 root Codex로부터 강제 격리하려면 사전에 시작한 strict IPC credential broker가 필요하며 현재 release에는 포함되지 않는다.
 
