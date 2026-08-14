@@ -23,8 +23,8 @@ AllowAgentForwarding no
 X11Forwarding no
 PermitTunnel no
 
-# Make Supervisor/Codex environment available to non-interactive SSH commands.
-PermitUserEnvironment BASH_ENV,SUPERVISOR_TOKEN,CODEX_HOME,HA_URL,SUPERVISOR_URL
+# Make the non-secret Codex environment available to non-interactive SSH commands.
+PermitUserEnvironment BASH_ENV,CODEX_HOME,HA_URL,SUPERVISOR_URL
 
 PrintMotd yes
 TCPKeepAlive yes

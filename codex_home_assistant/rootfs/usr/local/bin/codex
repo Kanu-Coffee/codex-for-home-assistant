@@ -9,13 +9,21 @@ set -Eeuo pipefail
 . /usr/local/lib/codex-ha/config.sh
 # shellcheck source=/dev/null
 . /usr/local/lib/codex-ha/browser-approval.sh
+# shellcheck source=/dev/null
+. /usr/local/lib/codex-ha/sensitive-path-policy.sh
+
+if ! codex_ha_sensitive_paths_validate /config; then
+  printf '%s\n' \
+    'codex: protected Home Assistant paths have an unsafe link or file type; Codex will not start' >&2
+  exit 78
+fi
 
 approval_policy=on-request
-sandbox_mode=danger-full-access
+sandbox_mode=workspace-write
 browser_approval_policy=safe
 if codex_ha_config_validate; then
   approval_policy=$(codex_ha_config_string 'codex_approval_policy' 'on-request')
-  sandbox_mode=$(codex_ha_config_string 'codex_sandbox_mode' 'danger-full-access')
+  sandbox_mode=$(codex_ha_config_string 'codex_sandbox_mode' 'workspace-write')
   if ! browser_approval_policy=$(codex_ha_config_string 'browser_approval_policy' 'safe'); then
     printf 'codex: invalid headless browser approval policy\n' >&2
     exit 78
@@ -30,7 +38,12 @@ case "${approval_policy}" in
     ;;
 esac
 case "${sandbox_mode}" in
-  workspace-write | danger-full-access) ;;
+  workspace-write) ;;
+  danger-full-access)
+    printf '%s\n' \
+      'codex: danger-full-access is deprecated and is enforced as workspace-write by the managed sensitive-path policy' >&2
+    sandbox_mode=workspace-write
+    ;;
   *)
     printf 'codex: invalid App sandbox mode\n' >&2
     exit 78
@@ -45,8 +58,13 @@ if ! codex_ha_browser_build_approval_args "${browser_approval_policy}"; then
   exit 78
 fi
 
+# Defense in depth: even callers that bypass the normal login-shell profile
+# cannot pass the Supervisor credential to Codex or its child processes.
+unset SUPERVISOR_TOKEN
 exec /usr/local/libexec/codex-real \
   -c "approval_policy=\"${approval_policy}\"" \
   -c "sandbox_mode=\"${sandbox_mode}\"" \
+  -c 'sandbox_workspace_write.network_access=true' \
+  --add-dir /data/codex-ha-memory \
   "${CODEX_HA_BROWSER_APPROVAL_ARGS[@]}" \
   "$@"

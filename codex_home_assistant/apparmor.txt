@@ -1,0 +1,92 @@
+abi <abi/3.0>,
+#include <tunables/global>
+
+profile codex_home_assistant flags=(attach_disconnected,mediate_deleted) {
+  #include <abstractions/base>
+
+  # Keep the existing app runtime available; Docker's capability bounding set
+  # and the Home Assistant protection-mode boundary still apply.
+  file,
+  network,
+  capability,
+  signal,
+
+  # S6-Overlay
+  /init ix,
+  /bin/** ix,
+  /usr/bin/** ix,
+  /run/{s6,s6-rc*,service}/** ix,
+  /package/** ix,
+  /command/** ix,
+  /etc/services.d/** rwix,
+  /etc/cont-init.d/** rwix,
+  /etc/cont-finish.d/** rwix,
+  /run/{,**} rwk,
+  /dev/tty rw,
+
+  # Bashio and app-owned data
+  /usr/lib/bashio/** ix,
+  /tmp/** rwk,
+  /data/** rw,
+
+  # Home Assistant configuration remains read-write except for the fixed
+  # credential and registry paths below. Explicit deny rules override the
+  # broad file allowance above and cannot be relaxed at runtime.
+  /config/{,**} rwklix,
+  deny /config/secrets.yaml rwklx,
+  deny /config/**/secrets.yaml rwklx,
+  deny /config/.storage rwklx,
+  deny /config/.storage/ wklx,
+  deny /config/.storage/**/ wklx,
+  deny /config/.storage/**[^/] rwklx,
+
+  # Do not let interactive tools recover credentials inherited by another
+  # process. Helpers use their private runtime credential file, not procfs.
+  deny /proc/*/environ r,
+  deny /proc/*/task/*/environ r,
+
+  # Codex 0.144.1 delegates its Linux sandbox setup to bubblewrap. Keep
+  # namespace mount operations out of the app-wide profile and grant them
+  # only after the exact bwrap executable transitions to this child profile.
+  # Home Assistant Supervisor already starts apps with seccomp=unconfined;
+  # ABI 3.0 keeps user-namespace creation compatible with HAOS AppArmor 3.1.
+  /usr/bin/bwrap Cx -> codex_bwrap,
+
+  profile codex_bwrap flags=(attach_disconnected,mediate_deleted) {
+    #include <abstractions/base>
+
+    file,
+    network,
+    capability,
+    signal,
+
+    # Bubblewrap performs these operations only inside its new user and mount
+    # namespaces. The container capability bounding set remains unchanged.
+    mount,
+    umount,
+    pivot_root,
+
+    # Bubblewrap re-executes the Codex sandbox helper before the requested
+    # command. All other executables inherit this profile and Codex seccomp.
+    /usr/local/libexec/codex-real ix,
+    /bin/** ix,
+    /usr/bin/** ix,
+
+    /run/{,**} rwk,
+    /tmp/** rwk,
+    /data/** rw,
+
+    # Preserve the app-wide confidentiality boundary after the transition.
+    /config/{,**} rwklix,
+    deny /config/secrets.yaml rwklx,
+    deny /config/**/secrets.yaml rwklx,
+    deny /config/.storage rwklx,
+    deny /config/.storage/ wklx,
+    deny /config/.storage/**/ wklx,
+    deny /config/.storage/**[^/] rwklx,
+
+    deny /proc/*/environ r,
+    deny /proc/*/task/*/environ r,
+
+  }
+}

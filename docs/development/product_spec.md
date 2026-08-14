@@ -116,7 +116,17 @@ map:
     read_only: false
 ```
 
-하위 폴더를 별도 제한하지 않는다.
+Mount 자체는 전체 RW로 유지하되 다음 고정 민감 경로는 custom AppArmor와 image-managed Codex requirements에서 항상 차단한다.
+
+```text
+/config/secrets.yaml
+/config/**/secrets.yaml
+/config/.storage/**
+```
+
+그 밖의 YAML, package, dashboard, custom component와 Recorder DB는 직접 작업 가용성을 유지한다. AppArmor profile은 validator에 필요한 `.storage` directory listing operation을 남기므로 같은 profile의 root shell에서 entry 이름이 보일 수 있지만 non-directory content 접근은 거부하며, managed requirements는 Codex directory read도 차단한다. 따라서 정상적인 Codex 직접 파일 접근 경로로는 보호 content를 읽을 수 없고 그 내용이 Codex에 전달되지 않는다. Secret 값과 storage-mode registry/dashboard 변경은 Home Assistant UI/API 또는 사용자의 별도 신뢰 경로로 처리한다.
+
+App init과 매 Codex launch는 보호 tree 전체에서 symlink, 특수 파일과 link count가 1이 아닌 파일을 값·경로 원문 없이 검사한다. Unsafe shape이면 App 또는 Codex 시작을 fail closed한다. AppArmor와 Codex requirements는 pathname 기반이므로 검사 뒤 외부 process가 hardlink를 추가하는 TOCTOU와 사용자가 보호 값을 비보호 경로에 복사한 경우까지 보장하지 않는다.
 
 ### FR-008 Home Assistant Core API
 
@@ -162,7 +172,7 @@ ha-core-logs
 ha-addon-logs
 ```
 
-helper는 토큰을 출력하지 않고 HTTP 오류를 명확히 반환한다. 로그 helper는 Supervisor가 지원하는 `text/x-log`를 요청하고 동적 response media type은 고정 allowlist만 허용한다.
+helper는 토큰을 출력하지 않고 HTTP 오류를 명확히 반환한다. 일반 shell/Codex와 장기 scheduler 환경은 `SUPERVISOR_TOKEN`을 상속하지 않으며 image-managed helper만 root-only fixed runtime path를 실행 시 읽는다. Direct API helper는 file owner/type/link/mode를 검증하고 필요한 helper process에는 해당 수명 동안 credential이 존재할 수 있다. 로그 helper는 Supervisor가 지원하는 `text/x-log`를 요청하고 동적 response media type은 고정 allowlist만 허용한다. Method/path/body와 raw response 호환성은 유지하며 응답 내용을 DLP 방식으로 필터링하지 않는다.
 
 ### FR-011 App 설정
 
@@ -172,7 +182,7 @@ helper는 토큰을 출력하지 않고 HTTP 오류를 명확히 반환한다. �
 - `web_terminal_auto_start_codex`
 - `tmux_session_name`
 - `codex_approval_policy`
-- `codex_sandbox_mode`
+- `codex_sandbox_mode` (기본 `workspace-write`; legacy `danger-full-access` 입력도 같은 mode로 강제)
 - `browser_approval_policy` (기본 `safe`)
 - `codex_user_files_update_mode` (기본 `preserve`)
 - `home_assistant_browser_auto_auth` (기본 `true`)
@@ -235,7 +245,7 @@ SSH 외부 포트는 JSON 옵션이 아니라 Network 설정이다.
 - 빈 store에서도 `ha-memoryd`는 시작 직후 수동 명령 없이 첫 refresh를 시도하고, 성공 이후 정기 refresh한다. 고정 Supervisor Core WebSocket proxy와 image-pinned `ws` runtime을 통해 entity/device/area registry, `get_states`, automation config와 related 결과만 수집한다. automation graph는 공식 계약대로 `search/related`의 `item_type=automation`, `item_id=<automation entity_id>`로 요청하며 의미가 다른 `item_type=entity` 응답을 대체 graph로 합치지 않는다. `HA_WS_URL` 환경 override, Upgrade credential header나 direct-Core credential fallback을 제공하지 않는다. 공식 command의 지원 여부와 응답 오류를 검사하고 임의 WebSocket command나 `.storage` 직접 읽기로 우회하지 않는다.
 - entity/device/area의 식별자·표시명·설명·연결 관계와 automation의 식별자·alias·description·정규화된 관련 대상만 allowlist schema로 저장한다. automation은 entity registry와 state 합집합으로 발견한다. `get_states`의 raw state와 임의 attributes는 저장하지 않되 표시명, device class, icon, automation id/mode 같은 명시적 allowlist metadata만 정규화할 수 있다.
 - automation raw config, 임의 API response, `/config` 원문, 대화 transcript, prompt, token, secret, credential과 비밀 가능성이 있는 비허용 field는 database와 FTS index에 저장하지 않는다.
-- refresh는 필수 응답을 정규화한 뒤 transaction으로 snapshot을 교체한다. unavailable automation의 성공 응답 `config: null`은 빈 config와 bounded warning을 가진 완전한 응답으로 처리한다. Core가 개별 `search/related`에 정상 result envelope의 `success:false`, `error.code=unknown_error`를 반환한 경우에만 optional graph enrichment를 빈 객체와 bounded warning으로 격리하고, 성공한 automation config에서 allowlist area/device/entity 직접 관계를 추출해 나머지 snapshot을 보존한다. 그 밖의 server command code, server/client timeout, unauthorized, invalid format, config 실패, auth/transport/WebSocket close/protocol 오류, 누락·malformed envelope와 malformed successful related 결과는 계속 전체 refresh를 fail closed한다. 이런 필수 실패에서는 last-known-good catalog를 보존하고 불완전한 응답으로 대량 삭제하거나 stale 자료를 새 canonical truth로 표시하지 않는다.
+- refresh는 필수 응답을 정규화한 뒤 transaction으로 snapshot을 교체한다. Unavailable automation의 성공 응답 `config: null`은 빈 config와 bounded warning을 가진 완전한 응답으로 처리한다. Registry/state 합집합에는 있지만 현재 automation component에는 없는 항목의 exact `automation/config` `not_found`도 빈 config와 bounded warning으로 격리한다. Core가 개별 `search/related`에 정상 result envelope의 `success:false`, `error.code=unknown_error`를 반환한 경우에만 optional graph enrichment를 빈 객체와 bounded warning으로 격리하고, 성공한 automation config에서 allowlist area/device/entity 직접 관계를 추출해 나머지 snapshot을 보존한다. 그 밖의 config/server command code, server/client timeout, unauthorized, invalid format, auth/transport/WebSocket close/protocol 오류, 누락·malformed envelope와 malformed successful related 결과는 계속 전체 refresh를 fail closed한다. 이런 필수 실패에서는 last-known-good catalog를 보존하고 불완전한 응답으로 대량 삭제하거나 stale 자료를 새 canonical truth로 표시하지 않는다.
 
 ### FR-018 메모리 후보, 권위와 변경 후 검증
 
@@ -274,7 +284,7 @@ SSH 외부 포트는 JSON 옵션이 아니라 Network 설정이다.
 
 ### NFR-001 재현성
 
-Codex CLI, base image, `@playwright/mcp` lockfile, Playwright core와 Chromium을 포함한 주요 패키지는 버전 또는 digest로 추적 가능해야 한다. Memory SQLite v1 schema version gating과 FTS5 가용성도 image build·contract test에서 추적한다. 지원 migration이 없는 schema는 자동 변경하지 않는다.
+Codex CLI, GitHub CLI, base image, `@playwright/mcp` lockfile, Playwright core와 Chromium을 포함한 주요 패키지는 버전 또는 digest로 추적 가능해야 한다. Architecture별 standalone binary는 정확한 upstream asset과 SHA-256을 고정하고 설치 뒤 version을 확인한다. Base에서 상속하지만 사용하지 않는 executable이 Critical vulnerability를 해결하지 못하면 final image에서 제거하고 부재를 검사한다. Memory SQLite v1 schema version gating과 FTS5 가용성도 image build·contract test에서 추적한다. 지원 migration이 없는 schema는 자동 변경하지 않는다.
 
 ### NFR-002 복구 가능성
 
@@ -284,7 +294,9 @@ App 재설치 전까지 `/data`의 Codex 인증, 사용자 Codex 설정, SSH hos
 
 - Ingress 관리자 전용
 - SSH 공개키 전용
-- 기본 AppArmor 활성
+- custom AppArmor가 모든 `secrets.yaml`, `/config/.storage` content와 cross-process environment 읽기를 강제 차단해 정상적인 Codex 직접 파일 접근으로 content가 전달되지 않도록 하고 validator용 `.storage` directory traversal/listing만 허용; managed requirements가 Codex directory read도 차단
+- `/etc/codex/requirements.toml`의 user-non-overridable filesystem deny와 `read-only|workspace-write` allowlist, App wrapper의 network-enabled `workspace-write` 강제
+- init/Codex launch의 protected-tree symlink·special-file·multi-hardlink fail-closed 검사와 pathname/TOCTOU·비보호 copy 잔여 한계 공개
 - `manager` 역할
 - Docker/host privileged 권한 없음
 - Playwright MCP는 STDIO, Home Assistant gateway는 loopback 전용이며 새 host/Ingress port 없음
@@ -294,12 +306,13 @@ App 재설치 전까지 `/data`의 Codex 인증, 사용자 Codex 설정, SSH hos
 
 ### NFR-004 관찰 가능성
 
-App 시작 로그는 Codex readiness와 loopback gateway 구성을 토큰 없이 기록한다. Playwright/Chromium 버전은 image build·smoke 증거로 남기고, MCP 렌더 결과는 viewport, screenshot 증거, console severity와 resource URL/status를 포함하되 인증 header와 token 원문을 출력하지 않는다. 메모리는 schema version, daemon readiness, 마지막 성공 refresh 시각, stale/degraded 상태, row 개수와 bounded warning 개수만 정제해 보고하고 저장 값·대화·evidence·warning 대상 ID 원문은 App log에 출력하지 않는다.
+App 시작 로그는 Codex readiness와 loopback gateway 구성을 토큰 없이 기록한다. Ingress access log는 time, method, normalized path, protocol, status와 response bytes만 남기며 query string, client address, Referer와 User-Agent는 기록하지 않는다. Nginx error log는 ordinary upstream error가 raw URI/Referer를 반복하지 않도록 `crit` 이상만 남기며 실패 status는 access log에서 유지한다. Playwright/Chromium 버전은 image build·smoke 증거로 남기고, MCP 렌더 결과는 viewport, screenshot 증거, console severity와 resource URL/status를 포함하되 인증 header와 token 원문을 출력하지 않는다. 메모리는 schema version, daemon readiness, 마지막 성공 refresh 시각, stale/degraded 상태, row 개수와 bounded warning 개수만 정제해 보고하고 저장 값·대화·evidence·warning 대상 ID 원문은 App log에 출력하지 않는다.
 
 ### NFR-005 플랫폼
 
-- M1: amd64만 실제 지원 표시
-- M3: aarch64 검증 후 추가
+- Stable `0.7.0`: `amd64`, 64비트 `aarch64`; 공식 Codex/GitHub CLI artifact를 아키텍처별 checksum으로 고정
+- aarch64 native ARM CI와 공개 image 검증은 통과했지만 실제 Raspberry Pi HAOS/AppArmor/SSH/browser 수용은 `NOT RUN`; 2026-08-14 릴리스 승인에서 이 공백을 명시적으로 수용했으며 실행 결과로 확대하지 않음
+- 32비트 `armv7`은 Home Assistant base와 공식 Codex artifact 계약 밖이므로 비지원
 - Alpine system Chromium 조합은 Playwright upstream의 공식 Linux 배포 대상이 아니므로 로컬 amd64 container 검증과 별개로 실제 HAOS/AppArmor 검증 전에는 지원 완료로 표시하지 않음
 
 ### NFR-006 메모리 무결성과 제한된 context
@@ -311,7 +324,7 @@ App 시작 로그는 Codex readiness와 loopback gateway 구성을 토큰 없이
 
 ### NFR-007 피드백 프라이버시와 재현성
 
-- GitHub CLI는 공식 `2.93.0` linux amd64 archive와 고정 SHA-256으로 image build에서 검증하고 runtime download나 `latest` resolution을 하지 않는다.
+- GitHub CLI는 공식 `2.97.0` linux amd64/arm64 archive와 architecture별 고정 SHA-256으로 image build에서 검증하고 runtime download나 `latest` resolution을 하지 않는다. Repository와 base init에서 사용하지 않는 `/usr/bin/tempio`는 inherited·official replacement 모두 Critical findings를 남겨 final image에서 제거하고 부재를 검증한다.
 - Report schema, status enum, privacy scanner와 rendered-body parity는 deterministic fixture로 회귀 검증한다. Fixed repository/label, random 10분 1회용 confirmation state, candidate/remote duplicate fail-closed, stdin body 전달과 exclusive submission claim은 fake `gh`·동시성 fixture로 검증한다.
 - Report와 선택형 GitHub login은 App restart/update 뒤 유지하되 각각 `/config`와 `/data`의 private permission을 보존한다. App backup은 `/data/github-cli`의 평문 credential을 포함할 수 있으므로 credential과 같은 민감자료로 취급한다.
 - 보고서 생성 실패, GitHub 미인증·실패·중복은 Home Assistant, Codex, Web UI, SSH와 browser 가용성을 낮추지 않고 명확한 fallback 또는 fail-closed 상태를 반환한다.
@@ -327,7 +340,7 @@ MVP에서는 다음을 만들지 않는다.
 - memory rollback을 이용한 Home Assistant 설정·registry·기기 상태 자동 되돌리기
 - 외부 vector database, cloud embedding 또는 메모리 동기화 서비스
 - 읽기 전용 API 프록시
-- 세밀한 AppArmor 경로 제한
+- 사용자가 임의 경로를 추가·해제하는 동적 AppArmor/DLP 정책
 - Docker socket 관리
 - HAOS host shell 제공
 - 비밀번호 SSH 로그인
@@ -400,5 +413,5 @@ MVP에서는 다음을 만들지 않는다.
 6. 유사 이슈 후보는 최대 5개이며 candidate title을 외부의 신뢰하지 않는 입력으로 정제한다. 후보 또는 remote report ID 중복 검색이 불가능하면 이슈를 만들지 않고 폴백하며, 취약점 후보는 공개 검색·preview·submit 대신 private route로 전환한다.
 7. 미인증 또는 실패 시 긴 report를 URL에 넣지 않는 Issue Form과 exact `public-report.md` 복사 경로를 제공하며 자동 재시도하지 않는다. 외부 write 결과가 불확실한 실패는 `.submission.lock`을 보존해 직접 재시도를 차단한다.
 8. `/config/codex-workspace/feedback`은 `0700`/`0600`, `/data/github-cli`는 `0700`/`0600`을 유지한다. Input과 managed path의 symlink, hardlink, non-regular type와 root escape를 거부하고, non-root-owned GitHub config는 소유권을 바꾸지 않은 채 direct login/submit을 비활성화한다.
-9. App image에 checksum 검증된 GitHub CLI `2.93.0`, Skill, helper와 routing instruction이 포함되고 일반 `0.5.0` → `0.6.0` update에서 Codex 인증/config/AGENTS, SSH/browser identity, memory와 Home Assistant 파일이 보존된다.
+9. App image에 checksum 검증된 GitHub CLI `2.97.0`, Skill, helper와 routing instruction이 포함되고 일반 `0.5.0` → `0.6.0` update에서 Codex 인증/config/AGENTS, SSH/browser identity, memory와 Home Assistant 파일이 보존된다.
 10. 실제 HAOS의 report 생성·restart persistence·Issue Form 폴백은 별도 실기하며, 실제 GitHub 이슈 생성은 저장소에 외부 변경을 남기므로 명시적 승인 전까지 **NOT RUN**으로 기록한다.

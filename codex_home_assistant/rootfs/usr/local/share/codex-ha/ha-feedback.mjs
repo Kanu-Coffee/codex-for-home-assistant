@@ -13,7 +13,7 @@ const PRIVATE_VULNERABILITY_URL =
 const DEFAULT_REPORT_ROOT = "/config/codex-workspace/feedback";
 const DEFAULT_GH_CONFIG_DIR = "/data/github-cli";
 const DEFAULT_GH_BIN = "/usr/local/bin/gh";
-const DEFAULT_PREVIEW_ROOT = "/run/codex-ha/ha-feedback-previews";
+const DEFAULT_PREVIEW_ROOT = "/tmp/codex-ha-feedback-previews";
 const SAFE_OPTIONS_PATH = "/run/codex-ha/ha-feedback-options.json";
 const PREVIEW_TTL_MS = 10 * 60 * 1000;
 const MAX_INPUT_BYTES = 256 * 1024;
@@ -553,7 +553,7 @@ function ensureDirectoryNoLinks(directory, mode = 0o700) {
     fail("managed path must be a real directory", 65);
   }
   assertTrustedOwner(stat, "managed directory");
-  fs.chmodSync(absolute, mode);
+  if ((stat.mode & 0o777) !== mode) fs.chmodSync(absolute, mode);
   assertNoSymlinkComponents(absolute);
   return absolute;
 }
@@ -1227,7 +1227,7 @@ function secureGhConfigTree(directory) {
   const stat = fs.lstatSync(directory);
   if (!stat.isDirectory() || stat.isSymbolicLink()) fail("GitHub CLI config directory is unsafe", 65);
   assertTrustedOwner(stat, "GitHub CLI config directory");
-  fs.chmodSync(directory, 0o700);
+  if ((stat.mode & 0o777) !== 0o700) fs.chmodSync(directory, 0o700);
   for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
     const target = path.join(directory, entry.name);
     const targetStat = fs.lstatSync(target);
@@ -1236,7 +1236,7 @@ function secureGhConfigTree(directory) {
     if (targetStat.isDirectory()) {
       secureGhConfigTree(target);
     } else if (targetStat.isFile() && targetStat.nlink === 1) {
-      fs.chmodSync(target, 0o600);
+      if ((targetStat.mode & 0o777) !== 0o600) fs.chmodSync(target, 0o600);
     } else {
       fail("GitHub CLI config contains an unsafe file", 65);
     }
@@ -1247,6 +1247,13 @@ function ensureGhConfig() {
   const directory = ensureDirectoryNoLinks(ghConfigDir());
   secureGhConfigTree(directory);
   return directory;
+}
+
+function githubStorageInit() {
+  return {
+    prepared: true,
+    config_directory: ensureGhConfig(),
+  };
 }
 
 function cleanGhEnvironment() {
@@ -1885,6 +1892,11 @@ async function main() {
   }
   if (command !== "github") fail("unknown command", 64);
   const githubCommand = arguments_.shift();
+  if (githubCommand === "storage-init") {
+    if (arguments_.length !== 0) fail("github storage-init accepts no arguments", 64);
+    printJson(githubStorageInit());
+    return;
+  }
   if (githubCommand === "status") {
     if (arguments_.length !== 0) fail("github status accepts no arguments", 64);
     printJson(githubStatus());

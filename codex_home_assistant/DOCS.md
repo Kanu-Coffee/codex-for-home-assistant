@@ -6,21 +6,21 @@
 
 이 문서는 Home Assistant OS 사용자가 앱을 설치하고, Web UI·SSH·모바일 Remote에서 Codex를 사용하며, 안전하게 대시보드·자동화·엔티티와 설정 오류를 다루는 방법을 설명합니다.
 
-현재 문서는 앱 버전 `0.6.0`을 기준으로 합니다.
+현재 안정판 설치 기준은 앱 버전 `0.7.0`입니다. HAOS에서 App은 **Codex for Home Assistant**, 사이드바는 **Codex**로 표시됩니다.
 
 > [!WARNING]
-> 이 앱은 `/config` 전체를 읽고 쓸 수 있고 Home Assistant Core 및 Supervisor `manager` API를 사용할 수 있습니다. 신뢰하는 관리자만 사용하고, 변경 전 backup과 diff를 확인하세요. TCP `2223`을 인터넷에 직접 port-forward하지 마세요.
+> 이 앱은 보호된 `secrets.yaml`·`.storage`를 제외한 `/config`를 읽고 쓸 수 있고 Home Assistant Core 및 Supervisor `manager` API를 사용할 수 있습니다. API 응답·로그·브라우저 화면에는 민감정보가 포함될 수 있습니다. 신뢰하는 관리자만 사용하고, 변경 전 backup과 diff를 확인하세요. TCP `2223`을 인터넷에 직접 port-forward하지 마세요.
 
 ## 시작하기 전에
 
 ### 지원 환경
 
 - Home Assistant OS 또는 Supervisor가 있는 설치 환경
-- **amd64** 장치
+- 안정판 `0.7.0`은 **amd64**와 64비트 **aarch64** 장치를 지원합니다. Raspberry Pi는 64비트 HAOS가 필요하며 32비트 `armv7`은 지원하지 않습니다.
 - 앱 이미지와 Codex 인증에 필요한 인터넷 연결
 - Codex를 사용할 수 있는 OpenAI/ChatGPT 계정
 
-현재 앱은 `stage: experimental`, `boot: manual`입니다. aarch64 장치와 HACS 설치는 지원하지 않습니다.
+안정판 `0.7.0` manifest는 `stage` 키를 생략해 Supervisor의 기본 stable 채널을 사용하며 `boot: manual`입니다. 후보 payload 계보의 Native ARM CI와 공개 amd64+aarch64 image 발행·익명 조회 검증은 통과했습니다. 실제 Raspberry Pi/aarch64 HAOS 실기는 **NOT RUN**이며, 이 공백은 자동 검증 결과를 근거로 릴리스 승인 과정에서 명시적으로 수용됐습니다. HACS 설치는 지원하지 않습니다.
 
 ### 이 앱이 제공하는 것
 
@@ -46,12 +46,12 @@ https://github.com/Kanu-Coffee/codex-for-home-assistant
 ```
 
 1. Home Assistant에서 **설정 → Apps → App store**를 엽니다.
-2. 우측 상단 메뉴의 **Repositories**에 위 URL을 추가합니다.
-3. App store를 새로고침하고 **Codex for Home Assistant**를 선택합니다.
-4. **Install**을 누릅니다. 공개 GHCR의 미리 빌드된 amd64 이미지를 사용하므로 HA 장치에서 소스를 빌드하지 않습니다.
+2. 우측 상단 메뉴의 **Repositories**에 위 기본 URL을 추가합니다.
+3. App store를 새로고침하고 **Codex for Home Assistant**가 표시되는지 확인합니다.
+4. **Install**을 누릅니다. 앱은 GHCR의 미리 빌드된 amd64 또는 aarch64 이미지를 사용하므로 HA 장치에서 소스를 빌드하지 않습니다.
 5. 처음에는 기본 설정을 유지한 채 앱을 시작합니다.
 
-앱이 목록에 보이지 않으면 장치 아키텍처가 amd64인지 확인하세요. 설치 실패 시 App/Supervisor 로그를 보존하되 token, 내부 URL과 개인 정보를 공유하지 마세요.
+앱이 목록에 보이지 않으면 장치가 amd64 또는 64비트 aarch64인지 확인하세요. 설치 실패 시 App/Supervisor 로그를 보존하되 token, 내부 URL과 개인 정보를 공유하지 마세요.
 
 ## 첫 실행
 
@@ -103,7 +103,7 @@ ha-codex
 | `web_terminal_auto_start_codex` | `false` | 새 `tmux` 세션에서 Codex를 한 번 자동 시작 | 기존 세션에는 소급되지 않습니다. Codex 종료 후 Bash로 돌아옵니다. |
 | `tmux_session_name` | `codex-ha` | 영문, 숫자, `.`, `_`, `-`로 된 1~64자 세션 이름 | 바꾼 뒤 새 세션을 사용합니다. |
 | `codex_approval_policy` | `on-request` | `untrusted`, `on-request`, `never` | `never`는 광범위한 자동 승인을 뜻하므로 신뢰하는 작업에서만 사용하세요. |
-| `codex_sandbox_mode` | `danger-full-access` | `workspace-write`, `danger-full-access` | 앱 컨테이너 내부 정책입니다. 그러나 `/config`가 RW이므로 실제 HA 설정에 영향을 줄 수 있습니다. |
+| `codex_sandbox_mode` | `workspace-write` | `workspace-write`; `danger-full-access`는 legacy 호환 입력 | 앱은 어느 입력이든 network-enabled `workspace-write`로 강제합니다. 보호 경로 외 `/config`는 RW이므로 실제 HA 설정에 영향을 줄 수 있습니다. |
 | `browser_approval_policy` | `safe` | `safe`, `never`, `always` | `safe`는 조회·캡처를 자동 승인하고 클릭·입력은 확인합니다. |
 | `codex_user_files_update_mode` | `preserve` | `preserve`, `refresh_agents`, `refresh_all` | 일회성 refresh 뒤 `preserve`로 되돌리세요. `refresh_all`은 사용자 Codex 설정을 초기화할 수 있습니다. |
 | `home_assistant_browser_auto_auth` | `true` | Headless browser용 전용 local-only read-only HA 사용자 자동 관리 | 끄거나 켠 뒤 앱과 browser 세션을 다시 시작하세요. |
@@ -118,7 +118,7 @@ authorized_keys: []
 web_terminal_auto_start_codex: false
 tmux_session_name: codex-ha
 codex_approval_policy: on-request
-codex_sandbox_mode: danger-full-access
+codex_sandbox_mode: workspace-write
 browser_approval_policy: safe
 codex_user_files_update_mode: preserve
 home_assistant_browser_auto_auth: true
@@ -144,6 +144,21 @@ log_level: info
 | `refresh_all` | base `AGENTS.md`와 사용자 `config.toml`을 현재 앱 기본값으로 한 번 초기화합니다. |
 
 `refresh_all`은 사용자가 추가한 model, provider, MCP와 기타 설정을 제거할 수 있습니다. 원본은 `/data/codex/backups/user-files` 아래 root-only backup에 저장되지만 이 backup 자체도 credential과 내부 endpoint를 포함할 수 있는 민감자료입니다. 작업을 확인한 뒤 mode를 `preserve`로 되돌리지 않으면 다음 앱 버전에서 선택한 갱신이 다시 한 번 실행됩니다.
+
+### 민감 경로와 자격증명 경계
+
+- Custom AppArmor는 `/config/secrets.yaml`, 모든 중첩 `secrets.yaml`과 `/config/.storage` content의 읽기·쓰기·실행·링크 생성을 명시적으로 거부합니다. 따라서 정상적인 Codex 직접 파일 접근 경로로는 이 content를 읽을 수 없고 그 내용이 Codex에 전달되지 않습니다. Image validator에 필요한 `.storage` directory 순회/listing 작업만 profile에 남아 있어 같은 profile의 root shell은 entry 이름을 볼 수 있지만 content는 열 수 없습니다. Codex의 directory read는 아래 managed requirements가 별도로 거부합니다.
+- `/etc/codex/requirements.toml`은 같은 경로의 읽기를 관리자 정책으로 다시 거부하고 허용 mode를 `read-only`와 `workspace-write`로 제한해 `danger-full-access`를 차단합니다. 앱 wrapper는 실제 세션을 network-enabled `workspace-write`로 강제하며 사용자 또는 프로젝트 Codex 설정은 이 deny/allowlist를 완화할 수 없습니다.
+- App init과 매 Codex launch의 image-managed 검사는 모든 `secrets.yaml`과 `.storage` tree에서 symlink, 특수 파일, link count가 1이 아닌 파일을 값·경로 원문 출력 없이 거부합니다. 안전하지 않으면 App 또는 Codex가 fail closed합니다.
+- 나머지 `/config`는 계속 RW입니다. Recorder DB, 일반 YAML, package, custom component와 dashboard 파일은 고정 deny 대상이 아닙니다.
+- `SUPERVISOR_TOKEN`은 Web/SSH/Codex와 장기 scheduler의 ambient 환경에서 제거됩니다. `ha-api`, `supervisor-api`, browser/memory 등 용도가 고정된 helper만 실행 시 root-only `/run/codex-ha/runtime.env`에서 token을 읽으며 필요한 helper process에는 그 수명 동안 credential이 존재할 수 있습니다.
+- `/data/github-cli`의 선택형 GitHub 로그인 credential은 image-managed `ha-feedback`만 사용해야 합니다. 로그인·로그아웃은 sandbox 밖의 신뢰된 App shell에서 명시적으로 실행하며 credential이나 `hosts.yml`을 직접 열지 마세요. 현재 root Codex에서 이 tree를 강제로 격리하는 별도 broker는 없습니다.
+- API helper의 method/path/body와 원시 응답 호환성은 유지합니다. Core/Supervisor API, 로그, 상태 attribute 또는 인증된 browser 화면이 민감값을 반환하면 Codex가 이를 볼 수 있으므로 이 경계는 완전한 DLP가 아닙니다.
+- Interactive shell과 Codex process는 root로 실행됩니다. Ambient 환경과 `/proc/*/environ` 노출을 줄였지만, 악의적이거나 명시적으로 지시받은 root process가 runtime credential 파일을 직접 읽는 잔여 위험은 남습니다.
+- 파일 경계는 pathname 기반입니다. 검사 완료 뒤 다른 외부 process가 보호 inode에 hardlink를 추가하는 TOCTOU와, 사용자가 보호 값을 일반 비보호 `/config` 경로로 복사한 경우는 보장하지 않습니다. 보호 값을 복제하거나 alias를 만들지 마세요.
+- Root Codex에서 `/data/github-cli`를 직접 읽는 것까지 차단하려면 별도 credential broker가 필요합니다. 현재 helper의 clean environment와 private mode는 우발적 노출을 줄이지만 root 격리 경계는 아닙니다.
+
+보호된 secret 값이 필요한 변경은 사용자가 Home Assistant UI나 별도 신뢰 경로에서 직접 처리하세요. Codex에는 secret key 이름이나 placeholder만 제공하고 값 자체는 전달하지 않는 방식을 권장합니다.
 
 ## 접속 방법
 
@@ -325,7 +340,7 @@ ha-memory conflicts --status open
 
 `empty`, `degraded`, `stale`이면 memory DB를 삭제하지 마세요. 처음 학습 중이거나 Core 연결이 일시적으로 실패한 상태일 수 있으며 마지막 성공 snapshot을 보존합니다.
 
-이 기능은 모델 자체가 스스로 학습하거나 승인 없이 집을 운영한다는 뜻이 아닙니다. 현재 `0.6.0`은 experimental이며 실제 HAOS의 자연어 기억→새 작업 회상 전체 흐름에는 아직 공개 검증 공백이 있습니다.
+이 기능은 모델 자체가 스스로 학습하거나 승인 없이 집을 운영한다는 뜻이 아닙니다. 실제 HAOS의 자연어 기억→새 작업 회상 전체 흐름에는 아직 공개 검증 공백이 있습니다.
 
 ## 앱 버그·기능 제안 보고서
 
@@ -391,7 +406,7 @@ flowchart LR
 - backup 복원
 - 앱 제거, OS 업데이트, database 삭제
 
-`.storage`는 가능한 경우 Home Assistant UI/API로 변경하고, Recorder DB는 직접 쓰지 마세요. `SUPERVISOR_TOKEN`, `auth.json`, SSH private key, `secrets.yaml`과 browser token을 출력하거나 공유하지 마세요.
+`.storage` content와 `secrets.yaml`은 직접 접근이 차단되므로 Home Assistant UI/API 또는 별도 신뢰 경로를 사용하세요. AppArmor validator allowance 때문에 root shell에서 `.storage` entry 이름이 보일 수 있어도 content 접근이 허용된 것은 아닙니다. Recorder DB는 이번 deny 범위 밖이지만 직접 쓰지 마세요. `SUPERVISOR_TOKEN`, `auth.json`, SSH private key, API 원문, screenshot과 browser token을 출력하거나 공유하지 마세요.
 
 ## 업데이트
 
@@ -427,7 +442,7 @@ flowchart LR
 | `ha-browser-auth-status` | Headless browser 인증 상태 확인 |
 | `ha-browser-network-info` | 내부 dashboard gateway 연결 정보 확인 |
 
-helper는 token을 자동으로 붙이지만, `env`, `printenv`, `set`, `export -p`, `curl -v`로 runtime token을 노출하지 마세요.
+일반 shell은 token을 상속하지 않습니다. 용도가 고정된 helper만 private runtime 파일을 읽고, direct API helper는 token을 private header로 요청에 붙입니다. Memory/browser 같은 dedicated helper process에는 필요한 수명 동안 credential이 존재할 수 있습니다. Helper를 우회해 runtime credential 파일을 읽거나 `curl -v`·debug output으로 인증 header를 노출하지 마세요.
 
 ## 문제 해결
 
@@ -435,7 +450,10 @@ helper는 token을 자동으로 붙이지만, `env`, `printenv`, `set`, `export 
 
 - App 로그에서 첫 fatal error를 확인합니다.
 - `/config`가 없거나 쓰기 불가능하면 앱은 의도적으로 시작하지 않습니다.
+- Custom AppArmor profile parse/load가 실패하면 보호 경계를 우회해 시작하지 말고 정책과 Supervisor 로그를 먼저 확인합니다.
 - 공개키가 없다는 경고만 있고 Web UI가 동작하면 정상입니다. SSH만 비활성화된 상태입니다.
+
+보호 경로의 unsafe link/file-type 검사 오류라면 앱을 중지한 뒤 Home Assistant File Editor, Studio Code Server, 별도 신뢰 호스트 경로 또는 정상 backup을 사용하세요. 보호 원본의 값은 출력하지 말고, 그 inode를 가리키는 alias·symlink나 special entry만 식별해 제거한 뒤 `secrets.yaml`은 single-link regular file, `.storage`는 real directory와 single-link regular file만 남도록 복구하고 앱을 다시 시작합니다. App 자체 Ingress/SSH는 시작 전 차단되므로 이 복구에 사용할 수 없습니다.
 
 ### Web UI가 재연결 화면에 머묾
 
@@ -453,6 +471,16 @@ helper는 token을 자동으로 붙이지만, `env`, `printenv`, `set`, `export 
 - 계정 또는 workspace에서 device code 로그인이 허용되는지 확인합니다.
 - 앱의 `auth.json` 내용을 출력하지 마세요.
 - 최신 공식 절차는 [Codex authentication](https://developers.openai.com/codex/auth)을 확인하세요.
+
+### 사용하지 않는 MCP가 시작 오류를 표시함
+
+`MCP client for '<name>' failed to start` 경고의 `<name>`이 image-managed `playwright` 또는 `ha_memory`가 아니라면, 일반 업데이트가 보존한 사용자 설정이나 신뢰된 프로젝트 설정에서 온 항목입니다. 예를 들어 수용 시험에서 관측된 `xcodebuildmcp`는 이 App의 image-managed 설정에 포함되지 않습니다.
+
+1. `codex mcp list`로 등록 위치와 이름을 확인합니다.
+2. 자신이 관리하는 `/data/codex/config.toml`과, 프로젝트를 신뢰하는 경우에만 `/config/.codex/config.toml`에서 해당 MCP entry를 확인합니다. 설정 전체나 credential 값을 출력하지 마세요.
+3. 더 이상 사용하지 않는 항목만 제거하거나 필요한 실행 파일을 올바르게 설치한 뒤 Codex를 완전히 종료하고 새 세션을 시작합니다.
+
+App은 보존된 사용자·프로젝트 MCP를 임의로 삭제하지 않습니다. `codex_user_files_update_mode: refresh_all`은 해당 한 항목만 고치는 기능이 아니라 model, provider, MCP와 다른 사용자 설정 전체를 image 기본값으로 되돌리고 root-only backup을 만드는 선택이므로, 전체 초기화를 의도할 때만 사용하고 다음 시작 전에 `preserve`로 되돌리세요.
 
 ### SSH 연결 실패
 
@@ -480,6 +508,8 @@ ha-memory status
 ```
 
 Core가 준비될 시간을 두고 다시 확인합니다. DB/WAL을 직접 삭제·수정하지 마세요. App version, Core version, 상태의 closed error code만 수집하고 raw token/API 응답은 공유하지 않습니다.
+
+이전 수용 로그에서는 registry/state에 남은 automation의 config lookup이 반복 실패해 이 상태가 지속됐습니다. 안정판 `0.7.0`은 Core의 exact `automation/config` `not_found`만 빈 detail과 bounded warning으로 격리합니다. 업데이트 뒤에도 다른 closed error code로 `degraded/stale`이 계속되면 광범위하게 무시하지 말고 그 code와 시각만 공유해 별도로 진단하세요.
 
 ### 피드백 GitHub 직접 제출이 되지 않음
 
@@ -514,11 +544,12 @@ Core가 준비될 시간을 두고 다시 확인합니다. DB/WAL을 직접 삭�
 
 ## 제한사항과 지원
 
-- amd64 전용, `stage: experimental`, 기본 `boot: manual`입니다.
+- 안정판 `0.7.0`은 amd64와 64비트 aarch64를 지원합니다. Native aarch64 CI와 image 검증은 통과했지만 실제 Raspberry Pi/aarch64 HAOS 실기는 **NOT RUN**이며 이 공백은 릴리스 승인 과정에서 수용됐습니다. Armv7은 지원하지 않습니다.
+- `secrets.yaml`과 `.storage` content는 정상적인 Codex 직접 파일 접근에서 명시적으로 차단되어 그 경로로 내용이 Codex에 전달되지 않고, managed requirements는 Codex directory read도 거부합니다. 다만 AppArmor validator allowance 때문에 root shell의 `.storage` entry listing은 남습니다. 원시 API·로그·브라우저 결과의 민감값은 정화하지 않으며 root interactive process가 private runtime credential 파일을 직접 읽을 수 있는 잔여 위험도 있습니다.
 - Bubble Card와 다른 custom card를 포함하거나 자동 설치하지 않습니다.
 - 별도 채팅형 Web UI가 아닌 터미널 UI입니다.
 - 자동화·dashboard 결과는 환경과 요청에 따라 달라지며 사람의 검토가 필요합니다.
-- 실제 HAOS의 `0.6.0` 자연어 memory 폐루프에는 공개 검증 공백이 있습니다.
+- 실제 HAOS의 자연어 memory 폐루프에는 공개 검증 공백이 있습니다.
 - 실제 GitHub 이슈 직접 생성은 별도 명시 승인 없이는 자동 검증에서 실행하지 않습니다.
 - Supervisor endpoint와 OpenAI Remote 제공 여부는 Home Assistant/OpenAI 버전·정책에 따라 달라질 수 있습니다.
 

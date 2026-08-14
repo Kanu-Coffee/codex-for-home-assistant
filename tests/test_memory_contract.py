@@ -87,7 +87,7 @@ def test_memory_runtime_artifacts_are_image_managed(rootfs: Path) -> None:
         assert binary.is_file(), binary_name
 
         wrapper = binary.read_text(encoding="utf-8")
-        assert wrapper.startswith("#!/usr/bin/env bash\n")
+        assert wrapper.startswith("#!/bin/bash -p\n")
         assert "set -Eeuo pipefail" in wrapper
         assert "/usr/bin/node" in wrapper
         assert f"/usr/local/share/codex-ha/{module_name}" in wrapper

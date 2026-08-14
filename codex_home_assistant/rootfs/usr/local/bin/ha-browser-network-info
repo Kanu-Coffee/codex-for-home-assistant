@@ -1,7 +1,17 @@
-#!/usr/bin/env bash
+#!/bin/bash -p
 set -Eeuo pipefail
 
 readonly UPSTREAM_FILE=/run/codex-ha/home-assistant-render-upstream.conf
+readonly RUNTIME_ENV=/run/codex-ha/runtime.env
+
+unset BASH_ENV ENV SUPERVISOR_TOKEN \
+  http_proxy https_proxy all_proxy no_proxy \
+  HTTP_PROXY HTTPS_PROXY ALL_PROXY NO_PROXY CURL_HOME
+export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+# shellcheck source=/dev/null
+. /usr/local/lib/codex-ha/supervisor-credential.sh
+codex_ha_load_supervisor_credential "${RUNTIME_ENV}" || true
 
 if [[ ! -r "${UPSTREAM_FILE}" ]]; then
   printf '%s\n' 'ha-browser-network-info: browser upstream is not configured' >&2
@@ -17,6 +27,7 @@ if [[ ! "${upstream}" =~ ^https?://homeassistant:[0-9]+$ ]]; then
 fi
 
 curl_args=(
+  --disable
   --silent
   --show-error
   --connect-timeout 2
@@ -29,7 +40,7 @@ if [[ "${upstream}" == https://* ]]; then
   curl_args+=(--insecure)
 fi
 
-mapfile -t socket_info < <(curl "${curl_args[@]}" "${upstream}/auth/providers")
+mapfile -t socket_info < <(/usr/bin/curl "${curl_args[@]}" "${upstream}/auth/providers")
 if (( ${#socket_info[@]} != 3 )) || [[ -z "${socket_info[0]}" ]]; then
   printf '%s\n' 'ha-browser-network-info: unable to determine the Home Assistant socket path' >&2
   exit 1
@@ -37,10 +48,14 @@ fi
 
 supervisor_ip=''
 if [[ -n "${SUPERVISOR_TOKEN:-}" ]]; then
+  supervisor_header=$(mktemp /tmp/.codex-ha-browser-network-auth.XXXXXX)
+  trap 'rm -f -- "${supervisor_header}"' EXIT
+  printf 'Authorization: Bearer %s\n' "${SUPERVISOR_TOKEN}" > "${supervisor_header}"
+  chmod 0600 "${supervisor_header}"
   for endpoint in /apps/self/info /addons/self/info; do
-    response=$(curl --silent --show-error --connect-timeout 2 --max-time 5 \
+    response=$(/usr/bin/curl --disable --silent --show-error --connect-timeout 2 --max-time 5 \
       --noproxy '*' \
-      --header "Authorization: Bearer ${SUPERVISOR_TOKEN}" \
+      --header "@${supervisor_header}" \
       "http://supervisor${endpoint}" 2>/dev/null || true)
     supervisor_ip=$(jq --raw-output \
       'select(.result == "ok") | .data.ip_address // empty' \
@@ -49,6 +64,9 @@ if [[ -n "${SUPERVISOR_TOKEN:-}" ]]; then
       break
     fi
   done
+  unset SUPERVISOR_TOKEN
+  rm -f -- "${supervisor_header}"
+  trap - EXIT
 fi
 
 jq --null-input \

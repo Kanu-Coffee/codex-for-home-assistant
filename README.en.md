@@ -14,10 +14,10 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/Kanu-Coffee/codex-for-home-assistant/releases"><img alt="GitHub Release" src="https://img.shields.io/github/v/release/Kanu-Coffee/codex-for-home-assistant?include_prereleases"></a>
+  <a href="https://github.com/Kanu-Coffee/codex-for-home-assistant/releases"><img alt="GitHub Release" src="https://img.shields.io/github/v/release/Kanu-Coffee/codex-for-home-assistant"></a>
   <a href="https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/workflows/ci.yaml"><img alt="CI" src="https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/workflows/ci.yaml/badge.svg"></a>
-  <img alt="Architecture: amd64" src="https://img.shields.io/badge/architecture-amd64-blue">
-  <img alt="Stage: experimental" src="https://img.shields.io/badge/stage-experimental-orange">
+  <img alt="Architecture: amd64 and aarch64" src="https://img.shields.io/badge/architecture-amd64%20%7C%20aarch64-blue">
+  <img alt="Stage: stable" src="https://img.shields.io/badge/stage-stable-brightgreen">
   <a href="LICENSE"><img alt="License: Apache-2.0" src="https://img.shields.io/badge/license-Apache--2.0-green"></a>
 </p>
 
@@ -26,9 +26,9 @@
 </p>
 
 > [!WARNING]
-> This app can read and write all of `/config` and use the Home Assistant Core and Supervisor `manager` APIs. It is a powerful administrative tool. Back up your system and review the plan and diff before important changes. Never expose its SSH port directly to the internet.
+> This app can read and write `/config` except for protected `secrets.yaml` and `.storage` paths, and it can use the Home Assistant Core and Supervisor `manager` APIs. API responses, logs, and browser views can still contain sensitive information. Back up your system and review the plan and diff before important changes. Never expose its SSH port directly to the internet.
 
-This is an unofficial community project. It is not affiliated with or endorsed by OpenAI, Home Assistant, or Nabu Casa. The current release is **experimental and amd64-only**.
+This is an unofficial community project. It is not affiliated with or endorsed by OpenAI, Home Assistant, or Nabu Casa. Stable `0.7.0` supports `amd64` and 64-bit `aarch64`, appears in HAOS as **Codex for Home Assistant**, and uses **Codex** in the sidebar. Native ARM CI and multi-architecture image validation passed. A real Raspberry Pi/aarch64 HAOS acceptance run was not performed; the release approval explicitly accepted that gap based on the automated evidence.
 
 ## Real Web terminal preview
 
@@ -68,7 +68,7 @@ flowchart LR
     P["ChatGPT mobile Remote"] -->|Public-key SSH| S["HA app SSH / Codex app server"]
     T --> C["Bundled Codex CLI"]
     S --> C
-    C --> F["Read and edit /config"]
+    C --> F["Read and edit unprotected /config paths"]
     C --> A["Core and Supervisor APIs"]
     C --> B["Headless browser validation"]
     C --> R["Sanitized bug and feature reports"]
@@ -76,7 +76,7 @@ flowchart LR
 ```
 
 - The **Web UI** is a `ttyd` terminal backed by a shared `tmux` session inside Home Assistant Ingress. It is not a dedicated chat interface.
-- **Codex** runs in `/config` and can use configuration files, helper commands, APIs, and Headless Chromium together.
+- **Codex** runs in `/config` and can use unprotected configuration files, helper commands, APIs, and Headless Chromium together.
 - Reconnecting returns you to the same `tmux` session, so work continues after you close the browser while the app remains running.
 - **Browser validation** uses Codex's built-in tools to check desktop and mobile layouts, console messages, and network failures in dashboards and web interfaces.
 
@@ -85,19 +85,19 @@ flowchart LR
 ### Requirements
 
 - Home Assistant OS or another installation with Supervisor
-- An **amd64** device
+- Stable `0.7.0` supports **amd64** and 64-bit **aarch64** devices. Raspberry Pi requires 64-bit HAOS. 32-bit `armv7` is not supported.
 - Internet access to download the public image
 - An OpenAI/ChatGPT account with access to Codex
 
 ### Install and start
 
-1. Use the **Add the app repository to Home Assistant** button above, or add this URL under **Repositories** in the App store:
+1. Use one of the repository buttons above, or add this URL under **Repositories** in the App store:
 
    ```text
    https://github.com/Kanu-Coffee/codex-for-home-assistant
    ```
 
-2. Install and start **Codex for Home Assistant**. The default is `boot: manual`.
+2. Select **Codex for Home Assistant**, then install and start it. The default is `boot: manual`.
 3. Select **OPEN WEB UI**.
 4. Sign in to Codex once:
 
@@ -120,6 +120,9 @@ flowchart LR
    ```
 
 See the [English user guide](codex_home_assistant/DOCS.en.md) for complete installation, sign-in, SSH, update, and recovery instructions.
+
+> [!NOTE]
+> Stable `0.7.0` provides amd64 and 64-bit aarch64 images. Native aarch64 CI and multi-architecture image validation passed, but a real Raspberry Pi/aarch64 HAOS run remains **NOT RUN**; release approval explicitly accepted that validation gap.
 
 ## Prompts to try
 
@@ -181,7 +184,7 @@ This project's `ha_memory` is a local SQLite/MCP workflow. It is separate from O
 - It does not store raw conversations, current or historical state values, automation action/template bodies, tokens, or passwords.
 - Fresh Home Assistant API data takes priority for structural facts. Conflicts remain visible for review instead of being silently overwritten.
 
-This does not mean the model trains itself or operates your home without approval. Version `0.6.0` remains experimental, and the complete natural-language memory-to-recall flow has not yet been publicly validated on real HAOS hardware.
+This does not mean the model trains itself or operates your home without approval. The complete natural-language memory-to-recall flow has not yet been publicly validated on real HAOS hardware.
 
 ## Key settings
 
@@ -192,7 +195,7 @@ Keep the defaults when getting started.
 | `authorized_keys` | `[]` | SSH public keys. When empty, only SSH is disabled. |
 | `web_terminal_auto_start_codex` | `false` | Automatically start Codex in a new Web terminal session. |
 | `codex_approval_policy` | `on-request` | Approval policy for command execution. |
-| `codex_sandbox_mode` | `danger-full-access` | Codex permissions inside the app container. This is not HAOS host `full_access`. |
+| `codex_sandbox_mode` | `workspace-write` | Managed Codex sandbox with network access. Legacy `danger-full-access` input is accepted for compatibility but enforced as `workspace-write`. |
 | `browser_approval_policy` | `safe` | Automatically allow inspection and capture, but confirm clicks and input. |
 | `codex_user_files_update_mode` | `preserve` | Preserve user Codex settings and instructions during updates. |
 | `home_assistant_browser_auto_auth` | `true` | Manage a local-only, read-only HA user for the Headless browser. |
@@ -208,13 +211,17 @@ See [all app settings](codex_home_assistant/DOCS.en.md#app-settings) for accepte
 4. After applying a change, check `ha-config-check`, fresh API state, and the browser view.
 5. Treat locks, alarms, garage doors, heating, water, host reboots, and backup restores as separate high-impact actions. State them explicitly and review the latest result immediately before execution.
 
-`danger-full-access` is a policy inside the app container, but `/config` is mounted read-write, so the app still has substantial power over Home Assistant. Never print or share `secrets.yaml`, `.storage`, the Recorder database, or `SUPERVISOR_TOKEN` in Git, issues, or chat.
+Custom AppArmor and admin-enforced Codex requirements explicitly block direct reads and writes of root or nested `secrets.yaml` files and `/config/.storage` contents. Codex therefore cannot read those contents through its normal direct filesystem paths, and those contents do not enter Codex through direct file access. The AppArmor profile retains only the `.storage` directory traversal/listing needed by the validator, while managed requirements also deny Codex directory reads. The rest of `/config` remains read-write, and the Recorder database is not part of this fixed deny set. Core/Supervisor helpers keep their raw endpoint and response compatibility, so APIs, logs, or authenticated browser views may still reveal sensitive information.
+
+App initialization and every Codex launch inspect protected paths for symlinks, special files, and files whose link count is not one, failing closed without printing values. This is still a pathname-based boundary: it cannot prevent an external process from adding a hardlink after validation (a TOCTOU race), or protect a sensitive value that a user copies into an ordinary unprotected `/config` file.
+
+`SUPERVISOR_TOKEN` is removed from the ambient Web/SSH/Codex and long-running scheduler environment. Purpose-specific API, browser, and memory helpers load it from a private runtime file when launched; a helper process may retain the credential for its required lifetime. Interactive processes still run as root and retain the residual ability to read that file directly. This is not complete DLP or isolation from a malicious root shell; never share tokens, Recorder data, raw API output, screenshots, or logs in Git, issues, or chat.
 
 ## Current limitations
 
-- Only amd64 is supported. aarch64 is not yet supported.
+- Stable `0.7.0` supports amd64 and 64-bit aarch64. Native aarch64 CI and image validation passed, but a real Raspberry Pi/aarch64 HAOS run remains **NOT RUN** and was accepted as a release validation gap. 32-bit armv7 is not supported.
 - This is a Home Assistant App (formerly called an Add-on), so it cannot be installed through HACS.
-- The default is `boot: manual`, and the release stage remains `experimental`.
+- The default is `boot: manual`. The stable manifest omits the `stage` key and therefore uses the Supervisor's default stable channel.
 - The Web UI is a terminal, not a dedicated mobile chat interface.
 - Bubble Card and other custom cards are not bundled.
 - The read-only user used for Headless browser authentication can see all entity states, so screenshots and diagnostics may still be sensitive.

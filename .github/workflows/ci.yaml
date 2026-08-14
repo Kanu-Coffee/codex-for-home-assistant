@@ -5,6 +5,7 @@ name: CI
   push:
     branches:
       - main
+      - dev
       - "feat/**"
       - "fix/**"
   pull_request:
@@ -24,10 +25,10 @@ jobs:
     timeout-minutes: 15
     steps:
       - name: Check out repository
-        uses: actions/checkout@v7.0.0
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
       - name: Set up Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: "3.13"
           cache: pip
@@ -38,7 +39,7 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -r requirements-dev.txt
           sudo apt-get update
-          sudo apt-get install --yes jq shellcheck
+          sudo apt-get install --yes apparmor-utils jq shellcheck
 
       - name: Run Python policy and helper tests
         run: python -m pytest -ra
@@ -59,8 +60,20 @@ jobs:
           docker run --rm \
             --volume "${PWD}:/src:ro" \
             --workdir /src \
-            hadolint/hadolint:v2.14.0-alpine \
+            hadolint/hadolint:v2.14.0-alpine@sha256:7aba693c1442eb31c0b015c129697cb3b6cb7da589d85c7562f9deb435a6657c \
             hadolint --config .hadolint.yaml codex_home_assistant/Dockerfile
+
+      - name: Run GitHub Actions lint
+        run: |
+          docker run --rm \
+            --volume "${PWD}:/repo:ro" \
+            rhysd/actionlint:1.7.12@sha256:b1934ee5f1c509618f2508e6eb47ee0d3520686341fec936f3b79331f9315667 \
+            /repo/.github/workflows/ci.yaml \
+            /repo/.github/workflows/build-app.yaml \
+            /repo/.github/workflows/builder.yaml
+
+      - name: Parse custom AppArmor policy
+        run: apparmor_parser --skip-kernel-load --skip-cache codex_home_assistant/apparmor.txt
 
   home-assistant-addon-lint:
     name: Home Assistant App config
@@ -68,20 +81,20 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: Check out repository
-        uses: actions/checkout@v7.0.0
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
       - name: Run Home Assistant add-on linter
-        uses: frenck/action-addon-linter@v2.21
+        uses: frenck/action-addon-linter@f995494fd84fae6310d23617e66d0e37de4f14eb # v2.21
         with:
           path: ./codex_home_assistant
 
   amd64-build-and-smoke:
     name: linux/amd64 build and smoke
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 35
     steps:
       - name: Check out repository
-        uses: actions/checkout@v7.0.0
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
       - name: Build local Home Assistant App image
         run: |
@@ -89,6 +102,17 @@ jobs:
             --platform linux/amd64 \
             --tag codex-for-home-assistant:test \
             codex_home_assistant
+
+      - name: Reject mismatched aarch64 metadata on amd64
+        run: |
+          if docker build \
+            --platform linux/amd64 \
+            --build-arg BUILD_ARCH=aarch64 \
+            --tag codex-for-home-assistant:invalid-arch-test \
+            codex_home_assistant; then
+            printf '%s\n' 'mismatched BUILD_ARCH/TARGETARCH unexpectedly built' >&2
+            exit 1
+          fi
 
       - name: Run verified feedback delivery smoke tests
         run: bash tests/feedback-smoke.sh codex-for-home-assistant:test
@@ -108,8 +132,115 @@ jobs:
       - name: Run user-file update policy smoke tests
         run: bash tests/user-files-update-smoke.sh codex-for-home-assistant:test
 
-      - name: Verify update from released 0.5.0 preserves persistent data
+      - name: Load CI-only bubblewrap user namespace profile
+        env:
+          BWRAP_PROFILE_SHA256: a964037f6cf0df1099f14226b037eaedde6237c86e715188e93eb460b30be859
+          BWRAP_PROFILE_URL: "https://gitlab.com/apparmor/apparmor/-/raw/\
+            b4dfdf50f50ed1d64161424d036a2453645f0cfe/\
+            profiles/apparmor/profiles/extras/bwrap-userns-restrict"
+        run: |
+          profile_path=$(mktemp)
+          trap 'rm -f -- "${profile_path}"' EXIT
+          curl --disable --fail --location --proto '=https' --tlsv1.2 \
+            --output "${profile_path}" "${BWRAP_PROFILE_URL}"
+          printf '%s  %s\n' "${BWRAP_PROFILE_SHA256}" "${profile_path}" \
+            | sha256sum --check --strict -
+          sudo apparmor_parser --replace "${profile_path}"
+          sudo grep --fixed-strings --quiet \
+            'bwrap (enforce)' /sys/kernel/security/apparmor/profiles
+
+      - name: Run managed Codex sandbox smoke tests
+        run: bash tests/managed-sandbox-smoke.sh codex-for-home-assistant:test
+
+      - name: Verify update from released 0.6.0 preserves persistent data
         run: |
           bash tests/update-smoke.sh \
-            ghcr.io/kanu-coffee/codex-for-home-assistant:0.5.0 \
+            ghcr.io/kanu-coffee/codex-for-home-assistant:0.6.0 \
             codex-for-home-assistant:test
+
+  aarch64-build-and-smoke:
+    name: linux/aarch64 native build and smoke
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 60
+    env:
+      DOCKER_PLATFORM: linux/arm64
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Build native Home Assistant App image
+        run: |
+          docker build \
+            --platform linux/arm64 \
+            --build-arg BUILD_ARCH=aarch64 \
+            --tag codex-for-home-assistant:aarch64-test \
+            codex_home_assistant
+
+      - name: Reject mismatched amd64 metadata on aarch64
+        run: |
+          if docker build \
+            --platform linux/arm64 \
+            --build-arg BUILD_ARCH=amd64 \
+            --tag codex-for-home-assistant:invalid-aarch64-test \
+            codex_home_assistant; then
+            printf '%s\n' 'mismatched BUILD_ARCH/TARGETARCH unexpectedly built' >&2
+            exit 1
+          fi
+
+      - name: Verify native aarch64 runtime and labels
+        run: |
+          test "$(docker image inspect \
+            --format '{{.Architecture}}' \
+            codex-for-home-assistant:aarch64-test)" = arm64
+          test "$(docker image inspect \
+            --format '{{index .Config.Labels "io.hass.arch"}}' \
+            codex-for-home-assistant:aarch64-test)" = aarch64
+          docker run --rm --platform linux/arm64 \
+            --entrypoint /bin/bash \
+            codex-for-home-assistant:aarch64-test \
+            -Eeuo pipefail -c '
+              test "$(codex --version)" = "codex-cli 0.144.1"
+              gh --version | head -n 1 | grep -Fq "gh version 2.97.0 "
+              test ! -e /usr/bin/tempio
+              node --version
+              chromium-headless-shell --version
+              test -r /etc/codex/requirements.toml
+            '
+
+      - name: Run verified feedback delivery smoke tests
+        run: bash tests/feedback-smoke.sh codex-for-home-assistant:aarch64-test
+
+      - name: Run container smoke tests
+        run: bash tests/docker-smoke.sh codex-for-home-assistant:aarch64-test
+
+      - name: Run headless browser approval policy smoke tests
+        run: bash tests/browser-approval-smoke.sh codex-for-home-assistant:aarch64-test
+
+      - name: Run Home Assistant memory smoke tests
+        run: bash tests/memory-smoke.sh codex-for-home-assistant:aarch64-test
+
+      - name: Run managed browser authentication smoke tests
+        run: bash tests/managed-auth-smoke.sh codex-for-home-assistant:aarch64-test
+
+      - name: Run user-file update policy smoke tests
+        run: bash tests/user-files-update-smoke.sh codex-for-home-assistant:aarch64-test
+
+      - name: Load CI-only bubblewrap user namespace profile
+        env:
+          BWRAP_PROFILE_SHA256: a964037f6cf0df1099f14226b037eaedde6237c86e715188e93eb460b30be859
+          BWRAP_PROFILE_URL: "https://gitlab.com/apparmor/apparmor/-/raw/\
+            b4dfdf50f50ed1d64161424d036a2453645f0cfe/\
+            profiles/apparmor/profiles/extras/bwrap-userns-restrict"
+        run: |
+          profile_path=$(mktemp)
+          trap 'rm -f -- "${profile_path}"' EXIT
+          curl --disable --fail --location --proto '=https' --tlsv1.2 \
+            --output "${profile_path}" "${BWRAP_PROFILE_URL}"
+          printf '%s  %s\n' "${BWRAP_PROFILE_SHA256}" "${profile_path}" \
+            | sha256sum --check --strict -
+          sudo apparmor_parser --replace "${profile_path}"
+          sudo grep --fixed-strings --quiet \
+            'bwrap (enforce)' /sys/kernel/security/apparmor/profiles
+
+      - name: Run managed Codex sandbox smoke tests
+        run: bash tests/managed-sandbox-smoke.sh codex-for-home-assistant:aarch64-test

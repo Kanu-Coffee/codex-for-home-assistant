@@ -2,6 +2,8 @@
 # shellcheck shell=bash
 set -Eeuo pipefail
 
+unset SUPERVISOR_TOKEN
+
 declare -a options=(
   --interface 127.0.0.1
   --port 7682

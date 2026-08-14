@@ -7,7 +7,6 @@ umask 077
 readonly RUNTIME_DIR=/run/codex-ha
 readonly DATA_HOME=/data/home
 readonly CODEX_DATA=/data/codex
-readonly GITHUB_CLI_DATA=/data/github-cli
 readonly SSH_DATA=/data/ssh
 readonly TMUX_DATA=/data/tmux
 readonly LEGACY_PLAYWRIGHT_SECRETS=${RUNTIME_DIR}/playwright-secrets.env
@@ -16,6 +15,7 @@ readonly HA_RENDER_UPSTREAM=${RUNTIME_DIR}/home-assistant-render-upstream.conf
 readonly HA_BROWSER_AUTH_STATUS=${RUNTIME_DIR}/browser-auth-status.json
 readonly HA_BROWSER_NETWORK_STATUS=${RUNTIME_DIR}/browser-network-info.json
 readonly HA_FEEDBACK_OPTIONS=${RUNTIME_DIR}/ha-feedback-options.json
+readonly S6_SUPERVISOR_ENV=/run/s6/container_environment/SUPERVISOR_TOKEN
 
 rm -rf -- /run/codex-ha/playwright-output
 install -d -m 0700 \
@@ -28,22 +28,19 @@ install -d -m 0700 \
   /root/.ssh
 install -d -m 0755 /run/sshd
 
-if [[ -L "${GITHUB_CLI_DATA}" ]] || [[ -e "${GITHUB_CLI_DATA}" && ! -d "${GITHUB_CLI_DATA}" ]]; then
-  bashio::log.warning 'Persistent GitHub CLI storage is unsafe; ha-feedback GitHub login and direct submission will remain unavailable'
-elif [[ ! -e "${GITHUB_CLI_DATA}" ]]; then
-  install -d -m 0700 "${GITHUB_CLI_DATA}"
-elif [[ "$(stat -c '%u' "${GITHUB_CLI_DATA}")" != 0 ]]; then
-  bashio::log.warning 'Persistent GitHub CLI storage is not root-owned; ha-feedback will reject it without changing ownership'
-else
-  chmod 0700 "${GITHUB_CLI_DATA}"
-  find -P "${GITHUB_CLI_DATA}" -mindepth 1 -type d -exec chmod 0700 {} +
-  find -P "${GITHUB_CLI_DATA}" -mindepth 1 -type f -links 1 -exec chmod 0600 {} +
+# The image-managed helper validates and prepares GitHub CLI credential
+# storage. Private ownership and modes reduce accidental disclosure, but the
+# current root execution model does not isolate this tree from root Codex.
+if ! /usr/local/bin/ha-feedback github storage-init >/dev/null; then
+  bashio::log.warning 'Persistent GitHub CLI storage is unsafe; login and direct feedback submission will remain unavailable'
 fi
 
 # shellcheck source=/dev/null
 . /usr/local/lib/codex-ha/config.sh
 # shellcheck source=/dev/null
 . /usr/local/lib/codex-ha/browser-approval.sh
+# shellcheck source=/dev/null
+. /usr/local/lib/codex-ha/sensitive-path-policy.sh
 
 if ! codex_ha_config_validate; then
   bashio::log.fatal '/data/options.json is missing or invalid'
@@ -61,7 +58,10 @@ if ! jq --exit-status '
     {
       web_terminal_auto_start_codex: option_bool("web_terminal_auto_start_codex"; false),
       codex_approval_policy: option_string("codex_approval_policy"; "on-request"),
-      codex_sandbox_mode: option_string("codex_sandbox_mode"; "danger-full-access"),
+      codex_sandbox_mode: (
+        option_string("codex_sandbox_mode"; "workspace-write")
+        | if . == "danger-full-access" then "workspace-write" else . end
+      ),
       browser_approval_policy: option_string("browser_approval_policy"; "safe"),
       codex_user_files_update_mode: option_string("codex_user_files_update_mode"; "preserve"),
       home_assistant_browser_auto_auth: option_bool("home_assistant_browser_auto_auth"; true)
@@ -84,6 +84,13 @@ if [[ ! -w /config ]]; then
   exit 1
 fi
 
+if ! codex_ha_sensitive_paths_validate /config; then
+  bashio::log.fatal \
+    'Protected Home Assistant paths have an unsafe link or file type; remove aliases before starting this App'
+  exit 1
+fi
+bashio::log.info 'Verified protected Home Assistant path integrity'
+
 write_probe=$(mktemp /config/.codex-ha-write-test.XXXXXX)
 rm -f "${write_probe}"
 bashio::log.info 'Verified read-write access to /config'
@@ -97,9 +104,13 @@ case "${approval_policy}" in
     ;;
 esac
 
-sandbox_mode=$(codex_ha_config_string 'codex_sandbox_mode' 'danger-full-access')
+sandbox_mode=$(codex_ha_config_string 'codex_sandbox_mode' 'workspace-write')
 case "${sandbox_mode}" in
-  workspace-write | danger-full-access) ;;
+  workspace-write) ;;
+  danger-full-access)
+    bashio::log.warning \
+      'Legacy danger-full-access option will be enforced as workspace-write by the managed sensitive-path policy'
+    ;;
   *)
     bashio::log.fatal 'Invalid Codex sandbox mode'
     exit 1
@@ -196,6 +207,19 @@ runtime_tmp=$(mktemp "${RUNTIME_DIR}/.runtime.env.XXXXXX")
 chmod 0600 "${runtime_tmp}"
 mv -f "${runtime_tmp}" "${RUNTIME_DIR}/runtime.env"
 
+# S6 has already passed the container credential to this init process. Future
+# services load their environment from this directory, so remove only the
+# Supervisor entry after the private runtime copy is durable. Helpers load the
+# credential explicitly from runtime.env when needed.
+if ! rm -f -- "${S6_SUPERVISOR_ENV}"; then
+  bashio::log.fatal 'Could not clear the inherited Supervisor credential from the S6 service environment'
+  exit 1
+fi
+if [[ -e "${S6_SUPERVISOR_ENV}" || -L "${S6_SUPERVISOR_ENV}" ]]; then
+  bashio::log.fatal 'The inherited Supervisor credential remained in the S6 service environment'
+  exit 1
+fi
+
 if /usr/local/bin/ha-memory init >/dev/null 2>&1; then
   bashio::log.info 'Validated the persistent Home Assistant memory store'
 else
@@ -208,9 +232,6 @@ ssh_environment_tmp=$(mktemp /root/.ssh/.environment.XXXXXX)
   printf 'CODEX_HOME=%s\n' "${CODEX_DATA}"
   printf 'HA_URL=%s\n' 'http://supervisor/core/api'
   printf 'SUPERVISOR_URL=%s\n' 'http://supervisor'
-  if [[ -n "${SUPERVISOR_TOKEN:-}" ]]; then
-    printf 'SUPERVISOR_TOKEN=%s\n' "${SUPERVISOR_TOKEN}"
-  fi
 } > "${ssh_environment_tmp}"
 chmod 0600 "${ssh_environment_tmp}"
 mv -f "${ssh_environment_tmp}" /root/.ssh/environment
@@ -254,10 +275,17 @@ ha_frontend_scheme=http
 ha_frontend_port=8123
 if [[ -n "${SUPERVISOR_TOKEN:-}" ]]; then
   core_info_tmp=$(mktemp "${RUNTIME_DIR}/.core-info.XXXXXX")
-  if curl --fail --silent \
+  core_info_header_tmp=$(mktemp "${RUNTIME_DIR}/.core-info-header.XXXXXX")
+  printf 'Authorization: Bearer %s\n' "${SUPERVISOR_TOKEN}" \
+    > "${core_info_header_tmp}"
+  chmod 0600 "${core_info_header_tmp}"
+  unset http_proxy https_proxy all_proxy no_proxy \
+    HTTP_PROXY HTTPS_PROXY ALL_PROXY NO_PROXY CURL_HOME
+  if /usr/bin/curl --disable --fail --silent \
     --connect-timeout 1 \
     --max-time 2 \
-    --header "Authorization: Bearer ${SUPERVISOR_TOKEN}" \
+    --noproxy '*' \
+    --header "@${core_info_header_tmp}" \
     --output "${core_info_tmp}" \
     http://supervisor/core/info; then
     candidate_port=$(jq --exit-status --raw-output \
@@ -277,8 +305,9 @@ if [[ -n "${SUPERVISOR_TOKEN:-}" ]]; then
   else
     bashio::log.warning 'Supervisor Core info is unavailable; using the internal Home Assistant frontend default'
   fi
-  rm -f "${core_info_tmp}"
+  rm -f "${core_info_tmp}" "${core_info_header_tmp}"
 fi
+unset SUPERVISOR_TOKEN
 
 ha_render_upstream_tmp=$(mktemp "${RUNTIME_DIR}/.home-assistant-render-upstream.XXXXXX")
 printf 'set %s "%s://homeassistant:%s";\n' \

@@ -5,6 +5,7 @@
 set -Eeuo pipefail
 
 IMAGE=${1:-codex-for-home-assistant:test}
+DOCKER_PLATFORM=${DOCKER_PLATFORM:-linux/amd64}
 TEST_ID="codex-ha-user-files-${RANDOM}-$$"
 MAIN_VOLUME="${TEST_ID}-main"
 SYMLINK_VOLUME="${TEST_ID}-symlink"
@@ -46,7 +47,7 @@ run_volume() {
   local volume=$1
   shift
   docker run --rm \
-    --platform linux/amd64 \
+    --platform "${DOCKER_PLATFORM}" \
     --entrypoint /bin/sh \
     --volume "${volume}:/data" \
     "${IMAGE}" "$@"
@@ -70,7 +71,7 @@ assert_json() {
   local value=$1
   local expression=$2
   printf '%s\n' "${value}" | docker run --rm --interactive \
-    --platform linux/amd64 \
+    --platform "${DOCKER_PLATFORM}" \
     --entrypoint jq \
     "${IMAGE}" --exit-status "${expression}" >/dev/null \
     || fail "JSON assertion failed: ${expression}"
@@ -80,7 +81,7 @@ json_value() {
   local value=$1
   local expression=$2
   printf '%s\n' "${value}" | docker run --rm --interactive \
-    --platform linux/amd64 \
+    --platform "${DOCKER_PLATFORM}" \
     --entrypoint jq \
     "${IMAGE}" --raw-output "${expression}"
 }
@@ -117,27 +118,27 @@ for volume in "${VOLUMES[@]}"; do
   docker volume create "${volume}" >/dev/null
 done
 
-APP_VERSION=$(docker run --rm --platform linux/amd64 --entrypoint /bin/sh \
+APP_VERSION=$(docker run --rm --platform "${DOCKER_PLATFORM}" --entrypoint /bin/sh \
   "${IMAGE}" -c 'cat /usr/local/share/codex-ha/app-version')
 IMAGE_VERSION=$(docker image inspect --format \
   '{{index .Config.Labels "io.hass.version"}}' "${IMAGE}")
-[[ "${APP_VERSION}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+[[ "${APP_VERSION}" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z]+(\.[0-9A-Za-z]+)*)?(\+[0-9A-Za-z]+(\.[0-9A-Za-z]+)*)?$ ]]
 [[ "${APP_VERSION}" == "${IMAGE_VERSION}" ]] \
   || fail 'baked App version does not match the image label'
-[[ $(docker run --rm --platform linux/amd64 --entrypoint stat "${IMAGE}" \
+[[ $(docker run --rm --platform "${DOCKER_PLATFORM}" --entrypoint stat "${IMAGE}" \
   -c '%a:%U:%G' /usr/local/share/codex-ha/app-version) == 644:root:root ]]
-[[ $(docker run --rm --platform linux/amd64 --entrypoint stat "${IMAGE}" \
+[[ $(docker run --rm --platform "${DOCKER_PLATFORM}" --entrypoint stat "${IMAGE}" \
   -c '%a:%U:%G' /usr/local/share/codex-ha/user-files-update.mjs) == 644:root:root ]]
 
 docker run --rm \
-  --platform linux/amd64 \
+  --platform "${DOCKER_PLATFORM}" \
   --entrypoint /usr/local/bin/codex-user-files-update \
   "${IMAGE}" unexpected-argument >/dev/null 2>&1 \
   && fail 'user-file update wrapper accepted an argument'
 
 # Missing codex_user_files_update_mode must preserve every existing user file.
 docker run --rm \
-  --platform linux/amd64 \
+  --platform "${DOCKER_PLATFORM}" \
   --entrypoint /bin/sh \
   --volume "${MAIN_VOLUME}:/data" \
   --env CONFIG_SECRET="${CONFIG_SECRET}" \
@@ -267,7 +268,7 @@ run_volume "${MAIN_VOLUME}" -c '
   test "$(stat -c "%a:%U:%G" "${backup}/metadata.json")" = 600:root:root
   test ! -e "${backup}/agents.before"
   test ! -e "${backup}/agents.image-default"
-  printf '\''approval_policy = "never"\nsandbox_mode = "workspace-write"\ncli_auth_credentials_store = "file"\ncheck_for_update_on_startup = false\n'\'' \
+  printf '\''approval_policy = "never"\nsandbox_mode = "workspace-write"\ncli_auth_credentials_store = "file"\ncheck_for_update_on_startup = false\n\n[sandbox_workspace_write]\nnetwork_access = true\n'\'' \
     | cmp -s - /data/codex/config.toml
   test "$(stat -c "%a:%U:%G" /data/codex/config.toml)" = 600:root:root
   jq --exit-status --arg version "${version}" '\''
@@ -326,7 +327,7 @@ run_volume "${MAIN_VOLUME}" -c '
   previous=$1
   current=$2
   cmp -s /usr/local/share/codex-ha/AGENTS.md /data/codex/AGENTS.md
-  printf '\''approval_policy = "never"\nsandbox_mode = "workspace-write"\ncli_auth_credentials_store = "file"\ncheck_for_update_on_startup = false\n'\'' \
+  printf '\''approval_policy = "never"\nsandbox_mode = "workspace-write"\ncli_auth_credentials_store = "file"\ncheck_for_update_on_startup = false\n\n[sandbox_workspace_write]\nnetwork_access = true\n'\'' \
     | cmp -s - /data/codex/config.toml
   jq --exit-status --arg previous "${previous}" --arg current "${current}" '\''
     (.applied.agents | index($previous) != null)
@@ -354,7 +355,7 @@ run_volume "${MAIN_VOLUME}" -c \
 # transaction with its state marker removed is uncommitted and rolls back to
 # the exact original while preserve mode prevents an immediate re-refresh.
 docker run --rm \
-  --platform linux/amd64 \
+  --platform "${DOCKER_PLATFORM}" \
   --entrypoint /bin/sh \
   --volume "${RECOVERY_VOLUME}:/data" \
   --env AGENTS_SECRET="${AGENTS_SECRET}" \
@@ -455,7 +456,7 @@ run_volume "${RECOVERY_VOLUME}" -c '
 
 # A linked AGENTS target rejects refresh_all before config.toml is changed.
 docker run --rm \
-  --platform linux/amd64 \
+  --platform "${DOCKER_PLATFORM}" \
   --entrypoint /bin/sh \
   --volume "${SYMLINK_VOLUME}:/data" \
   --env CONFIG_SECRET="${CONFIG_SECRET}" \
@@ -491,7 +492,7 @@ run_volume "${SYMLINK_VOLUME}" -c '
 
 # A multiply linked config.toml is rejected without changing AGENTS.md.
 docker run --rm \
-  --platform linux/amd64 \
+  --platform "${DOCKER_PLATFORM}" \
   --entrypoint /bin/sh \
   --volume "${HARDLINK_VOLUME}:/data" \
   --env CONFIG_SECRET="${CONFIG_SECRET}" \

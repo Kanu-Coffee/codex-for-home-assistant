@@ -14,7 +14,11 @@ configuration:
     description: 대화형 Codex가 명령 실행 전에 승인을 요청하는 시점을 정합니다.
   codex_sandbox_mode:
     name: Codex 샌드박스 모드
-    description: danger-full-access는 이 App 컨테이너 내부에만 적용되며 HAOS 호스트 권한이 아닙니다.
+    description: >-
+      이미지 관리형 민감 경로 정책을 유지하기 위해 workspace-write를 강제하며
+      네트워크 접근은 유지합니다. 업그레이드 호환용 danger-full-access 값도
+      실제 실행 시 workspace-write로 강제됩니다. 변경 뒤 App을 재시작하고 새
+      Codex 세션을 시작하세요.
   browser_approval_policy:
     name: 헤드리스 브라우저 승인 정책
     description: >-

@@ -1,6 +1,6 @@
 # Contributing
 
-Contributions to documentation, tests and the Home Assistant app are welcome. The project is currently experimental and changes must preserve the explicit security boundaries around `/config`, Home Assistant APIs, SSH, browser authentication and local memory.
+Contributions to documentation, tests and the Home Assistant app are welcome. The stable project must preserve the explicit security boundaries around `/config`, Home Assistant APIs, SSH, browser authentication and local memory.
 
 ## Before changing code
 
@@ -35,6 +35,7 @@ Do not weaken the following without an explicit architecture and security decisi
 
 - public-key-only SSH
 - no Supervisor `admin`, Docker API, Home Assistant `full_access`, host network, or AppArmor disablement
+- custom AppArmor and managed requirements that block root/nested `secrets.yaml` and `/config/.storage` contents from normal direct Codex filesystem access
 - secret redaction and root-only persistent credentials
 - fail-closed browser identity validation
 - bounded memory retrieval and exclusion of raw conversations, credentials and state history

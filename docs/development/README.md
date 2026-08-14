@@ -43,11 +43,16 @@
 
 ## 현재 배포 제약
 
-- `amd64` 전용
-- `stage: experimental`
+- Stable `0.7.0`은 `amd64`, 64비트 `aarch64` release; native aarch64 CI와 멀티아키 GHCR 검증은 `PASS`
+- 실제 Raspberry Pi/aarch64 HAOS 수용은 `NOT RUN`; 2026-08-14 릴리스 승인에서 이 공백을 명시적으로 수용했으며 실행한 것으로 표기하지 않음. Armv7/32-bit ARM은 미지원
+- Stable manifest는 `stage` 키를 생략해 Supervisor 기본 stable 채널 사용; DEV manifest만 `stage: experimental` 명시
 - 기본 `boot: manual`
 - public GHCR version tag 기반 배포
-- Supervisor `manager`, `/config` read-write
+- Supervisor `manager`, 고정 민감 경로 밖의 `/config` read-write
+- AppArmor가 root/nested `secrets.yaml`과 `.storage` content를 정상적인 Codex 직접 파일 접근에서 명시적으로 차단해 해당 경로로 내용이 Codex에 전달되지 않으며 managed Codex requirements가 `.storage` directory read도 차단; validator용 AppArmor listing allowance는 profile 범위에 남음
+- Init/Codex launch가 보호 tree의 symlink·special-file·pre-existing-hardlink를 fail closed 검사; post-check external hardlink TOCTOU와 비보호 copy는 잔여 한계
+- 기본/강제 Codex sandbox는 network-enabled `workspace-write`; legacy danger option은 호환 입력만 유지
+- Interactive/Codex/S6에 ambient `SUPERVISOR_TOKEN`을 상속하지 않지만 root process의 runtime credential 직접 read와 raw API response는 잔여 위험
 - `hassio_role: admin`, Docker API, `full_access`, host network와 AppArmor 비활성화는 사용하지 않음
 
 과거 MVP 프롬프트와 초기 구현·Git 운영 계획은 [archive](../archive/README.md)에 보존되어 있으며 현재 지침으로 사용하지 않습니다.

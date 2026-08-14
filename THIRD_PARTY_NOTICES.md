@@ -11,37 +11,38 @@ This project builds a container image from third-party open-source software. The
 - Source: <https://github.com/home-assistant/docker-base>
 - License for the Home Assistant base-image project: Apache License 2.0
 
-The Home Assistant base image itself includes S6 Overlay, Bashio, TempIO, Alpine Linux, and their transitive dependencies. Their license information is supplied by the upstream image and installed Alpine package database.
+The Home Assistant base layer itself includes S6 Overlay, Bashio, TempIO, Alpine Linux, and their transitive dependencies. Their license information is supplied by the upstream image and installed Alpine package database. The Unreleased image adds a removal layer for the inherited, unused `/usr/bin/tempio`, so the executable is absent from the final merged runtime filesystem; it does not add a replacement TempIO artifact.
 
 ### OpenAI Codex CLI
 
 - Component: `codex-cli 0.144.1`
-- Artifact: `codex-x86_64-unknown-linux-musl.tar.gz` from the official `rust-v0.144.1` release
+- Artifacts: `codex-x86_64-unknown-linux-musl.tar.gz` and `codex-aarch64-unknown-linux-musl.tar.gz` from the official `rust-v0.144.1` release
 - Source: <https://github.com/openai/codex>
 - License: Apache License 2.0
 
-The release archive is downloaded during the image build and verified against the SHA-256 value pinned in `codex_home_assistant/Dockerfile`.
+The architecture-selected release archive is downloaded during the image build and verified against the Dockerfile-pinned SHA-256: amd64 `84091ae20c65fcc7d4120db97d1bd57d7ff8df9c7609fb781c78c2ebbd4f5a28`, aarch64 `b9f8ef5f98e46ced4dbbd3756a4223e3ee299a457ff488a3305bea455da8b5b8`.
 
 ### GitHub CLI
 
-- Component: `gh 2.93.0`
-- Artifact: `gh_2.93.0_linux_amd64.tar.gz` from the official `v2.93.0` release
+- Component: `gh 2.97.0`
+- Artifacts: `gh_2.97.0_linux_amd64.tar.gz` and `gh_2.97.0_linux_arm64.tar.gz` from the official `v2.97.0` release
 - Source: <https://github.com/cli/cli>
 - License: MIT
 
-The official archive is downloaded during the image build and verified against the SHA-256 value `02d1290eba130e0b896f3709ffff22e1c75a51475ddb70476a85abc6b5807af0`, pinned in `codex_home_assistant/Dockerfile`. The App uses it only for opt-in GitHub authentication and confirmed feedback issue submission; credentials remain under the persistent root-only `/data/github-cli` directory.
+The selected official archive is downloaded during the image build and verified against the Dockerfile-pinned SHA-256: amd64 `a2c9b8497e1f85b1ad0dfcb78b5a622e098801b8e461e459e88e1ee12f018112`, arm64 `73ea440ecad9c9e284429997ee6f93577bc6f7bc6fba357ef62c53ad8fb641a5`. The App uses it only for opt-in GitHub authentication and confirmed feedback issue submission; credentials remain under the persistent root-only `/data/github-cli` directory.
 
 ### Playwright MCP runtime
 
-The locally built `0.2.1` amd64 candidate image pins the npm dependency graph with `codex_home_assistant/playwright/package-lock.json`:
+The Unreleased candidate pins the npm dependency graph with `codex_home_assistant/playwright/package-lock.json`:
 
 | Package | Source | License in npm metadata |
 | --- | --- | --- |
 | `@playwright/mcp 0.0.78` | <https://github.com/microsoft/playwright-mcp> | Apache-2.0 |
 | `playwright 1.62.0-alpha-1783623505000` | <https://github.com/microsoft/playwright> | Apache-2.0 |
 | `playwright-core 1.62.0-alpha-1783623505000` | <https://github.com/microsoft/playwright> | Apache-2.0 |
+| `ws 8.21.0` | <https://github.com/websockets/ws> | MIT |
 
-The lockfile also records optional macOS-only `fsevents 2.3.2` under the Playwright package. It is not installed in the Linux amd64 runtime. The build sets `PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1`; it does not redistribute a Playwright-downloaded browser. Browser execution uses Alpine's separately packaged `chromium-headless-shell` listed below.
+The lockfile also records optional macOS-only `fsevents 2.3.2` under the Playwright package. It is not installed in the Linux runtime. The build sets `PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1`; it does not redistribute a Playwright-downloaded browser. Browser execution uses Alpine's separately packaged `chromium-headless-shell` listed below.
 
 Upstream Playwright does not list Alpine Linux/musl as a supported platform for its bundled browser binaries. This project deliberately combines Playwright MCP with Alpine's system Chromium and must validate that combination for each resolved image. That compatibility caveat does not change the upstream license terms.
 

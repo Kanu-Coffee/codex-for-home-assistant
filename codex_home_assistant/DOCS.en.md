@@ -6,21 +6,21 @@
 
 This guide explains how Home Assistant OS users can install the app, use Codex through the Web UI, SSH, or mobile Remote, and safely work on dashboards, automations, entities, and configuration errors.
 
-This guide applies to app version `0.6.0`.
+The current stable installation baseline is app version `0.7.0`. HAOS displays the app as **Codex for Home Assistant** and the sidebar as **Codex**.
 
 > [!WARNING]
-> This app can read and write all of `/config` and use the Home Assistant Core and Supervisor `manager` APIs. Allow only trusted administrators to use it, and review a backup and diff before making changes. Never port-forward TCP `2223` directly to the internet.
+> This app can read and write `/config` except for protected `secrets.yaml` and `.storage` paths, and it can use the Home Assistant Core and Supervisor `manager` APIs. API responses, logs, and browser views can still contain sensitive information. Allow only trusted administrators to use it, and review a backup and diff before making changes. Never port-forward TCP `2223` directly to the internet.
 
 ## Before you begin
 
 ### Supported environments
 
 - Home Assistant OS or another installation with Supervisor
-- An **amd64** device
+- Stable `0.7.0` supports **amd64** and 64-bit **aarch64** devices. Raspberry Pi requires 64-bit HAOS. 32-bit `armv7` is not supported.
 - Internet access for the app image and Codex authentication
 - An OpenAI/ChatGPT account with access to Codex
 
-The app is currently `stage: experimental` and `boot: manual`. aarch64 devices and HACS installation are not supported.
+The stable `0.7.0` manifest omits the `stage` key and therefore uses the Supervisor's default stable channel; `boot: manual` remains explicit. The candidate payload lineage passed native ARM CI, public amd64+aarch64 image publication, and anonymous inspection. A real Raspberry Pi/aarch64 HAOS run remains **NOT RUN**; release approval explicitly accepted that gap based on the automated evidence. HACS installation is not supported.
 
 ### What the app provides
 
@@ -46,12 +46,12 @@ https://github.com/Kanu-Coffee/codex-for-home-assistant
 ```
 
 1. In Home Assistant, open **Settings → Apps → App store**.
-2. Open the menu in the upper-right corner and add the URL above under **Repositories**.
-3. Refresh the App store and select **Codex for Home Assistant**.
-4. Select **Install**. The app uses a prebuilt amd64 image from public GHCR, so your HA device does not compile the source.
+2. Open the menu in the upper-right corner and add the base URL above under **Repositories**.
+3. Refresh the App store and confirm that **Codex for Home Assistant** appears.
+4. Select **Install**. The app uses a prebuilt amd64 or aarch64 image from GHCR, so your HA device does not compile the source.
 5. Start the app with its default settings for the first run.
 
-If the app does not appear, confirm that your device architecture is amd64. If installation fails, keep the App and Supervisor logs, but do not share tokens, internal URLs, or personal information.
+If the app does not appear, confirm that the device is amd64 or 64-bit aarch64. If installation fails, keep the App and Supervisor logs, but do not share tokens, internal URLs, or personal information.
 
 ## First run
 
@@ -104,7 +104,7 @@ Keep the defaults when getting started. After changing settings, restart the app
 | `web_terminal_auto_start_codex` | `false` | Start Codex once in each new `tmux` session | Does not affect an existing session. Exiting Codex returns to Bash. |
 | `tmux_session_name` | `codex-ha` | A 1–64 character session name using letters, numbers, `.`, `_`, or `-` | A change takes effect in a new session. |
 | `codex_approval_policy` | `on-request` | `untrusted`, `on-request`, or `never` | `never` grants broad automatic approval. Use it only for trusted work. |
-| `codex_sandbox_mode` | `danger-full-access` | `workspace-write` or `danger-full-access` | This controls the app container, but `/config` is read-write and changes can affect Home Assistant. |
+| `codex_sandbox_mode` | `workspace-write` | `workspace-write`; `danger-full-access` is accepted only as legacy input | The app enforces network-enabled `workspace-write` for either input. Unprotected `/config` paths remain read-write and changes can affect Home Assistant. |
 | `browser_approval_policy` | `safe` | `safe`, `never`, or `always` | `safe` auto-approves inspection and capture but confirms clicks and input. |
 | `codex_user_files_update_mode` | `preserve` | `preserve`, `refresh_agents`, or `refresh_all` | Return to `preserve` after a one-time refresh. `refresh_all` can reset user Codex configuration. |
 | `home_assistant_browser_auto_auth` | `true` | Automatically manage a dedicated local-only, read-only HA user for the Headless browser | Restart the app and browser session after turning it off or on. |
@@ -119,7 +119,7 @@ authorized_keys: []
 web_terminal_auto_start_codex: false
 tmux_session_name: codex-ha
 codex_approval_policy: on-request
-codex_sandbox_mode: danger-full-access
+codex_sandbox_mode: workspace-write
 browser_approval_policy: safe
 codex_user_files_update_mode: preserve
 home_assistant_browser_auto_auth: true
@@ -145,6 +145,21 @@ The top-level `codex_approval_policy: never` is Codex's full-auto policy and may
 | `refresh_all` | Resets the base `AGENTS.md` and user `config.toml` once to the current app defaults. |
 
 `refresh_all` can remove user-added models, providers, MCP servers, and other settings. Originals are saved in a root-only backup under `/data/codex/backups/user-files`, but that backup is also sensitive because it can contain credentials and internal endpoints. After confirming the refresh, return the mode to `preserve`; otherwise, the selected refresh runs once again when you install the next app version.
+
+### Sensitive paths and credential boundary
+
+- Custom AppArmor explicitly denies read, write, execute, and link operations for `/config/secrets.yaml`, every nested `secrets.yaml`, and `.storage` contents. Codex therefore cannot read those contents through its normal direct filesystem paths, and those contents do not enter Codex through direct file access. The profile retains the `.storage` directory traversal/listing operation needed by the image validator, so a root shell under the same profile can see entry names but cannot open their contents. The managed requirements below independently deny Codex directory reads.
+- `/etc/codex/requirements.toml` independently denies reads of the same paths and limits allowed modes to `read-only` and `workspace-write`, excluding `danger-full-access`. The app wrapper enforces network-enabled `workspace-write` for actual sessions, and user or project settings cannot weaken the managed deny/allowlist.
+- An image-managed check at app initialization and every Codex launch rejects symlinks, special files, and files whose link count is not one anywhere in `secrets.yaml` or the `.storage` tree, without printing protected paths or values. The app or Codex fails closed on an unsafe shape.
+- The rest of `/config` remains read-write. The Recorder database, ordinary YAML, packages, custom components, and dashboard files are not in this fixed deny set.
+- `SUPERVISOR_TOKEN` is removed from the ambient Web/SSH/Codex and long-running scheduler environments. Purpose-specific `ha-api`, `supervisor-api`, browser, and memory helpers load it from root-only `/run/codex-ha/runtime.env` when launched; a required helper process may retain the credential for its lifetime.
+- Optional GitHub login credentials under `/data/github-cli` should be used only through the image-managed `ha-feedback` helper. Run login or logout explicitly from a trusted app shell outside the Codex sandbox, and never open the credential or `hosts.yml` directly. There is currently no separate broker that forcibly isolates this tree from root Codex.
+- API helper method/path/body and raw-response compatibility are preserved. If Core/Supervisor APIs, logs, state attributes, or authenticated browser views return sensitive values, Codex can still see them; this boundary is not complete DLP.
+- Interactive shells and Codex processes run as root. Ambient environment and `/proc/*/environ` exposure are reduced, but a malicious or explicitly directed root process retains the residual ability to read the runtime credential file directly.
+- This file boundary is pathname-based. It cannot guarantee against another external process adding a hardlink to a protected inode after validation (a TOCTOU race), or a user copying a protected value into an ordinary unprotected `/config` path. Do not duplicate protected values or create aliases.
+- Blocking root Codex from directly reading `/data/github-cli` requires a separate credential broker. The current clean helper environment and private modes reduce accidental exposure, but they are not a root-isolation boundary.
+
+When a change needs a protected secret value, handle it yourself through the Home Assistant UI or another trusted path. Give Codex only the secret key name or a placeholder, not the value.
 
 ## Ways to connect
 
@@ -328,7 +343,7 @@ ha-memory conflicts --status open
 
 Do not delete the memory database when its state is `empty`, `degraded`, or `stale`. It may still be learning the initial structure or recovering from a temporary Core connection failure, and it preserves the last successful snapshot.
 
-This feature does not mean the model trains itself or operates your home without approval. Version `0.6.0` remains experimental, and the complete natural-language memory-to-recall flow has not yet been publicly validated on real HAOS hardware.
+This feature does not mean the model trains itself or operates your home without approval. The complete natural-language memory-to-recall flow has not yet been publicly validated on real HAOS hardware.
 
 ## App bug and feature reports
 
@@ -394,7 +409,7 @@ Perform the following actions only when they are explicitly included in the curr
 - Restoring a backup
 - Removing apps, updating the OS, or deleting databases
 
-Use Home Assistant UI or API paths for `.storage` whenever possible, and never write directly to the Recorder database. Never print or share `SUPERVISOR_TOKEN`, `auth.json`, SSH private keys, `secrets.yaml`, or browser tokens.
+Direct access to `.storage` contents and `secrets.yaml` is blocked; use Home Assistant UI/API or another trusted path. Seeing `.storage` entry names from a root shell through the validator's AppArmor allowance does not permit opening their contents. The Recorder database is outside this deny set, but never write to it directly. Never print or share `SUPERVISOR_TOKEN`, `auth.json`, SSH private keys, raw API responses, screenshots, or browser tokens.
 
 ## Updating the app
 
@@ -430,7 +445,7 @@ It is normal for Web UI/tmux and SSH connections to drop briefly during an updat
 | `ha-browser-auth-status` | Check Headless browser authentication |
 | `ha-browser-network-info` | Check the internal dashboard gateway connection |
 
-Helpers attach tokens automatically. Do not expose runtime tokens with `env`, `printenv`, `set`, `export -p`, or `curl -v`.
+The normal shell does not inherit the token. Purpose-specific helpers load it from the private runtime file, and direct API helpers attach it through a private request header. Dedicated memory or browser helper processes may retain the credential for their required lifetime. Do not bypass the helpers to read that file or expose authentication headers with `curl -v` or debug output.
 
 ## Troubleshooting
 
@@ -438,7 +453,10 @@ Helpers attach tokens automatically. Do not expose runtime tokens with `env`, `p
 
 - Find the first fatal error in the App log.
 - The app intentionally refuses to start if `/config` is missing or not writable.
+- If the custom AppArmor profile cannot parse or load, do not bypass the protection; inspect the policy and Supervisor log first.
 - A warning that no public key is configured is normal if the Web UI works; only SSH is disabled.
+
+If the failure reports an unsafe protected link or file type, stop the app and use Home Assistant File Editor, Studio Code Server, another trusted host path, or a known-good backup. Do not print the protected original value. Remove only aliases, symlinks, or special entries that point into the protected tree, then restore `secrets.yaml` as a single-link regular file and `.storage` as a real directory containing only real directories and single-link regular files before restarting. The app's own Ingress and SSH cannot be used because startup fails before they are available.
 
 ### The Web UI stays on the reconnect screen
 
@@ -456,6 +474,16 @@ Helpers attach tokens automatically. Do not expose runtime tokens with `env`, `p
 - Confirm that your account or workspace allows device-code sign-in.
 - Do not print the app's `auth.json` file.
 - See [Codex authentication](https://developers.openai.com/codex/auth) for the latest official procedure.
+
+### An unused MCP reports a startup error
+
+If `MCP client for '<name>' failed to start` names something other than the image-managed `playwright` or `ha_memory`, it comes from preserved user configuration or trusted-project configuration. For example, the `xcodebuildmcp` warning observed during acceptance is not part of this app's image-managed configuration.
+
+1. Run `codex mcp list` to identify the registered name and scope.
+2. Inspect your own `/data/codex/config.toml` and, only when the project is trusted, `/config/.codex/config.toml` for that MCP entry. Do not print the complete configuration or any credential values.
+3. Remove only the unused entry, or install its intended executable correctly, then fully exit Codex and start a new session.
+
+The app does not delete preserved user or project MCP entries automatically. `codex_user_files_update_mode: refresh_all` is not a single-entry repair: it resets models, providers, MCP servers, and other user settings to the image defaults and creates a root-only backup. Use it only when you intend that full reset, and return the option to `preserve` before the next start.
 
 ### SSH connection fails
 
@@ -483,6 +511,8 @@ ha-memory status
 ```
 
 Give Core time to become ready and check again. Do not directly delete or edit the database or WAL files. Collect the app version, Core version, and the status's closed error code, but do not share raw tokens or API responses.
+
+During an earlier acceptance run, this state persisted when a registry/state automation's config lookup repeatedly failed. Stable `0.7.0` isolates only Core's exact `automation/config` `not_found` as empty details plus a bounded warning. If a different closed error code remains `degraded/stale` after updating, do not ignore it broadly; share only that code and its timestamp for separate diagnosis.
 
 ### Direct GitHub feedback submission fails
 
@@ -517,11 +547,12 @@ Before uninstalling, decide how to handle any Codex configuration and authentica
 
 ## Limitations and support
 
-- The app is amd64-only, `stage: experimental`, and `boot: manual` by default.
+- Stable `0.7.0` supports amd64 and 64-bit aarch64. Native aarch64 CI and image validation passed, but a real Raspberry Pi/aarch64 HAOS run remains **NOT RUN** and was accepted as a release validation gap. Armv7 is unsupported.
+- `secrets.yaml` and `.storage` contents are explicitly blocked from normal direct Codex filesystem access, so their contents do not enter Codex through that path; managed requirements also deny Codex directory reads. The AppArmor validator allowance still leaves `.storage` entry listing available to a root shell. Sensitive raw API, log, and browser output is not sanitized, and a root interactive process also retains residual access to the private runtime credential file.
 - It does not bundle or automatically install Bubble Card or other custom cards.
 - The Web UI is a terminal, not a dedicated chat interface.
 - Automation and dashboard results vary by environment and prompt and require human review.
-- Public validation of the complete `0.6.0` natural-language memory loop on real HAOS hardware is still incomplete.
+- Public validation of the complete natural-language memory loop on real HAOS hardware is still incomplete.
 - Automated validation does not create a real GitHub issue without separate explicit approval.
 - Supervisor endpoints and OpenAI Remote availability can vary with Home Assistant/OpenAI versions and policies.
 

@@ -74,7 +74,7 @@ Codex는 읽기 전용 `gh` 상태·후보 검색 뒤 고정 repository, issue �
 
 - Codex for Home Assistant 버전
 - Home Assistant Core와 OS 버전
-- amd64 장치 유형과 설치 방식(HAOS/Supervised)
+- 장치 아키텍처(amd64 또는 64비트 aarch64)와 설치 방식(HAOS/Supervised)
 - Web UI, SSH, Remote, browser, memory 중 문제가 발생한 경로
 - 재현 단계, 예상 동작, 실제 동작
 - `ha-config-check` 결과 또는 관련 helper의 exit status
@@ -174,8 +174,8 @@ Direct submission is never retried automatically. A `gh` failure, unexpected res
 
 Before opening an issue, check the latest release and changelog, restart without deleting the app or `/data`, start a fresh Codex session, review the troubleshooting guide, and redact all evidence.
 
-Include the app, Home Assistant Core and OS versions; amd64 device and installation type; affected access path; reproduction steps; expected and actual behavior; relevant helper exit status; a short redacted log excerpt; and recently changed option names. Omit secret option values.
+Include the app, Home Assistant Core and OS versions; device architecture (amd64 or 64-bit aarch64) and installation type; affected access path; reproduction steps; expected and actual behavior; relevant helper exit status; a short redacted log excerpt; and recently changed option names. Omit secret option values.
 
 Never include Supervisor or browser tokens, Codex `auth.json`, SSH private keys, `secrets.yaml`, `.storage`, databases, backups, private URLs, IP addresses, usernames, or identifying Home Assistant entity and household data.
 
-This is a community-maintained experimental project. Response time and recovery for every environment cannot be guaranteed.
+This is a community-maintained project. Response time and recovery for every environment cannot be guaranteed.

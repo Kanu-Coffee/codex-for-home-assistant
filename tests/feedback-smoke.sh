@@ -2,7 +2,8 @@
 set -Eeuo pipefail
 
 IMAGE=${1:-codex-for-home-assistant:test}
-EXPECTED_GH_VERSION=2.93.0
+DOCKER_PLATFORM=${DOCKER_PLATFORM:-linux/amd64}
+EXPECTED_GH_VERSION=2.97.0
 TARGET_REPOSITORY=Kanu-Coffee/codex-for-home-assistant
 TEST_ID="codex-ha-feedback-${RANDOM}-$$"
 CONTAINER="${TEST_ID}-container"
@@ -159,7 +160,7 @@ docker image inspect "${IMAGE}" >/dev/null 2>&1 \
 docker volume create "${DATA_VOLUME}" >/dev/null
 docker volume create "${CONFIG_VOLUME}" >/dev/null
 docker run --detach \
-  --platform linux/amd64 \
+  --platform "${DOCKER_PLATFORM}" \
   --name "${CONTAINER}" \
   --volume "${DATA_VOLUME}:/data" \
   --volume "${CONFIG_VOLUME}:/config" \
@@ -391,9 +392,9 @@ for timestamp_mode in expired future; do
     "${AMBIGUOUS_DIRECTORY}") \
     || fail "${timestamp_mode} timestamp preview failed"
   TIMESTAMP_TOKEN=$(json_value '.confirmation_token' "${TIMESTAMP_PREVIEW}")
-  PREVIEW_STATE="/run/codex-ha/ha-feedback-previews/${AMBIGUOUS_REPORT_ID}.json"
+  PREVIEW_STATE="/tmp/codex-ha-feedback-previews/${AMBIGUOUS_REPORT_ID}.json"
   [[ $(docker exec "${CONTAINER}" stat -c '%a' \
-    /run/codex-ha/ha-feedback-previews) == 700 ]] \
+    /tmp/codex-ha-feedback-previews) == 700 ]] \
     || fail 'preview state directory is not private'
   [[ $(docker exec "${CONTAINER}" stat -c '%a' "${PREVIEW_STATE}") == 600 ]] \
     || fail 'preview state file is not private'

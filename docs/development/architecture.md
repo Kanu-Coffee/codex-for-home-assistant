@@ -20,7 +20,7 @@ Home Assistant Frontend ─── Ingress/WebSocket ┤
                                ├─ Chromium headless shell
                               ├─ HA dashboard loopback gateway
                               ├─ /data   (persistent)
-                              └─ /config (HA config RW)
+                              └─ /config (민감 고정 경로 외 HA config RW)
                                       │
                   ┌───────────────────┴──────────────────┐
                   ▼                                      ▼
@@ -46,8 +46,9 @@ Codex ── $ha-feedback ── private report bundle ── candidate/duplicat
 
 이 App은 신뢰된 관리자 도구다.
 
-- Codex shell은 `/config` 전체를 읽고 쓴다.
-- shell은 `SUPERVISOR_TOKEN`을 이용해 Core 및 Supervisor API를 호출한다.
+- Codex shell은 custom AppArmor와 관리자 requirements가 차단하는 모든 `secrets.yaml` 및 `/config/.storage`를 제외한 `/config`를 읽고 쓴다.
+- Init과 매 Codex wrapper 실행은 보호 tree의 symlink, special file과 `st_nlink != 1`을 값·경로 원문 없이 검사하고 unsafe shape이면 fail closed한다. 이는 pathname 기반 검사이므로 검사 뒤 외부 process가 hardlink를 추가하는 TOCTOU와 비보호 경로로 복사된 값은 별도 잔여 위험이다.
+- shell, Codex와 장기 scheduler는 `SUPERVISOR_TOKEN`을 ambient 환경으로 상속하지 않는다. `ha-api`, `supervisor-api`, browser/memory 등 용도가 고정된 image helper가 실행 시 root-only fixed runtime path를 읽어 Core/Supervisor API를 호출하며 필요한 helper process lifetime으로 제한한다. Direct API helper는 file owner/type/link/mode를 추가 검증한다.
 - isolated Chromium은 사용자가 요청한 Web UI와 loopback Home Assistant gateway에 접속하지만 Supervisor token은 받지 않는다.
 - Home Assistant 자동 로그인은 검증된 local-only `system-read-only` 전용 user token만 사용한다.
 - `ha-memoryd` refresh와 MCP/CLI fresh verify는 root-only runtime environment의 Core credential을 사용하지만 raw credential/response를 저장·출력하지 않고, memory MCP/search는 검증된 local store의 bounded 결과만 반환한다.
@@ -63,16 +64,17 @@ Codex ── $ha-feedback ── private report bundle ── candidate/duplicat
 
 컨테이너 시작 시 한 번 실행한다.
 
-1. `/data` 디렉터리와 root-only `/data/codex-ha-memory`, `/data/github-cli` 생성 및 권한 설정. GitHub CLI 경로가 symlink/non-directory/non-root-owned이면 소유권을 바꾸거나 따라가지 않고 선택형 login/direct submission만 비활성화한다.
+1. `/data` 디렉터리와 root-only `/data/codex-ha-memory`를 생성·검증한다. GitHub credential tree는 image-managed `ha-feedback github storage-init` helper가 `/data/github-cli`만 생성·검증하며, symlink/non-directory/non-root-owned이면 소유권을 바꾸거나 따라가지 않고 선택형 login/direct submission만 비활성화한다.
 2. `codex_user_files_update_mode`와 image App version을 읽고 기본 `preserve`에서는 기존 Codex config/지침을 보존한다. 사용자가 명시한 refresh target만 안전성 preflight, root-only backup과 원자 교체를 거쳐 target별로 해당 version에 한 번 갱신한다.
 3. 빠진 Codex 기본 config와 전역 운영 지침을 최초 생성한다.
 4. SSH host key 생성 또는 기존 key 로드
 5. App 옵션에서 `authorized_keys` 렌더링
-6. 공통 runtime environment를 만들고 기본 ON 자동 인증 option에 따라 수동 override를 검증하거나 `/data/browser-auth` 관리형 identity를 생성·재사용한다. user/group/credential/single-token policy를 통과한 경우에만 runtime token 파일을 `/run`에 `0600`으로 생성하며 OFF이면 persistent identity를 보존하고 runtime token을 만들지 않음
+6. `SUPERVISOR_TOKEN`은 root-only `/run/codex-ha/runtime.env`에 `0600`으로 원자 저장한 뒤 S6 shared environment에서 제거한다. Browser 자동 인증 option에 따라 수동 override를 검증하거나 `/data/browser-auth` 관리형 identity를 생성·재사용하고, user/group/credential/single-token policy를 통과한 경우에만 별도 runtime browser token을 `/run`에 `0600`으로 생성한다. OFF이면 persistent identity를 보존하고 browser runtime token을 만들지 않는다.
 7. 이전 기본 Playwright output을 지우고 runtime directory를 `/run` 아래 `0700`으로 재생성
 8. `/config` 존재 및 RW 여부 검사
-9. `sshd -t`, `nginx -t`, 옵션 형식 검사
-10. S6가 ttyd, Ingress proxy, sshd와 독립 `ha-memoryd` 서비스를 시작. memory service는 interactive/browser 서비스의 dependency가 아니며 실패해도 App의 기존 기능은 계속 동작
+9. 모든 root/nested `secrets.yaml`과 `.storage` tree의 symlink, special file과 link count를 검사하고 unsafe shape이면 보호 값·경로를 출력하지 않은 채 App 시작 거부
+10. `sshd -t`, `nginx -t`, 옵션 형식 검사
+11. S6가 ttyd, Ingress proxy, sshd와 독립 `ha-memoryd` 서비스를 시작. memory service는 interactive/browser 서비스의 dependency가 아니며 실패해도 App의 기존 기능은 계속 동작
 
 ### 3.2 ttyd 서비스
 
@@ -112,15 +114,20 @@ Codex ── $ha-feedback ── private report bundle ── candidate/duplicat
 
 ```toml
 approval_policy = "on-request"
-sandbox_mode = "danger-full-access"
+sandbox_mode = "workspace-write"
 cli_auth_credentials_store = "file"
 check_for_update_on_startup = false
+
+[sandbox_workspace_write]
+network_access = true
 ```
 
-기존 `config.toml`은 기본 `preserve`에서 전체 덮어쓰지 않는다. 파일이 없을 때만 현재 App approval/sandbox option 기반 기본본을 생성하며, 사용자가 `refresh_all`을 명시한 경우에만 안전한 backup 뒤 같은 App 기본본으로 교체한다.
-wrapper는 현재 App의 command/sandbox/browser approval 옵션을 `-c` override로 주입해 파일을 덮어쓰지 않고 웹·SSH·Remote app-server에 같은 정책을 적용한다. `browser_approval_policy`가 없으면 `safe`, enum/type이 잘못되면 exit 78이며 App init도 시작을 거부한다.
+기존 `config.toml`은 기본 `preserve`에서 전체 덮어쓰지 않는다. 파일이 없을 때만 현재 App approval option과 강제 `workspace-write + network_access` 기본본을 생성하며, 사용자가 `refresh_all`을 명시한 경우에만 안전한 backup 뒤 같은 App 기본본으로 교체한다.
+wrapper는 현재 App의 command/browser approval 옵션과 강제 sandbox를 `-c` override로 주입해 파일을 덮어쓰지 않고 웹·SSH·Remote app-server에 같은 정책을 적용한다. 매 실행 전에 init과 같은 sensitive-path shape 검사를 다시 수행해 unsafe alias/type이면 exit 78로 Codex를 시작하지 않는다. Schema는 기존 `options.json` 호환을 위해 `danger-full-access` 문자열을 계속 받지만 init과 wrapper는 이를 경고 후 `workspace-write`로 변환한다. `browser_approval_policy`가 없으면 `safe`, enum/type이 잘못되면 exit 78이며 App init도 시작을 거부한다.
 
-Playwright MCP는 user config에 append하지 않고 system config에서 제공한다. 같은 `/etc/codex/config.toml`의 top-level `developer_instructions`가 Home Assistant dashboard 작업에는 image-managed Playwright와 `http://127.0.0.1:8099/`를 첫 경로로 지정한다. enforcement proxy도 `browser_navigate` 도구 설명에 같은 안내를 추가해 일반 browser skill 탐색보다 현재 MCP를 바로 선택하게 한다. 공식 Codex config 우선순위에 따라 `/data/codex/config.toml`과 신뢰된 `/config/.codex/config.toml`이 `/etc/codex/config.toml`보다 우선하므로 사용자는 App 기본 server나 instruction을 재정의하거나 끌 수 있다. App 업데이트는 기본적으로 image의 system config만 교체한다. `/data` user config 또는 base `AGENTS.md` 교체는 사용자가 user-file refresh mode를 명시한 경우에만 일어난다.
+`/etc/codex/requirements.toml`은 허용 sandbox를 `read-only`와 `workspace-write`로 제한해 `danger-full-access`를 배제하고 `/config/secrets.yaml`, 중첩 `secrets.yaml`, `/config/.storage`의 read deny를 관리자 정책으로 강제한다. 실제 App session은 wrapper가 network-enabled `workspace-write`로 고정한다. 이 requirements 계층은 사용자·프로젝트 config가 완화할 수 없다. AppArmor는 secrets와 `.storage` content의 read/write/execute/link를 컨테이너 수준에서 다시 거부하고, image shape validator에 필요한 `.storage` directory traversal/listing만 좁게 허용한다. 따라서 정상적인 Codex 직접 파일 접근 경로로 보호 content를 읽을 수 없고 그 내용이 Codex에 전달되지 않는다. Raw API·로그·browser response, 비보호 copy, root runtime credential과 pathname TOCTOU는 별도 잔여 경계다.
+
+Playwright MCP는 user config에 append하지 않고 system config에서 제공한다. 같은 `/etc/codex/config.toml`의 top-level `developer_instructions`가 Home Assistant dashboard 작업에는 image-managed Playwright와 `http://127.0.0.1:8099/`를 첫 경로로 지정한다. enforcement proxy도 `browser_navigate` 도구 설명에 같은 안내를 추가해 일반 browser skill 탐색보다 현재 MCP를 바로 선택하게 한다. 공식 Codex config 우선순위에 따라 `/data/codex/config.toml`과 신뢰된 `/config/.codex/config.toml`이 `/etc/codex/config.toml`보다 우선하므로 사용자는 App 기본 server나 instruction을 재정의하거나 끌 수 있다. 단, 관리자 `requirements.toml`의 sandbox와 deny는 재정의할 수 없다. App 업데이트는 기본적으로 image의 system config와 requirements를 교체한다. `/data` user config 또는 base `AGENTS.md` 교체는 사용자가 user-file refresh mode를 명시한 경우에만 일어난다.
 
 `/data/codex/AGENTS.md`와 `AGENTS.override.md`가 모두 없으면 이미지에 포함된 Home Assistant 운영 가드레일을 원자적으로 복사한다. 이 전역 지침은 진단 결과를 자동 변경 권한으로 해석하지 않고, 비밀값·`.storage`·Recorder DB·고위험 기기 동작을 보호하며, 설정 변경 후 `ha-config-check`를 요구한다. 기본 `preserve`는 기존 파일·빈 파일·심볼릭 링크를 그대로 보존하므로 사용자가 비활성화하거나 교체할 수 있다. `refresh_agents`와 `refresh_all`은 안전한 일반 파일인 base `AGENTS.md`만 교체하며, `AGENTS.override.md`는 건드리지 않아 더 높은 우선순위 지침을 유지한다. `/config` 아래의 프로젝트별 지침은 Codex 공식 계층 규칙에 따라 나중에 적용되므로 이 파일은 방어 심층화이지 강제 보안 경계가 아니다.
 
@@ -281,9 +288,9 @@ shell → ha-memory CLI ───────────┘
 /usr/local/share/codex-ha/ha-memory-*.mjs # image-managed memory core/HA client/MCP
 /usr/local/share/codex-ha/ha-feedback.mjs # report/privacy/GitHub helper core
 /usr/local/bin/ha-feedback                # fixed local wrapper
-/usr/local/bin/gh                         # checksum-pinned GitHub CLI 2.93.0
+/usr/local/bin/gh                         # checksum-pinned GitHub CLI 2.97.0
 /usr/local/bin/ha-memory*                 # local CLI와 MCP wrappers; scheduler는 S6 run script
-/run/codex-ha/ha-feedback-previews/       # root-only random 10-minute one-use state
+/tmp/codex-ha-feedback-previews/          # root-only random 10-minute one-use state
 /run/codex-ha/home-assistant-browser.token # validated ephemeral credential, 0600
 /run/codex-ha/browser-auth-status.json    # credential-free validation status, 0600
 /run/codex-ha/browser-network-info.json   # credential-free current socket path, 0600
@@ -308,11 +315,11 @@ shell → ha-memory CLI ───────────┘
 └─ secrets.yaml
 ```
 
-Codex는 전체를 관리할 수 있다. 다만 운영 규칙상:
+Custom AppArmor와 Codex requirements는 `secrets.yaml` 및 `.storage`를 직접 관리 대상에서 제외한다.
 
-- `.storage`는 직접 수정보다 공식 API/UI/YAML을 우선한다.
+- `.storage`와 secret 값은 공식 API/UI 또는 별도 신뢰 경로로만 변경한다.
 - SQLite DB는 분석 시 read-only 연결을 우선한다.
-- `secrets.yaml` 내용과 토큰을 응답/로그에 복사하지 않는다.
+- 나머지 `/config`는 RW이며 Recorder DB는 이번 고정 deny 대상이 아니다.
 
 ## 6. API 경로
 
@@ -353,6 +360,7 @@ ha-api POST /services/light/turn_on '{"entity_id":"light.test"}'
 요구사항:
 
 - method allowlist가 아니라 사용자가 요청한 전체 Core API를 전달
+- ambient credential 대신 `/run/codex-ha/runtime.env`의 owner/mode/type/link를 검사한 뒤 요청 동안만 token 로드
 - JSON body validation
 - HTTP status 보존
 - Authorization header 미출력
@@ -367,6 +375,8 @@ supervisor-api POST /core/check '{}'
 ```
 
 manager 권한 거부는 정확히 표시하고 admin으로 자동 재시도하지 않는다.
+
+두 helper는 기존 raw response를 정제하지 않는다. 따라서 보호 파일을 직접 열 수 없어도 API·로그·상태 attribute가 반환한 민감값은 Codex에 보일 수 있다. Interactive process도 root이므로 runtime credential 파일을 직접 읽을 수 있는 잔여 위험이 있으며, ambient 환경 제거를 root shell에 대한 완전한 격리로 간주하지 않는다.
 
 ### 진단 helper
 
@@ -389,7 +399,7 @@ automation/config
 search/related
 ```
 
-automation command는 registry에서 확인한 automation 대상에만 호출한다. graph 요청은 공식 Core 의미를 유지해 `search/related(item_type=automation, item_id=<automation entity_id>)`를 사용하며, `item_type=entity`는 역방향 entity 관계이므로 fallback graph로 사용하지 않는다. Core가 unavailable automation에 성공 응답으로 반환할 수 있는 explicit `config: null`은 빈 config와 bounded warning으로 정규화한다. 개별 related 요청의 정상 result envelope가 실기와 같은 `success:false`, `error.code=unknown_error`인 경우에만 해당 enrichment를 빈 객체와 warning으로 격리하고 성공한 config의 allowlist area/device/entity 직접 참조를 사용한다. 다른 server command code, server/client timeout, unauthorized, invalid format, config 실패, auth/transport/close/protocol, 누락·malformed envelope와 malformed successful related 결과는 성공한 일부를 complete snapshot으로 가장하지 않고 stale/degraded 상태와 정제된 오류를 기록한다. `.storage` 직접 읽기, 임의 WebSocket command와 raw `/config` parse는 bootstrap 대체 경로가 아니다.
+automation command는 registry에서 확인한 automation 대상에만 호출한다. graph 요청은 공식 Core 의미를 유지해 `search/related(item_type=automation, item_id=<automation entity_id>)`를 사용하며, `item_type=entity`는 역방향 entity 관계이므로 fallback graph로 사용하지 않는다. Core가 unavailable automation에 성공 응답으로 반환할 수 있는 explicit `config: null`과, registry/state에는 남았지만 automation component가 소유하지 않는 exact entity의 `automation/config` `not_found`만 빈 config와 bounded warning으로 정규화한다. 개별 related 요청의 정상 result envelope가 실기와 같은 `success:false`, `error.code=unknown_error`인 경우에만 해당 enrichment를 빈 객체와 warning으로 격리하고 성공한 config의 allowlist area/device/entity 직접 참조를 사용한다. 다른 server command code, server/client timeout, unauthorized, invalid format, config 실패, auth/transport/close/protocol, 누락·malformed envelope와 malformed successful related 결과는 성공한 일부를 complete snapshot으로 가장하지 않고 stale/degraded 상태와 정제된 오류를 기록한다. `.storage` 직접 읽기, 임의 WebSocket command와 raw `/config` parse는 bootstrap 대체 경로가 아니다.
 
 정규화 경계는 다음과 같다.
 
@@ -503,6 +513,8 @@ ChatGPT mobile Remote (선택)
 | user-file refresh 중 종료 | private journal과 검증된 backup으로 rollback하거나 이미 commit된 target을 확인한 뒤 같은 version에서 반복하지 않음 |
 | Codex 다운로드/실행 실패 | build 또는 startup 실패를 명확히 표시 |
 | `/config` RW 아님 | 치명적 startup 오류 |
+| custom AppArmor/관리자 requirements 누락·완화 | 보호 경계를 우회하지 않고 lint/startup 또는 release gate 실패 |
+| 보호된 `secrets.yaml`/`.storage` content 접근 | AppArmor 또는 Codex deny로 permission error; validator allowance로 root shell의 `.storage` entry 이름 listing은 가능하지만 content는 열 수 없고 일반 `/config` 작업은 유지 |
 | Core/Supervisor API 일시 실패 | shell 유지, helper가 오류 반환 |
 | ttyd 실패 | App unhealthy 또는 명확한 service error |
 | sshd 실패 | Web UI는 가능, SSH degraded 로그 |
@@ -516,6 +528,7 @@ ChatGPT mobile Remote (선택)
 | browser output 한도 도달 | MCP 한도 오류/정리 정책을 보고하고 `/data` 사용자 파일은 건드리지 않음 |
 | `ha-memoryd` 또는 Core WebSocket 시작 실패 | Codex/Web/SSH/browser는 계속 시작, last-known-good catalog를 유지하고 catalog를 `degraded`/`stale`로 표시하며 token/DNS/transport/timeout/auth/protocol의 allowlist code만 기록 |
 | 개별 automation `search/related`가 정상 envelope의 `unknown_error`로 거부됨 | official automation payload는 유지하고 해당 enrichment만 빈 객체와 bounded warning으로 격리. 성공 config에서 직접 관계를 추출해 snapshot commit |
+| registry/state automation의 `automation/config`가 `not_found`로 거부됨 | component에서 제거된 restored/stale entity로 한정해 config를 빈 객체와 bounded warning으로 격리하고, registry/state 및 성공한 related allowlist data를 snapshot에 유지 |
 | memory 필수 command/transport/envelope 실패 | legal `config: null`은 빈 automation config로 수용하되 config 실패, related timeout/close/protocol 또는 malformed 결과는 부분 결과를 canonical로 commit하지 않고 이전 revision과 command/snapshot allowlist code 유지 |
 | memory DB unsafe owner/type/link/mode 또는 schema 손상 | 자동 삭제·재생성하지 않고 memory만 fail closed; 기존 App 기능 유지 및 복구 안내 |
 | post-change fresh expectation 불일치 | canonical catalog는 같은 fresh HA snapshot으로 수렴하지만 applied semantic memory는 바꾸지 않고 mismatch change와 conflict evidence만 기록 |
@@ -543,3 +556,6 @@ ChatGPT mobile Remote (선택)
 - 공개 이슈 repository는 `Kanu-Coffee/codex-for-home-assistant`로 고정하고 외부 write는 random 10분 1회용 preview, 현재 대화 confirmation, remote duplicate fail-closed와 exclusive claim 뒤에만 허용한다.
 - 피드백 조사에는 App의 일반 운영 권한이 존재하더라도 Home Assistant mutation, service call, reload/restart, update, recovery와 restore를 사용하지 않는다.
 - App 소스 저장소와 실제 HA `/config` 저장소는 별개일 수 있다.
+- Stable `0.7.0`은 official Home Assistant base가 제공하는 linux/amd64와 linux/arm64를 사용하고 App arch 이름은 `amd64`, `aarch64`로 고정한다.
+- Dockerfile은 Codex `x86_64-unknown-linux-musl`/`aarch64-unknown-linux-musl`과 GitHub CLI `2.97.0`의 `linux_amd64`/`linux_arm64`를 아키텍처별 checksum으로 검증한다. 사용하지 않고 Critical findings가 남는 base `/usr/bin/tempio`는 final image에서 제거한다. 그 밖의 target은 build를 중단하며 armv7은 지원하지 않는다.
+- Native `ubuntu-24.04-arm` build/runtime는 [dev CI 31549518729](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/31549518729)에서 PASS했다. 후속 실제 amd64 HAOS 보고서는 AppArmor profile, 일반 `/config` RW, App/Ingress/browser/memory 경로를 관측했다. 실제 read syscall 전체 음성 행렬과 64비트 Raspberry Pi/aarch64 HAOS의 설치·SSH·memory·browser·AppArmor/helper 수용은 **NOT RUN**이다. Maintainer는 2026-08-14 native CI와 멀티아키 image 증거에 근거한 stable `0.7.0`의 좁은 위험 수용으로 이를 승인했으며 PASS로 기록하지 않는다.

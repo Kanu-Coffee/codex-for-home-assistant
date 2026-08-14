@@ -2,6 +2,10 @@
 # shellcheck shell=bash
 set -Eeuo pipefail
 
+# The short-lived ha-memory child loads the credential from the root-only
+# runtime file. Keep it out of this long-lived scheduler environment.
+unset SUPERVISOR_TOKEN
+
 readonly REFRESH_SECONDS=900
 readonly MAX_RETRY_SECONDS=300
 retry_seconds=30

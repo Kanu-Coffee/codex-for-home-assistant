@@ -53,17 +53,20 @@ def test_s6_entrypoints_have_container_executable_policy(
 def test_codex_release_is_pinned_and_checksum_verified(addon_root: Path) -> None:
     dockerfile = (addon_root / "Dockerfile").read_text(encoding="utf-8")
     version_match = re.search(r"^ARG CODEX_VERSION=([^\s]+)$", dockerfile, re.MULTILINE)
-    checksum_match = re.search(
-        r"^ARG CODEX_SHA256=([0-9a-f]{64})$", dockerfile, re.MULTILINE
+    checksum_matches = dict(
+        re.findall(
+            r"^ARG CODEX_SHA256_(AMD64|AARCH64)=([0-9a-f]{64})$",
+            dockerfile,
+            re.MULTILINE,
+        )
     )
 
     assert version_match
     assert version_match.group(1) == "0.144.1"
-    assert checksum_match
-    assert (
-        checksum_match.group(1)
-        == "84091ae20c65fcc7d4120db97d1bd57d7ff8df9c7609fb781c78c2ebbd4f5a28"
-    )
+    assert checksum_matches == {
+        "AMD64": "84091ae20c65fcc7d4120db97d1bd57d7ff8df9c7609fb781c78c2ebbd4f5a28",
+        "AARCH64": "b9f8ef5f98e46ced4dbbd3756a4223e3ee299a457ff488a3305bea455da8b5b8",
+    }
     assert "rust-v${CODEX_VERSION}" in dockerfile
     assert "sha256sum --check --strict" in dockerfile
     assert 'codex_version_output="$(/usr/local/libexec/codex-real --version)"' in dockerfile
@@ -97,6 +100,35 @@ def test_ttyd_and_nginx_are_split_for_ingress(rootfs: Path) -> None:
     assert "listen 7681" in nginx_config
     assert "proxy_pass http://127.0.0.1:7682" in nginx_config
     assert "proxy_set_header Upgrade $http_upgrade" in nginx_config
+
+
+def test_ingress_access_log_excludes_private_request_context(rootfs: Path) -> None:
+    nginx_config = (rootfs / "etc/nginx/nginx.conf").read_text(encoding="utf-8")
+    match = re.search(
+        r"log_format ingress_minimal\s+'([^']+)';",
+        nginx_config,
+    )
+
+    assert match
+    log_format = match.group(1)
+    assert "$request_method $uri $server_protocol" in log_format
+    assert "$status" in log_format
+    assert "$body_bytes_sent" in log_format
+    for forbidden in (
+        "$remote_addr",
+        "$request_uri",
+        "$args",
+        "$query_string",
+        "$http_referer",
+        "$http_user_agent",
+    ):
+        assert forbidden not in log_format
+    assert "access_log /dev/stdout ingress_minimal;" in nginx_config
+    assert "error_log /dev/stderr crit;" in nginx_config
+    assert "error_log /dev/stderr notice;" not in nginx_config
+    assert "listen 127.0.0.1:8099;\n    server_name localhost;\n    access_log off;" in (
+        nginx_config
+    )
 
 
 def test_init_has_idempotent_and_degraded_mode_guards(rootfs: Path) -> None:

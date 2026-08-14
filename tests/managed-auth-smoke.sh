@@ -2,6 +2,7 @@
 set -Eeuo pipefail
 
 IMAGE=${1:-codex-for-home-assistant:test}
+DOCKER_PLATFORM=${DOCKER_PLATFORM:-linux/amd64}
 TEST_ID="codex-ha-managed-auth-${RANDOM}-$$"
 APP_CONTAINER="${TEST_ID}-app"
 FIXTURE_CONTAINER="${TEST_ID}-fixture"
@@ -64,7 +65,7 @@ wait_for_log() {
 
 start_app() {
   docker run --detach \
-    --platform linux/amd64 \
+    --platform "${DOCKER_PLATFORM}" \
     --name "${APP_CONTAINER}" \
     --network "${NETWORK}" \
     --env SUPERVISOR_TOKEN="${SUPERVISOR_TOKEN}" \
@@ -106,7 +107,7 @@ write_options() {
   local options_json=$1
   printf '%s' "${options_json}" \
     | docker run --rm --interactive \
-      --platform linux/amd64 \
+      --platform "${DOCKER_PLATFORM}" \
       --entrypoint /bin/sh \
       --volume "${DATA_VOLUME}:/data" \
       "${IMAGE}" \
@@ -133,7 +134,7 @@ docker volume create "${DATA_VOLUME}" >/dev/null
 docker volume create "${CONFIG_VOLUME}" >/dev/null
 
 docker create \
-  --platform linux/amd64 \
+  --platform "${DOCKER_PLATFORM}" \
   --name "${FIXTURE_CONTAINER}" \
   --network "${NETWORK}" \
   --network-alias supervisor \

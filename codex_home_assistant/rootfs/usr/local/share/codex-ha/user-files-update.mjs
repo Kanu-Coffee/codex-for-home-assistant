@@ -662,10 +662,11 @@ function parseOptions(value) {
   if (!new Set(["untrusted", "on-request", "never"]).has(approvalPolicy)) {
     throw new Error("codex_approval_policy is invalid");
   }
-  const sandboxMode = value.codex_sandbox_mode ?? "danger-full-access";
-  if (!new Set(["workspace-write", "danger-full-access"]).has(sandboxMode)) {
+  const configuredSandboxMode = value.codex_sandbox_mode ?? "workspace-write";
+  if (!new Set(["workspace-write", "danger-full-access"]).has(configuredSandboxMode)) {
     throw new Error("codex_sandbox_mode is invalid");
   }
+  const sandboxMode = "workspace-write";
   return { approvalPolicy, mode, sandboxMode };
 }
 
@@ -676,6 +677,9 @@ function defaultConfig(approvalPolicy, sandboxMode) {
       `sandbox_mode = "${sandboxMode}"`,
       'cli_auth_credentials_store = "file"',
       "check_for_update_on_startup = false",
+      "",
+      "[sandbox_workspace_write]",
+      "network_access = true",
       "",
     ].join("\n"),
     "utf8",

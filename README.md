@@ -14,10 +14,10 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/Kanu-Coffee/codex-for-home-assistant/releases"><img alt="GitHub Release" src="https://img.shields.io/github/v/release/Kanu-Coffee/codex-for-home-assistant?include_prereleases"></a>
+  <a href="https://github.com/Kanu-Coffee/codex-for-home-assistant/releases"><img alt="GitHub Release" src="https://img.shields.io/github/v/release/Kanu-Coffee/codex-for-home-assistant"></a>
   <a href="https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/workflows/ci.yaml"><img alt="CI" src="https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/workflows/ci.yaml/badge.svg"></a>
-  <img alt="Architecture: amd64" src="https://img.shields.io/badge/architecture-amd64-blue">
-  <img alt="Stage: experimental" src="https://img.shields.io/badge/stage-experimental-orange">
+  <img alt="Architecture: amd64 and aarch64" src="https://img.shields.io/badge/architecture-amd64%20%7C%20aarch64-blue">
+  <img alt="Stage: stable" src="https://img.shields.io/badge/stage-stable-brightgreen">
   <a href="LICENSE"><img alt="License: Apache-2.0" src="https://img.shields.io/badge/license-Apache--2.0-green"></a>
 </p>
 
@@ -26,9 +26,9 @@
 </p>
 
 > [!WARNING]
-> 이 앱은 `/config` 전체를 읽고 쓸 수 있고 Home Assistant Core 및 Supervisor `manager` API를 사용할 수 있는 강한 관리자 도구입니다. 중요한 변경 전에는 백업하고, 계획과 diff를 확인한 뒤 적용하세요. SSH 포트를 인터넷에 직접 공개하지 마세요.
+> 이 앱은 보호된 `secrets.yaml`·`.storage`를 제외한 `/config`를 읽고 쓸 수 있고 Home Assistant Core 및 Supervisor `manager` API를 사용할 수 있는 강한 관리자 도구입니다. API 응답·로그·브라우저 화면에는 여전히 민감정보가 포함될 수 있습니다. 중요한 변경 전에는 백업하고, 계획과 diff를 확인한 뒤 적용하세요. SSH 포트를 인터넷에 직접 공개하지 마세요.
 
-비공식 커뮤니티 프로젝트이며 OpenAI 또는 Home Assistant/Nabu Casa와 제휴하거나 보증받은 제품이 아닙니다. 현재는 **amd64 전용 experimental 릴리스**입니다.
+비공식 커뮤니티 프로젝트이며 OpenAI 또는 Home Assistant/Nabu Casa와 제휴하거나 보증받은 제품이 아닙니다. 안정판 `0.7.0`은 `amd64`와 64비트 `aarch64`를 지원하며 HAOS에서 **Codex for Home Assistant**, 사이드바에서 **Codex**로 표시됩니다. Native ARM CI와 멀티아키텍처 이미지 검증은 통과했습니다. 실제 Raspberry Pi/aarch64 HAOS 실기는 실행되지 않았고, 이 공백은 자동 검증 결과를 근거로 릴리스 승인 과정에서 명시적으로 수용됐습니다.
 
 ## 실제 Web 터미널 미리보기
 
@@ -68,7 +68,7 @@ flowchart LR
     P["ChatGPT 모바일 Remote"] -->|공개키 SSH| S["HA 앱 SSH / Codex app-server"]
     T --> C["앱 내장 Codex CLI"]
     S --> C
-    C --> F["/config 읽기·수정"]
+    C --> F["보호 경로 외 /config 읽기·수정"]
     C --> A["Core·Supervisor API"]
     C --> B["Headless browser 검증"]
     C --> R["정제된 bug·feature 보고서"]
@@ -76,7 +76,7 @@ flowchart LR
 ```
 
 - **Web UI**는 Home Assistant Ingress 안에서 열리는 `ttyd` + `tmux` 터미널입니다. 별도 채팅형 GUI가 아닙니다.
-- **Codex**는 `/config`에서 실행되며 설정 파일, helper 명령, API와 Headless Chromium을 함께 사용할 수 있습니다.
+- **Codex**는 `/config`에서 실행되며 보호 경로를 제외한 설정 파일, helper 명령, API와 Headless Chromium을 함께 사용할 수 있습니다.
 - **재접속**하면 같은 `tmux` 세션으로 돌아가므로 브라우저를 닫아도 앱이 실행 중인 동안 작업이 이어집니다.
 - **브라우저 검증**은 대시보드와 웹 UI의 데스크톱/모바일 레이아웃, console, network 오류를 확인하는 Codex 내부 도구입니다.
 
@@ -85,19 +85,19 @@ flowchart LR
 ### 요구사항
 
 - Home Assistant OS 또는 Supervisor가 있는 설치 환경
-- **amd64** 장치
+- 안정판 `0.7.0`은 **amd64**와 64비트 **aarch64** 장치를 지원합니다. Raspberry Pi는 64비트 HAOS가 필요하며 32비트 `armv7`은 지원하지 않습니다.
 - 공개 이미지를 내려받을 인터넷 연결
 - Codex를 사용할 수 있는 OpenAI/ChatGPT 계정
 
 ### 설치와 첫 실행
 
-1. 위 **Home Assistant에 앱 저장소 추가** 버튼을 누르거나 App store의 **Repositories**에 다음 URL을 추가합니다.
+1. 위 저장소 추가 버튼을 누르거나 App store의 **Repositories**에 다음 URL을 추가합니다.
 
    ```text
    https://github.com/Kanu-Coffee/codex-for-home-assistant
    ```
 
-2. **Codex for Home Assistant**를 설치하고 시작합니다. 기본값은 `boot: manual`입니다.
+2. **Codex for Home Assistant**를 선택해 설치하고 시작합니다. 기본값은 `boot: manual`입니다.
 3. **OPEN WEB UI**를 누릅니다.
 4. 처음 한 번 Codex에 로그인합니다.
 
@@ -119,6 +119,9 @@ flowchart LR
    ```
 
 전체 설치·로그인·SSH·업데이트 절차는 [한국어 사용 설명서](codex_home_assistant/DOCS.md)를 확인하세요.
+
+> [!NOTE]
+> 안정판 `0.7.0`은 amd64와 64비트 aarch64 이미지를 제공합니다. Native aarch64 CI와 멀티아키텍처 이미지 검증은 통과했지만 실제 Raspberry Pi/aarch64 HAOS 실기는 **NOT RUN**이며, 릴리스 승인 과정에서 이 검증 공백을 명시적으로 수용했습니다.
 
 ## 이렇게 요청해 보세요
 
@@ -179,7 +182,7 @@ $ha-feedback feature 이 앱에서 개선하고 싶은 요청이 있어. 현재 
 - raw 대화, 현재/과거 state 값, automation action/template 본문, token과 비밀번호는 저장하지 않습니다.
 - 구조 정보는 fresh Home Assistant API를 우선하며, 충돌은 조용히 덮어쓰지 않고 확인 대상으로 남깁니다.
 
-이는 모델 자체가 학습하거나 사람의 승인 없이 집을 운영한다는 뜻이 아닙니다. 현재 `0.6.0`은 experimental이며, 실제 HAOS의 자연어 기억→새 작업 회상 전체 흐름에는 아직 공개 검증 공백이 있습니다.
+이는 모델 자체가 학습하거나 사람의 승인 없이 집을 운영한다는 뜻이 아닙니다. 실제 HAOS의 자연어 기억→새 작업 회상 전체 흐름에는 아직 공개 검증 공백이 있습니다.
 
 ## 주요 설정
 
@@ -190,7 +193,7 @@ $ha-feedback feature 이 앱에서 개선하고 싶은 요청이 있어. 현재 
 | `authorized_keys` | `[]` | SSH 공개키. 비어 있으면 SSH만 비활성화됩니다. |
 | `web_terminal_auto_start_codex` | `false` | 새 Web 터미널 세션에서 Codex를 자동 시작합니다. |
 | `codex_approval_policy` | `on-request` | 명령 실행 승인 정책입니다. |
-| `codex_sandbox_mode` | `danger-full-access` | 앱 컨테이너 내부의 Codex 권한입니다. HAOS host의 `full_access`가 아닙니다. |
+| `codex_sandbox_mode` | `workspace-write` | network를 허용하는 관리형 Codex sandbox입니다. 기존 `danger-full-access` 입력은 호환용으로만 받아 실제 실행에서는 `workspace-write`로 강제됩니다. |
 | `browser_approval_policy` | `safe` | 조회·캡처는 자동 승인하고 클릭·입력은 확인합니다. |
 | `codex_user_files_update_mode` | `preserve` | 사용자 Codex 설정과 지침을 업데이트 중 보존합니다. |
 | `home_assistant_browser_auto_auth` | `true` | Headless browser용 local-only read-only HA 사용자를 관리합니다. |
@@ -206,13 +209,17 @@ $ha-feedback feature 이 앱에서 개선하고 싶은 요청이 있어. 현재 
 4. 적용 후 `ha-config-check`, fresh API 상태와 브라우저 화면을 확인합니다.
 5. 도어록, 경보, 차고문, 난방, 급수, host 재부팅과 backup 복원은 별도로 명시하고 직전 결과를 다시 검토합니다.
 
-`danger-full-access`는 앱 컨테이너 내부 정책이지만 `/config`가 read-write로 연결되어 있으므로 실질적인 Home Assistant 변경 권한은 큽니다. `secrets.yaml`, `.storage`, Recorder DB와 `SUPERVISOR_TOKEN`을 출력하거나 Git·이슈·채팅에 공유하지 마세요.
+Custom AppArmor와 Codex 관리자 요구사항이 루트·중첩 `secrets.yaml` 및 `/config/.storage` content의 직접 읽기·쓰기를 명시적으로 차단합니다. 따라서 정상적인 Codex 직접 파일 접근 경로로는 이 content를 읽을 수 없고 그 내용이 Codex에 전달되지 않습니다. AppArmor profile에는 validator가 필요한 `.storage` directory 순회/listing만 남아 있고 managed requirements는 Codex의 directory read도 거부합니다. 나머지 `/config`는 read-write이며 Recorder DB도 이번 고정 deny 대상이 아닙니다. Core/Supervisor helper는 기존 원시 endpoint와 응답을 유지하므로 API, 로그 또는 인증된 브라우저 화면을 통해 민감정보를 볼 가능성도 남습니다.
+
+앱 초기화와 매 Codex 실행은 보호 경로 안의 symlink, 특수 파일과 link count가 1이 아닌 파일을 값 출력 없이 검사하고 안전하지 않으면 fail closed합니다. 다만 이는 pathname 기반 경계입니다. 검사 뒤 다른 외부 process가 hardlink를 추가하는 TOCTOU와, 사용자가 보호 값을 일반 `/config` 파일로 복사한 경우까지 막지는 못합니다.
+
+`SUPERVISOR_TOKEN`은 Web/SSH/Codex와 장기 scheduler의 ambient 환경에서 제거됩니다. API/browser/memory 등 용도가 고정된 helper만 실행 시 private runtime 파일에서 읽으며, 필요한 helper process에는 그 수명 동안 credential이 존재할 수 있습니다. 앱의 interactive process도 root이므로 runtime 파일을 직접 읽을 수 있는 잔여 위험이 있습니다. 이 경계는 완전한 DLP나 악성 root shell 격리가 아니므로 token, Recorder DB, API 원문, screenshot과 로그를 출력하거나 Git·이슈·채팅에 공유하지 마세요.
 
 ## 현재 제한사항
 
-- amd64만 지원합니다. aarch64는 아직 지원하지 않습니다.
+- 안정판 `0.7.0`은 amd64와 64비트 aarch64를 지원합니다. Native aarch64 CI와 이미지 검증은 통과했지만 실제 Raspberry Pi/aarch64 HAOS 실기는 **NOT RUN**이며 이 공백은 릴리스 승인 과정에서 수용됐습니다. 32비트 armv7은 지원하지 않습니다.
 - Home Assistant 앱(이전 명칭: Add-on)이므로 HACS로 설치할 수 없습니다.
-- 기본 `boot: manual`이며 아직 `stage: experimental`입니다.
+- 기본 `boot: manual`이며, stable manifest는 `stage` 키를 생략해 Supervisor의 기본 stable 채널을 사용합니다.
 - Web UI는 터미널입니다. 전용 모바일 채팅 인터페이스가 아닙니다.
 - Bubble Card와 다른 커스텀 카드는 포함하지 않습니다.
 - Headless browser 자동 인증의 read-only 사용자는 모든 entity state를 볼 수 있으므로 screenshot과 진단 결과도 민감할 수 있습니다.

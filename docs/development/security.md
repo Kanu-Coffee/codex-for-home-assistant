@@ -7,23 +7,29 @@
 동시에 HAOS host와 Docker 전체를 열 필요는 없으므로 경계를 다음처럼 둔다.
 
 ```text
-허용: /config 전체 RW
+허용: secrets.yaml/.storage content를 제외한 /config RW
+허용: validator를 위한 .storage directory traversal/listing(AppArmor profile 범위; Codex requirements는 read 거부)
 허용: Core API 전체 기능
 허용: Supervisor API manager 역할
 허용: 실제 기기 서비스 호출
+차단: 모든 secrets.yaml과 /config/.storage content 접근
 차단: Supervisor admin 역할
 차단: Docker API
 차단: full_access/privileged host access
 차단: host network
-기본: AppArmor 활성
+강제: custom AppArmor + Codex admin requirements + workspace-write
 ```
+
+이 경계는 파일 직접 접근을 줄이지만 완전한 DLP는 아니다. Core/Supervisor API, 로그, 상태 attribute와 인증된 browser 화면은 raw 결과를 유지하며 민감값을 포함할 수 있다. Interactive surface도 root이므로 root-only runtime credential 파일에 대한 의도적 직접 접근까지 제거하지 못한다.
 
 ## 2. 권한 매트릭스
 
 | 기능 | 제공 수단 | 위험도 | 결정 |
 |---|---|---:|---|
-| HA YAML/대시보드 수정 | `/config` RW | 높음 | 허용 |
-| `.storage` 접근 | `/config` RW | 매우 높음 | 허용, 직접 수정은 운영 규칙으로 제한 |
+| HA YAML/대시보드 수정 | 보호 경로 외 `/config` RW | 높음 | 허용 |
+| `secrets.yaml`/`.storage` content 접근 | AppArmor + Codex requirements | 매우 높음 | 항상 불허 |
+| `.storage` directory entry listing | validator용 AppArmor allowance | 중간 | profile 범위에서 이름만 허용, Codex requirements는 read 거부 |
+| Recorder DB와 나머지 `/config` | `/config` RW | 높음 | 허용, DB 직접 write는 운영 규칙으로 제한 |
 | 상태/서비스 조회 | Core API | 중간 | 허용 |
 | 실제 기기 제어 | Core API service call | 높음 | 허용 |
 | 자동화/스크립트 실행 | Core API | 높음 | 허용 |
@@ -64,20 +70,37 @@
 
 완화:
 
-- 공식 API/YAML 우선
-- 직접 수정 전에 HA backup 또는 파일 복사
-- Core가 실행 중인 내부 JSON을 무리하게 편집하지 않음
+- Custom AppArmor가 `/config/.storage` content를 read/write/execute/link에서 거부하고 image validator용 directory traversal/listing만 허용
+- `/etc/codex/requirements.toml`이 Codex read를 별도로 거부하며 user/project config로 완화 불가
+- Init과 매 Codex launch가 모든 `secrets.yaml` 및 `.storage` tree를 `find -P`로 검사해 symlink, special file과 link count가 1이 아닌 파일에서 값·경로 원문 없이 fail closed
+- 필요한 registry/storage-mode 변경은 공식 API/UI만 사용
+- 같은 고정 deny를 모든 root·중첩 `secrets.yaml`에도 적용
+
+잔여 경계:
+
+- AppArmor와 Codex deny는 pathname 기반이다. Preflight 뒤 다른 외부 process가 보호 inode에 hardlink를 추가하는 TOCTOU를 원자적으로 막지 못한다.
+- Validator에 필요한 AppArmor directory read allowance는 profile 전체에 적용되므로 같은 profile의 root shell은 `.storage` entry 이름을 나열할 수 있다. Non-directory content의 read/write/execute/link는 계속 거부되고 Codex requirements는 directory read도 거부한다.
+- 사용자가 보호 값을 일반 YAML, backup, log 또는 다른 비보호 `/config` path에 복사하면 그 복사본은 고정 deny에 포함되지 않는다. 보호 값을 alias/copy하지 않는 운영 규칙이 필요하다.
 
 ### T-004 토큰 유출
 
 완화:
 
-- `SUPERVISOR_TOKEN`을 Git/로그/응답에 출력하지 않음
+- `SUPERVISOR_TOKEN`을 Web/SSH/Codex, ingress, ttyd, sshd와 장기 `ha-memoryd` 환경에 상속하지 않음
+- init이 root-only `/run/codex-ha/runtime.env`를 만든 뒤 S6 shared credential entry를 제거하고 잔존 여부를 확인
+- API/browser/memory 등 용도가 고정된 image helper만 fixed runtime path를 실행 시 읽음. Direct API helper는 owner/mode/type/link를 검사하고 curl credential을 private header file로 전달함. Token이 필요한 dedicated Node helper에는 그 process lifetime 동안만 명시적으로 제공하며 unrelated child에는 전달하지 않음
 - curl verbose/debug 기본 비활성
 - runtime env 파일 0600
 - `auth.json` 0600
+- AppArmor가 다른 process의 `/proc/*/environ` 읽기를 차단
 - API helper의 동적 `Accept` 값은 JSON/plain/x-log allowlist로 제한해 header injection 차단
 - CI secret scan
+
+잔여 위험:
+
+- Interactive process와 Codex tool child는 root다. Ambient token을 제거해 우발적 `env` 노출을 줄였지만 root가 `/run/codex-ha/runtime.env`를 명시적으로 읽는 것은 현재 profile에서 가능하다.
+- `ha-api`와 `supervisor-api`는 호환성을 위해 전체 endpoint와 raw body를 유지한다. API·로그가 반환한 secret-like 값은 path deny를 우회한 파일 read가 아니며 자동 정제되지 않는다.
+- 따라서 “token 비상속”은 악성 root shell 격리나 전면 DLP로 표현하지 않는다. 이 잔여 위험을 없애려면 별도 privilege separation/broker가 필요하며 현재 Unreleased 범위에는 포함하지 않는다.
 
 ### T-005 SSH 노출
 
@@ -119,11 +142,15 @@
 
 완화:
 
-- App version과 정확히 같은 숫자 Git tag에서만 image 게시
-- 공식 Home Assistant builder actions의 version을 고정
+- App version과 정확히 같은 stable `X.Y.Z` 또는 번호형 DEV `X.Y.Z-dev.N` Git tag에서만 image 게시. `N`은 1 이상의 정수이며 DEV tag는 repository/App 표시명의 `(DEV)`, `Codex DEV` panel, `[DEV]` description, OCI title과 MOTD를 함께 강제
+- 모든 third-party GitHub Action을 immutable commit SHA로 고정하고 weekly Dependabot PR로 갱신 검토
 - 장기 registry credential 대신 repository-scoped `GITHUB_TOKEN` 사용
+- PR non-publishing build는 `contents:read`·`packages:read`만 받고, reusable workflow가 caller scope를 높이지 않도록 한다. Package/OIDC/attestation/artifact-metadata write는 release tag publication caller에만 부여한다.
 - 기존 version tag 덮어쓰기 금지
-- generic/per-arch GHCR package public visibility와 인증 없는 amd64 pull 확인
+- amd64/aarch64 각 image에 SPDX SBOM을 생성하고 Critical vulnerability가 있으면 publication 전 build를 차단하며 High/Critical 결과를 함께 보고
+- 검증한 per-arch digest를 immutable workflow artifact로 manifest job에 전달하고, run-scoped staging tag가 그 digest와 일치하는지 확인한 뒤에만 서명·attestation과 manifest 입력으로 사용
+- per-arch image에 Cosign signature와 provenance/SBOM attestation, generic manifest에 Cosign signature와 provenance attestation을 붙이고 모든 증거가 성공한 마지막 단계에서만 immutable version tag로 승격
+- generic/per-arch GHCR package public visibility와 인증 없는 architecture별 pull 확인
 - pull한 image의 `io.hass.version`, `io.hass.arch`, source label과 container smoke 검증
 
 ### T-009 브라우저/MCP 공격 표면과 prompt injection
@@ -195,7 +222,7 @@ HA 대시보드는 브라우저에서 Core API/WebSocket 인증이 필요하지�
 - 그 밖의 대화·분석 값은 provenance가 있는 `pending`으로만 시작하고 `verified`, `applied`를 순서대로 거침. 모델 추론·웹/로그 지시·일시 state는 user-explicit로 라벨링하거나 단독 승격 evidence로 인정하지 않음
 - 구조·현재 존재·registry relation·change result는 fresh HA API, alias·실제 용도·preference는 명시적 사용자 설명을 authority로 하는 fact-kind validator 사용
 - conflict에서 기존 값을 조용히 overwrite하지 않고 양쪽 source, revision과 resolution을 기록. unresolved fact는 일반 search에서 확정 사실로 반환하지 않음
-- Core WebSocket 수집은 entity/device/area registry, `get_states`, `automation/config`, 공식 `search/related(item_type=automation, item_id=<automation entity_id>)` allowlist로 제한하고 모든 필수 응답·정규화가 성공한 snapshot만 transaction commit. unavailable automation의 legal `config: null`은 빈 config와 bounded warning으로 수용한다. 개별 related 요청의 정상 envelope가 실기에서 관측한 `success:false`, `error.code=unknown_error`인 경우만 remote message/body 없이 빈 enrichment와 최대 100개 warning으로 격리하고 config-derived 직접 관계를 유지한다. 다른 server command code, server/client timeout, unauthorized, invalid format, config 실패, transport/close/protocol, 누락·malformed envelope와 malformed successful related 결과는 부분 성공으로 승격하지 않음
+- Core WebSocket 수집은 entity/device/area registry, `get_states`, `automation/config`, 공식 `search/related(item_type=automation, item_id=<automation entity_id>)` allowlist로 제한하고 모든 필수 응답·정규화가 성공한 snapshot만 transaction commit. Unavailable automation의 legal `config: null`과 registry/state에는 남았지만 component에 없는 exact entity의 `automation/config` `not_found`만 remote message/body 없이 빈 config와 bounded warning으로 수용한다. 개별 related 요청의 정상 envelope가 실기에서 관측한 `success:false`, `error.code=unknown_error`인 경우만 remote message/body 없이 빈 enrichment와 최대 100개 warning으로 격리하고 config-derived 직접 관계를 유지한다. 다른 server command code, server/client timeout, unauthorized, invalid format, config 실패, transport/close/protocol, 누락·malformed envelope와 malformed successful related 결과는 부분 성공으로 승격하지 않음
 - raw state와 비허용 attributes는 fresh 비교 뒤 폐기하며 automation config와 임의 response를 저장하지 않음. 표시명/device class/icon/automation id·mode 같은 명시적 allowlist metadata만 정규화하고, 부분/transport/API 오류는 last-known-good catalog를 유지하고 stale/degraded와 closed machine code만 표시
 - 지속 Codex change 전 subject와 지원되는 closed-schema expectation digest·field summary를 기록하고 mutation/reload 뒤 같은 계약의 새 API round trip이 일치해야만 evidence로 채택. Read/diagnostic/catalog refresh/transient device test는 제외하고, 표현 불가 또는 memory unavailable이면 semantic memory를 갱신하지 않은 채 검증 공백을 밝히고 mutation 진행 여부를 확인함. 생성 예정 subject도 계약에 넣을 수 있지만 `codex_change` relationship candidate는 동일 source·relation·target의 성공한 존재 predicate에만 연결함. 입력 expectation 값과 raw API state/attributes/config는 비교 뒤 폐기하고 expectation/predicate digest·field·result·time·revision만 남기며 cached row, 같은 subject의 무관한 check, HTTP 2xx와 config check만으로 memory를 갱신하지 않음
 - HA catalog는 compensating rollback 대상이 아니며 언제나 fresh refresh로 수렴. memory rollback이 HA config, registry, automation이나 기기를 변경하지 않음
@@ -251,10 +278,12 @@ GitHub login은 `/data`에 평문 credential을 남길 수 있고 Home Assistant
 
 완화:
 
-- 공식 GitHub CLI `2.93.0` linux amd64 archive만 image build에서 SHA-256 `02d1290eba130e0b896f3709ffff22e1c75a51475ddb70476a85abc6b5807af0`로 검증하고 runtime download, `latest`와 임의 executable을 사용하지 않음
-- `GH_CONFIG_DIR=/data/github-cli`와 하위 directory를 root-owned `0700`, regular single-link file을 `0600`으로 유지. Symlink/non-directory/non-root-owned root path는 자동 chown하거나 따라가지 않고 login/direct submission만 비활성화하며 safe real path의 private mode만 정규화
+- 공식 GitHub CLI `2.97.0` linux amd64/arm64 archive만 image build에서 architecture별 SHA-256(amd64 `a2c9b8497e1f85b1ad0dfcb78b5a622e098801b8e461e459e88e1ee12f018112`, arm64 `73ea440ecad9c9e284429997ee6f93577bc6f7bc6fba357ef62c53ad8fb641a5`)으로 검증하고 runtime download, `latest`와 임의 executable을 사용하지 않음
+- Repository와 base init path에서 사용하지 않는 `/usr/bin/tempio`는 final image에서 제거하고 부재를 검사함. Grype `0.110`이 base 상속본과 official `2026.07.0` 교체 후보의 embedded `golang.org/x/crypto` `v0.31.0`에서 동일한 Critical 7건을 보고했으므로 취약 executable을 교체했다는 이유만으로 허용하지 않음
+- `GH_CONFIG_DIR=/data/github-cli`와 하위 directory를 root-owned `0700`, regular single-link file을 `0600`으로 유지. Symlink/non-directory/non-root-owned root path는 자동 chown하거나 따라가지 않고 login/direct submission만 비활성화하며 image-managed `ha-feedback` helper가 이 tree를 생성·정규화
 - Login/logout은 명시적 사용자 요청에서만 실행하고 browser/device login 전에 App backup이 평문 GitHub credential을 포함할 수 있다는 위험을 별도로 확인. PAT/token을 App option, prompt, argv 또는 report로 요청하지 않음
 - Helper가 `HOME`, locale, fixed `PATH`, `GH_CONFIG_DIR`, `NO_COLOR`만 가진 clean child environment를 만들고 `GH_TOKEN`, `GITHUB_TOKEN`, `SUPERVISOR_TOKEN`, `NODE_OPTIONS`, `BASH_ENV`, `ENV` 등 상속 credential/injection을 제거
+- `ha-feedback`은 privileged Bash, `env -i`, fixed Node/GitHub CLI와 strict command/report schema를 사용한다. 그러나 현재 root Codex domain과 같은 mount 안의 `/data/github-cli`를 별도 broker로 격리하지는 않으므로 직접 file read 잔여 위험을 명시한다.
 - Repository는 `Kanu-Coffee/codex-for-home-assistant`, label은 `bug`/`enhancement`로 고정하고 성공 URL도 같은 repository issue path인지 확인
 - 유사 이슈 후보와 exact repo/title/label/body path를 먼저 표시. Candidate 검색이 성공한 경우에만 repo/title/label/full body에 결합한 cryptographically random token을 root-only runtime state에 저장. Token은 10분 만료·1회용이며 현재 사용자 turn의 별도·명확한 confirmation이 모두 있어야 제출. 최초 요청·이전 대화 confirmation을 재사용하지 않고 wrong/expired/used token이나 실패한 확인 뒤에는 fresh preview를 요구
 - Candidate 검색과 confirmed submit 직전 remote exact report ID 중복 검색을 fail closed로 처리. 검색 실패·malformed 결과에서는 create하지 않고 Web Form fallback을 제공
@@ -276,7 +305,7 @@ manager가 특정 필요한 endpoint를 거부하면:
 
 ## 5. Codex sandbox 해석
 
-`codex_sandbox_mode: danger-full-access`는 Codex가 **컨테이너 안에서** App이 가진 권한을 사용할 수 있게 한다. Home Assistant App의 `full_access: true`와 동일하지 않다.
+DEV `0.7.0-dev.1` 이후의 실제 Codex 실행은 App option이 기본 `workspace-write`이거나 legacy `danger-full-access` 문자열이어도 network-enabled `workspace-write`로 강제된다. Legacy 문자열은 기존 `options.json`을 깨지 않기 위한 입력 호환성일 뿐 실제 danger sandbox를 선택하지 않는다. 이 Codex sandbox와 Home Assistant App의 `full_access: true`는 서로 다른 계층이며 후자는 계속 사용하지 않는다.
 
 컨테이너 경계는 계속 다음을 막는다.
 
@@ -285,7 +314,7 @@ manager가 특정 필요한 endpoint를 거부하면:
 - 매핑하지 않은 host filesystem
 - 부여하지 않은 Linux capabilities
 
-다만 `/config`와 API는 의도적으로 강하게 열려 있으므로 App 자체를 관리자만 사용할 수 있어야 한다.
+AppArmor와 managed requirements가 고정한 `secrets.yaml`·`.storage` 밖의 `/config`와 raw API는 의도적으로 강하게 열려 있으므로 App 자체를 관리자만 사용할 수 있어야 한다. Workspace sandbox, ambient token 제거와 고정 path deny는 root interactive process 또는 민감한 raw API 응답을 완전히 격리하지 않는다.
 
 ## 6. 보안 테스트
 
@@ -306,7 +335,7 @@ manager가 특정 필요한 endpoint를 거부하면:
 - `codex debug prompt-input`과 filtered `browser_navigate` tool description에서 image-managed `127.0.0.1:8099` 우선 route를 확인하고 기존 사용자 config/AGENTS가 변경되지 않는지 update smoke로 검증
 - user-file update option의 누락/default preserve, agents-only/all scope, target별 version one-shot, backup bytes·private mode, restart idempotency와 symlink/hardlink/non-regular fail-closed를 검증. refresh 대상 밖의 auth/session/SSH/browser identity/`/config`는 byte/fingerprint 수준으로 보존
 - memory directory/database/WAL/SHM의 `0700`/`0600`, regular single-link/owner 검사, SQLite foreign key/check/transaction과 FTS5 가용성을 검증
-- registry/get_states/`automation/config`·`search/related` fixture에서 allowlist field와 relation만 저장되고 raw state/비허용 attributes/config/response/conversation/secret이 DB·FTS·audit·log에 없음을 검사. exact automation item type/ID, active unavailable automation의 `config: null`, explicit related `unknown_error` 격리, config provenance와 실제 installed `ws` handshake를 포함함. Server `timeout`/`unauthorized`/`invalid_format`/`home_assistant_error`, client timeout, malformed envelope/result, close/protocol 실패는 계속 snapshot을 거부하는지 음성 검증
+- registry/get_states/`automation/config`·`search/related` fixture에서 allowlist field와 relation만 저장되고 raw state/비허용 attributes/config/response/conversation/secret이 DB·FTS·audit·log에 없음을 검사. Exact automation item type/ID, active unavailable automation의 `config: null`, component에서 사라진 restored automation의 exact config `not_found`, explicit related `unknown_error` 격리, config provenance와 실제 installed `ws` handshake를 포함함. 다른 config code와 server `timeout`/`unauthorized`/`invalid_format`/`home_assistant_error`, client timeout, malformed envelope/result, close/protocol 실패는 계속 snapshot을 거부하는지 음성 검증
 - direct explicit remember의 source 고정, 세 audit transition, idempotent already-applied와 반복 unresolved conflict dedupe, transient/uncertain/canonical rejection을 검증하고, 별도 candidate의 pending→verified→applied 순서, HA canonical/user semantic authority, unresolved conflict 제외와 current-row/status precondition도 동적 검증
 - post-change fresh API expectation 성공만 evidence로 인정하고 cached/2xx/config-check-only, timeout과 부분 실패에서는 applied memory가 불변인지 확인
 - memory CLI/MCP search 결과의 row/field/32 KiB 한도, exact-subject candidate list 20건 한도, reject audit, 다른 read의 별도 한도, pending/evidence/audit 분리, SQL/FTS metacharacter 처리와 전체 dump 부재를 검사
@@ -317,12 +346,13 @@ manager가 특정 필요한 endpoint를 거부하면:
 - malicious feedback fixture의 secret, URL/IP, HA identifier, sensitive path, control/ANSI sequence가 collect/validate/preview/submit 전에 fail closed되고 logs/screenshots/raw responses가 report에 자동 포함되지 않는지 검사
 - Feedback input/report/GitHub config path의 0700/0600, regular single-link/owner/type/mode와 root containment를 검사하고 symlink/hardlink/FIFO/unsafe ownership에서 대상 변경 없이 실패하는지 확인
 - Fake `gh` 환경에서 미인증, login backup-risk 거부, candidate title 정제, candidate/remote duplicate 검색 fail-closed, preview-only, random·10분 만료·1회용 token, wrong/stale/changed token 거부, 현재 turn confirmation, 동시 submit, 성공, external-result-uncertain lock, duplicate receipt와 fixed repository/label/`--body-file -` stdin을 동적 검증
-- GitHub CLI `2.93.0` archive checksum pin, `/data/github-cli` update persistence, clean child environment의 `GH_TOKEN`/`GITHUB_TOKEN`/`SUPERVISOR_TOKEN` 제거와 App backup 평문 credential 경고를 검사
+- GitHub CLI `2.97.0` amd64/arm64 archive의 architecture별 checksum/version pin, final image의 `/usr/bin/tempio` 부재, `/data/github-cli` update persistence, clean child environment의 `GH_TOKEN`/`GITHUB_TOKEN`/`SUPERVISOR_TOKEN` 제거와 App backup 평문 credential 경고를 검사
 - Security indicator가 public search/preview/url/submit을 차단하고 private vulnerability route만 반환하는지, 미인증/검색 불가/실패 폴백 URL에 긴 body나 secret이 없고 자동 retry하지 않는지 검사. 외부 write의 실패·모호한 출력·receipt 실패 뒤 direct retry가 `.submission.lock`으로 차단되는지 확인
 - Feedback 경로에 MCP/API/App route/service/hook/Action/telemetry/upload가 없고 조사 중 Home Assistant mutation/service/restart/update/recovery helper가 호출되지 않는지 정적·동적 검사
 - gateway의 `/auth/`, `/api/`, `/api/websocket`이 Supervisor proxy가 아니라 direct Core로 전달되고 forwarding identity header를 제거하는지 확인
 - 현재 App socket IP와 Core가 관측한 source IP가 같아도 Docker IP 재사용 negative test 때문에 이를 persistent `trusted_networks` 신원으로 저장하지 않음
 - nginx gateway와 Node HTTP/WebSocket bootstrap 모두 CA/hostname TLS 검증을 켜고 `proxy_ssl_verify off`가 없는지 확인
+- Ingress access log가 method/normalized path/protocol/status/bytes만 남기고 query/client/Referer/User-Agent를 제외하며, nginx error log가 ordinary upstream failure의 raw URI/Referer를 반복하지 않도록 `crit` 이상인지 정적·runtime marker로 확인
 - Playwright 추가 후에도 `privileged`, `full_access`, `host_network`, 추가 Linux capability, AppArmor 비활성화가 없음
 - 패널 `panel_admin: true`
 - `hassio_role`이 manager인지 검사
@@ -384,6 +414,12 @@ manager가 특정 필요한 endpoint를 거부하면:
 7. 원인과 회귀 fixture를 추가한 뒤 bounded search와 non-fatal service 회귀를 다시 검증한다.
 
 ## 8. 실기 검증 경계
+
+Stable `0.7.0`의 custom AppArmor와 `requirements.toml`은 기존 public `0.2.3`의 “기본 AppArmor에서 Chromium이 실행됨” 증거와 다른 보안 profile이다. 후보 실기에서 Supervisor가 custom profile을 load했고, protected-tree preflight와 일반 `/config` RW, App/Ingress 시작이 성공했으며 새 Codex session이 root·nested `secrets.yaml`과 `.storage` 직접 접근을 고정 정책으로 거부한다고 보고했다. 후속 `0.7.0-dev.2` amd64 보고서는 App 시작, profile 적용, `/config` RW, Ingress/browser와 ready/fresh memory를 확인했다. 이는 **관측 범위 PASS**다. 구현 계약상 AppArmor와 managed requirements는 정상적인 Codex 직접 파일 접근에서 보호 content를 명시적으로 거부하므로 그 경로로 내용이 Codex에 전달되지 않는다. 다만 실제 secret 원문을 사용하지 않은 syscall-level negative output, Web/SSH root-shell 전체 content deny, symlink/hardlink/special fixture와 `/proc/*/environ`의 실제 HAOS 전체 행렬은 **NOT RUN/PARTIAL**이며, API·로그·browser raw response, 비보호 copy, root runtime credential과 pathname TOCTOU는 이 보장의 밖이다. Aarch64 native CI와 공개 image 검증은 PASS했지만 64비트 Raspberry Pi/aarch64 HAOS runtime은 **NOT RUN**이다. Maintainer는 2026-08-14 이 공백을 stable release 위험으로 명시적으로 수용했으며 시험을 PASS로 바꾸지 않았다.
+
+Supply-chain workflow도 실제 PR/tag run 전에는 SBOM, scan, Cosign 또는 attestation이 발행·PASS했다고 기록하지 않는다. 과거 image와 attestation 상태를 새 stable tag workflow의 증거로 재사용하지 않는다.
+
+Codex bwrap command는 `no_new_privs`로 실행되므로 credential을 다시 허용하는 더 강한 AppArmor child 전이는 사용할 수 없다. `/data/github-cli`까지 root Codex로부터 강제 격리하려면 사전에 시작한 strict IPC credential broker가 필요하며 현재 release에는 포함되지 않는다.
 
 Alpine의 system `chromium-headless-shell` 조합은 upstream Playwright의 공식 Ubuntu/Debian browser bundle 대상과 다르다. 로컬 container fixture 통과만으로 HAOS 지원을 확정하지 않는다. Public `0.2.3`의 실제 HAOS에서 AppArmor 활성 상태의 browser 시작, loopback gateway, dashboard resource/WebSocket과 desktop/mobile 화면·console·network 경로가 동작했다고 사용자가 확인해 이 실기 항목은 **PASS**로 기록한다. 이는 upstream Alpine 지원 계약이나 모든 장치 보장을 뜻하지 않으며 Chromium·Playwright package revision이 바뀌면 재검증한다. token 원문 비노출은 자동 fixture/redaction smoke 증거와 계속 함께 판단한다.
 

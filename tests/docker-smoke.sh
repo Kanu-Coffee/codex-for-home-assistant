@@ -2,6 +2,7 @@
 set -Eeuo pipefail
 
 IMAGE=${1:-codex-for-home-assistant:test}
+DOCKER_PLATFORM=${DOCKER_PLATFORM:-linux/amd64}
 TEST_ID="codex-ha-smoke-${RANDOM}-$$"
 PUBLIC_CONTAINER="${TEST_ID}-public"
 DEGRADED_CONTAINER="${TEST_ID}-degraded"
@@ -16,6 +17,10 @@ WORK_DIR=$(mktemp -d)
 SUPERVISOR_TOKEN=smoke-supervisor-token-do-not-use
 BROWSER_TOKEN=smoke-browser-token-read-only-do-not-use
 GATEWAY_MARKER='HA_BROWSER_GATEWAY_AUTHENTICATED:Codex HA fixture'
+ACCESS_PATH="/privacy-${TEST_ID}"
+ACCESS_QUERY_MARKER="${TEST_ID}-query-marker"
+ACCESS_REFERER_MARKER="${TEST_ID}-referer-marker"
+ACCESS_AGENT_MARKER="${TEST_ID}-agent-marker"
 
 # Git Bash rewrites Linux container paths before invoking native Windows programs.
 if [[ "${OSTYPE:-}" == msys* || "${OSTYPE:-}" == cygwin* ]]; then
@@ -94,7 +99,7 @@ seed_options() {
   local volume=$1
   local options_json=$2
   printf '%s' "${options_json}" | docker run --rm --interactive \
-    --platform linux/amd64 \
+    --platform "${DOCKER_PLATFORM}" \
     --entrypoint /bin/sh \
     --volume "${volume}:/data" \
     "${IMAGE}" \
@@ -102,7 +107,7 @@ seed_options() {
 }
 
 docker image inspect "${IMAGE}" >/dev/null 2>&1 || fail "image not found: ${IMAGE}"
-[[ $(docker run --rm --platform linux/amd64 --entrypoint stat "${IMAGE}" \
+[[ $(docker run --rm --platform "${DOCKER_PLATFORM}" --entrypoint stat "${IMAGE}" \
   -c '%a:%U:%G' /usr/local/share/codex-ha/AGENTS.md) == 644:root:root ]] \
   || fail 'image default AGENTS.md has unexpected ownership or mode'
 
@@ -131,7 +136,7 @@ done
 [[ -n "${GATEWAY_SUBNET}" ]] \
   || fail 'Unable to allocate a user-configured private subnet for IP reuse testing'
 docker create \
-  --platform linux/amd64 \
+  --platform "${DOCKER_PLATFORM}" \
   --name "${GATEWAY_FIXTURE}" \
   --network "${GATEWAY_NETWORK}" \
   --network-alias supervisor \
@@ -165,14 +170,14 @@ DEGRADED_OPTIONS='{"authorized_keys":["ssh-ed25519 AAAA invalid-fixture"],"web_t
 seed_options "${PUBLIC_DATA}" "${PUBLIC_OPTIONS}"
 seed_options "${DEGRADED_DATA}" "${DEGRADED_OPTIONS}"
 docker run --rm \
-  --platform linux/amd64 \
+  --platform "${DOCKER_PLATFORM}" \
   --entrypoint /bin/sh \
   --volume "${DEGRADED_DATA}:/data" \
   "${IMAGE}" \
   -c 'mkdir -p /data/ssh /data/codex && : > /data/ssh/ssh_host_ed25519_key && printf "%s\n" "# user override" > /data/codex/AGENTS.override.md && chmod 0600 /data/codex/AGENTS.override.md'
 
 docker run --detach \
-  --platform linux/amd64 \
+  --platform "${DOCKER_PLATFORM}" \
   --name "${PUBLIC_CONTAINER}" \
   --network "${GATEWAY_NETWORK}" \
   --env SUPERVISOR_TOKEN="${SUPERVISOR_TOKEN}" \
@@ -192,6 +197,26 @@ wait_for_log "${GATEWAY_FIXTURE}" \
 wait_for_process "${PUBLIC_CONTAINER}" '/usr/sbin/sshd'
 wait_for_process "${PUBLIC_CONTAINER}" 'ttyd'
 wait_for_process "${PUBLIC_CONTAINER}" 'nginx'
+
+docker exec "${PUBLIC_CONTAINER}" curl \
+  --disable \
+  --silent \
+  --output /dev/null \
+  --header "Referer: https://${ACCESS_REFERER_MARKER}.invalid/dashboard" \
+  --header "User-Agent: ${ACCESS_AGENT_MARKER}/1" \
+  "http://127.0.0.1:7681${ACCESS_PATH}?${ACCESS_QUERY_MARKER}=1" \
+  || fail 'Ingress privacy probe request failed'
+wait_for_log "${PUBLIC_CONTAINER}" \
+  "\"GET ${ACCESS_PATH} HTTP/1.1\""
+PUBLIC_ACCESS_LOG=$(docker logs "${PUBLIC_CONTAINER}" 2>&1)
+for private_marker in \
+  "${ACCESS_QUERY_MARKER}" \
+  "${ACCESS_REFERER_MARKER}" \
+  "${ACCESS_AGENT_MARKER}"; do
+  if grep -Fq -- "${private_marker}" <<< "${PUBLIC_ACCESS_LOG}"; then
+    fail 'Ingress logs retained query, Referer, or User-Agent context'
+  fi
+done
 
 docker exec "${PUBLIC_CONTAINER}" /bin/sh -c '
   ha-browser-auth-status | jq --exit-status '\''
@@ -407,9 +432,8 @@ docker cp tests/fixtures/fake-codex.sh \
 docker exec "${PUBLIC_CONTAINER}" chmod 0755 /tmp/fake-codex
 docker exec "${PUBLIC_CONTAINER}" /bin/sh -c \
   'jq ".web_terminal_auto_start_codex = true" /data/options.json > /data/options.json.tmp && mv /data/options.json.tmp /data/options.json'
-docker exec "${PUBLIC_CONTAINER}" /bin/sh -c \
-  'printf "export CODEX_BIN=/tmp/fake-codex\n" >> /run/codex-ha/runtime.env'
 docker exec "${PUBLIC_CONTAINER}" env \
+  CODEX_BIN=/tmp/fake-codex \
   TMUX_TMPDIR=/data/tmux \
   tmux -L smoke-true new-session -d -s smoke-true -c /config \
   /usr/local/bin/tmux-session-shell
@@ -444,6 +468,13 @@ done
 [[ $(docker exec "${PUBLIC_CONTAINER}" stat -c '%a' /data/ssh/ssh_host_ed25519_key) == 600 ]]
 [[ $(docker exec "${PUBLIC_CONTAINER}" stat -c '%a' /data/ssh/ssh_host_ed25519_key.pub) == 644 ]]
 [[ $(docker exec "${PUBLIC_CONTAINER}" stat -c '%a' /run/codex-ha/runtime.env) == 600 ]]
+docker exec "${PUBLIC_CONTAINER}" test ! -e \
+  /run/s6/container_environment/SUPERVISOR_TOKEN
+docker exec "${PUBLIC_CONTAINER}" jq --exit-status \
+  '.codex_sandbox_mode == "workspace-write"' \
+  /run/codex-ha/ha-feedback-options.json >/dev/null
+[[ $(docker exec "${PUBLIC_CONTAINER}" stat -c '%a:%U:%G' \
+  /etc/codex/requirements.toml) == 644:root:root ]]
 [[ $(docker exec "${PUBLIC_CONTAINER}" stat -c '%a' /run/codex-ha/browser-auth-status.json) == 600 ]]
 [[ $(docker exec "${PUBLIC_CONTAINER}" stat -c '%a' /run/codex-ha/browser-network-info.json) == 600 ]]
 [[ $(docker exec "${PUBLIC_CONTAINER}" stat -c '%a' /run/codex-ha/home-assistant-browser.token) == 600 ]]
@@ -474,7 +505,7 @@ SSH_OPTIONS=(
 ssh-keyscan -p "${PORT}" 127.0.0.1 > "${WORK_DIR}/known_hosts" 2>/dev/null
 
 SSH_OUTPUT=$(ssh "${SSH_OPTIONS[@]}" root@127.0.0.1 \
-  'printf "%s\n" "$CODEX_HOME" "$LANG"; command -v codex; codex --version')
+  'test -z "${SUPERVISOR_TOKEN:-}"; printf "%s\n" "$CODEX_HOME" "$LANG"; command -v codex; codex --version; supervisor-api GET /core/info | jq --exit-status '\'' .result == "ok" '\'' >/dev/null')
 grep -Fxq '/data/codex' <<< "${SSH_OUTPUT}"
 grep -Fxq 'C.UTF-8' <<< "${SSH_OUTPUT}"
 grep -Fxq '/usr/local/bin/codex' <<< "${SSH_OUTPUT}"
@@ -527,7 +558,7 @@ done
 
 docker rm -f "${PUBLIC_CONTAINER}" >/dev/null
 docker create \
-  --platform linux/amd64 \
+  --platform "${DOCKER_PLATFORM}" \
   --name "${IP_REUSE_CONTAINER}" \
   --network "${GATEWAY_NETWORK}" \
   --ip "${PUBLIC_APP_IP}" \
@@ -559,7 +590,7 @@ fi
 docker rm -f "${IP_REUSE_CONTAINER}" >/dev/null
 
 docker run --detach \
-  --platform linux/amd64 \
+  --platform "${DOCKER_PLATFORM}" \
   --name "${PUBLIC_CONTAINER}" \
   --network "${GATEWAY_NETWORK}" \
   --env SUPERVISOR_TOKEN="${SUPERVISOR_TOKEN}" \
@@ -597,7 +628,7 @@ docker exec "${PUBLIC_CONTAINER}" jq --exit-status \
   || fail 'manual browser override did not return after automatic authentication was enabled'
 
 docker run --detach \
-  --platform linux/amd64 \
+  --platform "${DOCKER_PLATFORM}" \
   --name "${DEGRADED_CONTAINER}" \
   --network "${GATEWAY_NETWORK}" \
   --volume "${DEGRADED_DATA}:/data" \

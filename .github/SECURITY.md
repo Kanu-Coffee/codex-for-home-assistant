@@ -8,7 +8,7 @@ Codex for Home Assistant는 `/config` read-write, Home Assistant Core API와 Sup
 
 ### 지원 범위
 
-보안 수정은 원칙적으로 [가장 최근 공개 릴리스](https://github.com/Kanu-Coffee/codex-for-home-assistant/releases)를 대상으로 합니다. 이 프로젝트는 현재 `stage: experimental`, amd64 전용입니다. 이전 버전에서 문제가 발생했다면 최신 릴리스에서도 재현되는지 비밀정보 없이 확인해 주세요.
+보안 수정은 원칙적으로 [가장 최근 공개 릴리스](https://github.com/Kanu-Coffee/codex-for-home-assistant/releases)를 대상으로 합니다. 안정판 manifest는 `stage` 키를 생략해 Supervisor의 기본 stable 채널을 사용하며 amd64와 64비트 aarch64를 지원합니다. 이전 버전에서 문제가 발생했다면 최신 릴리스에서도 재현되는지 비밀정보 없이 확인해 주세요.
 
 ### 비공개 제보
 
@@ -16,7 +16,7 @@ Codex for Home Assistant는 `/config` read-write, Home Assistant Core API와 Sup
 
 다음을 포함하면 확인에 도움이 됩니다.
 
-- 영향을 받는 앱 버전, Home Assistant Core/OS 버전과 amd64 장치 유형
+- 영향을 받는 앱 버전, Home Assistant Core/OS 버전과 장치 아키텍처
 - 공격 전제조건과 영향 범위
 - 최소 재현 단계
 - 예상 동작과 실제 동작
@@ -36,7 +36,8 @@ credential 노출이나 원격 접근 문제가 의심되면 먼저 앱을 중�
 
 ### 보안 경계
 
-- `codex_sandbox_mode: danger-full-access`는 앱 컨테이너 내부 정책이지만 `/config`는 read-write입니다.
+- 관리형 Codex sandbox는 network-enabled `workspace-write`이며 보호 경로 밖의 `/config`는 read-write입니다.
+- Custom AppArmor와 관리형 요구사항은 루트·중첩 `secrets.yaml`과 `/config/.storage` content를 정상적인 Codex 직접 파일 접근에서 명시적으로 차단하므로 그 경로로 내용이 Codex에 전달되지 않습니다. 이는 원시 API·로그·브라우저 응답, 비보호 경로로 복사된 값, root runtime credential과 pathname TOCTOU까지 막는 완전한 DLP는 아닙니다.
 - 앱은 Supervisor `admin`, Docker API, Home Assistant `full_access`, host network를 사용하지 않습니다.
 - SSH는 공개키 전용이며 인터넷 직접 노출을 지원되는 배포 방식으로 간주하지 않습니다.
 - Headless browser의 관리형 HA 사용자는 local-only, non-admin, `system-read-only`이지만 모든 entity state를 볼 수 있습니다.
@@ -48,7 +49,9 @@ credential 노출이나 원격 접근 문제가 의심되면 먼저 앱을 중�
 
 Codex for Home Assistant is an administrative tool with read-write access to `/config`, the Home Assistant Core API, and the Supervisor `manager` role. Please report vulnerabilities privately and separately from ordinary bugs.
 
-Security fixes normally target the [latest public release](https://github.com/Kanu-Coffee/codex-for-home-assistant/releases). The project is currently experimental and amd64-only.
+Security fixes normally target the [latest public release](https://github.com/Kanu-Coffee/codex-for-home-assistant/releases). The stable app supports amd64 and 64-bit aarch64.
+
+Custom AppArmor and managed requirements explicitly block root or nested `secrets.yaml` and `/config/.storage` contents from normal direct Codex filesystem access, so those contents do not enter Codex through that path. This is not complete DLP for raw API/log/browser responses, values copied to unprotected paths, the root runtime credential, or pathname TOCTOU races.
 
 Use [GitHub private vulnerability reporting](https://github.com/Kanu-Coffee/codex-for-home-assistant/security/advisories/new) when available. If it is unavailable, do not publish exploit details or secrets in an issue; open a minimal, non-sensitive request for a private contact channel.
 
