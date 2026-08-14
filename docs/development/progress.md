@@ -4,8 +4,8 @@
 
 ## Project Status
 
-- 상태: **public 0.6.0 amd64 정확 이미지 전체 회귀 PASS / DEV 0.7.0-dev.1 `#dev` multi-arch 발행·한 실제 HAOS profile load와 Codex 고정 민감 경로 정책 보고 관측 / DEV 0.7.0-dev.2 memory·Ingress privacy 후속 local 전체 회귀 PASS·원격 전달 대기 / 실제 read syscall 음성 출력·aarch64 HAOS·전체 AppArmor/helper 행렬 NOT RUN / 실제 HAOS feedback live NOT RUN / 실제 HAOS `never` 14/16 승인 0회 PASS·전체 승인 행렬 PARTIAL / public 0.3.2 memory live PARTIAL(FAIL 0) / 0.5.0 자연어 memory live 수용 대기**
-- 현재 마일스톤: **DEV 0.7.0-dev.2 `#dev` patch publication / 실제 update 뒤 memory ready·minimal log 재검증**
+- 상태: **public 0.6.0 amd64 정확 이미지 전체 회귀 PASS / DEV 0.7.0-dev.2 `#dev` amd64+aarch64 CI·Builder·발행·익명 manifest 확인 PASS / 이전 0.7.0-dev.1의 한 실제 HAOS profile load와 Codex 고정 민감 경로 정책 보고 관측 / 실제 0.7.0-dev.2 HAOS update·read syscall 음성 출력·aarch64 HAOS·전체 AppArmor/helper 행렬 NOT RUN / 실제 HAOS feedback live NOT RUN / 실제 HAOS `never` 14/16 승인 0회 PASS·전체 승인 행렬 PARTIAL / public 0.3.2 memory live PARTIAL(FAIL 0) / 0.5.0 자연어 memory live 수용 대기**
+- 현재 마일스톤: **실제 HAOS를 DEV 0.7.0-dev.2로 일반 update한 뒤 memory ready·minimal log 재검증**
 - 마지막 문서 기준일: **2026-08-14**
 - 저장소: public `Kanu-Coffee/codex-for-home-assistant`, default branch `main`
 
@@ -33,7 +33,9 @@
 - 발견 2: Ingress nginx 기본 access log가 credential은 남기지 않았지만 Referer의 사용자 HA host와 User-Agent의 device/OS/browser를 기록했다. 요청 query·Referer·User-Agent·client IP를 제외한 method/path/status/byte-count 최소 형식으로 줄였다. 실제 502 probe에서 built-in error log가 raw URI/Referer를 반복하는 것도 확인해 `crit` 이상으로 제한하고 failure status는 minimal access log에 유지했다.
 - 발견 3: 화면의 `xcodebuildmcp` 시작 실패 문자열은 repository와 image-managed config 어디에도 없다. 사용자 또는 프로젝트 Codex config의 보존된 optional MCP로 판정하며 App이 임의 삭제하지 않는다. 새 troubleshooting에서 `codex mcp list`와 소유한 config 확인 경로를 안내한다.
 - local 검증: version surface를 `0.7.0-dev.2`로 동기화하고 Python unit/contract **113 passed**, source memory client 12개·installed image memory client 13개, YAML/Markdown/ShellCheck/Hadolint/actionlint/AppArmor parser와 `git diff --check`를 통과했다. Final amd64 image build·label/nginx syntax, 7개 architecture-neutral smoke, actual minimal access/error log 502 probe와 exact public `0.7.0-dev.1` → local `0.7.0-dev.2` update smoke가 PASS했다. 첫 image build의 GitHub DNS 실패는 host-network 재시도에서 checksum 고정 artifact build가 성공해 구현 실패와 분리했다.
-- 전달 계획: `dev` PR에서 amd64/native aarch64 CI와 non-publishing Builder를 통과한 뒤 exact `0.7.0-dev.2` tag publication·익명 multi-arch pull을 검증한다. 실제 HAOS update 뒤 `ha-memory status`의 `ready` 수렴과 minimal log는 별도 사용자 수용이며 `main`과 public `0.6.0`은 변경하지 않는다.
+- 원격 검증: [PR #36](https://github.com/Kanu-Coffee/codex-for-home-assistant/pull/36)의 [CI 31759991854](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/31759991854)와 non-publishing [Builder 31759992068](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/31759992068)가 amd64/native aarch64 회귀와 양 architecture SBOM/scan을 PASS했다. PR은 merge commit `45c2062a4515f4663b83f68675b0091f3de67e3b`로 `dev`에 병합됐고 [dev CI 31760252237](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/31760252237)도 PASS했다.
+- 발행 결과: annotated tag object `9c7fa71e33f45dcb2ec132297f1cfe0bbee5fc1c`은 위 merge commit으로 peel된다. [Tag Builder 31760484384](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/31760484384)는 양 architecture의 SBOM/Critical gate, signing/attestation 단계, generic manifest와 final tag promotion을 PASS했다. Scan은 architecture마다 Critical 0/High 68이며 High는 비차단 보고다. 익명 조회에서 generic `sha256:781c96531771d24e2263b09aef908e72fbbb8344d94e3ac3e601367d51190f85`, amd64 `sha256:aecf766814049068dcf08393f061a725f8c15025ccf9d1acfde3b7d3aaeb7206`, aarch64 `sha256:eaa2fb6ce85f7a522f0a2290a38b2183ab7e41940a608b6cd8cf52ba7da058eb`와 공개 config/layer를 확인했다.
+- 남은 경계: 독립 Cosign signature/attestation 검증과 실제 HAOS `0.7.0-dev.2` 일반 update 뒤 `ha-memory status`의 `ready` 수렴·minimal log 관측은 **NOT RUN**이다. `main`과 public `0.6.0`은 변경하지 않았다.
 
 ### 2026-08-11~12 — DEV 0.7.0-dev.1 멀티아키텍처·민감 경로·공급망 후보
 
@@ -532,7 +534,7 @@
 - [x] AppArmor+managed requirements로 root/nested `secrets.yaml`·`.storage` 고정 차단
 - [ ] 실제 HAOS에서 민감 경로 deny와 나머지 `/config` RW·API/browser 가용성 검증
 - [x] SBOM·취약점 scan·Cosign/provenance/SBOM attestation·action SHA pin·Dependabot workflow 구현
-- [x] Release workflow 실행에서 multi-arch manifest와 SBOM/scan/signing/attestation 검증 — [Builder 31550037239](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/31550037239) PASS
+- [x] Release workflow 실행에서 multi-arch manifest와 SBOM/scan/signing/attestation 단계 검증 — latest DEV [Builder 31760484384](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/31760484384) PASS; 독립 post-publication signature/attestation 검증은 NOT RUN
 - [ ] 설치·복구 UX 개선
 - [ ] stage를 experimental에서 stable로 바꿀 조건 평가
 

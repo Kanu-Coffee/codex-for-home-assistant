@@ -26,7 +26,13 @@ All notable changes to this App are documented in this file.
 
 - Pass all 113 Python unit/contract tests, 12 source and 13 installed-image Home Assistant memory client tests, YAML/Markdown/ShellCheck/Hadolint/actionlint/AppArmor parsing, and `git diff --check`.
 - Build the final local amd64 `0.7.0-dev.2` image and pass feedback, Docker/ttyd/SSH/Core API/browser, browser approval, memory, managed browser auth, user-file, managed Codex sandbox, and exact public `0.7.0-dev.1` to local candidate update smokes. An actual 502 probe confirms the App log retains the normalized path and status while excluding the query, Referer, and User-Agent markers.
-- Native aarch64 CI, non-publishing Builder scans, exact tag publication, anonymous multi-architecture pull, and actual HAOS update/recovery are **NOT RUN** at this local validation stage.
+- [PR #36](https://github.com/Kanu-Coffee/codex-for-home-assistant/pull/36) [CI 31759991854](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/31759991854) passed App validation, lint/unit, amd64 full smoke/update, and native aarch64 build/smoke. Its non-publishing [Builder 31759992068](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/31759992068) built, generated an SPDX SBOM for, and scanned both architectures. Merge commit `45c2062a4515f4663b83f68675b0091f3de67e3b` then passed the same branch gates in [dev CI 31760252237](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/31760252237).
+
+### Release evidence
+
+- Publish annotated tag object `9c7fa71e33f45dcb2ec132297f1cfe0bbee5fc1c` for `0.7.0-dev.2`; it peels to the same `dev` merge commit `45c2062a4515f4663b83f68675b0091f3de67e3b`. [Tag Builder 31760484384](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/31760484384) completed both architecture builds, SBOM/Critical gates, signing and attestation steps, verified-manifest publication, and final tag promotion.
+- Both architecture scans report Critical 0 and High 68; High remains an intentionally non-blocking report. Anonymous manifest resolution confirms generic `sha256:781c96531771d24e2263b09aef908e72fbbb8344d94e3ac3e601367d51190f85`, linux/amd64 `sha256:aecf766814049068dcf08393f061a725f8c15025ccf9d1acfde3b7d3aaeb7206`, and linux/arm64 `sha256:eaa2fb6ce85f7a522f0a2290a38b2183ab7e41940a608b6cd8cf52ba7da058eb`.
+- Independent post-publication Cosign signature/attestation verification and an actual HAOS update to `0.7.0-dev.2`, including memory recovery and minimal-log observation, remain **NOT RUN**. No GitHub Release was required or created for the `#dev` installation path.
 
 ## [0.7.0-dev.1] - 2026-08-12
 
