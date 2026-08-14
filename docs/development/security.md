@@ -222,7 +222,7 @@ HA 대시보드는 브라우저에서 Core API/WebSocket 인증이 필요하지�
 - 그 밖의 대화·분석 값은 provenance가 있는 `pending`으로만 시작하고 `verified`, `applied`를 순서대로 거침. 모델 추론·웹/로그 지시·일시 state는 user-explicit로 라벨링하거나 단독 승격 evidence로 인정하지 않음
 - 구조·현재 존재·registry relation·change result는 fresh HA API, alias·실제 용도·preference는 명시적 사용자 설명을 authority로 하는 fact-kind validator 사용
 - conflict에서 기존 값을 조용히 overwrite하지 않고 양쪽 source, revision과 resolution을 기록. unresolved fact는 일반 search에서 확정 사실로 반환하지 않음
-- Core WebSocket 수집은 entity/device/area registry, `get_states`, `automation/config`, 공식 `search/related(item_type=automation, item_id=<automation entity_id>)` allowlist로 제한하고 모든 필수 응답·정규화가 성공한 snapshot만 transaction commit. unavailable automation의 legal `config: null`은 빈 config와 bounded warning으로 수용한다. 개별 related 요청의 정상 envelope가 실기에서 관측한 `success:false`, `error.code=unknown_error`인 경우만 remote message/body 없이 빈 enrichment와 최대 100개 warning으로 격리하고 config-derived 직접 관계를 유지한다. 다른 server command code, server/client timeout, unauthorized, invalid format, config 실패, transport/close/protocol, 누락·malformed envelope와 malformed successful related 결과는 부분 성공으로 승격하지 않음
+- Core WebSocket 수집은 entity/device/area registry, `get_states`, `automation/config`, 공식 `search/related(item_type=automation, item_id=<automation entity_id>)` allowlist로 제한하고 모든 필수 응답·정규화가 성공한 snapshot만 transaction commit. Unavailable automation의 legal `config: null`과 registry/state에는 남았지만 component에 없는 exact entity의 `automation/config` `not_found`만 remote message/body 없이 빈 config와 bounded warning으로 수용한다. 개별 related 요청의 정상 envelope가 실기에서 관측한 `success:false`, `error.code=unknown_error`인 경우만 remote message/body 없이 빈 enrichment와 최대 100개 warning으로 격리하고 config-derived 직접 관계를 유지한다. 다른 server command code, server/client timeout, unauthorized, invalid format, config 실패, transport/close/protocol, 누락·malformed envelope와 malformed successful related 결과는 부분 성공으로 승격하지 않음
 - raw state와 비허용 attributes는 fresh 비교 뒤 폐기하며 automation config와 임의 response를 저장하지 않음. 표시명/device class/icon/automation id·mode 같은 명시적 allowlist metadata만 정규화하고, 부분/transport/API 오류는 last-known-good catalog를 유지하고 stale/degraded와 closed machine code만 표시
 - 지속 Codex change 전 subject와 지원되는 closed-schema expectation digest·field summary를 기록하고 mutation/reload 뒤 같은 계약의 새 API round trip이 일치해야만 evidence로 채택. Read/diagnostic/catalog refresh/transient device test는 제외하고, 표현 불가 또는 memory unavailable이면 semantic memory를 갱신하지 않은 채 검증 공백을 밝히고 mutation 진행 여부를 확인함. 생성 예정 subject도 계약에 넣을 수 있지만 `codex_change` relationship candidate는 동일 source·relation·target의 성공한 존재 predicate에만 연결함. 입력 expectation 값과 raw API state/attributes/config는 비교 뒤 폐기하고 expectation/predicate digest·field·result·time·revision만 남기며 cached row, 같은 subject의 무관한 check, HTTP 2xx와 config check만으로 memory를 갱신하지 않음
 - HA catalog는 compensating rollback 대상이 아니며 언제나 fresh refresh로 수렴. memory rollback이 HA config, registry, automation이나 기기를 변경하지 않음
@@ -305,7 +305,7 @@ manager가 특정 필요한 endpoint를 거부하면:
 
 ## 5. Codex sandbox 해석
 
-DEV `0.7.0-dev.1`의 실제 Codex 실행은 App option이 기본 `workspace-write`이거나 legacy `danger-full-access` 문자열이어도 network-enabled `workspace-write`로 강제된다. Legacy 문자열은 기존 `options.json`을 깨지 않기 위한 입력 호환성일 뿐 실제 danger sandbox를 선택하지 않는다. 이 Codex sandbox와 Home Assistant App의 `full_access: true`는 서로 다른 계층이며 후자는 계속 사용하지 않는다.
+DEV `0.7.0-dev.1` 이후의 실제 Codex 실행은 App option이 기본 `workspace-write`이거나 legacy `danger-full-access` 문자열이어도 network-enabled `workspace-write`로 강제된다. Legacy 문자열은 기존 `options.json`을 깨지 않기 위한 입력 호환성일 뿐 실제 danger sandbox를 선택하지 않는다. 이 Codex sandbox와 Home Assistant App의 `full_access: true`는 서로 다른 계층이며 후자는 계속 사용하지 않는다.
 
 컨테이너 경계는 계속 다음을 막는다.
 
@@ -335,7 +335,7 @@ AppArmor와 managed requirements가 고정한 `secrets.yaml`·`.storage` 밖의 
 - `codex debug prompt-input`과 filtered `browser_navigate` tool description에서 image-managed `127.0.0.1:8099` 우선 route를 확인하고 기존 사용자 config/AGENTS가 변경되지 않는지 update smoke로 검증
 - user-file update option의 누락/default preserve, agents-only/all scope, target별 version one-shot, backup bytes·private mode, restart idempotency와 symlink/hardlink/non-regular fail-closed를 검증. refresh 대상 밖의 auth/session/SSH/browser identity/`/config`는 byte/fingerprint 수준으로 보존
 - memory directory/database/WAL/SHM의 `0700`/`0600`, regular single-link/owner 검사, SQLite foreign key/check/transaction과 FTS5 가용성을 검증
-- registry/get_states/`automation/config`·`search/related` fixture에서 allowlist field와 relation만 저장되고 raw state/비허용 attributes/config/response/conversation/secret이 DB·FTS·audit·log에 없음을 검사. exact automation item type/ID, active unavailable automation의 `config: null`, explicit related `unknown_error` 격리, config provenance와 실제 installed `ws` handshake를 포함함. Server `timeout`/`unauthorized`/`invalid_format`/`home_assistant_error`, client timeout, malformed envelope/result, close/protocol 실패는 계속 snapshot을 거부하는지 음성 검증
+- registry/get_states/`automation/config`·`search/related` fixture에서 allowlist field와 relation만 저장되고 raw state/비허용 attributes/config/response/conversation/secret이 DB·FTS·audit·log에 없음을 검사. Exact automation item type/ID, active unavailable automation의 `config: null`, component에서 사라진 restored automation의 exact config `not_found`, explicit related `unknown_error` 격리, config provenance와 실제 installed `ws` handshake를 포함함. 다른 config code와 server `timeout`/`unauthorized`/`invalid_format`/`home_assistant_error`, client timeout, malformed envelope/result, close/protocol 실패는 계속 snapshot을 거부하는지 음성 검증
 - direct explicit remember의 source 고정, 세 audit transition, idempotent already-applied와 반복 unresolved conflict dedupe, transient/uncertain/canonical rejection을 검증하고, 별도 candidate의 pending→verified→applied 순서, HA canonical/user semantic authority, unresolved conflict 제외와 current-row/status precondition도 동적 검증
 - post-change fresh API expectation 성공만 evidence로 인정하고 cached/2xx/config-check-only, timeout과 부분 실패에서는 applied memory가 불변인지 확인
 - memory CLI/MCP search 결과의 row/field/32 KiB 한도, exact-subject candidate list 20건 한도, reject audit, 다른 read의 별도 한도, pending/evidence/audit 분리, SQL/FTS metacharacter 처리와 전체 dump 부재를 검사
@@ -352,6 +352,7 @@ AppArmor와 managed requirements가 고정한 `secrets.yaml`·`.storage` 밖의 
 - gateway의 `/auth/`, `/api/`, `/api/websocket`이 Supervisor proxy가 아니라 direct Core로 전달되고 forwarding identity header를 제거하는지 확인
 - 현재 App socket IP와 Core가 관측한 source IP가 같아도 Docker IP 재사용 negative test 때문에 이를 persistent `trusted_networks` 신원으로 저장하지 않음
 - nginx gateway와 Node HTTP/WebSocket bootstrap 모두 CA/hostname TLS 검증을 켜고 `proxy_ssl_verify off`가 없는지 확인
+- Ingress access log가 method/normalized path/protocol/status/bytes만 남기고 query/client/Referer/User-Agent를 제외하며, nginx error log가 ordinary upstream failure의 raw URI/Referer를 반복하지 않도록 `crit` 이상인지 정적·runtime marker로 확인
 - Playwright 추가 후에도 `privileged`, `full_access`, `host_network`, 추가 Linux capability, AppArmor 비활성화가 없음
 - 패널 `panel_admin: true`
 - `hassio_role`이 manager인지 검사
@@ -414,7 +415,7 @@ AppArmor와 managed requirements가 고정한 `secrets.yaml`·`.storage` 밖의 
 
 ## 8. 실기 검증 경계
 
-DEV custom AppArmor와 `requirements.toml`은 기존 public `0.2.3`의 “기본 AppArmor에서 Chromium이 실행됨” 증거와 다른 보안 profile이다. AppArmor parser와 contract test가 통과하더라도 실제 HAOS에서 root·nested `secrets.yaml`과 `.storage` content, symlink/hardlink 및 `/proc/*/environ` 접근 거부, Codex `.storage` directory read 거부, 문서화된 validator listing allowance, 일반 YAML RW와 Codex/SSH/browser/memory/API 가용성을 다시 확인하기 전에는 실기 PASS로 올리지 않는다. Aarch64 native CI와 공개 image 검증은 PASS했지만 64비트 Raspberry Pi HAOS 설치·runtime은 현재 **NOT RUN**이다.
+DEV custom AppArmor와 `requirements.toml`은 기존 public `0.2.3`의 “기본 AppArmor에서 Chromium이 실행됨” 증거와 다른 보안 profile이다. 후속 사용자 증거에서 `#dev` `0.7.0-dev.1`을 실제 HAOS에 설치할 때 Supervisor가 custom profile을 load했고, protected-tree preflight와 일반 `/config` RW, App/Ingress 시작이 성공했으며 새 Codex session이 root·nested `secrets.yaml`과 `.storage` 직접 접근을 고정 정책으로 거부한다고 보고했다. 이는 **관측 범위 PASS**다. 다만 제공 자료에는 runtime architecture, 실제 secret 원문을 사용하지 않은 syscall-level negative output, Web/SSH root-shell content deny, symlink/hardlink/special fixture, `/proc/*/environ`, API/browser/memory 전체 가용성과 update persistence가 없어 전체 E2E-021은 **PARTIAL**이다. Aarch64 native CI와 공개 image 검증은 PASS했지만 64비트 Raspberry Pi/aarch64 HAOS runtime은 현재 **NOT RUN**이다.
 
 Supply-chain workflow도 실제 PR/tag run 전에는 SBOM, scan, Cosign 또는 attestation이 발행·PASS했다고 기록하지 않는다. Public `0.6.0` image와 과거 attestation 상태를 Unreleased workflow의 증거로 재사용하지 않는다.
 

@@ -94,11 +94,11 @@ GitHub owner는 실제 계정에 맞춰 Codex가 채운다.
 
 ## 3. `config.yaml` 목표 초안
 
-Public `0.6.0`은 amd64만 제공한다. DEV M3 candidate `0.7.0-dev.1`은 native CI와 실기 상태를 분리해 다음 두 아키텍처를 선언한다.
+Public `0.6.0`은 amd64만 제공한다. DEV M3 candidate `0.7.0-dev.2`는 native CI와 실기 상태를 분리해 다음 두 아키텍처를 선언한다.
 
 ```yaml
 name: Codex for Home Assistant (DEV)
-version: "0.7.0-dev.1"
+version: "0.7.0-dev.2"
 slug: codex_home_assistant
 description: "[DEV] Codex CLI with verified feedback, browser, terminal, and SSH for Home Assistant"
 url: https://github.com/<owner>/codex-for-home-assistant
@@ -371,10 +371,10 @@ automation/config
 search/related
 ```
 
-- entity registry와 state의 합집합에서 automation을 찾고 허용된 식별자, 표시명·description, area/device/entity relation만 저장한다. state가 없는 disabled registry automation도 index한다. active graph는 공식 payload `search/related(item_type=automation, item_id=<automation entity_id>)`로 요청하며 `item_type=entity`를 대체 graph로 사용하지 않는다. Core가 unavailable automation에 성공 응답으로 주는 explicit `config: null`은 빈 config와 bounded warning으로 수용한다. 개별 related 요청의 정상 result envelope가 실기에서 관측한 `success:false`, `error.code=unknown_error`인 경우만 빈 enrichment와 warning으로 격리하고 config-derived 직접 관계를 유지한다. 그 밖의 command code, config 실패, server/client timeout, unauthorized, invalid format, transport/close/protocol, 누락·malformed envelope와 malformed successful related 응답은 전체 refresh를 실패시킨다.
+- entity registry와 state의 합집합에서 automation을 찾고 허용된 식별자, 표시명·description, area/device/entity relation만 저장한다. state가 없는 disabled registry automation도 index한다. active graph는 공식 payload `search/related(item_type=automation, item_id=<automation entity_id>)`로 요청하며 `item_type=entity`를 대체 graph로 사용하지 않는다. Core가 unavailable automation에 성공 응답으로 주는 explicit `config: null`과, registry/state에는 남았지만 automation component가 더 이상 소유하지 않는 exact entity의 `automation/config` `not_found`만 빈 config와 bounded warning으로 수용한다. 개별 related 요청의 정상 result envelope가 실기에서 관측한 `success:false`, `error.code=unknown_error`인 경우만 빈 enrichment와 warning으로 격리하고 config-derived 직접 관계를 유지한다. 그 밖의 command code, config 실패, server/client timeout, unauthorized, invalid format, transport/close/protocol, 누락·malformed envelope와 malformed successful related 응답은 전체 refresh를 실패시킨다.
 - `get_states`의 state와 임의 attributes는 fresh expectation 비교 뒤 폐기한다. 표시명, device class, icon, automation id/mode 같은 명시적 allowlist metadata만 catalog에 정규화할 수 있다.
 - automation raw config, 임의 response, `/config` 원문, 대화 transcript/prompt, token·secret과 비허용 field는 DB, FTS, audit와 log에 쓰지 않는다.
-- optional related의 관측된 `unknown_error`를 제외한 command/대상 실패, unsupported 또는 malformed response와 transport interruption은 partial canonical commit이 아니라 stale/degraded retry가 되며 고정 command별 또는 연결 단계별 allowlist code를 status에 남긴다. 이 상태 전이는 refresh가 실제 실패한 경우의 증거이며 scheduler 시도와 겹치지 않은 짧은 Core outage를 사후 추정하지 않는다. Related warning은 고정 prefix와 allowlisted automation ID만 포함하고 전체 snapshot에서 최대 100개로 제한한다.
+- exact `automation/config` `not_found`와 optional related의 관측된 `unknown_error`를 제외한 command/대상 실패, unsupported 또는 malformed response와 transport interruption은 partial canonical commit이 아니라 stale/degraded retry가 되며 고정 command별 또는 연결 단계별 allowlist code를 status에 남긴다. 이 상태 전이는 refresh가 실제 실패한 경우의 증거이며 scheduler 시도와 겹치지 않은 짧은 Core outage를 사후 추정하지 않는다. Warning은 고정 prefix와 allowlisted automation ID만 포함하고 전체 snapshot에서 최대 100개로 제한한다.
 
 ### CLI와 MCP 계약
 
@@ -562,6 +562,6 @@ Playwright MCP child는 Supervisor token을 받지 않는다. 검증된 dedicate
 
 로컬 개발 단계에서는 `image`를 주석 처리한 local build를 허용한다. `0.1.3`부터 공식 Home Assistant builder actions `2026.06.0`으로 amd64 image와 generic manifest를 미리 빌드하고 `config.yaml`의 `image`에 `ghcr.io/kanu-coffee/codex-for-home-assistant`를 사용한다. Public `0.6.0`까지의 배포 증거는 amd64만 해당한다.
 
-DEV `0.7.0-dev.1`은 [dev CI 31549518729](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/31549518729)에서 native amd64/aarch64 full smoke를 PASS했다. [Tag Builder 31550037239](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/31550037239)는 architecture별 SPDX SBOM, Critical 차단·High/Critical 보고, per-architecture Cosign/provenance/SBOM attestation, generic Cosign/provenance와 final tag promotion을 PASS했다. Generic manifest digest는 `sha256:703fd667d21c2b101b546652f9b781725a31b071377bf205cd130640e79d5ae5`, amd64 runtime digest는 `sha256:e19882421cc86ac1042a6c512c808db35bb4b506134db482f2a5d6c9f78606b2`, aarch64 runtime digest는 `sha256:dc43af845b5b60749e0599047f2cfeaa2ec0838b2783826ad872da2e990c27c5`다. 실제 Raspberry Pi/aarch64 HAOS 설치와 custom AppArmor/managed requirements의 HAOS runtime 수용은 **NOT RUN**이므로 automated release publication과 platform acceptance를 구분한다.
+DEV `0.7.0-dev.1`은 [dev CI 31549518729](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/31549518729)에서 native amd64/aarch64 full smoke를 PASS했다. [Tag Builder 31550037239](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/31550037239)는 architecture별 SPDX SBOM, Critical 차단·High/Critical 보고, per-architecture Cosign/provenance/SBOM attestation, generic Cosign/provenance와 final tag promotion을 PASS했다. Generic manifest digest는 `sha256:703fd667d21c2b101b546652f9b781725a31b071377bf205cd130640e79d5ae5`, amd64 runtime digest는 `sha256:e19882421cc86ac1042a6c512c808db35bb4b506134db482f2a5d6c9f78606b2`, aarch64 runtime digest는 `sha256:dc43af845b5b60749e0599047f2cfeaa2ec0838b2783826ad872da2e990c27c5`다. 후속 한 실제 HAOS의 profile load·일반 `/config` RW·App/Ingress/Codex 시작·새 session direct sensitive-path deny는 관측 범위 PASS지만 architecture가 제공되지 않았다. 따라서 실제 Raspberry Pi/aarch64 HAOS와 custom AppArmor/helper 전체 runtime 수용은 **NOT RUN**으로 유지하고 automated release, 부분 실기와 platform acceptance를 구분한다.
 
 Playwright renderer는 `0.2.0`, 최소권한 browser 경로는 `0.2.1`, 관리형 인증은 `0.2.2`, 기본 ON 자동 인증·Codex `8099` 라우팅과 선택형 user-file refresh는 `0.2.3`, 검증형 memory 사용자 폐루프는 `0.5.0`, 검증형 App 피드백 자동화는 `0.6.0`이다. Stable `X.Y.Z` 또는 `N >= 1` 번호형 DEV `X.Y.Z-dev.N` Git tag와 App version이 정확히 같을 때만 게시하며, DEV version은 repository/App 표시명, panel, description, OCI title과 MOTD에 DEV 표식을 함께 가져야 한다. Generic, amd64와 aarch64 package의 기존 tag는 덮어쓰지 않는다. `#dev` canary 원격 설치는 exact version GHCR tag를 필요로 하며 `0.7.0-dev.1` tag는 위 Builder에서 발행됐다. Home Assistant `stage`는 별도 M3 평가 전까지 `experimental`을 유지한다. `0.6.0` live GitHub issue creation은 명시적 외부-write 승인 전까지 `NOT RUN`으로 유지한다.

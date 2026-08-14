@@ -28,7 +28,7 @@ Use Codex inside Home Assistant to inspect your setup and improve dashboards, au
 
 ## Quick start
 
-1. Install and start the app. Public `0.6.0` is **amd64-only**. Development candidate `0.7.0-dev.1` appears in HAOS as **Codex for Home Assistant (DEV)** and in the sidebar as **Codex DEV**, and supports `amd64` and 64-bit `aarch64`. It remains `stage: experimental` and `boot: manual`; native ARM CI and exact public multi-architecture GHCR tag verification passed. Real Raspberry Pi HAOS installation, AppArmor, and runtime acceptance are not complete. The sensitive-path protections below describe this DEV candidate and are not retroactive changes to public `0.6.0`.
+1. Install and start the app. Public `0.6.0` is **amd64-only**. Development candidate `0.7.0-dev.2` appears in HAOS as **Codex for Home Assistant (DEV)** and in the sidebar as **Codex DEV**, and supports `amd64` and 64-bit `aarch64`. It remains `stage: experimental` and `boot: manual`. Native ARM CI and the previous DEV multi-architecture image verification passed. On one real HAOS installation of `0.7.0-dev.1`, AppArmor loading, ordinary `/config` writes, and a new Codex session reporting the fixed sensitive-path policy were observed. A negative read syscall and the device architecture were not supplied, so Raspberry Pi/aarch64 HAOS acceptance is not complete. The sensitive-path protections below describe DEV and are not retroactive changes to public `0.6.0`.
 2. Select **OPEN WEB UI**.
 3. Sign in once with `ha-codex-login`.
 4. Run `ha-codex`.

@@ -39,6 +39,9 @@
 - Home Assistant Core `2026.7.2` automation WebSocket handlers (`automation/config`)
   https://github.com/home-assistant/core/blob/2026.7.2/homeassistant/components/automation/__init__.py
 
+- Home Assistant Core `2026.7.3` automation WebSocket handler (`automation/config` exact entity lookup and `not_found`)
+  https://github.com/home-assistant/core/blob/2026.7.3/homeassistant/components/automation/__init__.py
+
 - Home Assistant Core `2026.7.2` automation entity raw configuration
   https://github.com/home-assistant/core/blob/2026.7.2/homeassistant/components/automation/config.py
 
@@ -152,7 +155,7 @@
 - Ingress는 `ingress`, `ingress_port`, `ingress_stream`을 지원한다.
 - Core API proxy는 `http://supervisor/core/api/`, WebSocket은 `ws://supervisor/core/websocket`이다.
 - Supervisor의 Core WebSocket proxy는 Core의 `auth_required`를 전달하며 App은 그 뒤 첫 인증 frame의 `access_token`에 `SUPERVISOR_TOKEN`을 보낸다. Upgrade 요청의 `Authorization` header는 요구되지 않는다.
-- Core `2026.7.2`의 `automation/config` 성공 응답은 automation entity의 `raw_config`를 그대로 반환하므로, unavailable/invalid automation에서는 `{ "config": null }`이 합법적인 성공 응답일 수 있다.
+- Core `2026.7.2`의 `automation/config` 성공 응답은 automation entity의 `raw_config`를 그대로 반환하므로, unavailable/invalid automation에서는 `{ "config": null }`이 합법적인 성공 응답일 수 있다. Core `2026.7.3` handler는 automation component의 exact entity lookup이 실패하면 `not_found`를 반환하므로 registry/state에만 남은 restored entity의 이 exact miss를 다른 command failure와 구분한다.
 - Supervisor API는 `http://supervisor/`와 `SUPERVISOR_TOKEN`을 사용한다.
 - `hassio_role` 값에는 `manager`와 `admin`이 별도로 존재한다.
 - 이 App의 ChatGPT mobile Remote 경로는 App SSH endpoint에 직접 연결하며, 원격 login shell의 PATH에서 `codex`를 찾아 내장 app-server를 bootstrap한다.
@@ -161,7 +164,7 @@
 - Codex config는 `approval_policy`, `sandbox_mode`, workspace-write network access와 file credential store를 지원한다. System-managed `requirements.toml`은 허용 sandbox와 filesystem deny를 사용자 설정보다 강하게 제한할 수 있다.
 - Supervisor 2026.04부터 legacy `build.yaml`과 자동 `BUILD_FROM` 주입을 사용하지 않으며 Dockerfile이 build source of truth다.
 - 현재 generic Home Assistant Alpine base는 `3.24`, builder composite actions는 `2026.06.0`이다.
-- Codex CLI `0.144.1`과 GitHub CLI `2.97.0`은 amd64/aarch64 공식 release artifact와 고정 SHA-256을 architecture별로 사용한다. 사용하지 않는 base TempIO executable은 final image에서 제거한다. DEV `0.7.0-dev.1`의 native aarch64 CI와 image 발행은 PASS했으며 실제 HAOS 수용은 별도 미검증 상태다.
+- Codex CLI `0.144.1`과 GitHub CLI `2.97.0`은 amd64/aarch64 공식 release artifact와 고정 SHA-256을 architecture별로 사용한다. 사용하지 않는 base TempIO executable은 final image에서 제거한다. DEV `0.7.0-dev.1`의 native aarch64 CI와 image 발행은 PASS했다. 후속 실제 HAOS의 profile load·일반 `/config` RW·App/Ingress와 새 Codex session의 고정 민감 경로 정책 보고는 관측됐지만, 실제 read syscall 음성 출력·architecture·전체 통합 행렬은 미확인이다.
 - 직접 Remote SSH는 remote login shell의 PATH에서 `codex`를 찾고 HA App에 저장된 Codex 인증을 요구한다.
 - Supervisor Core/App 로그 endpoint는 `Accept: text/plain` 또는 `text/x-log`를 사용하며 JSON Accept만 보내면 협상이 실패할 수 있다.
 - Codex는 `CODEX_HOME`의 `AGENTS.md`를 전역 지침으로 읽고 프로젝트 root부터 현재 디렉터리까지 더 가까운 지침을 뒤에 결합한다.

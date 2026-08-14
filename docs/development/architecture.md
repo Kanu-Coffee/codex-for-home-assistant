@@ -399,7 +399,7 @@ automation/config
 search/related
 ```
 
-automation command는 registry에서 확인한 automation 대상에만 호출한다. graph 요청은 공식 Core 의미를 유지해 `search/related(item_type=automation, item_id=<automation entity_id>)`를 사용하며, `item_type=entity`는 역방향 entity 관계이므로 fallback graph로 사용하지 않는다. Core가 unavailable automation에 성공 응답으로 반환할 수 있는 explicit `config: null`은 빈 config와 bounded warning으로 정규화한다. 개별 related 요청의 정상 result envelope가 실기와 같은 `success:false`, `error.code=unknown_error`인 경우에만 해당 enrichment를 빈 객체와 warning으로 격리하고 성공한 config의 allowlist area/device/entity 직접 참조를 사용한다. 다른 server command code, server/client timeout, unauthorized, invalid format, config 실패, auth/transport/close/protocol, 누락·malformed envelope와 malformed successful related 결과는 성공한 일부를 complete snapshot으로 가장하지 않고 stale/degraded 상태와 정제된 오류를 기록한다. `.storage` 직접 읽기, 임의 WebSocket command와 raw `/config` parse는 bootstrap 대체 경로가 아니다.
+automation command는 registry에서 확인한 automation 대상에만 호출한다. graph 요청은 공식 Core 의미를 유지해 `search/related(item_type=automation, item_id=<automation entity_id>)`를 사용하며, `item_type=entity`는 역방향 entity 관계이므로 fallback graph로 사용하지 않는다. Core가 unavailable automation에 성공 응답으로 반환할 수 있는 explicit `config: null`과, registry/state에는 남았지만 automation component가 소유하지 않는 exact entity의 `automation/config` `not_found`만 빈 config와 bounded warning으로 정규화한다. 개별 related 요청의 정상 result envelope가 실기와 같은 `success:false`, `error.code=unknown_error`인 경우에만 해당 enrichment를 빈 객체와 warning으로 격리하고 성공한 config의 allowlist area/device/entity 직접 참조를 사용한다. 다른 server command code, server/client timeout, unauthorized, invalid format, config 실패, auth/transport/close/protocol, 누락·malformed envelope와 malformed successful related 결과는 성공한 일부를 complete snapshot으로 가장하지 않고 stale/degraded 상태와 정제된 오류를 기록한다. `.storage` 직접 읽기, 임의 WebSocket command와 raw `/config` parse는 bootstrap 대체 경로가 아니다.
 
 정규화 경계는 다음과 같다.
 
@@ -528,6 +528,7 @@ ChatGPT mobile Remote (선택)
 | browser output 한도 도달 | MCP 한도 오류/정리 정책을 보고하고 `/data` 사용자 파일은 건드리지 않음 |
 | `ha-memoryd` 또는 Core WebSocket 시작 실패 | Codex/Web/SSH/browser는 계속 시작, last-known-good catalog를 유지하고 catalog를 `degraded`/`stale`로 표시하며 token/DNS/transport/timeout/auth/protocol의 allowlist code만 기록 |
 | 개별 automation `search/related`가 정상 envelope의 `unknown_error`로 거부됨 | official automation payload는 유지하고 해당 enrichment만 빈 객체와 bounded warning으로 격리. 성공 config에서 직접 관계를 추출해 snapshot commit |
+| registry/state automation의 `automation/config`가 `not_found`로 거부됨 | component에서 제거된 restored/stale entity로 한정해 config를 빈 객체와 bounded warning으로 격리하고, registry/state 및 성공한 related allowlist data를 snapshot에 유지 |
 | memory 필수 command/transport/envelope 실패 | legal `config: null`은 빈 automation config로 수용하되 config 실패, related timeout/close/protocol 또는 malformed 결과는 부분 결과를 canonical로 commit하지 않고 이전 revision과 command/snapshot allowlist code 유지 |
 | memory DB unsafe owner/type/link/mode 또는 schema 손상 | 자동 삭제·재생성하지 않고 memory만 fail closed; 기존 App 기능 유지 및 복구 안내 |
 | post-change fresh expectation 불일치 | canonical catalog는 같은 fresh HA snapshot으로 수렴하지만 applied semantic memory는 바꾸지 않고 mismatch change와 conflict evidence만 기록 |
@@ -557,4 +558,4 @@ ChatGPT mobile Remote (선택)
 - App 소스 저장소와 실제 HA `/config` 저장소는 별개일 수 있다.
 - Public `0.6.0`은 linux/amd64다. 발행된 DEV `0.7.0-dev.1` 후보는 official Home Assistant base가 제공하는 linux/amd64와 linux/arm64만 사용하고 App arch 이름은 `amd64`, `aarch64`로 고정한다.
 - Dockerfile은 Codex `x86_64-unknown-linux-musl`/`aarch64-unknown-linux-musl`과 GitHub CLI `2.97.0`의 `linux_amd64`/`linux_arm64`를 아키텍처별 checksum으로 검증한다. 사용하지 않고 Critical findings가 남는 base `/usr/bin/tempio`는 final image에서 제거한다. 그 밖의 target은 build를 중단하며 armv7은 지원하지 않는다.
-- Native `ubuntu-24.04-arm` build/runtime는 [dev CI 31549518729](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/31549518729)에서 PASS했다. 실제 64비트 Raspberry Pi HAOS의 AppArmor, Codex, SSH, memory와 browser 수용은 아직 **NOT RUN**이다.
+- Native `ubuntu-24.04-arm` build/runtime는 [dev CI 31549518729](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/31549518729)에서 PASS했다. 한 실제 HAOS의 `0.7.0-dev.1`에서 AppArmor profile load, 일반 `/config` RW, App/Ingress/Codex 시작과 새 Codex session의 고정 민감 경로 정책 보고는 관측됐지만 실제 read syscall 음성 출력과 architecture는 제공되지 않았다. 실제 64비트 Raspberry Pi/aarch64 HAOS의 SSH, memory, browser와 전체 AppArmor/helper 수용은 아직 **NOT RUN**이다.

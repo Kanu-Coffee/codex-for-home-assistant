@@ -4,9 +4,9 @@
 
 ## Project Status
 
-- 상태: **public 0.6.0 amd64 정확 이미지 전체 회귀 PASS / DEV 0.7.0-dev.1 `Codex for Home Assistant (DEV)` amd64+aarch64·민감 경로·공급망 구현 / PR·dev CI amd64+aarch64 전체 PASS / tag Builder 31550037239 SBOM·Critical gate·signing·attestation·GHCR publish PASS / anonymous generic·amd64·aarch64 manifest/label PASS / aarch64 HAOS·새 AppArmor HAOS 실기 NOT RUN / 실제 HAOS feedback live NOT RUN / 실제 HAOS `never` 14/16 승인 0회 PASS·전체 승인 행렬 PARTIAL / public 0.3.2 memory live PARTIAL(FAIL 0) / 0.5.0 자연어 memory live 수용 대기**
-- 현재 마일스톤: **DEV 0.7.0-dev.1 `#dev` 설치 채널 발행 완료 / 실제 Raspberry Pi·HAOS AppArmor·런타임 수용 대기**
-- 마지막 문서 기준일: **2026-08-12**
+- 상태: **public 0.6.0 amd64 정확 이미지 전체 회귀 PASS / DEV 0.7.0-dev.1 `#dev` multi-arch 발행·한 실제 HAOS profile load와 Codex 고정 민감 경로 정책 보고 관측 / DEV 0.7.0-dev.2 memory·Ingress privacy 후속 local 전체 회귀 PASS·원격 전달 대기 / 실제 read syscall 음성 출력·aarch64 HAOS·전체 AppArmor/helper 행렬 NOT RUN / 실제 HAOS feedback live NOT RUN / 실제 HAOS `never` 14/16 승인 0회 PASS·전체 승인 행렬 PARTIAL / public 0.3.2 memory live PARTIAL(FAIL 0) / 0.5.0 자연어 memory live 수용 대기**
+- 현재 마일스톤: **DEV 0.7.0-dev.2 `#dev` patch publication / 실제 update 뒤 memory ready·minimal log 재검증**
+- 마지막 문서 기준일: **2026-08-14**
 - 저장소: public `Kanu-Coffee/codex-for-home-assistant`, default branch `main`
 
 ## 완료된 결정
@@ -26,6 +26,15 @@
 
 ## Current Work
 
+### 2026-08-14 — DEV 0.7.0-dev.2 HAOS 수용 후속
+
+- 입력 증거: 사용자가 `#dev`의 `0.7.0-dev.1`을 실제 HAOS에 설치했다. Supervisor는 custom AppArmor profile을 load하고 exact GHCR tag를 내려받았으며, App log는 protected-tree integrity와 일반 `/config` RW, ttyd/Ingress/Codex 시작을 확인했다. 사용자의 새 Codex session은 root·nested `secrets.yaml`과 `.storage` 직접 접근이 고정 정책으로 허용되지 않는다고 보고했다. 실제 read syscall 음성 출력과 runtime architecture는 제공되지 않아 강제 거부와 amd64/aarch64 HAOS 판정은 분리한다.
+- 발견 1: `ha-memoryd`가 약 2시간 28분 동안 `ha_command_automation_config_failed`로 retry해 기존 store는 보존했지만 catalog가 `degraded/stale`에 머물렀다. 제공 로그에는 remote code가 없지만, Core `2026.7.3`의 `automation/config`이 state/registry에 남은 automation을 현재 component에서 찾지 못할 때 반환하는 `not_found`가 유력한 원인이다. 이 exact command/code만 빈 detail과 bounded warning으로 격리하고 다른 command/auth/timeout/protocol 실패는 계속 전체 snapshot을 거부한다.
+- 발견 2: Ingress nginx 기본 access log가 credential은 남기지 않았지만 Referer의 사용자 HA host와 User-Agent의 device/OS/browser를 기록했다. 요청 query·Referer·User-Agent·client IP를 제외한 method/path/status/byte-count 최소 형식으로 줄였다. 실제 502 probe에서 built-in error log가 raw URI/Referer를 반복하는 것도 확인해 `crit` 이상으로 제한하고 failure status는 minimal access log에 유지했다.
+- 발견 3: 화면의 `xcodebuildmcp` 시작 실패 문자열은 repository와 image-managed config 어디에도 없다. 사용자 또는 프로젝트 Codex config의 보존된 optional MCP로 판정하며 App이 임의 삭제하지 않는다. 새 troubleshooting에서 `codex mcp list`와 소유한 config 확인 경로를 안내한다.
+- local 검증: version surface를 `0.7.0-dev.2`로 동기화하고 Python unit/contract **113 passed**, source memory client 12개·installed image memory client 13개, YAML/Markdown/ShellCheck/Hadolint/actionlint/AppArmor parser와 `git diff --check`를 통과했다. Final amd64 image build·label/nginx syntax, 7개 architecture-neutral smoke, actual minimal access/error log 502 probe와 exact public `0.7.0-dev.1` → local `0.7.0-dev.2` update smoke가 PASS했다. 첫 image build의 GitHub DNS 실패는 host-network 재시도에서 checksum 고정 artifact build가 성공해 구현 실패와 분리했다.
+- 전달 계획: `dev` PR에서 amd64/native aarch64 CI와 non-publishing Builder를 통과한 뒤 exact `0.7.0-dev.2` tag publication·익명 multi-arch pull을 검증한다. 실제 HAOS update 뒤 `ha-memory status`의 `ready` 수렴과 minimal log는 별도 사용자 수용이며 `main`과 public `0.6.0`은 변경하지 않는다.
+
 ### 2026-08-11~12 — DEV 0.7.0-dev.1 멀티아키텍처·민감 경로·공급망 후보
 
 - 목표: public `0.6.0`과 `main`의 배포 이력을 바꾸지 않고 `dev`에서 **Codex for Home Assistant (DEV)** `0.7.0-dev.1` amd64+aarch64 후보, 고정 민감 경로 차단, 더 제한적인 Codex 실행 기본값과 공급망 검증을 준비한다.
@@ -43,7 +52,7 @@
 - 첫 PR 재검증: [PR #35](https://github.com/Kanu-Coffee/codex-for-home-assistant/pull/35)의 [CI 31547993600](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/31547993600)은 explicit `CAP_SETFCAP`이 이미 Docker 기본 capability라 hosted Ubuntu AppArmor의 unprofiled-userns 제한을 해결하지 못함을 확인했다. 두 architecture job은 같은 managed sandbox 단계에서 FAIL했다. [Builder 31547993837](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/31547993837)은 reusable build/manifest가 PR caller의 read-only permission보다 높은 write scope를 정적으로 요구해 workflow graph validation에서 startup failure가 났다.
 - CI·Builder 보완: Capability 우회를 제거하고 AppArmor stable `4.0.3`의 official `bwrap-userns-restrict`를 immutable commit·SHA-256으로 검증해 ephemeral CI host에만 load한다. Test container는 privileged/SYS_ADMIN 없이 유지한다. Reusable build/manifest는 caller permission을 상속해 PR은 `contents:read`·`packages:read`, tag publish만 package/OIDC/attestation/artifact-metadata write를 받는다. [CI 31548711591](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/31548711591)은 App validation, lint/unit, amd64 전체 smoke/update와 native aarch64 build/smoke를 모두 PASS했다. [Builder 31548711713](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/31548711713)은 두 architecture image의 SBOM 생성과 Critical gate를 publish 없이 PASS했다.
 - release 발행: annotated `0.7.0-dev.1` tag를 commit `0982ae1af67ba3c819360ddee9ee906730269652`에 게시했다. [Builder 31550037239](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/31550037239)은 양 architecture SBOM/Critical gate, Cosign, provenance/SBOM attestation, generic manifest 검증·서명과 최종 tag promotion을 PASS했다. 익명 조회에서 generic digest `sha256:703fd667d21c2b101b546652f9b781725a31b071377bf205cd130640e79d5ae5`가 linux/amd64 `sha256:e19882421cc86ac1042a6c512c808db35bb4b506134db482f2a5d6c9f78606b2`와 linux/arm64 `sha256:dc43af845b5b60749e0599047f2cfeaa2ec0838b2783826ad872da2e990c27c5`만 포함하고 DEV version/name/arch/source label이 일치함을 확인했다.
-- 검증 경계: 실제 aarch64 HAOS 설치·Ingress/SSH/Codex/API/browser와 실제 HAOS AppArmor/managed requirements 수용은 **NOT RUN**이다. Local Docker와 hosted native ARM smoke를 실제 HAOS 실기 PASS로 확대하지 않는다.
+- 당시 검증 경계: 실제 aarch64 HAOS 설치·Ingress/SSH/Codex/API/browser와 실제 HAOS AppArmor/managed requirements 수용은 release 시점에 **NOT RUN**이었다. 이후 architecture가 제공되지 않은 한 실제 HAOS에서 profile load, 일반 `/config` RW, App/Ingress/Codex 시작과 새 session의 고정 민감 경로 정책 보고가 관측됐지만 실제 read syscall 음성 출력은 없었다. 이를 강제 거부, aarch64 또는 전체 helper 행렬 PASS로 확대하지 않는다.
 - 전달 경계: [PR #35](https://github.com/Kanu-Coffee/codex-for-home-assistant/pull/35)를 `dev`에 병합하고 exact `0.7.0-dev.1` multi-architecture GHCR image를 발행했다. GitHub Release는 만들지 않았으며 `main` SHA `dc0f7f80a5ed247e02f91dfbf2a2900f0bdcf115`와 public `0.6.0` image는 변경하지 않았다.
 
 ### 2026-07-16 — HAOS Codex feedback automation 0.6.0
@@ -533,9 +542,9 @@
 |---|---|---|
 | Q-001 | Codex standalone 바이너리가 선택한 Alpine/base image의 amd64 및 aarch64에서 안정적인가? | amd64 CLI/app-server와 public image 회귀 PASS; aarch64 official asset/checksum, native CI와 release runtime PASS, 실제 HAOS는 NOT RUN |
 | Q-002 | ttyd의 Ingress base path/WebSocket 처리가 추가 플래그 없이 가능한가? | nginx/ttyd 로컬 PASS; 실제 Supervisor Ingress는 M2 |
-| Q-003 | Codex `workspace-write` sandbox가 HAOS App 컨테이너에서 정상 작동하는가? | DEV `0.7.0-dev.1` 기본/강제값과 network access·managed requirements 구현; amd64/native aarch64 hosted smoke PASS, actual HAOS 통합 검증 NOT RUN |
+| Q-003 | Codex `workspace-write` sandbox가 HAOS App 컨테이너에서 정상 작동하는가? | DEV `0.7.0-dev.1` 실제 HAOS에서 일반 `/config` RW와 새 session의 고정 민감 경로 정책 보고는 관측; 실제 read syscall 음성 출력·architecture·Web/SSH/helper/update 전체 통합 검증은 미완료 |
 | Q-004 | `manager` 역할에서 필요한 Supervisor 엔드포인트가 모두 허용되는가? | endpoint별 통합 테스트로 확인; admin 자동 승격 금지 |
-| Q-005 | 실제 사용자 HAOS 아키텍처는 무엇인가? | Public `0.6.0`은 amd64 증거만 보유. DEV `0.7.0-dev.1`은 aarch64를 선언하지만 64-bit Raspberry Pi 계열 HAOS 수용은 NOT RUN |
+| Q-005 | 실제 사용자 HAOS 아키텍처는 무엇인가? | DEV `0.7.0-dev.1` 실제 HAOS 설치 증거는 있으나 제공 로그에 architecture가 없음. 64-bit Raspberry Pi/aarch64 HAOS 수용은 NOT RUN |
 | Q-006 | mobile Remote 직접 SSH가 Alpine/musl 원격 app-server를 정상 시작하는가? | 사용자 E2E PASS; Codex/아키텍처 변경 시 재검증 |
 
 ## 최근 완료 기록

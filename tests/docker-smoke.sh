@@ -17,6 +17,10 @@ WORK_DIR=$(mktemp -d)
 SUPERVISOR_TOKEN=smoke-supervisor-token-do-not-use
 BROWSER_TOKEN=smoke-browser-token-read-only-do-not-use
 GATEWAY_MARKER='HA_BROWSER_GATEWAY_AUTHENTICATED:Codex HA fixture'
+ACCESS_PATH="/privacy-${TEST_ID}"
+ACCESS_QUERY_MARKER="${TEST_ID}-query-marker"
+ACCESS_REFERER_MARKER="${TEST_ID}-referer-marker"
+ACCESS_AGENT_MARKER="${TEST_ID}-agent-marker"
 
 # Git Bash rewrites Linux container paths before invoking native Windows programs.
 if [[ "${OSTYPE:-}" == msys* || "${OSTYPE:-}" == cygwin* ]]; then
@@ -193,6 +197,26 @@ wait_for_log "${GATEWAY_FIXTURE}" \
 wait_for_process "${PUBLIC_CONTAINER}" '/usr/sbin/sshd'
 wait_for_process "${PUBLIC_CONTAINER}" 'ttyd'
 wait_for_process "${PUBLIC_CONTAINER}" 'nginx'
+
+docker exec "${PUBLIC_CONTAINER}" curl \
+  --disable \
+  --silent \
+  --output /dev/null \
+  --header "Referer: https://${ACCESS_REFERER_MARKER}.invalid/dashboard" \
+  --header "User-Agent: ${ACCESS_AGENT_MARKER}/1" \
+  "http://127.0.0.1:7681${ACCESS_PATH}?${ACCESS_QUERY_MARKER}=1" \
+  || fail 'Ingress privacy probe request failed'
+wait_for_log "${PUBLIC_CONTAINER}" \
+  "\"GET ${ACCESS_PATH} HTTP/1.1\""
+PUBLIC_ACCESS_LOG=$(docker logs "${PUBLIC_CONTAINER}" 2>&1)
+for private_marker in \
+  "${ACCESS_QUERY_MARKER}" \
+  "${ACCESS_REFERER_MARKER}" \
+  "${ACCESS_AGENT_MARKER}"; do
+  if grep -Fq -- "${private_marker}" <<< "${PUBLIC_ACCESS_LOG}"; then
+    fail 'Ingress logs retained query, Referer, or User-Agent context'
+  fi
+done
 
 docker exec "${PUBLIC_CONTAINER}" /bin/sh -c '
   ha-browser-auth-status | jq --exit-status '\''

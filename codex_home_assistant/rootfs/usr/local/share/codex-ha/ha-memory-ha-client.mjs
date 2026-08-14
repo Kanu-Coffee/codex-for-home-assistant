@@ -476,6 +476,17 @@ async function fetchAutomationDetails(client, entityId) {
     configEnvelopeValid &&
     (configValue === null ||
       (typeof configValue === "object" && !Array.isArray(configValue)));
+  // Core can keep a restored automation state visible after the automation
+  // component no longer owns the entity. Its official automation/config
+  // handler reports `not_found` for that exact lookup miss. Preserve the
+  // registry/state entry with empty details, without broadening this exception
+  // to any other command failure.
+  const configNotFound =
+    configResult.status === "rejected" &&
+    configResult.reason instanceof HomeAssistantCommandRejectedError &&
+    configResult.reason.commandType === "automation/config" &&
+    configResult.reason.remoteCode === "not_found";
+  const configUsable = configValid || configNotFound;
   const relatedValid =
     relatedResult.status === "fulfilled" &&
     relatedResult.value &&
@@ -489,19 +500,19 @@ async function fetchAutomationDetails(client, entityId) {
   const relatedUsable = relatedValid || relatedUnknownError;
 
   let failureCode = null;
-  if (!configValid && configResult.status === "rejected") {
+  if (!configUsable && configResult.status === "rejected") {
     failureCode = homeAssistantErrorCode(configResult.reason);
   } else if (
     !relatedUsable &&
     relatedResult.status === "rejected"
   ) {
     failureCode = homeAssistantErrorCode(relatedResult.reason);
-  } else if (!configValid || !relatedUsable) {
+  } else if (!configUsable || !relatedUsable) {
     failureCode = "ha_snapshot_incomplete";
   }
 
   const warnings = [];
-  if (configValid && configValue === null) {
+  if ((configValid && configValue === null) || configNotFound) {
     warnings.push(`automation_config_unavailable:${entityId}`);
   }
   if (relatedUnknownError) {
@@ -510,7 +521,7 @@ async function fetchAutomationDetails(client, entityId) {
 
   return {
     entity_id: entityId,
-    complete: Boolean(configValid && relatedUsable),
+    complete: Boolean(configUsable && relatedUsable),
     config: configValid && configValue !== null ? configValue : {},
     related: relatedValid ? relatedResult.value : {},
     failure_code: failureCode,

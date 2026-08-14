@@ -306,12 +306,12 @@ App 재설치 전까지 `/data`의 Codex 인증, 사용자 Codex 설정, SSH hos
 
 ### NFR-004 관찰 가능성
 
-App 시작 로그는 Codex readiness와 loopback gateway 구성을 토큰 없이 기록한다. Playwright/Chromium 버전은 image build·smoke 증거로 남기고, MCP 렌더 결과는 viewport, screenshot 증거, console severity와 resource URL/status를 포함하되 인증 header와 token 원문을 출력하지 않는다. 메모리는 schema version, daemon readiness, 마지막 성공 refresh 시각, stale/degraded 상태, row 개수와 bounded warning 개수만 정제해 보고하고 저장 값·대화·evidence·warning 대상 ID 원문은 App log에 출력하지 않는다.
+App 시작 로그는 Codex readiness와 loopback gateway 구성을 토큰 없이 기록한다. Ingress access log는 time, method, normalized path, protocol, status와 response bytes만 남기며 query string, client address, Referer와 User-Agent는 기록하지 않는다. Nginx error log는 ordinary upstream error가 raw URI/Referer를 반복하지 않도록 `crit` 이상만 남기며 실패 status는 access log에서 유지한다. Playwright/Chromium 버전은 image build·smoke 증거로 남기고, MCP 렌더 결과는 viewport, screenshot 증거, console severity와 resource URL/status를 포함하되 인증 header와 token 원문을 출력하지 않는다. 메모리는 schema version, daemon readiness, 마지막 성공 refresh 시각, stale/degraded 상태, row 개수와 bounded warning 개수만 정제해 보고하고 저장 값·대화·evidence·warning 대상 ID 원문은 App log에 출력하지 않는다.
 
 ### NFR-005 플랫폼
 
 - Public `0.6.0`: amd64 검증·지원
-- DEV `0.7.0-dev.1` M3 candidate: `amd64`, 64비트 `aarch64`; 공식 Codex/GitHub CLI artifact를 아키텍처별 checksum으로 고정
+- DEV `0.7.0-dev.2` M3 candidate: `amd64`, 64비트 `aarch64`; 공식 Codex/GitHub CLI artifact를 아키텍처별 checksum으로 고정
 - aarch64 native ARM CI와 공개 image 검증은 통과했지만 실제 Raspberry Pi HAOS/AppArmor/SSH/browser 수용 전까지 HAOS platform acceptance 완료로 표시하지 않음
 - 32비트 `armv7`은 Home Assistant base와 공식 Codex artifact 계약 밖이므로 비지원
 - Alpine system Chromium 조합은 Playwright upstream의 공식 Linux 배포 대상이 아니므로 로컬 amd64 container 검증과 별개로 실제 HAOS/AppArmor 검증 전에는 지원 완료로 표시하지 않음

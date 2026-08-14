@@ -102,6 +102,35 @@ def test_ttyd_and_nginx_are_split_for_ingress(rootfs: Path) -> None:
     assert "proxy_set_header Upgrade $http_upgrade" in nginx_config
 
 
+def test_ingress_access_log_excludes_private_request_context(rootfs: Path) -> None:
+    nginx_config = (rootfs / "etc/nginx/nginx.conf").read_text(encoding="utf-8")
+    match = re.search(
+        r"log_format ingress_minimal\s+'([^']+)';",
+        nginx_config,
+    )
+
+    assert match
+    log_format = match.group(1)
+    assert "$request_method $uri $server_protocol" in log_format
+    assert "$status" in log_format
+    assert "$body_bytes_sent" in log_format
+    for forbidden in (
+        "$remote_addr",
+        "$request_uri",
+        "$args",
+        "$query_string",
+        "$http_referer",
+        "$http_user_agent",
+    ):
+        assert forbidden not in log_format
+    assert "access_log /dev/stdout ingress_minimal;" in nginx_config
+    assert "error_log /dev/stderr crit;" in nginx_config
+    assert "error_log /dev/stderr notice;" not in nginx_config
+    assert "listen 127.0.0.1:8099;\n    server_name localhost;\n    access_log off;" in (
+        nginx_config
+    )
+
+
 def test_init_has_idempotent_and_degraded_mode_guards(rootfs: Path) -> None:
     init_script = (rootfs / "usr/local/bin/codex-ha-init").read_text(
         encoding="utf-8"

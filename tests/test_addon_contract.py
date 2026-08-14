@@ -45,7 +45,7 @@ def test_development_candidate_is_visible_in_home_assistant_and_image(
     addon_config: dict, addon_root: Path, repository_root: Path
 ) -> None:
     assert addon_config["name"] == "Codex for Home Assistant (DEV)"
-    assert addon_config["version"] == "0.7.0-dev.1"
+    assert addon_config["version"] == "0.7.0-dev.2"
     assert addon_config["description"].startswith("[DEV] ")
     assert addon_config["panel_title"] == "Codex DEV"
     assert addon_config["slug"] == "codex_home_assistant"
@@ -111,7 +111,7 @@ def _run_builder_validation(
                 "ghcr.io/kanu-coffee/codex-for-home-assistant"
             ),
             "APP_NAME": "Codex for Home Assistant (DEV)",
-            "APP_VERSION": "0.7.0-dev.1",
+            "APP_VERSION": "0.7.0-dev.2",
             "GITHUB_EVENT_NAME": "pull_request",
             "RELEASE_TAG": "merge",
         }
@@ -144,7 +144,7 @@ def test_builder_channel_guard_accepts_consistent_dev_and_stable_metadata(
             "Codex for Home Assistant",
         ),
         "codex_home_assistant/config.yaml": (
-            "name: Codex for Home Assistant (DEV)\nversion: \"0.7.0-dev.1\"",
+            "name: Codex for Home Assistant (DEV)\nversion: \"0.7.0-dev.2\"",
             "name: Codex for Home Assistant\nversion: \"0.7.0\"",
         ),
         "codex_home_assistant/Dockerfile": (

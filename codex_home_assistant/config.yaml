@@ -1,6 +1,6 @@
 ---
 name: Codex for Home Assistant (DEV)
-version: "0.7.0-dev.1"
+version: "0.7.0-dev.2"
 slug: codex_home_assistant
 description: "[DEV] Codex CLI with verified feedback, browser, terminal, and SSH for Home Assistant"
 url: https://github.com/Kanu-Coffee/codex-for-home-assistant

@@ -202,6 +202,55 @@ test("an unavailable automation with an explicit null config remains indexable",
   ]);
 });
 
+test("a restored automation missing from the component remains indexable", async () => {
+  resetFakeWebSocket();
+  const remoteSecret = "REMOTE_AUTOMATION_CONFIG_SECRET_7f21";
+  FakeWebSocket.commandHandler = (command) => {
+    if (command.type === "automation/config") {
+      return {
+        success: false,
+        error: { code: "not_found", message: remoteSecret },
+      };
+    }
+    return { success: true, result: baseResponse(command) };
+  };
+
+  const snapshot = await fetchWithFake();
+  assert.deepEqual(snapshot.automations["automation.partial"], {
+    config: {},
+    related: {},
+  });
+  assert.deepEqual(snapshot.warnings, [
+    "automation_config_unavailable:automation.partial",
+  ]);
+  assert.equal(JSON.stringify(snapshot).includes(remoteSecret), false);
+});
+
+test("only automation/config not_found is downgraded", async () => {
+  for (const remoteCode of [
+    "unknown_error",
+    "timeout",
+    "unauthorized",
+    "invalid_format",
+    "home_assistant_error",
+  ]) {
+    resetFakeWebSocket();
+    FakeWebSocket.commandHandler = (command) => {
+      if (command.type === "automation/config") {
+        return {
+          success: false,
+          error: { code: remoteCode, message: "private remote failure" },
+        };
+      }
+      return { success: true, result: baseResponse(command) };
+    };
+    await assert.rejects(
+      fetchWithFake(),
+      (error) => error.code === "ha_command_automation_config_failed",
+    );
+  }
+});
+
 test("an observed related unknown_error preserves config-derived automation data", async () => {
   resetFakeWebSocket();
   const relatedRequests = [];
@@ -269,6 +318,7 @@ test("related timeout and malformed results still reject the complete snapshot",
   );
 
   for (const remoteCode of [
+    "not_found",
     "timeout",
     "unauthorized",
     "invalid_format",
@@ -535,11 +585,17 @@ if (process.env.HA_MEMORY_INSTALLED_TEST === "1") {
         else if (message.type === "config/device_registry/list") result = [];
         else if (message.type === "config/entity_registry/list") {
           result = [
+            { entity_id: "automation.missing_config" },
             { entity_id: "automation.unavailable" },
             { entity_id: "automation.related_failure" },
           ];
         } else if (message.type === "get_states") {
           result = [
+            {
+              entity_id: "automation.missing_config",
+              state: "unavailable",
+              attributes: { friendly_name: "Missing config fixture" },
+            },
             {
               entity_id: "automation.unavailable",
               state: "unavailable",
@@ -552,9 +608,19 @@ if (process.env.HA_MEMORY_INSTALLED_TEST === "1") {
             },
           ];
         } else if (message.type === "automation/config") {
-          result = message.entity_id === "automation.unavailable"
-            ? { config: null }
-            : { config: { alias: "Related failure fixture" } };
+          if (message.entity_id === "automation.missing_config") {
+            response = {
+              success: false,
+              error: {
+                code: "not_found",
+                message: "installed config response must stay private",
+              },
+            };
+          } else {
+            result = message.entity_id === "automation.unavailable"
+              ? { config: null }
+              : { config: { alias: "Related failure fixture" } };
+          }
         } else if (message.type === "search/related") {
           relatedRequests.push({
             item_type: message.item_type,
@@ -591,6 +657,10 @@ if (process.env.HA_MEMORY_INSTALLED_TEST === "1") {
     });
     assert.equal(authenticatedToken, "installed-test-token");
     assert.equal(snapshot.haVersion, "2026.7.2-test");
+    assert.deepEqual(snapshot.automations["automation.missing_config"], {
+      config: {},
+      related: {},
+    });
     assert.deepEqual(snapshot.automations["automation.unavailable"], {
       config: {},
       related: {},
@@ -603,6 +673,10 @@ if (process.env.HA_MEMORY_INSTALLED_TEST === "1") {
       left.item_id.localeCompare(right.item_id)), [
       {
         item_type: "automation",
+        item_id: "automation.missing_config",
+      },
+      {
+        item_type: "automation",
         item_id: "automation.related_failure",
       },
       {
@@ -611,6 +685,7 @@ if (process.env.HA_MEMORY_INSTALLED_TEST === "1") {
       },
     ]);
     assert.deepEqual(snapshot.warnings, [
+      "automation_config_unavailable:automation.missing_config",
       "automation_related_unavailable:automation.related_failure",
       "automation_config_unavailable:automation.unavailable",
     ]);
