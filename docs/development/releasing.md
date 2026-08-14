@@ -10,13 +10,13 @@
 - DEV canary repository: `https://github.com/Kanu-Coffee/codex-for-home-assistant#dev`
 - image: `ghcr.io/kanu-coffee/codex-for-home-assistant:<version>`
 - public `0.6.0` architecture: `amd64`
-- DEV `0.7.0-dev.1` candidate architecture: `amd64`, `aarch64` (`armv7` 미지원)
+- current DEV `0.7.0-dev.2` candidate architecture: `amd64`, `aarch64` (`armv7` 미지원)
 - stable version tag: `X.Y.Z`
 - numbered DEV version tag: `X.Y.Z-dev.N` (`N`은 1 이상의 정수이며 새 후보마다 사용하지 않은 번호 선택)
 - mutable `latest` tag는 발행하지 않음
 - 기존 version tag는 덮어쓰지 않음
 
-Supervisor는 `config.yaml`의 `image`와 `version`으로 미리 빌드된 image를 받습니다. 사용자 장치에서 Dockerfile을 소스 빌드하는 배포 방식이 아닙니다. 따라서 canary 저장소에 DEV metadata가 보여도 정확한 `ghcr.io/kanu-coffee/codex-for-home-assistant:0.7.0-dev.1` image가 발행되지 않았다면 원격 HAOS 설치는 실패합니다.
+Supervisor는 `config.yaml`의 `image`와 `version`으로 미리 빌드된 image를 받습니다. 사용자 장치에서 Dockerfile을 소스 빌드하는 배포 방식이 아닙니다. 따라서 canary 저장소에 DEV metadata가 보여도 정확한 `ghcr.io/kanu-coffee/codex-for-home-assistant:0.7.0-dev.2` image가 발행되지 않았다면 원격 HAOS 설치·업데이트는 실패합니다.
 
 ## 버전 일치 항목
 

@@ -2,6 +2,32 @@
 
 All notable changes to this App are documented in this file.
 
+## [0.7.0-dev.2] - 2026-08-14
+
+### Fixed
+
+- Keep a restored automation in the verified local memory catalog when Home Assistant Core's exact `automation/config` request returns `not_found`. Store empty automation details and a bounded warning for that one documented lookup miss; authentication, timeout, transport, protocol, malformed-response, and every other command error still reject the complete snapshot and preserve the last-known-good catalog.
+
+### Security
+
+- Replace the default Ingress access log with a minimal method, normalized path, protocol, status, and response-size record. Query strings, client addresses, Referer values, and User-Agent device/browser details are excluded. Raise the nginx error-log threshold to `crit` because ordinary upstream error lines otherwise repeat the raw request URI and Referer; fatal diagnostics remain available and the minimal access log still records failure status.
+
+### Documentation
+
+- Record the first actual `#dev` HAOS installation evidence: Supervisor loaded the custom AppArmor profile, ordinary `/config` remained writable, the App and Ingress started, and a new Codex session reported the non-overridable direct-read denial for root/nested `secrets.yaml` and `.storage`. The supplied evidence does not identify the HAOS architecture, so Raspberry Pi/aarch64 acceptance remains separate.
+- Explain that an unknown optional MCP startup warning such as `xcodebuildmcp` comes from preserved user or trusted-project Codex configuration rather than the image-managed MCP list, and document a non-destructive cleanup path.
+
+### Upgrade notes
+
+- A normal `0.7.0-dev.1` to `0.7.0-dev.2` update preserves Codex authentication/configuration/AGENTS, SSH and browser identity, local memory, GitHub CLI state, and Home Assistant files. A stale user/project MCP entry is intentionally preserved and must be removed only by its owner; `refresh_all` remains an explicit whole-config reset.
+- After the update, allow the memory scheduler to refresh and check `ha-memory status`. The catalog should leave `degraded/stale` when the observed failure was a restored automation's exact config lookup miss; a different closed error code remains fail-closed and needs separate diagnosis.
+
+### Testing
+
+- Pass all 113 Python unit/contract tests, 12 source and 13 installed-image Home Assistant memory client tests, YAML/Markdown/ShellCheck/Hadolint/actionlint/AppArmor parsing, and `git diff --check`.
+- Build the final local amd64 `0.7.0-dev.2` image and pass feedback, Docker/ttyd/SSH/Core API/browser, browser approval, memory, managed browser auth, user-file, managed Codex sandbox, and exact public `0.7.0-dev.1` to local candidate update smokes. An actual 502 probe confirms the App log retains the normalized path and status while excluding the query, Referer, and User-Agent markers.
+- Native aarch64 CI, non-publishing Builder scans, exact tag publication, anonymous multi-architecture pull, and actual HAOS update/recovery are **NOT RUN** at this local validation stage.
+
 ## [0.7.0-dev.1] - 2026-08-12
 
 ### Added

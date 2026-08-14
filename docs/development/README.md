@@ -43,7 +43,7 @@
 
 ## 현재 배포 제약
 
-- Public `0.6.0`은 검증된 `amd64` release; DEV `0.7.0-dev.1`은 공개된 `amd64`, `aarch64` 후보
+- Public `0.6.0`은 검증된 `amd64` release; DEV `0.7.0-dev.1`은 공개된 `amd64`, `aarch64` 후보이고 current patch candidate는 `0.7.0-dev.2`
 - Native aarch64 CI와 멀티아키 GHCR 발행은 `PASS`; 실제 aarch64 HAOS 수용은 `NOT RUN`, armv7/32-bit ARM은 미지원
 - `stage: experimental`
 - 기본 `boot: manual`

@@ -30,7 +30,7 @@
 > [!WARNING]
 > This app can read and write `/config` except for protected `secrets.yaml` and `.storage` paths, and it can use the Home Assistant Core and Supervisor `manager` APIs. API responses, logs, and browser views can still contain sensitive information. Back up your system and review the plan and diff before important changes. Never expose its SSH port directly to the internet.
 
-This is an unofficial community project. It is not affiliated with or endorsed by OpenAI, Home Assistant, or Nabu Casa. Public `0.6.0` is an **experimental amd64-only release**. The current development candidate, `0.7.0-dev.1`, appears in HAOS as **Codex for Home Assistant (DEV)** and in the sidebar as **Codex DEV**; it supports `amd64` and 64-bit `aarch64`. Native ARM CI and multi-architecture GHCR publication passed, but real Raspberry Pi HAOS acceptance is not complete. The custom AppArmor and managed-requirements protections described below also belong to this DEV candidate and are not retroactive changes to public `0.6.0`.
+This is an unofficial community project. It is not affiliated with or endorsed by OpenAI, Home Assistant, or Nabu Casa. Public `0.6.0` is an **experimental amd64-only release**. The current development candidate, `0.7.0-dev.2`, appears in HAOS as **Codex for Home Assistant (DEV)** and in the sidebar as **Codex DEV**; it supports `amd64` and 64-bit `aarch64`. Native ARM CI and the previous DEV multi-architecture GHCR publication passed. On one real HAOS installation of `0.7.0-dev.1`, AppArmor loading, ordinary `/config` writes, and a new Codex session reporting the fixed direct-access policy were observed. The supplied evidence does not include a negative read syscall or identify that device's architecture, so Raspberry Pi/aarch64 HAOS acceptance is not complete. The custom AppArmor and managed-requirements protections described below belong to DEV and are not retroactive changes to public `0.6.0`.
 
 ## Real Web terminal preview
 
@@ -87,7 +87,7 @@ flowchart LR
 ### Requirements
 
 - Home Assistant OS or another installation with Supervisor
-- Public `0.6.0` requires an **amd64** device. DEV candidate `0.7.0-dev.1` targets **amd64** and 64-bit **aarch64**; Raspberry Pi requires 64-bit HAOS. 32-bit `armv7` is not supported.
+- Public `0.6.0` requires an **amd64** device. DEV candidate `0.7.0-dev.2` targets **amd64** and 64-bit **aarch64**; Raspberry Pi requires 64-bit HAOS. 32-bit `armv7` is not supported.
 - Internet access to download the public image
 - An OpenAI/ChatGPT account with access to Codex
 
@@ -130,7 +130,7 @@ flowchart LR
 See the [English user guide](codex_home_assistant/DOCS.en.md) for complete installation, sign-in, SSH, update, and recovery instructions.
 
 > [!NOTE]
-> The public `0.6.0` image is amd64-only. The public multi-architecture GHCR tag for DEV `0.7.0-dev.1` has been published and verified anonymously. Native aarch64 CI also passed, while real Raspberry Pi HAOS installation, AppArmor, and runtime acceptance remain **NOT RUN**.
+> The public `0.6.0` image is amd64-only. The public multi-architecture tag and native aarch64 CI passed for the previous DEV `0.7.0-dev.1`. Remote `#dev` installation of the current `0.7.0-dev.2` requires its matching exact GHCR tag to be published first. One real HAOS sensitive-path acceptance result is available, but its architecture is unknown, so Raspberry Pi/aarch64 HAOS acceptance remains **NOT RUN**.
 
 ## Prompts to try
 
@@ -227,7 +227,7 @@ App initialization and every Codex launch inspect protected paths for symlinks, 
 
 ## Current limitations
 
-- Public `0.6.0` is amd64-only. **Codex for Home Assistant (DEV)** `0.7.0-dev.1` passed native ARM CI and public multi-architecture image verification, while real Raspberry Pi HAOS acceptance remains **NOT RUN**. 32-bit armv7 is not supported.
+- Public `0.6.0` is amd64-only. **Codex for Home Assistant (DEV)** `0.7.0-dev.2` targets amd64 and 64-bit aarch64. Sensitive-path acceptance passed on one real HAOS system, but Raspberry Pi/aarch64 HAOS acceptance remains **NOT RUN**. 32-bit armv7 is not supported.
 - This is a Home Assistant App (formerly called an Add-on), so it cannot be installed through HACS.
 - The default is `boot: manual`, and the release stage remains `experimental`.
 - The Web UI is a terminal, not a dedicated mobile chat interface.

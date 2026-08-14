@@ -301,14 +301,14 @@ hassio_role: manager
 
 ## ADR-039 고정 민감 경로, managed sandbox와 private Supervisor credential
 
-- 상태: Implemented for DEV `0.7.0-dev.1`; integrated HAOS validation NOT RUN
+- 상태: Implemented for DEV `0.7.0-dev.1`; actual HAOS direct-path acceptance PARTIAL (observed scope PASS)
 - 고정 경로 결정: `/config` RW mount와 Core/Supervisor `manager` API 가용성은 유지한다. 동시에 custom AppArmor와 `/etc/codex/requirements.toml`이 `/config/secrets.yaml`, 모든 깊이의 `secrets.yaml`, `/config/.storage`와 descendants를 항상 거부한다. 사용자 옵션이나 project/user Codex config가 이 deny를 완화할 수 없다.
 - alias 결정: AppArmor profile은 image validator에 필요한 `.storage` directory traversal/listing operation만 남기고 content operation은 계속 deny한다. Listing allowance는 profile 전체에 적용되지만 managed requirements가 Codex directory read를 별도 차단한다. Init과 매 Codex launch는 보호 tree의 symlink, special file과 `st_nlink != 1`을 값·경로 원문 없이 검사하고 unsafe shape이면 fail closed한다.
 - sandbox 결정: 신규·현재 기본값과 wrapper 강제값은 network-enabled `workspace-write`다. Schema의 `danger-full-access`는 기존 저장값을 깨지 않기 위한 legacy 입력으로만 남고, 새 session에서는 warning 뒤 `workspace-write`로 변환된다. 이 결정은 ADR-011을 대체한다.
 - credential 결정: init는 Supervisor credential을 mode `0600` fixed runtime file에 두고 S6 container environment에서 제거한다. Interactive/Web/SSH/Codex와 장기 scheduler는 ambient `SUPERVISOR_TOKEN`을 상속하지 않는다. 용도가 고정된 API/browser/memory helper만 실행 시 이 파일을 읽고 필요한 process lifetime으로 제한한다. Direct API helper는 공통 owner/type/link/mode validator와 고정 Core/Supervisor endpoint를 사용한다. 이 결정은 ADR-005를 대체한다.
 - 가용성 이유: 일반 `/config` 수정, manager API raw request, browser/memory와 기존 운영 helper를 유지하면서 자주 사용되는 정적 credential store의 우발적 모델 노출 범위를 줄인다. 범용 read-only proxy로 제품 기능을 축소하지 않는다.
 - 명시적 비보장: API helper는 raw response를 유지하므로 호출한 endpoint가 민감정보를 돌려주면 모델에 노출될 수 있다. Container interactive process가 root인 구조도 유지되므로 `/run/codex-ha/runtime.env`와 `/data/github-cli`를 의도적으로 직접 읽을 수 있다. File controls는 pathname 기반이라 preflight 뒤 외부 hardlink TOCTOU와 보호 값의 비보호 path 복사도 보장하지 않는다. Ambient env 제거, AppArmor 고정 경로와 managed requirements는 완전한 DLP·root 격리가 아니며 GitHub credential의 완전 격리에는 별도 broker가 필요하다.
-- 검증 경계: AppArmor parser/negative fixture, nested path 우회, 일반 `/config` RW, managed config precedence, legacy option, ambient environment와 helper credential loader를 자동·container·실제 HAOS에서 각각 검사한다. Amd64와 native aarch64 자동 image/full smoke는 [dev CI 31549518729](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/31549518729)에서 PASS했지만, 실제 HAOS의 custom AppArmor/managed requirements와 helper 통합 수용은 **NOT RUN**이다.
+- 검증 경계: AppArmor parser/negative fixture, nested path 우회, 일반 `/config` RW, managed config precedence, legacy option, ambient environment와 helper credential loader를 자동·container·실제 HAOS에서 각각 검사한다. Amd64와 native aarch64 자동 image/full smoke는 [dev CI 31549518729](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/31549518729)에서 PASS했다. 후속 사용자 증거에서 `#dev` `0.7.0-dev.1`의 Supervisor AppArmor profile load, 일반 `/config` RW, App/Ingress 가용성과 새 Codex session의 root·nested `secrets.yaml` 및 `.storage` 고정 접근 불가 정책 보고를 관측했다. 실제 read syscall 음성 출력, architecture와 Web/SSH root-shell, alias/special-file, ambient credential/helper 전체 행렬이 없어 실제 HAOS 통합 수용은 **PARTIAL**이며 aarch64 HAOS 판정은 **NOT RUN**이다.
 
 ## ADR-040 multi-arch 공급망 증거와 자동 갱신
 
@@ -320,3 +320,11 @@ hassio_role: manager
 - 실행 증거: [Tag Builder 31550037239](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/31550037239)는 두 architecture의 SPDX SBOM, Critical gate, Cosign signature, provenance/SBOM attestation, verified digest 기반 generic manifest, generic signature/provenance와 final-last promotion을 PASS했다. High 이상 scan 경고는 비차단으로 남았고 Critical publication gate는 통과했다.
 - digest: Generic `sha256:703fd667d21c2b101b546652f9b781725a31b071377bf205cd130640e79d5ae5`, amd64 `sha256:e19882421cc86ac1042a6c512c808db35bb4b506134db482f2a5d6c9f78606b2`, aarch64 `sha256:dc43af845b5b60749e0599047f2cfeaa2ec0838b2783826ad872da2e990c27c5`다.
 - 검증·전달 경계: 이 release evidence는 실제 Raspberry Pi/aarch64 HAOS 설치나 custom AppArmor/managed requirements의 HAOS runtime acceptance를 대체하지 않는다. Public `0.6.0`의 과거 amd64 결과는 그대로 유지하며 DEV `0.7.0-dev.1`의 multi-arch 증거를 소급 적용하지 않는다.
+
+## ADR-041 restored automation의 exact config miss와 최소 Ingress log
+
+- 상태: Accepted for DEV `0.7.0-dev.2`
+- 배경: 실제 `#dev` HAOS 로그에서 App과 민감 경로 경계는 동작했지만 `ha-memoryd`가 약 2시간 28분 동안 `ha_command_automation_config_failed`로 retry해 catalog가 `degraded/stale`에 머물렀다. 같은 로그의 nginx combined format은 credential/body를 남기지 않았지만 개인 HA Referer와 User-Agent의 device/OS/browser를 기록했다.
+- memory 결정: Core `2026.7.3`의 official `automation/config` handler는 요청 entity를 automation component에서 찾지 못하면 `not_found`를 반환한다. Registry/state에는 남은 restored/stale automation에서 내부 command type이 정확히 `automation/config`이고 remote code가 정확히 `not_found`일 때만 빈 config와 `automation_config_unavailable` warning으로 격리한다. Remote message는 저장·log하지 않는다. 다른 config code, auth, timeout, transport, protocol, malformed result와 다른 command 실패는 last-known-good를 보존하며 full snapshot을 계속 fail closed한다.
+- log 결정: Ingress access log는 time, method, normalized path, protocol, status와 response bytes만 기록한다. Query string, client address, Referer와 User-Agent는 제거하고 browser-only `8099` access log off는 유지한다. Ordinary upstream failure의 built-in error line이 raw URI와 Referer를 반복하므로 nginx error log는 `crit` 이상만 남기고 4xx/5xx status는 minimal access log에서 관측한다. 이 변경은 request body/credential logging을 추가하지 않는다.
+- 검증 경계: Source와 installed WebSocket fixture에서 exact `not_found`의 catalog 유지·warning·remote-message 비노출, 다른 code의 snapshot 거부를 확인한다. Nginx contract와 final image syntax/smoke를 확인하며 실제 `0.7.0-dev.2` HAOS update 뒤 memory `ready` 수렴과 새 minimal log shape는 별도 수용 항목이다.
