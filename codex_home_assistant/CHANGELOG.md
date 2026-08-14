@@ -2,6 +2,41 @@
 
 All notable changes to this App are documented in this file.
 
+## [0.7.0] - 2026-08-14
+
+### Added
+
+- Promote the multi-architecture runtime to the stable channel with `amd64` and 64-bit `aarch64` images. Architecture-specific Codex `0.144.1` and GitHub CLI `2.97.0` artifacts remain checksum-pinned; 32-bit `armv7` remains unsupported.
+- Add the custom AppArmor profile, managed Codex requirements, and protected-tree shape checks from the validated 0.7.0 candidates to the stable release. Root and nested `secrets.yaml` files and `/config/.storage` contents are explicitly denied to normal direct Codex filesystem access, while ordinary `/config` paths remain read-write.
+
+### Changed
+
+- Publish the app as **Codex for Home Assistant**, use **Codex** for the sidebar, set `stage: stable`, and use version `0.7.0` throughout the app, image, and package metadata. The persistent slug and GHCR image repository are unchanged.
+- Enforce network-enabled `workspace-write` for Codex. A stored legacy `danger-full-access` option is accepted only for compatibility and is converted to `workspace-write` at initialization and launch.
+- Remove ambient `SUPERVISOR_TOKEN` inheritance from Web, SSH, Codex, Ingress, and the long-running memory scheduler. Purpose-specific helpers retain their fixed Core/Supervisor interfaces and load the private runtime credential only when launched.
+- Preserve the exact `automation/config: not_found` bounded-warning handling and privacy-minimized Ingress logging introduced in `0.7.0-dev.2`.
+
+### Security
+
+- The protected `secrets.yaml` and `.storage` contents cannot be read through normal direct Codex filesystem paths and therefore do not enter Codex through direct file access. This is defense in depth rather than complete DLP: raw API, log, and authenticated-browser responses, values copied to unprotected paths, a root process's runtime credential access, and pathname TOCTOU remain outside that guarantee.
+- Keep `.storage` directory traversal/listing only where required by the image validator; managed requirements independently deny Codex directory reads. Initialization and every Codex launch fail closed on protected symlinks, special files, and files with a link count other than one without logging protected values.
+
+### Acceptance
+
+- The supplied `0.7.0-dev.2` HAOS report confirmed the current amd64 installation started successfully, matched the `dev` runtime files, kept ordinary `/config` writable, loaded the AppArmor profile, reached a ready/fresh memory catalog, and served Ingress and the managed browser path. This does not replace the unexecuted syscall-level negative matrix.
+- Native aarch64 CI, full architecture-neutral smoke, multi-architecture publication, SBOM, and Critical gates passed for the release payload lineage. A real Raspberry Pi/aarch64 HAOS installation remains **NOT RUN**; on 2026-08-14 the release owner explicitly accepted that validation gap and the remaining listed acceptance gaps. They are recorded as waived, not as tests that ran.
+
+### Testing
+
+- Pass all 114 Python unit/contract tests, 10 Home Assistant memory core tests, 12 source memory client tests, YAML/Markdown/ShellCheck/Hadolint/actionlint/AppArmor parsing, and `git diff --check`.
+- Build the final local amd64 stable image `sha256:c89ffb18f929a513481e202f208ee13d7abd0e1a836ea278a8156bb970555fb6` and verify stable `0.7.0` labels, baked version, MOTD, Codex `0.144.1`, GitHub CLI `2.97.0`, Node `24.18.1`, Chromium `151.0.7922.108`, and the absence of DEV/experimental runtime markers and TempIO.
+- Pass feedback, full Docker/ttyd/SSH/Core API/browser, browser approval, memory, managed browser authentication, user-file, managed Codex sandbox/sensitive-path, and exact public `0.6.0` to local `0.7.0` update/persistence smoke tests. An amd64 build requested with `BUILD_ARCH=aarch64` fails closed before artifact installation as required.
+
+### Upgrade notes
+
+- Stable installations use the base repository URL without a branch suffix. A previously installed `#dev` source has a different Supervisor repository identity; an in-place `#dev` → main source transition and its `/data` preservation have not been verified. Do not remove or reinstall that app merely to force migration; back up first and treat source migration as a separate acceptance task.
+- A normal same-repository `0.6.0` → `0.7.0` update preserves Codex authentication, user configuration and AGENTS files, SSH and browser identity, verified local memory, optional GitHub CLI state, and Home Assistant files. The new fixed sensitive-path deny cannot be disabled by app options or user/project Codex configuration.
+
 ## [0.7.0-dev.2] - 2026-08-14
 
 ### Fixed
@@ -32,7 +67,7 @@ All notable changes to this App are documented in this file.
 
 - Publish annotated tag object `9c7fa71e33f45dcb2ec132297f1cfe0bbee5fc1c` for `0.7.0-dev.2`; it peels to the same `dev` merge commit `45c2062a4515f4663b83f68675b0091f3de67e3b`. [Tag Builder 31760484384](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/31760484384) completed both architecture builds, SBOM/Critical gates, signing and attestation steps, verified-manifest publication, and final tag promotion.
 - Both architecture scans report Critical 0 and High 68; High remains an intentionally non-blocking report. Anonymous manifest resolution confirms generic `sha256:781c96531771d24e2263b09aef908e72fbbb8344d94e3ac3e601367d51190f85`, linux/amd64 `sha256:aecf766814049068dcf08393f061a725f8c15025ccf9d1acfde3b7d3aaeb7206`, and linux/arm64 `sha256:eaa2fb6ce85f7a522f0a2290a38b2183ab7e41940a608b6cd8cf52ba7da058eb`.
-- Independent post-publication Cosign signature/attestation verification and an actual HAOS update to `0.7.0-dev.2`, including memory recovery and minimal-log observation, remain **NOT RUN**. No GitHub Release was required or created for the `#dev` installation path.
+- Independent post-publication Cosign signature/attestation verification remains **NOT RUN**. A later read-only HAOS acceptance report observed the `0.7.0-dev.2` App started with a ready/fresh memory catalog and privacy-minimized Ingress logging; it did not execute the complete syscall-level security matrix. No GitHub Release was required or created for the `#dev` installation path.
 
 ## [0.7.0-dev.1] - 2026-08-12
 

@@ -6,7 +6,7 @@
 
 이 문서는 Home Assistant OS 사용자가 앱을 설치하고, Web UI·SSH·모바일 Remote에서 Codex를 사용하며, 안전하게 대시보드·자동화·엔티티와 설정 오류를 다루는 방법을 설명합니다.
 
-현재 공개 설치 기준은 앱 버전 `0.6.0`입니다. 이 문서의 `amd64 + aarch64`, custom AppArmor와 관리형 `workspace-write` 경계는 DEV 후보 `0.7.0-dev.2`의 계약입니다. HAOS에서 App은 **Codex for Home Assistant (DEV)**, 사이드바는 **Codex DEV**로 표시되며, 이 후보를 공개 `0.6.0`에 소급 적용된 것으로 간주하지 않습니다.
+현재 안정판 설치 기준은 앱 버전 `0.7.0`입니다. HAOS에서 App은 **Codex for Home Assistant**, 사이드바는 **Codex**로 표시됩니다.
 
 > [!WARNING]
 > 이 앱은 보호된 `secrets.yaml`·`.storage`를 제외한 `/config`를 읽고 쓸 수 있고 Home Assistant Core 및 Supervisor `manager` API를 사용할 수 있습니다. API 응답·로그·브라우저 화면에는 민감정보가 포함될 수 있습니다. 신뢰하는 관리자만 사용하고, 변경 전 backup과 diff를 확인하세요. TCP `2223`을 인터넷에 직접 port-forward하지 마세요.
@@ -16,11 +16,11 @@
 ### 지원 환경
 
 - Home Assistant OS 또는 Supervisor가 있는 설치 환경
-- 공개 `0.6.0`은 **amd64** 장치. DEV `0.7.0-dev.2`는 **amd64**와 64비트 **aarch64**를 대상으로 하며 Raspberry Pi는 64비트 HAOS가 필요합니다. 32비트 `armv7`은 지원하지 않습니다.
+- 안정판 `0.7.0`은 **amd64**와 64비트 **aarch64** 장치를 지원합니다. Raspberry Pi는 64비트 HAOS가 필요하며 32비트 `armv7`은 지원하지 않습니다.
 - 앱 이미지와 Codex 인증에 필요한 인터넷 연결
 - Codex를 사용할 수 있는 OpenAI/ChatGPT 계정
 
-현재 DEV `0.7.0-dev.2`는 `stage: experimental`, `boot: manual`입니다. 이전 `0.7.0-dev.1`의 native ARM CI와 공개 amd64+aarch64 image 발행·익명 조회 검증은 통과했고, 한 실제 HAOS에서 AppArmor load와 새 Codex 세션의 고정 민감 경로 접근 불가 정책 보고가 관측됐습니다. 실제 read syscall 음성 출력과 장치 아키텍처는 제공되지 않아 Raspberry Pi/aarch64 HAOS 수용은 아직 **NOT RUN**입니다. 공개 `0.6.0`은 amd64 전용이며 HACS 설치는 지원하지 않습니다.
+안정판 `0.7.0`은 `stage: stable`, `boot: manual`입니다. 후보 payload 계보의 Native ARM CI와 공개 amd64+aarch64 image 발행·익명 조회 검증은 통과했습니다. 실제 Raspberry Pi/aarch64 HAOS 실기는 **NOT RUN**이며, 이 공백은 자동 검증 결과를 근거로 릴리스 승인 과정에서 명시적으로 수용됐습니다. HACS 설치는 지원하지 않습니다.
 
 ### 이 앱이 제공하는 것
 
@@ -39,27 +39,19 @@ Web UI는 별도 채팅형 화면이 아니라 `ttyd`와 공유 `tmux` 세션으
 
 [![Home Assistant에 앱 저장소 추가](https://my.home-assistant.io/badges/supervisor_add_addon_repository.svg)](https://my.home-assistant.io/redirect/supervisor_add_addon_repository/?repository_url=https%3A%2F%2Fgithub.com%2FKanu-Coffee%2Fcodex-for-home-assistant)
 
-[DEV `#dev` 저장소를 Home Assistant에 바로 추가](https://my.home-assistant.io/redirect/supervisor_add_addon_repository/?repository_url=https%3A%2F%2Fgithub.com%2FKanu-Coffee%2Fcodex-for-home-assistant%23dev)
-
 버튼을 사용할 수 없다면 다음 URL을 복사합니다.
 
 ```text
 https://github.com/Kanu-Coffee/codex-for-home-assistant
 ```
 
-DEV 후보를 시험할 때는 메인 저장소를 대신하지 말고 다음 canary 저장소 URL을 추가합니다.
-
-```text
-https://github.com/Kanu-Coffee/codex-for-home-assistant#dev
-```
-
 1. Home Assistant에서 **설정 → Apps → App store**를 엽니다.
-2. 우측 상단 메뉴의 **Repositories**에 공개판은 기본 URL, DEV는 `#dev` URL을 추가합니다.
-3. App store를 새로고침합니다. 공개판은 **Codex for Home Assistant**, DEV `0.7.0-dev.2`는 **Codex for Home Assistant (DEV)**로 표시되어야 합니다.
-4. **Install**을 누릅니다. 공개 `0.6.0`은 GHCR의 미리 빌드된 amd64 이미지를 사용하므로 HA 장치에서 소스를 빌드하지 않습니다. DEV도 `config.yaml`과 정확히 같은 공개 `0.7.0-dev.2` amd64+aarch64 GHCR tag가 발행된 뒤 그 image를 사용합니다.
+2. 우측 상단 메뉴의 **Repositories**에 위 기본 URL을 추가합니다.
+3. App store를 새로고침하고 **Codex for Home Assistant**가 표시되는지 확인합니다.
+4. **Install**을 누릅니다. 앱은 GHCR의 미리 빌드된 amd64 또는 aarch64 이미지를 사용하므로 HA 장치에서 소스를 빌드하지 않습니다.
 5. 처음에는 기본 설정을 유지한 채 앱을 시작합니다.
 
-공개 `0.6.0` 앱이 목록에 보이지 않으면 장치 아키텍처가 amd64인지 확인하세요. DEV의 exact version image가 아직 발행되지 않았으면 원격 설치·업데이트가 실패합니다. 실제 HAOS 한 대의 민감 경로 수용은 확인했지만 Raspberry Pi/aarch64 수용은 아직 완료되지 않았습니다. 설치 실패 시 App/Supervisor 로그를 보존하되 token, 내부 URL과 개인 정보를 공유하지 마세요.
+앱이 목록에 보이지 않으면 장치가 amd64 또는 64비트 aarch64인지 확인하세요. 설치 실패 시 App/Supervisor 로그를 보존하되 token, 내부 URL과 개인 정보를 공유하지 마세요.
 
 ## 첫 실행
 
@@ -155,7 +147,7 @@ log_level: info
 
 ### 민감 경로와 자격증명 경계
 
-- Custom AppArmor는 `/config/secrets.yaml`, 모든 중첩 `secrets.yaml`과 `/config/.storage` content의 읽기·쓰기·실행·링크 생성을 거부합니다. Image validator에 필요한 `.storage` directory 순회/listing 작업만 profile에 남아 있어 같은 profile의 root shell은 entry 이름을 볼 수 있지만 content는 열 수 없습니다. Codex의 directory read는 아래 managed requirements가 별도로 거부합니다.
+- Custom AppArmor는 `/config/secrets.yaml`, 모든 중첩 `secrets.yaml`과 `/config/.storage` content의 읽기·쓰기·실행·링크 생성을 명시적으로 거부합니다. 따라서 정상적인 Codex 직접 파일 접근 경로로는 이 content를 읽을 수 없고 그 내용이 Codex에 전달되지 않습니다. Image validator에 필요한 `.storage` directory 순회/listing 작업만 profile에 남아 있어 같은 profile의 root shell은 entry 이름을 볼 수 있지만 content는 열 수 없습니다. Codex의 directory read는 아래 managed requirements가 별도로 거부합니다.
 - `/etc/codex/requirements.toml`은 같은 경로의 읽기를 관리자 정책으로 다시 거부하고 허용 mode를 `read-only`와 `workspace-write`로 제한해 `danger-full-access`를 차단합니다. 앱 wrapper는 실제 세션을 network-enabled `workspace-write`로 강제하며 사용자 또는 프로젝트 Codex 설정은 이 deny/allowlist를 완화할 수 없습니다.
 - App init과 매 Codex launch의 image-managed 검사는 모든 `secrets.yaml`과 `.storage` tree에서 symlink, 특수 파일, link count가 1이 아닌 파일을 값·경로 원문 출력 없이 거부합니다. 안전하지 않으면 App 또는 Codex가 fail closed합니다.
 - 나머지 `/config`는 계속 RW입니다. Recorder DB, 일반 YAML, package, custom component와 dashboard 파일은 고정 deny 대상이 아닙니다.
@@ -348,7 +340,7 @@ ha-memory conflicts --status open
 
 `empty`, `degraded`, `stale`이면 memory DB를 삭제하지 마세요. 처음 학습 중이거나 Core 연결이 일시적으로 실패한 상태일 수 있으며 마지막 성공 snapshot을 보존합니다.
 
-이 기능은 모델 자체가 스스로 학습하거나 승인 없이 집을 운영한다는 뜻이 아닙니다. 현재 `0.6.0`은 experimental이며 실제 HAOS의 자연어 기억→새 작업 회상 전체 흐름에는 아직 공개 검증 공백이 있습니다.
+이 기능은 모델 자체가 스스로 학습하거나 승인 없이 집을 운영한다는 뜻이 아닙니다. 실제 HAOS의 자연어 기억→새 작업 회상 전체 흐름에는 아직 공개 검증 공백이 있습니다.
 
 ## 앱 버그·기능 제안 보고서
 
@@ -482,7 +474,7 @@ flowchart LR
 
 ### 사용하지 않는 MCP가 시작 오류를 표시함
 
-`MCP client for '<name>' failed to start` 경고의 `<name>`이 image-managed `playwright` 또는 `ha_memory`가 아니라면, 일반 업데이트가 보존한 사용자 설정이나 신뢰된 프로젝트 설정에서 온 항목입니다. 예를 들어 DEV 수용 시험에서 관측된 `xcodebuildmcp`는 이 App의 image-managed 설정에 포함되지 않습니다.
+`MCP client for '<name>' failed to start` 경고의 `<name>`이 image-managed `playwright` 또는 `ha_memory`가 아니라면, 일반 업데이트가 보존한 사용자 설정이나 신뢰된 프로젝트 설정에서 온 항목입니다. 예를 들어 수용 시험에서 관측된 `xcodebuildmcp`는 이 App의 image-managed 설정에 포함되지 않습니다.
 
 1. `codex mcp list`로 등록 위치와 이름을 확인합니다.
 2. 자신이 관리하는 `/data/codex/config.toml`과, 프로젝트를 신뢰하는 경우에만 `/config/.codex/config.toml`에서 해당 MCP entry를 확인합니다. 설정 전체나 credential 값을 출력하지 마세요.
@@ -517,7 +509,7 @@ ha-memory status
 
 Core가 준비될 시간을 두고 다시 확인합니다. DB/WAL을 직접 삭제·수정하지 마세요. App version, Core version, 상태의 closed error code만 수집하고 raw token/API 응답은 공유하지 않습니다.
 
-`0.7.0-dev.1` 실제 수용 로그에서는 registry/state에 남은 automation의 config lookup이 반복 실패해 이 상태가 지속됐습니다. `0.7.0-dev.2`는 Core의 exact `automation/config` `not_found`만 빈 detail과 bounded warning으로 격리합니다. 업데이트 뒤에도 다른 closed error code로 `degraded/stale`이 계속되면 광범위하게 무시하지 말고 그 code와 시각만 공유해 별도로 진단하세요.
+이전 수용 로그에서는 registry/state에 남은 automation의 config lookup이 반복 실패해 이 상태가 지속됐습니다. 안정판 `0.7.0`은 Core의 exact `automation/config` `not_found`만 빈 detail과 bounded warning으로 격리합니다. 업데이트 뒤에도 다른 closed error code로 `degraded/stale`이 계속되면 광범위하게 무시하지 말고 그 code와 시각만 공유해 별도로 진단하세요.
 
 ### 피드백 GitHub 직접 제출이 되지 않음
 
@@ -552,12 +544,12 @@ Core가 준비될 시간을 두고 다시 확인합니다. DB/WAL을 직접 삭�
 
 ## 제한사항과 지원
 
-- 공개 `0.6.0`은 amd64 전용입니다. **Codex for Home Assistant (DEV)** `0.7.0-dev.2`는 amd64와 64비트 aarch64를 대상으로 합니다. 실제 HAOS 한 대의 민감 경로 수용은 확인했지만 Raspberry Pi/aarch64 HAOS 수용은 아직 **NOT RUN**이며 armv7은 지원하지 않습니다.
-- `secrets.yaml`과 `.storage` content 접근은 차단하고 managed requirements는 Codex directory read도 거부하지만, AppArmor validator allowance 때문에 root shell의 `.storage` entry listing은 남습니다. 원시 API·로그·브라우저 결과의 민감값은 정화하지 않으며 root interactive process가 private runtime credential 파일을 직접 읽을 수 있는 잔여 위험도 있습니다.
+- 안정판 `0.7.0`은 amd64와 64비트 aarch64를 지원합니다. Native aarch64 CI와 image 검증은 통과했지만 실제 Raspberry Pi/aarch64 HAOS 실기는 **NOT RUN**이며 이 공백은 릴리스 승인 과정에서 수용됐습니다. Armv7은 지원하지 않습니다.
+- `secrets.yaml`과 `.storage` content는 정상적인 Codex 직접 파일 접근에서 명시적으로 차단되어 그 경로로 내용이 Codex에 전달되지 않고, managed requirements는 Codex directory read도 거부합니다. 다만 AppArmor validator allowance 때문에 root shell의 `.storage` entry listing은 남습니다. 원시 API·로그·브라우저 결과의 민감값은 정화하지 않으며 root interactive process가 private runtime credential 파일을 직접 읽을 수 있는 잔여 위험도 있습니다.
 - Bubble Card와 다른 custom card를 포함하거나 자동 설치하지 않습니다.
 - 별도 채팅형 Web UI가 아닌 터미널 UI입니다.
 - 자동화·dashboard 결과는 환경과 요청에 따라 달라지며 사람의 검토가 필요합니다.
-- 실제 HAOS의 `0.6.0` 자연어 memory 폐루프에는 공개 검증 공백이 있습니다.
+- 실제 HAOS의 자연어 memory 폐루프에는 공개 검증 공백이 있습니다.
 - 실제 GitHub 이슈 직접 생성은 별도 명시 승인 없이는 자동 검증에서 실행하지 않습니다.
 - Supervisor endpoint와 OpenAI Remote 제공 여부는 Home Assistant/OpenAI 버전·정책에 따라 달라질 수 있습니다.
 

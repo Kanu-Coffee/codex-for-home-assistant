@@ -28,7 +28,7 @@ Home Assistant 안에서 Codex와 대화하며 설정을 살펴보고 대시보�
 
 ## 빠른 시작
 
-1. 앱을 설치하고 시작합니다. 공개 `0.6.0`은 **amd64 전용**입니다. 개발 후보 `0.7.0-dev.2`는 HAOS의 App 이름에 **Codex for Home Assistant (DEV)**, 사이드바에 **Codex DEV**로 표시되고 `amd64`와 64비트 `aarch64`를 지원합니다. `stage: experimental`, `boot: manual`입니다. Native ARM CI와 이전 DEV 멀티아키 image 검증은 통과했고, 한 실제 HAOS의 `0.7.0-dev.1`에서 AppArmor load·일반 `/config` 쓰기·새 Codex 세션의 고정 민감 경로 접근 불가 정책 보고가 관측됐습니다. 실제 read syscall 음성 출력과 장치 아키텍처가 제공되지 않아 Raspberry Pi/aarch64 HAOS 수용은 아직 완료되지 않았습니다. 아래 민감 경로 보호도 DEV 후보 기준이며 공개 `0.6.0`에 소급 적용되지 않습니다.
+1. 안정판 `0.7.0` 앱을 설치하고 시작합니다. `amd64`와 64비트 `aarch64`를 지원하며 `stage: stable`, `boot: manual`입니다. Native ARM CI와 멀티아키텍처 image 검증은 통과했습니다. 실제 Raspberry Pi/aarch64 HAOS 실기는 실행되지 않았고, 이 공백은 자동 검증 결과를 근거로 릴리스 승인 과정에서 명시적으로 수용됐습니다.
 2. **OPEN WEB UI**를 누릅니다.
 3. 처음 한 번 `ha-codex-login`으로 로그인합니다.
 4. `ha-codex`를 실행합니다.
@@ -36,7 +36,7 @@ Home Assistant 안에서 Codex와 대화하며 설정을 살펴보고 대시보�
 
 SSH를 사용하지 않는다면 `authorized_keys`를 비워 둬도 됩니다. Web UI는 그대로 동작합니다.
 
-Custom AppArmor와 `/etc/codex/requirements.toml`은 모든 `secrets.yaml`과 `/config/.storage` content 접근을 차단합니다. Validator용 `.storage` directory listing만 AppArmor profile에 남기고 managed requirements는 Codex의 directory read도 거부합니다. Init과 매 Codex 실행은 symlink·특수 파일·다중 hardlink를 fail closed 검사합니다. 나머지 `/config`는 RW이며 검사 후 외부 hardlink 추가나 비보호 경로로 복사된 값, API raw 응답까지 막는 완전한 DLP는 아닙니다.
+Custom AppArmor와 `/etc/codex/requirements.toml`은 모든 `secrets.yaml`과 `/config/.storage` content의 직접 접근을 명시적으로 차단합니다. 따라서 정상적인 Codex 직접 파일 접근 경로로는 이 content를 읽을 수 없고 그 내용이 Codex에 전달되지 않습니다. Validator용 `.storage` directory listing만 AppArmor profile에 남기고 managed requirements는 Codex의 directory read도 거부합니다. Init과 매 Codex 실행은 symlink·특수 파일·다중 hardlink를 fail closed 검사합니다. 나머지 `/config`는 RW이며 검사 후 외부 hardlink 추가, 비보호 경로로 복사된 값, root runtime credential, API·로그·브라우저 raw 결과까지 막는 완전한 DLP는 아닙니다.
 
 ## 활용 예시
 

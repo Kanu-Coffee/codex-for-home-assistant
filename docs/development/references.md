@@ -1,6 +1,6 @@
 # references.md — 공식 근거
 
-검증 기준일: **2026-08-12**
+검증 기준일: **2026-08-14**
 
 구현 시작 시 아래 공식 문서의 최신 내용을 다시 확인한다. 기술 문서는 바뀔 수 있으므로 이 목록은 근거와 탐색 출발점이지 영구 고정값이 아니다.
 
@@ -150,6 +150,8 @@
 ## 근거로 확정한 핵심 사항
 
 - Home Assistant App은 container image이며 repository root에 `repository.yaml`이 필요하다.
+- App configuration의 `stage`는 `stable`, `experimental`, `deprecated`를 지원하고 기본값은 `stable`이다. Stable `0.7.0`은 이를 명시적으로 사용한다.
+- App presentation 문서는 branch suffix repository를 canary 채널로 분리하고 서로 다른 표시명을 사용하도록 안내한다. Stable 사용자 설치는 base repository URL만 제공하며 DEV channel 규칙과 과거 증거는 engineering 문서에만 남긴다.
 - `map`의 `homeassistant_config`는 `read_only: false`와 custom container path를 지원한다.
 - exposed host port는 `ports` mapping 및 App Network UI에서 관리한다.
 - Ingress는 `ingress`, `ingress_port`, `ingress_stream`을 지원한다.
@@ -164,7 +166,7 @@
 - Codex config는 `approval_policy`, `sandbox_mode`, workspace-write network access와 file credential store를 지원한다. System-managed `requirements.toml`은 허용 sandbox와 filesystem deny를 사용자 설정보다 강하게 제한할 수 있다.
 - Supervisor 2026.04부터 legacy `build.yaml`과 자동 `BUILD_FROM` 주입을 사용하지 않으며 Dockerfile이 build source of truth다.
 - 현재 generic Home Assistant Alpine base는 `3.24`, builder composite actions는 `2026.06.0`이다.
-- Codex CLI `0.144.1`과 GitHub CLI `2.97.0`은 amd64/aarch64 공식 release artifact와 고정 SHA-256을 architecture별로 사용한다. 사용하지 않는 base TempIO executable은 final image에서 제거한다. DEV `0.7.0-dev.1`의 native aarch64 CI와 image 발행은 PASS했다. 후속 실제 HAOS의 profile load·일반 `/config` RW·App/Ingress와 새 Codex session의 고정 민감 경로 정책 보고는 관측됐지만, 실제 read syscall 음성 출력·architecture·전체 통합 행렬은 미확인이다.
+- Codex CLI `0.144.1`과 GitHub CLI `2.97.0`은 amd64/aarch64 공식 release artifact와 고정 SHA-256을 architecture별로 사용한다. 사용하지 않는 base TempIO executable은 final image에서 제거한다. Stable `0.7.0` payload lineage의 native aarch64 CI와 멀티아키 image 발행은 PASS했다. 후속 실제 amd64 HAOS 보고서는 profile 적용·일반 `/config` RW·App/Ingress/browser/memory를 관측했다. 실제 read syscall 전체 음성 행렬과 Raspberry Pi/aarch64 HAOS는 NOT RUN이며 2026-08-14 maintainer 위험 수용 대상으로 남는다.
 - 직접 Remote SSH는 remote login shell의 PATH에서 `codex`를 찾고 HA App에 저장된 Codex 인증을 요구한다.
 - Supervisor Core/App 로그 endpoint는 `Accept: text/plain` 또는 `text/x-log`를 사용하며 JSON Accept만 보내면 협상이 실패할 수 있다.
 - Codex는 `CODEX_HOME`의 `AGENTS.md`를 전역 지침으로 읽고 프로젝트 root부터 현재 디렉터리까지 더 가까운 지침을 뒤에 결합한다.

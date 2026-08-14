@@ -152,10 +152,10 @@ jobs:
       - name: Run managed Codex sandbox smoke tests
         run: bash tests/managed-sandbox-smoke.sh codex-for-home-assistant:test
 
-      - name: Verify update from released 0.5.0 preserves persistent data
+      - name: Verify update from released 0.6.0 preserves persistent data
         run: |
           bash tests/update-smoke.sh \
-            ghcr.io/kanu-coffee/codex-for-home-assistant:0.5.0 \
+            ghcr.io/kanu-coffee/codex-for-home-assistant:0.6.0 \
             codex-for-home-assistant:test
 
   aarch64-build-and-smoke:

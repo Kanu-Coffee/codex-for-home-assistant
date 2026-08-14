@@ -3,7 +3,7 @@ ARG BUILD_FROM=ghcr.io/home-assistant/base:3.24@sha256:94ff231402a5e7ad2a82e261a
 FROM ${BUILD_FROM}
 
 ARG BUILD_ARCH=amd64
-ARG BUILD_VERSION=0.7.0-dev.2
+ARG BUILD_VERSION=0.7.0
 ARG TARGETARCH
 ARG CODEX_VERSION=0.144.1
 ARG CODEX_SHA256_AMD64=84091ae20c65fcc7d4120db97d1bd57d7ff8df9c7609fb781c78c2ebbd4f5a28
@@ -157,8 +157,8 @@ LABEL \
   io.hass.version="${BUILD_VERSION}" \
   io.hass.type="app" \
   io.hass.arch="${BUILD_ARCH}" \
-  org.opencontainers.image.title="Home Assistant App: Codex for Home Assistant (DEV)" \
-  org.opencontainers.image.description="Development build of Codex CLI, verified feedback reports, Playwright browser, Ingress terminal, and public-key SSH for Home Assistant" \
+  org.opencontainers.image.title="Home Assistant App: Codex for Home Assistant" \
+  org.opencontainers.image.description="Codex CLI with verified feedback reports, Playwright browser, Ingress terminal, and public-key SSH for Home Assistant" \
   org.opencontainers.image.version="${BUILD_VERSION}" \
   org.opencontainers.image.source="https://github.com/Kanu-Coffee/codex-for-home-assistant" \
   org.opencontainers.image.licenses="Apache-2.0"

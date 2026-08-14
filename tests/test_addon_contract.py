@@ -38,16 +38,16 @@ def test_release_is_multiarch_with_generic_registry_image(
         == "ghcr.io/kanu-coffee/codex-for-home-assistant"
     )
     assert "{arch}" not in addon_config["image"]
-    assert addon_config["stage"] == "experimental"
+    assert addon_config["stage"] == "stable"
 
 
-def test_development_candidate_is_visible_in_home_assistant_and_image(
+def test_stable_release_is_visible_in_home_assistant_and_image(
     addon_config: dict, addon_root: Path, repository_root: Path
 ) -> None:
-    assert addon_config["name"] == "Codex for Home Assistant (DEV)"
-    assert addon_config["version"] == "0.7.0-dev.2"
-    assert addon_config["description"].startswith("[DEV] ")
-    assert addon_config["panel_title"] == "Codex DEV"
+    assert addon_config["name"] == "Codex for Home Assistant"
+    assert addon_config["version"] == "0.7.0"
+    assert not addon_config["description"].startswith("[DEV] ")
+    assert addon_config["panel_title"] == "Codex"
     assert addon_config["slug"] == "codex_home_assistant"
     assert (
         addon_config["image"]
@@ -57,16 +57,22 @@ def test_development_candidate_is_visible_in_home_assistant_and_image(
     repository = yaml.safe_load(
         (repository_root / "repository.yaml").read_text(encoding="utf-8")
     )
-    assert repository["name"] == "Codex for Home Assistant (DEV)"
+    assert repository["name"] == "Codex for Home Assistant"
 
     dockerfile = (addon_root / "Dockerfile").read_text(encoding="utf-8")
     assert (
         'org.opencontainers.image.title="Home Assistant App: '
-        'Codex for Home Assistant (DEV)"' in dockerfile
+        'Codex for Home Assistant"' in dockerfile
     )
+    assert (
+        'org.opencontainers.image.description="Codex CLI with verified '
+        'feedback reports, Playwright browser, Ingress terminal, and '
+        'public-key SSH for Home Assistant"' in dockerfile
+    )
+    assert "Development build" not in dockerfile
     assert 'org.opencontainers.image.version="${BUILD_VERSION}"' in dockerfile
     motd = (addon_root / "rootfs/etc/motd").read_text(encoding="utf-8")
-    assert motd.startswith("Codex for Home Assistant (DEV)\n")
+    assert motd.startswith("Codex for Home Assistant\n")
 
 
 def _builder_validation_script(repository_root: Path) -> str:
@@ -104,14 +110,14 @@ def _run_builder_validation(
     environment.update(
         {
             "APP_DESCRIPTION": (
-                "[DEV] Codex CLI with verified feedback, browser, terminal, "
+                "Codex CLI with verified feedback, browser, terminal, "
                 "and SSH for Home Assistant"
             ),
             "APP_IMAGE": (
                 "ghcr.io/kanu-coffee/codex-for-home-assistant"
             ),
-            "APP_NAME": "Codex for Home Assistant (DEV)",
-            "APP_VERSION": "0.7.0-dev.2",
+            "APP_NAME": "Codex for Home Assistant",
+            "APP_VERSION": "0.7.0",
             "GITHUB_EVENT_NAME": "pull_request",
             "RELEASE_TAG": "merge",
         }
@@ -128,58 +134,78 @@ def _run_builder_validation(
     )
 
 
-def test_builder_channel_guard_accepts_consistent_dev_and_stable_metadata(
-    repository_root: Path, tmp_path: Path
-) -> None:
-    script = _builder_validation_script(repository_root)
-    dev_fixture = tmp_path / "dev"
-    _prepare_builder_validation_fixture(repository_root, dev_fixture)
-    assert _run_builder_validation(script, dev_fixture).returncode == 0
-
-    stable_fixture = tmp_path / "stable"
-    _prepare_builder_validation_fixture(repository_root, stable_fixture)
+def _convert_stable_fixture_to_dev(fixture: Path) -> None:
     replacements = {
         "repository.yaml": (
-            "Codex for Home Assistant (DEV)",
-            "Codex for Home Assistant",
+            "name: Codex for Home Assistant",
+            "name: Codex for Home Assistant (DEV)",
         ),
         "codex_home_assistant/config.yaml": (
-            "name: Codex for Home Assistant (DEV)\nversion: \"0.7.0-dev.2\"",
             "name: Codex for Home Assistant\nversion: \"0.7.0\"",
+            "name: Codex for Home Assistant (DEV)\n"
+            "version: \"0.7.0-dev.2\"",
         ),
         "codex_home_assistant/Dockerfile": (
-            "Codex for Home Assistant (DEV)",
-            "Codex for Home Assistant",
+            'org.opencontainers.image.title="Home Assistant App: '
+            'Codex for Home Assistant"',
+            'org.opencontainers.image.title="Home Assistant App: '
+            'Codex for Home Assistant (DEV)"',
         ),
         "codex_home_assistant/rootfs/etc/motd": (
-            "Codex for Home Assistant (DEV)",
-            "Codex for Home Assistant",
+            "Codex for Home Assistant\n",
+            "Codex for Home Assistant (DEV)\n",
         ),
     }
     for relative_path, (old, new) in replacements.items():
-        path = stable_fixture / relative_path
+        path = fixture / relative_path
         path.write_text(
             path.read_text(encoding="utf-8").replace(old, new),
             encoding="utf-8",
         )
-    stable_config = stable_fixture / "codex_home_assistant/config.yaml"
-    stable_config.write_text(
-        stable_config.read_text(encoding="utf-8").replace(
-            'description: "[DEV] ', 'description: "'
-        ).replace("panel_title: Codex DEV", "panel_title: Codex"),
+
+    dockerfile = fixture / "codex_home_assistant/Dockerfile"
+    dockerfile.write_text(
+        dockerfile.read_text(encoding="utf-8").replace(
+            'org.opencontainers.image.description="Codex CLI with verified',
+            'org.opencontainers.image.description="Development build of '
+            'Codex CLI, verified',
+        ),
         encoding="utf-8",
     )
-    stable_result = _run_builder_validation(
-        script,
-        stable_fixture,
-        APP_DESCRIPTION=(
-            "Codex CLI with verified feedback, browser, terminal, and SSH "
-            "for Home Assistant"
-        ),
-        APP_NAME="Codex for Home Assistant",
-        APP_VERSION="0.7.0",
+
+    config = fixture / "codex_home_assistant/config.yaml"
+    config.write_text(
+        config.read_text(encoding="utf-8")
+        .replace('description: "Codex CLI', 'description: "[DEV] Codex CLI')
+        .replace("stage: stable", "stage: experimental")
+        .replace("panel_title: Codex", "panel_title: Codex DEV"),
+        encoding="utf-8",
     )
+
+
+def test_builder_channel_guard_accepts_consistent_dev_and_stable_metadata(
+    repository_root: Path, tmp_path: Path
+) -> None:
+    script = _builder_validation_script(repository_root)
+    stable_fixture = tmp_path / "stable"
+    _prepare_builder_validation_fixture(repository_root, stable_fixture)
+    stable_result = _run_builder_validation(script, stable_fixture)
     assert stable_result.returncode == 0, stable_result.stderr
+
+    dev_fixture = tmp_path / "dev"
+    _prepare_builder_validation_fixture(repository_root, dev_fixture)
+    _convert_stable_fixture_to_dev(dev_fixture)
+    dev_result = _run_builder_validation(
+        script,
+        dev_fixture,
+        APP_DESCRIPTION=(
+            "[DEV] Codex CLI with verified feedback, browser, terminal, "
+            "and SSH for Home Assistant"
+        ),
+        APP_NAME="Codex for Home Assistant (DEV)",
+        APP_VERSION="0.7.0-dev.2",
+    )
+    assert dev_result.returncode == 0, dev_result.stderr
 
 
 def test_builder_channel_guard_rejects_invalid_or_incomplete_dev_metadata(
@@ -203,6 +229,13 @@ def test_builder_channel_guard_rejects_invalid_or_incomplete_dev_metadata(
             {"APP_DESCRIPTION": "Codex for Home Assistant"},
         ),
         (
+            "wrong-stage-file",
+            "codex_home_assistant/config.yaml",
+            "stage: experimental",
+            "stage: stable",
+            {},
+        ),
+        (
             "wrong-repository-name",
             "repository.yaml",
             "Codex for Home Assistant (DEV)",
@@ -224,6 +257,13 @@ def test_builder_channel_guard_rejects_invalid_or_incomplete_dev_metadata(
             {},
         ),
         (
+            "wrong-oci-description",
+            "codex_home_assistant/Dockerfile",
+            "Development build of Codex CLI, verified feedback reports",
+            "Codex CLI with verified feedback reports",
+            {},
+        ),
+        (
             "wrong-motd",
             "codex_home_assistant/rootfs/etc/motd",
             "Codex for Home Assistant (DEV)",
@@ -231,16 +271,56 @@ def test_builder_channel_guard_rejects_invalid_or_incomplete_dev_metadata(
             {},
         ),
     )
+    dev_environment = {
+        "APP_DESCRIPTION": (
+            "[DEV] Codex CLI with verified feedback, browser, terminal, "
+            "and SSH for Home Assistant"
+        ),
+        "APP_NAME": "Codex for Home Assistant (DEV)",
+        "APP_VERSION": "0.7.0-dev.2",
+    }
     for case_name, relative_path, old, new, overrides in cases:
         fixture = tmp_path / case_name
         _prepare_builder_validation_fixture(repository_root, fixture)
+        _convert_stable_fixture_to_dev(fixture)
         if relative_path is not None and old is not None and new is not None:
             path = fixture / relative_path
             path.write_text(
                 path.read_text(encoding="utf-8").replace(old, new),
                 encoding="utf-8",
             )
-        result = _run_builder_validation(script, fixture, **overrides)
+        environment = dev_environment | overrides
+        result = _run_builder_validation(script, fixture, **environment)
+        assert result.returncode != 0, case_name
+
+
+def test_builder_channel_guard_rejects_stable_metadata_mismatch(
+    repository_root: Path, tmp_path: Path
+) -> None:
+    script = _builder_validation_script(repository_root)
+    cases = (
+        (
+            "stable-stage-file",
+            "codex_home_assistant/config.yaml",
+            "stage: stable",
+            "stage: experimental",
+        ),
+        (
+            "stable-oci-description",
+            "codex_home_assistant/Dockerfile",
+            "Codex CLI with verified feedback reports",
+            "Development build of Codex CLI, verified feedback reports",
+        ),
+    )
+    for case_name, relative_path, old, new in cases:
+        fixture = tmp_path / case_name
+        _prepare_builder_validation_fixture(repository_root, fixture)
+        path = fixture / relative_path
+        path.write_text(
+            path.read_text(encoding="utf-8").replace(old, new),
+            encoding="utf-8",
+        )
+        result = _run_builder_validation(script, fixture)
         assert result.returncode != 0, case_name
 
 
@@ -272,7 +352,9 @@ def test_registry_release_workflow_is_tag_gated(repository_root: Path) -> None:
         "Stable App description must not start with [DEV]",
         "Repository name does not match the release channel",
         "Panel title does not match the release channel",
+        "App stage does not match the release channel",
         "OCI title does not match the release channel",
+        "OCI description does not match the release channel",
         "MOTD title does not match the release channel",
     ):
         assert required_channel_guard in builder_text

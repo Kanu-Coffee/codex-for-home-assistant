@@ -124,7 +124,7 @@ Mount 자체는 전체 RW로 유지하되 다음 고정 민감 경로는 custom 
 /config/.storage/**
 ```
 
-그 밖의 YAML, package, dashboard, custom component와 Recorder DB는 직접 작업 가용성을 유지한다. AppArmor profile은 validator에 필요한 `.storage` directory listing operation을 남기므로 같은 profile의 root shell에서 entry 이름이 보일 수 있지만 non-directory content 접근은 거부하며, managed requirements는 Codex directory read도 차단한다. Secret 값과 storage-mode registry/dashboard 변경은 Home Assistant UI/API 또는 사용자의 별도 신뢰 경로로 처리한다.
+그 밖의 YAML, package, dashboard, custom component와 Recorder DB는 직접 작업 가용성을 유지한다. AppArmor profile은 validator에 필요한 `.storage` directory listing operation을 남기므로 같은 profile의 root shell에서 entry 이름이 보일 수 있지만 non-directory content 접근은 거부하며, managed requirements는 Codex directory read도 차단한다. 따라서 정상적인 Codex 직접 파일 접근 경로로는 보호 content를 읽을 수 없고 그 내용이 Codex에 전달되지 않는다. Secret 값과 storage-mode registry/dashboard 변경은 Home Assistant UI/API 또는 사용자의 별도 신뢰 경로로 처리한다.
 
 App init과 매 Codex launch는 보호 tree 전체에서 symlink, 특수 파일과 link count가 1이 아닌 파일을 값·경로 원문 없이 검사한다. Unsafe shape이면 App 또는 Codex 시작을 fail closed한다. AppArmor와 Codex requirements는 pathname 기반이므로 검사 뒤 외부 process가 hardlink를 추가하는 TOCTOU와 사용자가 보호 값을 비보호 경로에 복사한 경우까지 보장하지 않는다.
 
@@ -245,7 +245,7 @@ SSH 외부 포트는 JSON 옵션이 아니라 Network 설정이다.
 - 빈 store에서도 `ha-memoryd`는 시작 직후 수동 명령 없이 첫 refresh를 시도하고, 성공 이후 정기 refresh한다. 고정 Supervisor Core WebSocket proxy와 image-pinned `ws` runtime을 통해 entity/device/area registry, `get_states`, automation config와 related 결과만 수집한다. automation graph는 공식 계약대로 `search/related`의 `item_type=automation`, `item_id=<automation entity_id>`로 요청하며 의미가 다른 `item_type=entity` 응답을 대체 graph로 합치지 않는다. `HA_WS_URL` 환경 override, Upgrade credential header나 direct-Core credential fallback을 제공하지 않는다. 공식 command의 지원 여부와 응답 오류를 검사하고 임의 WebSocket command나 `.storage` 직접 읽기로 우회하지 않는다.
 - entity/device/area의 식별자·표시명·설명·연결 관계와 automation의 식별자·alias·description·정규화된 관련 대상만 allowlist schema로 저장한다. automation은 entity registry와 state 합집합으로 발견한다. `get_states`의 raw state와 임의 attributes는 저장하지 않되 표시명, device class, icon, automation id/mode 같은 명시적 allowlist metadata만 정규화할 수 있다.
 - automation raw config, 임의 API response, `/config` 원문, 대화 transcript, prompt, token, secret, credential과 비밀 가능성이 있는 비허용 field는 database와 FTS index에 저장하지 않는다.
-- refresh는 필수 응답을 정규화한 뒤 transaction으로 snapshot을 교체한다. unavailable automation의 성공 응답 `config: null`은 빈 config와 bounded warning을 가진 완전한 응답으로 처리한다. Core가 개별 `search/related`에 정상 result envelope의 `success:false`, `error.code=unknown_error`를 반환한 경우에만 optional graph enrichment를 빈 객체와 bounded warning으로 격리하고, 성공한 automation config에서 allowlist area/device/entity 직접 관계를 추출해 나머지 snapshot을 보존한다. 그 밖의 server command code, server/client timeout, unauthorized, invalid format, config 실패, auth/transport/WebSocket close/protocol 오류, 누락·malformed envelope와 malformed successful related 결과는 계속 전체 refresh를 fail closed한다. 이런 필수 실패에서는 last-known-good catalog를 보존하고 불완전한 응답으로 대량 삭제하거나 stale 자료를 새 canonical truth로 표시하지 않는다.
+- refresh는 필수 응답을 정규화한 뒤 transaction으로 snapshot을 교체한다. Unavailable automation의 성공 응답 `config: null`은 빈 config와 bounded warning을 가진 완전한 응답으로 처리한다. Registry/state 합집합에는 있지만 현재 automation component에는 없는 항목의 exact `automation/config` `not_found`도 빈 config와 bounded warning으로 격리한다. Core가 개별 `search/related`에 정상 result envelope의 `success:false`, `error.code=unknown_error`를 반환한 경우에만 optional graph enrichment를 빈 객체와 bounded warning으로 격리하고, 성공한 automation config에서 allowlist area/device/entity 직접 관계를 추출해 나머지 snapshot을 보존한다. 그 밖의 config/server command code, server/client timeout, unauthorized, invalid format, auth/transport/WebSocket close/protocol 오류, 누락·malformed envelope와 malformed successful related 결과는 계속 전체 refresh를 fail closed한다. 이런 필수 실패에서는 last-known-good catalog를 보존하고 불완전한 응답으로 대량 삭제하거나 stale 자료를 새 canonical truth로 표시하지 않는다.
 
 ### FR-018 메모리 후보, 권위와 변경 후 검증
 
@@ -294,7 +294,7 @@ App 재설치 전까지 `/data`의 Codex 인증, 사용자 Codex 설정, SSH hos
 
 - Ingress 관리자 전용
 - SSH 공개키 전용
-- custom AppArmor가 모든 `secrets.yaml`, `/config/.storage` content와 cross-process environment 읽기를 강제 차단하고 validator용 `.storage` directory traversal/listing만 허용; managed requirements가 Codex directory read도 차단
+- custom AppArmor가 모든 `secrets.yaml`, `/config/.storage` content와 cross-process environment 읽기를 강제 차단해 정상적인 Codex 직접 파일 접근으로 content가 전달되지 않도록 하고 validator용 `.storage` directory traversal/listing만 허용; managed requirements가 Codex directory read도 차단
 - `/etc/codex/requirements.toml`의 user-non-overridable filesystem deny와 `read-only|workspace-write` allowlist, App wrapper의 network-enabled `workspace-write` 강제
 - init/Codex launch의 protected-tree symlink·special-file·multi-hardlink fail-closed 검사와 pathname/TOCTOU·비보호 copy 잔여 한계 공개
 - `manager` 역할
@@ -310,9 +310,8 @@ App 시작 로그는 Codex readiness와 loopback gateway 구성을 토큰 없이
 
 ### NFR-005 플랫폼
 
-- Public `0.6.0`: amd64 검증·지원
-- DEV `0.7.0-dev.2` M3 candidate: `amd64`, 64비트 `aarch64`; 공식 Codex/GitHub CLI artifact를 아키텍처별 checksum으로 고정
-- aarch64 native ARM CI와 공개 image 검증은 통과했지만 실제 Raspberry Pi HAOS/AppArmor/SSH/browser 수용 전까지 HAOS platform acceptance 완료로 표시하지 않음
+- Stable `0.7.0`: `amd64`, 64비트 `aarch64`; 공식 Codex/GitHub CLI artifact를 아키텍처별 checksum으로 고정
+- aarch64 native ARM CI와 공개 image 검증은 통과했지만 실제 Raspberry Pi HAOS/AppArmor/SSH/browser 수용은 `NOT RUN`; 2026-08-14 릴리스 승인에서 이 공백을 명시적으로 수용했으며 실행 결과로 확대하지 않음
 - 32비트 `armv7`은 Home Assistant base와 공식 Codex artifact 계약 밖이므로 비지원
 - Alpine system Chromium 조합은 Playwright upstream의 공식 Linux 배포 대상이 아니므로 로컬 amd64 container 검증과 별개로 실제 HAOS/AppArmor 검증 전에는 지원 완료로 표시하지 않음
 

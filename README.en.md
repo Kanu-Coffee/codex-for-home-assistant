@@ -14,23 +14,21 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/Kanu-Coffee/codex-for-home-assistant/releases"><img alt="GitHub Release" src="https://img.shields.io/github/v/release/Kanu-Coffee/codex-for-home-assistant?include_prereleases"></a>
+  <a href="https://github.com/Kanu-Coffee/codex-for-home-assistant/releases"><img alt="GitHub Release" src="https://img.shields.io/github/v/release/Kanu-Coffee/codex-for-home-assistant"></a>
   <a href="https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/workflows/ci.yaml"><img alt="CI" src="https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/workflows/ci.yaml/badge.svg"></a>
-  <img alt="Architecture: amd64 public, aarch64 candidate" src="https://img.shields.io/badge/architecture-amd64%20public%20%7C%20aarch64%20candidate-blue">
-  <img alt="Stage: experimental" src="https://img.shields.io/badge/stage-experimental-orange">
+  <img alt="Architecture: amd64 and aarch64" src="https://img.shields.io/badge/architecture-amd64%20%7C%20aarch64-blue">
+  <img alt="Stage: stable" src="https://img.shields.io/badge/stage-stable-brightgreen">
   <a href="LICENSE"><img alt="License: Apache-2.0" src="https://img.shields.io/badge/license-Apache--2.0-green"></a>
 </p>
 
 <p align="center">
   <a href="https://my.home-assistant.io/redirect/supervisor_add_addon_repository/?repository_url=https%3A%2F%2Fgithub.com%2FKanu-Coffee%2Fcodex-for-home-assistant"><img alt="Add the app repository to Home Assistant" src="https://my.home-assistant.io/badges/supervisor_add_addon_repository.svg"></a>
-  <br>
-  <a href="https://my.home-assistant.io/redirect/supervisor_add_addon_repository/?repository_url=https%3A%2F%2Fgithub.com%2FKanu-Coffee%2Fcodex-for-home-assistant%23dev"><strong>Add the DEV #dev repository to Home Assistant</strong></a>
 </p>
 
 > [!WARNING]
 > This app can read and write `/config` except for protected `secrets.yaml` and `.storage` paths, and it can use the Home Assistant Core and Supervisor `manager` APIs. API responses, logs, and browser views can still contain sensitive information. Back up your system and review the plan and diff before important changes. Never expose its SSH port directly to the internet.
 
-This is an unofficial community project. It is not affiliated with or endorsed by OpenAI, Home Assistant, or Nabu Casa. Public `0.6.0` is an **experimental amd64-only release**. The current development candidate, `0.7.0-dev.2`, appears in HAOS as **Codex for Home Assistant (DEV)** and in the sidebar as **Codex DEV**; it supports `amd64` and 64-bit `aarch64`. Native ARM CI and the previous DEV multi-architecture GHCR publication passed. On one real HAOS installation of `0.7.0-dev.1`, AppArmor loading, ordinary `/config` writes, and a new Codex session reporting the fixed direct-access policy were observed. The supplied evidence does not include a negative read syscall or identify that device's architecture, so Raspberry Pi/aarch64 HAOS acceptance is not complete. The custom AppArmor and managed-requirements protections described below belong to DEV and are not retroactive changes to public `0.6.0`.
+This is an unofficial community project. It is not affiliated with or endorsed by OpenAI, Home Assistant, or Nabu Casa. Stable `0.7.0` supports `amd64` and 64-bit `aarch64`, appears in HAOS as **Codex for Home Assistant**, and uses **Codex** in the sidebar. Native ARM CI and multi-architecture image validation passed. A real Raspberry Pi/aarch64 HAOS acceptance run was not performed; the release approval explicitly accepted that gap based on the automated evidence.
 
 ## Real Web terminal preview
 
@@ -87,7 +85,7 @@ flowchart LR
 ### Requirements
 
 - Home Assistant OS or another installation with Supervisor
-- Public `0.6.0` requires an **amd64** device. DEV candidate `0.7.0-dev.2` targets **amd64** and 64-bit **aarch64**; Raspberry Pi requires 64-bit HAOS. 32-bit `armv7` is not supported.
+- Stable `0.7.0` supports **amd64** and 64-bit **aarch64** devices. Raspberry Pi requires 64-bit HAOS. 32-bit `armv7` is not supported.
 - Internet access to download the public image
 - An OpenAI/ChatGPT account with access to Codex
 
@@ -99,13 +97,7 @@ flowchart LR
    https://github.com/Kanu-Coffee/codex-for-home-assistant
    ```
 
-   To test the DEV candidate, add this canary URL without replacing the stable main repository:
-
-   ```text
-   https://github.com/Kanu-Coffee/codex-for-home-assistant#dev
-   ```
-
-2. Select **Codex for Home Assistant** for the public app or **Codex for Home Assistant (DEV)** for the `#dev` candidate, then install and start it. The default is `boot: manual`.
+2. Select **Codex for Home Assistant**, then install and start it. The default is `boot: manual`.
 3. Select **OPEN WEB UI**.
 4. Sign in to Codex once:
 
@@ -130,7 +122,7 @@ flowchart LR
 See the [English user guide](codex_home_assistant/DOCS.en.md) for complete installation, sign-in, SSH, update, and recovery instructions.
 
 > [!NOTE]
-> The public `0.6.0` image is amd64-only. The public multi-architecture tag and native aarch64 CI passed for the previous DEV `0.7.0-dev.1`. Remote `#dev` installation of the current `0.7.0-dev.2` requires its matching exact GHCR tag to be published first. One real HAOS sensitive-path acceptance result is available, but its architecture is unknown, so Raspberry Pi/aarch64 HAOS acceptance remains **NOT RUN**.
+> Stable `0.7.0` provides amd64 and 64-bit aarch64 images. Native aarch64 CI and multi-architecture image validation passed, but a real Raspberry Pi/aarch64 HAOS run remains **NOT RUN**; release approval explicitly accepted that validation gap.
 
 ## Prompts to try
 
@@ -192,7 +184,7 @@ This project's `ha_memory` is a local SQLite/MCP workflow. It is separate from O
 - It does not store raw conversations, current or historical state values, automation action/template bodies, tokens, or passwords.
 - Fresh Home Assistant API data takes priority for structural facts. Conflicts remain visible for review instead of being silently overwritten.
 
-This does not mean the model trains itself or operates your home without approval. Version `0.6.0` remains experimental, and the complete natural-language memory-to-recall flow has not yet been publicly validated on real HAOS hardware.
+This does not mean the model trains itself or operates your home without approval. The complete natural-language memory-to-recall flow has not yet been publicly validated on real HAOS hardware.
 
 ## Key settings
 
@@ -219,7 +211,7 @@ See [all app settings](codex_home_assistant/DOCS.en.md#app-settings) for accepte
 4. After applying a change, check `ha-config-check`, fresh API state, and the browser view.
 5. Treat locks, alarms, garage doors, heating, water, host reboots, and backup restores as separate high-impact actions. State them explicitly and review the latest result immediately before execution.
 
-Custom AppArmor and admin-enforced Codex requirements always block direct reads and writes of root or nested `secrets.yaml` files and `/config/.storage` contents. The AppArmor profile retains only the `.storage` directory traversal/listing needed by the validator, while managed requirements also deny Codex directory reads. The rest of `/config` remains read-write, and the Recorder database is not part of this fixed deny set. Core/Supervisor helpers keep their raw endpoint and response compatibility, so APIs, logs, or authenticated browser views may still reveal sensitive information.
+Custom AppArmor and admin-enforced Codex requirements explicitly block direct reads and writes of root or nested `secrets.yaml` files and `/config/.storage` contents. Codex therefore cannot read those contents through its normal direct filesystem paths, and those contents do not enter Codex through direct file access. The AppArmor profile retains only the `.storage` directory traversal/listing needed by the validator, while managed requirements also deny Codex directory reads. The rest of `/config` remains read-write, and the Recorder database is not part of this fixed deny set. Core/Supervisor helpers keep their raw endpoint and response compatibility, so APIs, logs, or authenticated browser views may still reveal sensitive information.
 
 App initialization and every Codex launch inspect protected paths for symlinks, special files, and files whose link count is not one, failing closed without printing values. This is still a pathname-based boundary: it cannot prevent an external process from adding a hardlink after validation (a TOCTOU race), or protect a sensitive value that a user copies into an ordinary unprotected `/config` file.
 
@@ -227,9 +219,9 @@ App initialization and every Codex launch inspect protected paths for symlinks, 
 
 ## Current limitations
 
-- Public `0.6.0` is amd64-only. **Codex for Home Assistant (DEV)** `0.7.0-dev.2` targets amd64 and 64-bit aarch64. Sensitive-path acceptance passed on one real HAOS system, but Raspberry Pi/aarch64 HAOS acceptance remains **NOT RUN**. 32-bit armv7 is not supported.
+- Stable `0.7.0` supports amd64 and 64-bit aarch64. Native aarch64 CI and image validation passed, but a real Raspberry Pi/aarch64 HAOS run remains **NOT RUN** and was accepted as a release validation gap. 32-bit armv7 is not supported.
 - This is a Home Assistant App (formerly called an Add-on), so it cannot be installed through HACS.
-- The default is `boot: manual`, and the release stage remains `experimental`.
+- The default is `boot: manual`, and the release stage is `stable`.
 - The Web UI is a terminal, not a dedicated mobile chat interface.
 - Bubble Card and other custom cards are not bundled.
 - The read-only user used for Headless browser authentication can see all entity states, so screenshots and diagnostics may still be sensitive.

@@ -6,7 +6,7 @@
 
 This guide explains how Home Assistant OS users can install the app, use Codex through the Web UI, SSH, or mobile Remote, and safely work on dashboards, automations, entities, and configuration errors.
 
-The current public installation baseline is app version `0.6.0`. The `amd64 + aarch64`, custom AppArmor, and managed `workspace-write` boundaries in this guide are the contract for DEV candidate `0.7.0-dev.2`. HAOS displays the app as **Codex for Home Assistant (DEV)** and the sidebar as **Codex DEV**; these changes are not retroactive changes to public `0.6.0`.
+The current stable installation baseline is app version `0.7.0`. HAOS displays the app as **Codex for Home Assistant** and the sidebar as **Codex**.
 
 > [!WARNING]
 > This app can read and write `/config` except for protected `secrets.yaml` and `.storage` paths, and it can use the Home Assistant Core and Supervisor `manager` APIs. API responses, logs, and browser views can still contain sensitive information. Allow only trusted administrators to use it, and review a backup and diff before making changes. Never port-forward TCP `2223` directly to the internet.
@@ -16,11 +16,11 @@ The current public installation baseline is app version `0.6.0`. The `amd64 + aa
 ### Supported environments
 
 - Home Assistant OS or another installation with Supervisor
-- Public `0.6.0` requires an **amd64** device. DEV `0.7.0-dev.2` targets **amd64** and 64-bit **aarch64**; Raspberry Pi requires 64-bit HAOS. 32-bit `armv7` is not supported.
+- Stable `0.7.0` supports **amd64** and 64-bit **aarch64** devices. Raspberry Pi requires 64-bit HAOS. 32-bit `armv7` is not supported.
 - Internet access for the app image and Codex authentication
 - An OpenAI/ChatGPT account with access to Codex
 
-DEV `0.7.0-dev.2` is currently `stage: experimental` and `boot: manual`. Native ARM CI and public amd64+aarch64 image publication and anonymous inspection passed for the previous `0.7.0-dev.1`; on one real HAOS system, AppArmor loading and a new Codex session reporting the fixed sensitive-path policy were observed. The supplied evidence does not include a negative read syscall or identify the device architecture, so Raspberry Pi/aarch64 HAOS acceptance remains **NOT RUN**. Public `0.6.0` is amd64-only, and HACS installation is not supported.
+Stable `0.7.0` uses `stage: stable` and `boot: manual`. The candidate payload lineage passed native ARM CI, public amd64+aarch64 image publication, and anonymous inspection. A real Raspberry Pi/aarch64 HAOS run remains **NOT RUN**; release approval explicitly accepted that gap based on the automated evidence. HACS installation is not supported.
 
 ### What the app provides
 
@@ -39,27 +39,19 @@ The Web UI is a terminal built with `ttyd` and a shared `tmux` session, not a de
 
 [![Add the app repository to Home Assistant](https://my.home-assistant.io/badges/supervisor_add_addon_repository.svg)](https://my.home-assistant.io/redirect/supervisor_add_addon_repository/?repository_url=https%3A%2F%2Fgithub.com%2FKanu-Coffee%2Fcodex-for-home-assistant)
 
-[Add the DEV `#dev` repository directly to Home Assistant](https://my.home-assistant.io/redirect/supervisor_add_addon_repository/?repository_url=https%3A%2F%2Fgithub.com%2FKanu-Coffee%2Fcodex-for-home-assistant%23dev)
-
 If the button does not work, copy this URL:
 
 ```text
 https://github.com/Kanu-Coffee/codex-for-home-assistant
 ```
 
-To test the DEV candidate, add this canary repository URL without replacing the stable main repository:
-
-```text
-https://github.com/Kanu-Coffee/codex-for-home-assistant#dev
-```
-
 1. In Home Assistant, open **Settings → Apps → App store**.
-2. Open the menu in the upper-right corner and add the main URL for the public app or the `#dev` URL for DEV under **Repositories**.
-3. Refresh the App store. The public app appears as **Codex for Home Assistant**; DEV `0.7.0-dev.2` must appear as **Codex for Home Assistant (DEV)**.
-4. Select **Install**. Public `0.6.0` uses a prebuilt amd64 image from GHCR, so your HA device does not compile the source. DEV uses the public `0.7.0-dev.2` amd64+aarch64 GHCR tag only after that exact tag matching `config.yaml` has been published.
+2. Open the menu in the upper-right corner and add the base URL above under **Repositories**.
+3. Refresh the App store and confirm that **Codex for Home Assistant** appears.
+4. Select **Install**. The app uses a prebuilt amd64 or aarch64 image from GHCR, so your HA device does not compile the source.
 5. Start the app with its default settings for the first run.
 
-If public `0.6.0` does not appear, confirm that the device is amd64. A remote DEV install or update fails until the exact versioned image is published. Sensitive-path acceptance passed on one real HAOS system, but Raspberry Pi/aarch64 HAOS acceptance is not complete. If installation fails, keep the App and Supervisor logs, but do not share tokens, internal URLs, or personal information.
+If the app does not appear, confirm that the device is amd64 or 64-bit aarch64. If installation fails, keep the App and Supervisor logs, but do not share tokens, internal URLs, or personal information.
 
 ## First run
 
@@ -156,7 +148,7 @@ The top-level `codex_approval_policy: never` is Codex's full-auto policy and may
 
 ### Sensitive paths and credential boundary
 
-- Custom AppArmor denies read, write, execute, and link operations for `/config/secrets.yaml`, every nested `secrets.yaml`, and `.storage` contents. The profile retains the `.storage` directory traversal/listing operation needed by the image validator, so a root shell under the same profile can see entry names but cannot open their contents. The managed requirements below independently deny Codex directory reads.
+- Custom AppArmor explicitly denies read, write, execute, and link operations for `/config/secrets.yaml`, every nested `secrets.yaml`, and `.storage` contents. Codex therefore cannot read those contents through its normal direct filesystem paths, and those contents do not enter Codex through direct file access. The profile retains the `.storage` directory traversal/listing operation needed by the image validator, so a root shell under the same profile can see entry names but cannot open their contents. The managed requirements below independently deny Codex directory reads.
 - `/etc/codex/requirements.toml` independently denies reads of the same paths and limits allowed modes to `read-only` and `workspace-write`, excluding `danger-full-access`. The app wrapper enforces network-enabled `workspace-write` for actual sessions, and user or project settings cannot weaken the managed deny/allowlist.
 - An image-managed check at app initialization and every Codex launch rejects symlinks, special files, and files whose link count is not one anywhere in `secrets.yaml` or the `.storage` tree, without printing protected paths or values. The app or Codex fails closed on an unsafe shape.
 - The rest of `/config` remains read-write. The Recorder database, ordinary YAML, packages, custom components, and dashboard files are not in this fixed deny set.
@@ -351,7 +343,7 @@ ha-memory conflicts --status open
 
 Do not delete the memory database when its state is `empty`, `degraded`, or `stale`. It may still be learning the initial structure or recovering from a temporary Core connection failure, and it preserves the last successful snapshot.
 
-This feature does not mean the model trains itself or operates your home without approval. Version `0.6.0` remains experimental, and the complete natural-language memory-to-recall flow has not yet been publicly validated on real HAOS hardware.
+This feature does not mean the model trains itself or operates your home without approval. The complete natural-language memory-to-recall flow has not yet been publicly validated on real HAOS hardware.
 
 ## App bug and feature reports
 
@@ -485,7 +477,7 @@ If the failure reports an unsafe protected link or file type, stop the app and u
 
 ### An unused MCP reports a startup error
 
-If `MCP client for '<name>' failed to start` names something other than the image-managed `playwright` or `ha_memory`, it comes from preserved user configuration or trusted-project configuration. For example, the `xcodebuildmcp` warning observed during DEV acceptance is not part of this app's image-managed configuration.
+If `MCP client for '<name>' failed to start` names something other than the image-managed `playwright` or `ha_memory`, it comes from preserved user configuration or trusted-project configuration. For example, the `xcodebuildmcp` warning observed during acceptance is not part of this app's image-managed configuration.
 
 1. Run `codex mcp list` to identify the registered name and scope.
 2. Inspect your own `/data/codex/config.toml` and, only when the project is trusted, `/config/.codex/config.toml` for that MCP entry. Do not print the complete configuration or any credential values.
@@ -520,7 +512,7 @@ ha-memory status
 
 Give Core time to become ready and check again. Do not directly delete or edit the database or WAL files. Collect the app version, Core version, and the status's closed error code, but do not share raw tokens or API responses.
 
-During actual `0.7.0-dev.1` acceptance, this state persisted when a registry/state automation's config lookup repeatedly failed. `0.7.0-dev.2` isolates only Core's exact `automation/config` `not_found` as empty details plus a bounded warning. If a different closed error code remains `degraded/stale` after updating, do not ignore it broadly; share only that code and its timestamp for separate diagnosis.
+During an earlier acceptance run, this state persisted when a registry/state automation's config lookup repeatedly failed. Stable `0.7.0` isolates only Core's exact `automation/config` `not_found` as empty details plus a bounded warning. If a different closed error code remains `degraded/stale` after updating, do not ignore it broadly; share only that code and its timestamp for separate diagnosis.
 
 ### Direct GitHub feedback submission fails
 
@@ -555,12 +547,12 @@ Before uninstalling, decide how to handle any Codex configuration and authentica
 
 ## Limitations and support
 
-- Public `0.6.0` is amd64-only. **Codex for Home Assistant (DEV)** `0.7.0-dev.2` targets amd64 and 64-bit aarch64. Sensitive-path acceptance passed on one real HAOS system, but Raspberry Pi/aarch64 HAOS acceptance remains **NOT RUN**; armv7 is unsupported.
-- `secrets.yaml` and `.storage` content access is blocked and managed requirements also deny Codex directory reads, but the AppArmor validator allowance leaves `.storage` entry listing available to a root shell. Sensitive raw API, log, and browser output is not sanitized, and a root interactive process also retains residual access to the private runtime credential file.
+- Stable `0.7.0` supports amd64 and 64-bit aarch64. Native aarch64 CI and image validation passed, but a real Raspberry Pi/aarch64 HAOS run remains **NOT RUN** and was accepted as a release validation gap. Armv7 is unsupported.
+- `secrets.yaml` and `.storage` contents are explicitly blocked from normal direct Codex filesystem access, so their contents do not enter Codex through that path; managed requirements also deny Codex directory reads. The AppArmor validator allowance still leaves `.storage` entry listing available to a root shell. Sensitive raw API, log, and browser output is not sanitized, and a root interactive process also retains residual access to the private runtime credential file.
 - It does not bundle or automatically install Bubble Card or other custom cards.
 - The Web UI is a terminal, not a dedicated chat interface.
 - Automation and dashboard results vary by environment and prompt and require human review.
-- Public validation of the complete `0.6.0` natural-language memory loop on real HAOS hardware is still incomplete.
+- Public validation of the complete natural-language memory loop on real HAOS hardware is still incomplete.
 - Automated validation does not create a real GitHub issue without separate explicit approval.
 - Supervisor endpoints and OpenAI Remote availability can vary with Home Assistant/OpenAI versions and policies.
 

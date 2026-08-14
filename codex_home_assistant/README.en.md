@@ -28,7 +28,7 @@ Use Codex inside Home Assistant to inspect your setup and improve dashboards, au
 
 ## Quick start
 
-1. Install and start the app. Public `0.6.0` is **amd64-only**. Development candidate `0.7.0-dev.2` appears in HAOS as **Codex for Home Assistant (DEV)** and in the sidebar as **Codex DEV**, and supports `amd64` and 64-bit `aarch64`. It remains `stage: experimental` and `boot: manual`. Native ARM CI and the previous DEV multi-architecture image verification passed. On one real HAOS installation of `0.7.0-dev.1`, AppArmor loading, ordinary `/config` writes, and a new Codex session reporting the fixed sensitive-path policy were observed. A negative read syscall and the device architecture were not supplied, so Raspberry Pi/aarch64 HAOS acceptance is not complete. The sensitive-path protections below describe DEV and are not retroactive changes to public `0.6.0`.
+1. Install and start stable `0.7.0`. It supports `amd64` and 64-bit `aarch64`, with `stage: stable` and `boot: manual`. Native ARM CI and multi-architecture image validation passed. A real Raspberry Pi/aarch64 HAOS run was not performed; release approval explicitly accepted that gap based on the automated evidence.
 2. Select **OPEN WEB UI**.
 3. Sign in once with `ha-codex-login`.
 4. Run `ha-codex`.
@@ -36,7 +36,7 @@ Use Codex inside Home Assistant to inspect your setup and improve dashboards, au
 
 If you do not need SSH, leave `authorized_keys` empty. The Web UI will continue to work.
 
-Custom AppArmor and `/etc/codex/requirements.toml` block access to every `secrets.yaml` and `/config/.storage` content. Only validator-required `.storage` directory listing remains in the AppArmor profile, while managed requirements also deny Codex directory reads. Init and every Codex launch fail closed on symlinks, special files, or multiple hardlinks. The rest of `/config` remains read-write, and this is not complete DLP against a post-check external hardlink, values copied to unprotected paths, or raw API responses.
+Custom AppArmor and `/etc/codex/requirements.toml` explicitly block direct access to every `secrets.yaml` and `/config/.storage` content. Codex therefore cannot read those contents through its normal direct filesystem paths, and those contents do not enter Codex through direct file access. Only validator-required `.storage` directory listing remains in the AppArmor profile, while managed requirements also deny Codex directory reads. Init and every Codex launch fail closed on symlinks, special files, or multiple hardlinks. The rest of `/config` remains read-write, and this is not complete DLP against a post-check external hardlink, values copied to unprotected paths, the root runtime credential, or raw API/log/browser responses.
 
 ## Example requests
 

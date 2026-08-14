@@ -85,7 +85,7 @@ S6 디렉터리 방식은 선택한 최신 Home Assistant base image의 공식 �
 ## 2. `repository.yaml` 초안
 
 ```yaml
-name: Codex for Home Assistant (DEV)
+name: Codex for Home Assistant
 url: https://github.com/<owner>/codex-for-home-assistant
 maintainer: <owner>
 ```
@@ -94,15 +94,15 @@ GitHub owner는 실제 계정에 맞춰 Codex가 채운다.
 
 ## 3. `config.yaml` 목표 초안
 
-Public `0.6.0`은 amd64만 제공한다. DEV M3 candidate `0.7.0-dev.2`는 native CI와 실기 상태를 분리해 다음 두 아키텍처를 선언한다.
+Stable `0.7.0`은 다음 두 아키텍처를 선언한다. Native CI와 공개 image 검증은 통과했으며 실제 aarch64 HAOS 실기는 `NOT RUN`으로 별도 기록한다.
 
 ```yaml
-name: Codex for Home Assistant (DEV)
-version: "0.7.0-dev.2"
+name: Codex for Home Assistant
+version: "0.7.0"
 slug: codex_home_assistant
-description: "[DEV] Codex CLI with verified feedback, browser, terminal, and SSH for Home Assistant"
+description: "Codex CLI with verified feedback, browser, terminal, and SSH for Home Assistant"
 url: https://github.com/<owner>/codex-for-home-assistant
-stage: experimental
+stage: stable
 startup: application
 boot: manual
 init: false
@@ -115,7 +115,7 @@ ingress: true
 ingress_port: 7681
 ingress_stream: true
 panel_icon: mdi:console
-panel_title: Codex DEV
+panel_title: Codex
 panel_admin: true
 
 ports:
@@ -174,7 +174,7 @@ apparmor: false
 사용자 요구사항인 SSH 포트 변경은 Home Assistant UI의 App **Network** 영역에서 제공한다.
 
 ```text
-Settings → Apps → Codex for Home Assistant (DEV) → Configuration/Network
+Settings → Apps → Codex for Home Assistant → Configuration/Network
 22/tcp → 원하는 host port
 ```
 
@@ -560,8 +560,8 @@ Playwright MCP child는 Supervisor token을 받지 않는다. 검증된 dedicate
 
 ## 14. Release image
 
-로컬 개발 단계에서는 `image`를 주석 처리한 local build를 허용한다. `0.1.3`부터 공식 Home Assistant builder actions `2026.06.0`으로 amd64 image와 generic manifest를 미리 빌드하고 `config.yaml`의 `image`에 `ghcr.io/kanu-coffee/codex-for-home-assistant`를 사용한다. Public `0.6.0`까지의 배포 증거는 amd64만 해당한다.
+로컬 개발 단계에서는 `image`를 주석 처리한 local build를 허용한다. `0.1.3`부터 공식 Home Assistant builder actions `2026.06.0`으로 image와 generic manifest를 미리 빌드하고 `config.yaml`의 `image`에 `ghcr.io/kanu-coffee/codex-for-home-assistant`를 사용한다. `0.7.0`부터 stable metadata는 amd64와 aarch64를 선언한다.
 
-DEV `0.7.0-dev.1`은 [dev CI 31549518729](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/31549518729)에서 native amd64/aarch64 full smoke를 PASS했다. [Tag Builder 31550037239](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/31550037239)는 architecture별 SPDX SBOM, Critical 차단·High/Critical 보고, per-architecture Cosign/provenance/SBOM attestation, generic Cosign/provenance와 final tag promotion을 PASS했다. Generic manifest digest는 `sha256:703fd667d21c2b101b546652f9b781725a31b071377bf205cd130640e79d5ae5`, amd64 runtime digest는 `sha256:e19882421cc86ac1042a6c512c808db35bb4b506134db482f2a5d6c9f78606b2`, aarch64 runtime digest는 `sha256:dc43af845b5b60749e0599047f2cfeaa2ec0838b2783826ad872da2e990c27c5`다. 후속 한 실제 HAOS의 profile load·일반 `/config` RW·App/Ingress/Codex 시작·새 session direct sensitive-path deny는 관측 범위 PASS지만 architecture가 제공되지 않았다. 따라서 실제 Raspberry Pi/aarch64 HAOS와 custom AppArmor/helper 전체 runtime 수용은 **NOT RUN**으로 유지하고 automated release, 부분 실기와 platform acceptance를 구분한다.
+`0.7.0`의 payload lineage는 [dev CI 31549518729](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/31549518729)에서 native amd64/aarch64 full smoke를 PASS했다. [Tag Builder 31550037239](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/31550037239)는 후보 payload의 architecture별 SPDX SBOM, Critical 차단·High/Critical 보고, per-architecture Cosign/provenance/SBOM attestation, generic Cosign/provenance와 final tag promotion을 PASS했다. 후속 실제 amd64 HAOS 보고서는 `0.7.0-dev.2`의 App/Ingress/browser/memory와 AppArmor profile 적용을 확인했다. 실제 Raspberry Pi/aarch64 HAOS와 syscall-level 전체 음성 행렬은 **NOT RUN**이며, 2026-08-14 릴리스 승인에서 이 공백을 명시적으로 수용했지만 실행 결과로 확대하지 않는다.
 
-Playwright renderer는 `0.2.0`, 최소권한 browser 경로는 `0.2.1`, 관리형 인증은 `0.2.2`, 기본 ON 자동 인증·Codex `8099` 라우팅과 선택형 user-file refresh는 `0.2.3`, 검증형 memory 사용자 폐루프는 `0.5.0`, 검증형 App 피드백 자동화는 `0.6.0`이다. Stable `X.Y.Z` 또는 `N >= 1` 번호형 DEV `X.Y.Z-dev.N` Git tag와 App version이 정확히 같을 때만 게시하며, DEV version은 repository/App 표시명, panel, description, OCI title과 MOTD에 DEV 표식을 함께 가져야 한다. Generic, amd64와 aarch64 package의 기존 tag는 덮어쓰지 않는다. `#dev` canary 원격 설치는 exact version GHCR tag를 필요로 하며 `0.7.0-dev.1` tag는 위 Builder에서 발행됐다. Home Assistant `stage`는 별도 M3 평가 전까지 `experimental`을 유지한다. `0.6.0` live GitHub issue creation은 명시적 외부-write 승인 전까지 `NOT RUN`으로 유지한다.
+Playwright renderer는 `0.2.0`, 최소권한 browser 경로는 `0.2.1`, 관리형 인증은 `0.2.2`, 기본 ON 자동 인증·Codex `8099` 라우팅과 선택형 user-file refresh는 `0.2.3`, 검증형 memory 사용자 폐루프는 `0.5.0`, 검증형 App 피드백 자동화는 `0.6.0`, 멀티아키텍처·고정 민감 경로 차단 안정판은 `0.7.0`이다. Stable `X.Y.Z` 또는 `N >= 1` 번호형 DEV `X.Y.Z-dev.N` Git tag와 App version이 정확히 같을 때만 게시하며, DEV version은 repository/App 표시명, panel, description, OCI title과 MOTD에 DEV 표식을 함께 가져야 한다. Stable version에는 이 표식을 남기지 않는다. Generic, amd64와 aarch64 package의 기존 tag는 덮어쓰지 않는다. Home Assistant `stage`는 `stable`이다. `0.6.0` live GitHub issue creation은 명시적 외부-write 승인 전까지 `NOT RUN`으로 유지한다.

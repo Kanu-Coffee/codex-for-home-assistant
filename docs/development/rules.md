@@ -138,6 +138,7 @@ Codex 인증 디렉터리와 SSH 키는 최소 권한으로 생성한다.
 - `config.yaml`은 최신 공식 스키마를 따른다.
 - `repository.yaml`, `DOCS.md`, `CHANGELOG.md`, 번역 파일을 제공한다.
 - 개발 후보는 새 아키텍처를 `config.yaml`과 native CI matrix에 함께 추가할 수 있지만 검증 상태를 `NOT RUN`으로 명시한다. Public 지원 완료와 release는 native CI와 실제 HAOS 수용을 모두 통과한 아키텍처만 주장한다.
+- `0.7.0`의 64비트 `aarch64`는 위 일반 규칙의 좁은 1회 예외다. Maintainer가 2026-08-14 native ARM CI, architecture-neutral smoke와 공개 멀티아키텍처 image 증거를 검토하고 실제 Raspberry Pi/aarch64 HAOS 수용 `NOT RUN` 위험을 명시적으로 승인했다. 따라서 stable metadata에는 aarch64를 지원 대상으로 선언하되 실제 HAOS 시험을 PASS로 기록하지 않으며, 이후 architecture/runtime 변경에는 이 예외를 자동 재사용하지 않는다.
 - 과거 `build.yaml` 관행을 복사하지 말고 현재 공식 builder 방식을 확인한다.
 
 ### R-304 오류 처리

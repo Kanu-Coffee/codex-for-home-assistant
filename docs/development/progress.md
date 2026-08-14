@@ -4,8 +4,8 @@
 
 ## Project Status
 
-- 상태: **public 0.6.0 amd64 정확 이미지 전체 회귀 PASS / DEV 0.7.0-dev.2 `#dev` amd64+aarch64 CI·Builder·발행·익명 manifest 확인 PASS / 이전 0.7.0-dev.1의 한 실제 HAOS profile load와 Codex 고정 민감 경로 정책 보고 관측 / 실제 0.7.0-dev.2 HAOS update·read syscall 음성 출력·aarch64 HAOS·전체 AppArmor/helper 행렬 NOT RUN / 실제 HAOS feedback live NOT RUN / 실제 HAOS `never` 14/16 승인 0회 PASS·전체 승인 행렬 PARTIAL / public 0.3.2 memory live PARTIAL(FAIL 0) / 0.5.0 자연어 memory live 수용 대기**
-- 현재 마일스톤: **실제 HAOS를 DEV 0.7.0-dev.2로 일반 update한 뒤 memory ready·minimal log 재검증**
+- 상태: **stable 0.7.0 승격 승인·main release pipeline 진행 / payload lineage의 amd64+aarch64 CI·Builder·발행·익명 manifest PASS / 실제 amd64 HAOS 0.7.0-dev.2 App·Ingress·browser·memory ready/fresh와 AppArmor profile 적용 관측 / syscall-level 민감 경로 음성 전체 행렬과 실제 aarch64 HAOS NOT RUN·maintainer 위험 수용 / 실제 HAOS feedback live NOT RUN / 실제 HAOS `never` 14/16 승인 0회 PASS·전체 승인 행렬 PARTIAL / public 0.3.2 memory live PARTIAL(FAIL 0) / 0.5.0 자연어 memory live 수용 대기**
+- 현재 마일스톤: **stable 0.7.0 identity/version으로 main 병합, tag·멀티아키 image·GitHub Release 발행과 사후 증거 기록**
 - 마지막 문서 기준일: **2026-08-14**
 - 저장소: public `Kanu-Coffee/codex-for-home-assistant`, default branch `main`
 
@@ -26,6 +26,16 @@
 
 ## Current Work
 
+### 2026-08-14 — stable 0.7.0 승격 승인
+
+- 사용자 수용 보고서는 실제 amd64 HAOS에서 `0.7.0-dev.2` App이 started 상태이고 설치 runtime과 당시 `dev` HEAD의 image-managed 파일 hash가 일치함을 확인했다. Protected-tree integrity와 일반 `/config` RW, AppArmor profile 적용, Ingress/ttyd, 관리형 browser와 loopback gateway, `ha-memoryd`의 `ready`/`fresh` 수렴, 733 objects·937 relations, bounded warning 7건과 desktop/mobile browser 무오류 경로가 관측됐다.
+- Custom AppArmor와 managed requirements는 root·nested `secrets.yaml`과 `/config/.storage` content를 정상적인 Codex 직접 파일 접근에서 명시적으로 거부하므로 그 경로로 내용이 Codex에 전달되지 않는 stable 계약으로 승격한다. 이는 완전한 DLP가 아니다. API·로그·인증 browser raw response, 사용자가 비보호 경로로 복사한 값, root interactive process의 runtime credential 직접 read와 pathname hardlink TOCTOU는 잔여 경계로 유지한다.
+- 실제 read syscall 수준의 전체 음성 행렬, Web/SSH root-shell과 모든 alias/special/helper 조합, 독립 post-publication Cosign/attestation 확인, feedback live 제출과 일부 UI/semantic-memory acceptance는 실행하지 않았다. 사용자는 2026-08-14 이 나머지 공백을 stable 승격 위험으로 승인했다. 이 항목들은 **waived/accepted**이며 `PASS` 또는 실행 완료로 바꾸지 않는다.
+- 실제 Raspberry Pi/64-bit aarch64 HAOS 설치·Ingress·SSH·Codex·API·browser 수용도 **NOT RUN**이다. Maintainer는 native `ubuntu-24.04-arm` CI, architecture-neutral full smoke와 공개 멀티아키텍처 image 검증을 근거로 `0.7.0` aarch64 지원을 선언하는 R-303의 좁은 1회 예외를 승인했다. 이후 architecture/runtime 변경에는 이 예외를 자동 재사용하지 않는다.
+- 안정판 표면은 **Codex for Home Assistant**, panel **Codex**, version `0.7.0`, `stage: stable`, base repository URL로 정리한다. Stable 사용자 문서에는 DEV 버튼·표시명·canary 설치 지시를 싣지 않고, 과거 후보 증거와 채널 규칙만 engineering history에 보존한다.
+- local 검증: Python unit/contract **114 passed**, Home Assistant memory core 10개와 source client 12개, YAML/Markdown/ShellCheck/Hadolint/actionlint/AppArmor parser, `git diff --check`를 통과했다. Final local amd64 stable image `sha256:c89ffb18f929a513481e202f208ee13d7abd0e1a836ea278a8156bb970555fb6`의 `0.7.0` label·baked version·MOTD와 DEV/experimental 표식 부재를 확인했고, feedback·full Docker runtime·browser approval·memory·managed browser auth·user-file·managed Codex sandbox/sensitive path 및 exact public `0.6.0` → local `0.7.0` update/persistence 8개 smoke가 PASS했다. Architecture metadata mismatch build도 artifact 설치 전에 fail closed했다.
+- 현재 전달 상태: stable source/documentation PR, main CI, annotated `0.7.0` tag, tag Builder의 amd64+aarch64 publish/signing/attestation, 익명 manifest 확인과 GitHub Release는 이 변경 시점에 아직 실행 전이며 완료 후 exact run/SHA/digest를 별도 기록한다.
+
 ### 2026-08-14 — DEV 0.7.0-dev.2 HAOS 수용 후속
 
 - 입력 증거: 사용자가 `#dev`의 `0.7.0-dev.1`을 실제 HAOS에 설치했다. Supervisor는 custom AppArmor profile을 load하고 exact GHCR tag를 내려받았으며, App log는 protected-tree integrity와 일반 `/config` RW, ttyd/Ingress/Codex 시작을 확인했다. 사용자의 새 Codex session은 root·nested `secrets.yaml`과 `.storage` 직접 접근이 고정 정책으로 허용되지 않는다고 보고했다. 실제 read syscall 음성 출력과 runtime architecture는 제공되지 않아 강제 거부와 amd64/aarch64 HAOS 판정은 분리한다.
@@ -35,7 +45,7 @@
 - local 검증: version surface를 `0.7.0-dev.2`로 동기화하고 Python unit/contract **113 passed**, source memory client 12개·installed image memory client 13개, YAML/Markdown/ShellCheck/Hadolint/actionlint/AppArmor parser와 `git diff --check`를 통과했다. Final amd64 image build·label/nginx syntax, 7개 architecture-neutral smoke, actual minimal access/error log 502 probe와 exact public `0.7.0-dev.1` → local `0.7.0-dev.2` update smoke가 PASS했다. 첫 image build의 GitHub DNS 실패는 host-network 재시도에서 checksum 고정 artifact build가 성공해 구현 실패와 분리했다.
 - 원격 검증: [PR #36](https://github.com/Kanu-Coffee/codex-for-home-assistant/pull/36)의 [CI 31759991854](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/31759991854)와 non-publishing [Builder 31759992068](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/31759992068)가 amd64/native aarch64 회귀와 양 architecture SBOM/scan을 PASS했다. PR은 merge commit `45c2062a4515f4663b83f68675b0091f3de67e3b`로 `dev`에 병합됐고 [dev CI 31760252237](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/31760252237)도 PASS했다.
 - 발행 결과: annotated tag object `9c7fa71e33f45dcb2ec132297f1cfe0bbee5fc1c`은 위 merge commit으로 peel된다. [Tag Builder 31760484384](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/31760484384)는 양 architecture의 SBOM/Critical gate, signing/attestation 단계, generic manifest와 final tag promotion을 PASS했다. Scan은 architecture마다 Critical 0/High 68이며 High는 비차단 보고다. 익명 조회에서 generic `sha256:781c96531771d24e2263b09aef908e72fbbb8344d94e3ac3e601367d51190f85`, amd64 `sha256:aecf766814049068dcf08393f061a725f8c15025ccf9d1acfde3b7d3aaeb7206`, aarch64 `sha256:eaa2fb6ce85f7a522f0a2290a38b2183ab7e41940a608b6cd8cf52ba7da058eb`와 공개 config/layer를 확인했다.
-- 남은 경계: 독립 Cosign signature/attestation 검증과 실제 HAOS `0.7.0-dev.2` 일반 update 뒤 `ha-memory status`의 `ready` 수렴·minimal log 관측은 **NOT RUN**이다. `main`과 public `0.6.0`은 변경하지 않았다.
+- 후속 수용: 이후 사용자 제공 읽기 전용 HAOS 보고서에서 실제 `0.7.0-dev.2` App 시작, `ha-memory` ready/fresh 수렴과 privacy-minimized Ingress logging이 관측됐다. 독립 Cosign signature/attestation 검증과 전체 syscall-level 보안 행렬은 계속 **NOT RUN**이다. 이 후보 발행 시점의 `main`과 public `0.6.0`은 변경하지 않았다.
 
 ### 2026-08-11~12 — DEV 0.7.0-dev.1 멀티아키텍처·민감 경로·공급망 후보
 
@@ -529,24 +539,24 @@
 - [x] amd64+aarch64 App arch 선언과 native ARM build/runtime-version CI workflow 구현
 - [x] Native ARM job에 architecture-neutral 7개 smoke parity wiring 구현
 - [x] Native ARM runner job 실제 실행 — [dev CI 31549518729](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/31549518729) PASS
-- [ ] aarch64 HAOS 실기 테스트
-- [x] `arch`에 aarch64 후보 추가 — native CI·DEV image 발행 완료, HAOS platform acceptance 표시는 실제 HAOS 수용 뒤 확정
+- [ ] aarch64 HAOS 실기 테스트 — **NOT RUN**, 2026-08-14 stable `0.7.0`의 좁은 maintainer 위험 수용으로 면제했으며 PASS로 간주하지 않음
+- [x] `arch`에 aarch64 stable 지원 추가 — native CI·멀티아키 image 증거 기반 1회 승인; 실제 HAOS 수용 공백은 계속 공개
 - [x] AppArmor+managed requirements로 root/nested `secrets.yaml`·`.storage` 고정 차단
-- [ ] 실제 HAOS에서 민감 경로 deny와 나머지 `/config` RW·API/browser 가용성 검증
+- [x] 실제 amd64 HAOS에서 profile 적용, protected-tree preflight, 나머지 `/config` RW·App/Ingress/browser/memory 가용성 관측 — syscall-level deny와 전체 helper 행렬은 NOT RUN/승인된 공백
 - [x] SBOM·취약점 scan·Cosign/provenance/SBOM attestation·action SHA pin·Dependabot workflow 구현
 - [x] Release workflow 실행에서 multi-arch manifest와 SBOM/scan/signing/attestation 단계 검증 — latest DEV [Builder 31760484384](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/31760484384) PASS; 독립 post-publication signature/attestation 검증은 NOT RUN
 - [ ] 설치·복구 UX 개선
-- [ ] stage를 experimental에서 stable로 바꿀 조건 평가
+- [x] stage를 stable로 승격 — 2026-08-14 사용자 승인, 남은 NOT RUN 항목은 위험 수용으로 기록
 
 ## Open Questions / Required Spikes
 
 | ID | 질문 | 현재 처리 |
 |---|---|---|
-| Q-001 | Codex standalone 바이너리가 선택한 Alpine/base image의 amd64 및 aarch64에서 안정적인가? | amd64 CLI/app-server와 public image 회귀 PASS; aarch64 official asset/checksum, native CI와 release runtime PASS, 실제 HAOS는 NOT RUN |
+| Q-001 | Codex standalone 바이너리가 선택한 Alpine/base image의 amd64 및 aarch64에서 안정적인가? | amd64 CLI/app-server와 실제 HAOS 주요 경로 PASS; aarch64 official asset/checksum, native CI와 release runtime PASS, 실제 aarch64 HAOS는 NOT RUN이며 stable 0.7.0 위험 수용 |
 | Q-002 | ttyd의 Ingress base path/WebSocket 처리가 추가 플래그 없이 가능한가? | nginx/ttyd 로컬 PASS; 실제 Supervisor Ingress는 M2 |
-| Q-003 | Codex `workspace-write` sandbox가 HAOS App 컨테이너에서 정상 작동하는가? | DEV `0.7.0-dev.1` 실제 HAOS에서 일반 `/config` RW와 새 session의 고정 민감 경로 정책 보고는 관측; 실제 read syscall 음성 출력·architecture·Web/SSH/helper/update 전체 통합 검증은 미완료 |
+| Q-003 | Codex `workspace-write` sandbox가 HAOS App 컨테이너에서 정상 작동하는가? | 실제 amd64 HAOS에서 일반 `/config` RW, App/Ingress/browser/memory와 고정 민감 경로 정책 보고는 관측; 실제 read syscall 음성 출력·Web/SSH/helper 전체 통합 행렬은 NOT RUN/승인된 공백 |
 | Q-004 | `manager` 역할에서 필요한 Supervisor 엔드포인트가 모두 허용되는가? | endpoint별 통합 테스트로 확인; admin 자동 승격 금지 |
-| Q-005 | 실제 사용자 HAOS 아키텍처는 무엇인가? | DEV `0.7.0-dev.1` 실제 HAOS 설치 증거는 있으나 제공 로그에 architecture가 없음. 64-bit Raspberry Pi/aarch64 HAOS 수용은 NOT RUN |
+| Q-005 | 실제 사용자 HAOS 아키텍처는 무엇인가? | 후속 종합 보고서는 현재 수용 장비를 amd64로 판정했다. 64-bit Raspberry Pi/aarch64 HAOS 수용은 NOT RUN이며 stable 0.7.0에서 명시적으로 위험 수용 |
 | Q-006 | mobile Remote 직접 SSH가 Alpine/musl 원격 app-server를 정상 시작하는가? | 사용자 E2E PASS; Codex/아키텍처 변경 시 재검증 |
 
 ## 최근 완료 기록
