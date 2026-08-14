@@ -5,7 +5,7 @@
   "description": "Pinned Playwright MCP runtime for Codex for Home Assistant",
   "license": "Apache-2.0",
   "dependencies": {
-    "@playwright/mcp": "0.0.78",
+    "@playwright/mcp": "0.0.79",
     "ws": "8.21.0"
   }
 }
