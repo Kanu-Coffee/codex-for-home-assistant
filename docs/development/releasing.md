@@ -9,14 +9,14 @@
 - Home Assistant App repository: `https://github.com/Kanu-Coffee/codex-for-home-assistant`
 - DEV canary repository: `https://github.com/Kanu-Coffee/codex-for-home-assistant#dev`
 - image: `ghcr.io/kanu-coffee/codex-for-home-assistant:<version>`
-- stable release target `0.7.0` architecture: `amd64`, `aarch64` (`armv7` 미지원)
+- current stable release `0.7.0` architecture: `amd64`, `aarch64` (`armv7` 미지원)
 - latest historical DEV publication: `0.7.0-dev.2`
 - stable version tag: `X.Y.Z`
 - numbered DEV version tag: `X.Y.Z-dev.N` (`N`은 1 이상의 정수이며 새 후보마다 사용하지 않은 번호 선택)
 - mutable `latest` tag는 발행하지 않음
 - 기존 version tag는 덮어쓰지 않음
 
-Supervisor는 `config.yaml`의 `image`와 `version`으로 미리 빌드된 image를 받습니다. 사용자 장치에서 Dockerfile을 소스 빌드하는 배포 방식이 아닙니다. 따라서 stable 또는 canary metadata가 보여도 정확한 version image가 발행되지 않았다면 원격 HAOS 설치·업데이트는 실패합니다. `0.7.0` stable source merge 뒤 exact tag Builder와 익명 manifest resolution이 완료돼야 사용자에게 설치 완료로 안내합니다. Historical `0.7.0-dev.2` image는 이미 발행·검증됐지만 stable tag의 대체물이 아닙니다.
+Supervisor는 `config.yaml`의 `image`와 `version`으로 미리 빌드된 image를 받습니다. 사용자 장치에서 Dockerfile을 소스 빌드하는 배포 방식이 아닙니다. 따라서 stable 또는 canary metadata가 보여도 정확한 version image가 발행되지 않았다면 원격 HAOS 설치·업데이트는 실패합니다. Stable `0.7.0`은 exact annotated tag, amd64/aarch64 image와 generic manifest, 서명/attestation 및 익명 조회가 완료됐습니다. Historical `0.7.0-dev.2` image는 stable tag의 대체물이 아닙니다.
 
 기존 `#dev` 설치와 main 저장소 설치는 Supervisor repository identity가 다릅니다. `#dev` → main source의 in-place `/data` 보존 전환은 검증되지 않았으므로 같은-repository 일반 update라고 안내하지 않습니다. 앱 삭제·재설치를 서두르지 말고 backup과 별도 source-migration 수용 절차를 준비합니다.
 
@@ -48,6 +48,8 @@ Stable manifest는 `stage` 키를 생략해 Supervisor 기본 stable 채널을 �
 7. HAOS에서만 확인 가능한 경로는 PASS로 추정하지 않고 `NOT RUN` 또는 `PARTIAL`로 남깁니다. 승인된 waiver도 PASS로 바꾸지 않습니다.
 
 `0.7.0-dev.2`는 [PR #36 CI 31759991854](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/31759991854)와 non-publishing [Builder 31759992068](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/31759992068), merge commit `45c2062a4515f4663b83f68675b0091f3de67e3b`의 [dev CI 31760252237](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/31760252237)를 PASS했습니다.
+
+Stable `0.7.0` source는 [PR #38](https://github.com/Kanu-Coffee/codex-for-home-assistant/pull/38)에서 [CI 31783339660](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/31783339660)과 non-publishing [Builder 31783339839](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/31783339839)를 PASS한 뒤 `bc4cfcb7eda82d00de5cd92df5acf80df6ac2650`으로 `main`에 병합됐습니다. 같은 merge의 [main CI 31783664590](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/31783664590)도 PASS했습니다.
 
 ## 태그와 image 게시
 
@@ -87,7 +89,13 @@ DEV `0.7.0-dev.1`의 native amd64/aarch64 CI는 [dev CI 31549518729](https://git
 
 Historical DEV `0.7.0-dev.2`의 annotated tag object `9c7fa71e33f45dcb2ec132297f1cfe0bbee5fc1c`은 위 `dev` merge commit으로 peel됩니다. [Tag Builder 31760484384](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/31760484384)는 양 architecture의 SBOM/Critical gate, signing/attestation 단계, manifest 검증과 final promotion을 PASS했습니다. 각 architecture scan은 Critical 0/High 68이며 High는 비차단입니다. 익명 조회한 digest는 generic `sha256:781c96531771d24e2263b09aef908e72fbbb8344d94e3ac3e601367d51190f85`, amd64 `sha256:aecf766814049068dcf08393f061a725f8c15025ccf9d1acfde3b7d3aaeb7206`, aarch64 `sha256:eaa2fb6ce85f7a522f0a2290a38b2183ab7e41940a608b6cd8cf52ba7da058eb`이며 config와 layer도 공개 조회됩니다. 이 증거는 stable `0.7.0` exact tag의 Builder·digest·서명·attestation·익명 pull 확인을 대체하지 않습니다.
 
-Stable `0.7.0`의 exact main SHA, CI/Builder run, generic/amd64/aarch64 digest와 GitHub Release는 publication 완료 후 이 절과 [progress.md](progress.md)에 기록합니다. 실제 Raspberry Pi/aarch64 HAOS는 계속 **NOT RUN**이며 승인된 위험 수용으로만 표시합니다.
+Stable `0.7.0`의 annotated tag object `24386ac011336c2b50f60762144569118762e2f7`은 `main` merge `bc4cfcb7eda82d00de5cd92df5acf80df6ac2650`으로 peel됩니다. [Tag Builder 31783958477](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/31783958477)은 양 architecture build, SPDX SBOM/Critical gate, signing/attestation, verified manifest와 final tag promotion을 PASS했습니다.
+
+익명 registry 확인에서 generic digest는 `sha256:95bd8d04c34a3b3cebe463b03c6d2e6b73f1847e2529d9c9ff08a6f64fa700ef`, linux/amd64는 `sha256:19c48ec0e4cc1748296925442563190b3953677bb784279c4d40bff0de224e92`, linux/arm64는 `sha256:d054f142330b4ee24954d7ca9b6e209e066575e775950eccfff754bad798b75a`입니다. Generic manifest, architecture별 manifest/config와 각 image의 참조 layer 8개가 모두 인증 없이 조회됐습니다.
+
+`gh attestation verify`로 architecture별 provenance/SPDX SBOM과 generic provenance를 검증했고, Cosign `3.0.3`으로 exact release workflow identity, `refs/tags/0.7.0` source ref와 세 digest를 고정해 signature를 독립 검증했습니다. Attestation 기록은 [amd64 provenance 40691611](https://github.com/Kanu-Coffee/codex-for-home-assistant/attestations/40691611), [amd64 SBOM 40691626](https://github.com/Kanu-Coffee/codex-for-home-assistant/attestations/40691626), [aarch64 provenance 40691515](https://github.com/Kanu-Coffee/codex-for-home-assistant/attestations/40691515), [aarch64 SBOM 40691531](https://github.com/Kanu-Coffee/codex-for-home-assistant/attestations/40691531), [generic provenance 40692045](https://github.com/Kanu-Coffee/codex-for-home-assistant/attestations/40692045)입니다.
+
+[GitHub Release 0.7.0](https://github.com/Kanu-Coffee/codex-for-home-assistant/releases/tag/0.7.0)은 draft/prerelease가 아닌 latest release로 게시됐고 repository About은 stable amd64/aarch64 제품 설명으로 갱신됐습니다. 실제 Raspberry Pi/aarch64 HAOS는 계속 **NOT RUN**이며 승인된 위험 수용으로만 표시합니다. 실제 stable HAOS App Store 노출/설치와 기존 `#dev` source migration도 별도 실기 전에는 PASS로 기록하지 않습니다.
 
 ## 롤백 원칙
 

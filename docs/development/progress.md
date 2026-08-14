@@ -4,8 +4,8 @@
 
 ## Project Status
 
-- 상태: **stable 0.7.0 승격 승인·main release pipeline 진행 / payload lineage의 amd64+aarch64 CI·Builder·발행·익명 manifest PASS / 실제 amd64 HAOS 0.7.0-dev.2 App·Ingress·browser·memory ready/fresh와 AppArmor profile 적용 관측 / syscall-level 민감 경로 음성 전체 행렬과 실제 aarch64 HAOS NOT RUN·maintainer 위험 수용 / 실제 HAOS feedback live NOT RUN / 실제 HAOS `never` 14/16 승인 0회 PASS·전체 승인 행렬 PARTIAL / public 0.3.2 memory live PARTIAL(FAIL 0) / 0.5.0 자연어 memory live 수용 대기**
-- 현재 마일스톤: **stable 0.7.0 identity/version으로 main 병합, tag·멀티아키 image·GitHub Release 발행과 사후 증거 기록**
+- 상태: **stable 0.7.0 main·tag·amd64/aarch64 GHCR·서명/attestation·GitHub Release 발행 완료 / 실제 amd64 HAOS 0.7.0-dev.2 App·Ingress·browser·memory ready/fresh와 AppArmor profile 적용 관측 / syscall-level 민감 경로 음성 전체 행렬과 실제 aarch64 HAOS NOT RUN·maintainer 위험 수용 / 실제 HAOS feedback live NOT RUN / 실제 HAOS `never` 14/16 승인 0회 PASS·전체 승인 행렬 PARTIAL / public 0.3.2 memory live PARTIAL(FAIL 0) / 0.5.0 자연어 memory live 수용 대기**
+- 현재 마일스톤: **stable 0.7.0 공개 릴리스 완료와 사후 증거 보존**
 - 마지막 문서 기준일: **2026-08-14**
 - 저장소: public `Kanu-Coffee/codex-for-home-assistant`, default branch `main`
 
@@ -26,15 +26,19 @@
 
 ## Current Work
 
-### 2026-08-14 — stable 0.7.0 승격 승인
+### 2026-08-14 — stable 0.7.0 공개 릴리스 완료
 
 - 사용자 수용 보고서는 실제 amd64 HAOS에서 `0.7.0-dev.2` App이 started 상태이고 설치 runtime과 당시 `dev` HEAD의 image-managed 파일 hash가 일치함을 확인했다. Protected-tree integrity와 일반 `/config` RW, AppArmor profile 적용, Ingress/ttyd, 관리형 browser와 loopback gateway, `ha-memoryd`의 `ready`/`fresh` 수렴, 733 objects·937 relations, bounded warning 7건과 desktop/mobile browser 무오류 경로가 관측됐다.
 - Custom AppArmor와 managed requirements는 root·nested `secrets.yaml`과 `/config/.storage` content를 정상적인 Codex 직접 파일 접근에서 명시적으로 거부하므로 그 경로로 내용이 Codex에 전달되지 않는 stable 계약으로 승격한다. 이는 완전한 DLP가 아니다. API·로그·인증 browser raw response, 사용자가 비보호 경로로 복사한 값, root interactive process의 runtime credential 직접 read와 pathname hardlink TOCTOU는 잔여 경계로 유지한다.
-- 실제 read syscall 수준의 전체 음성 행렬, Web/SSH root-shell과 모든 alias/special/helper 조합, 독립 post-publication Cosign/attestation 확인, feedback live 제출과 일부 UI/semantic-memory acceptance는 실행하지 않았다. 사용자는 2026-08-14 이 나머지 공백을 stable 승격 위험으로 승인했다. 이 항목들은 **waived/accepted**이며 `PASS` 또는 실행 완료로 바꾸지 않는다.
+- 실제 read syscall 수준의 전체 음성 행렬, Web/SSH root-shell과 모든 alias/special/helper 조합, feedback live 제출과 일부 UI/semantic-memory acceptance는 실행하지 않았다. 사용자는 2026-08-14 이 공백을 stable 승격 위험으로 승인했다. 이 항목들은 **waived/accepted**이며 `PASS` 또는 실행 완료로 바꾸지 않는다. 당시 미실행이던 독립 post-publication signature/attestation 검증은 발행 뒤 별도로 완료했으며 이 결과가 HAOS 실기 공백을 대체하지 않는다.
 - 실제 Raspberry Pi/64-bit aarch64 HAOS 설치·Ingress·SSH·Codex·API·browser 수용도 **NOT RUN**이다. Maintainer는 native `ubuntu-24.04-arm` CI, architecture-neutral full smoke와 공개 멀티아키텍처 image 검증을 근거로 `0.7.0` aarch64 지원을 선언하는 R-303의 좁은 1회 예외를 승인했다. 이후 architecture/runtime 변경에는 이 예외를 자동 재사용하지 않는다.
 - 안정판 표면은 **Codex for Home Assistant**, panel **Codex**, version `0.7.0`, base repository URL로 정리한다. Stable manifest는 `stage` 키를 생략해 Supervisor 기본 stable 채널을 사용하고 DEV manifest만 `stage: experimental`을 명시한다. Stable 사용자 문서에는 DEV 버튼·표시명·canary 설치 지시를 싣지 않고, 과거 후보 증거와 채널 규칙만 engineering history에 보존한다.
 - local 검증: Python unit/contract **114 passed**, Home Assistant memory core 10개와 source client 12개, YAML/Markdown/ShellCheck/Hadolint/actionlint/AppArmor parser, `git diff --check`를 통과했다. Final local amd64 stable image `sha256:c89ffb18f929a513481e202f208ee13d7abd0e1a836ea278a8156bb970555fb6`의 `0.7.0` label·baked version·MOTD와 DEV/experimental 표식 부재를 확인했고, feedback·full Docker runtime·browser approval·memory·managed browser auth·user-file·managed Codex sandbox/sensitive path 및 exact public `0.6.0` → local `0.7.0` update/persistence 8개 smoke가 PASS했다. Architecture metadata mismatch build도 artifact 설치 전에 fail closed했다.
-- 현재 전달 상태: stable source/documentation PR, main CI, annotated `0.7.0` tag, tag Builder의 amd64+aarch64 publish/signing/attestation, 익명 manifest 확인과 GitHub Release는 이 변경 시점에 아직 실행 전이며 완료 후 exact run/SHA/digest를 별도 기록한다.
+- Stable merge/CI: [PR #38](https://github.com/Kanu-Coffee/codex-for-home-assistant/pull/38)을 merge commit `bc4cfcb7eda82d00de5cd92df5acf80df6ac2650`으로 `main`에 병합했다. [PR CI 31783339660](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/31783339660), non-publishing [PR Builder 31783339839](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/31783339839), [main CI 31783664590](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/31783664590)은 모두 PASS했다.
+- Stable tag/publish: annotated tag object `24386ac011336c2b50f60762144569118762e2f7`은 위 main merge로 peel된다. [Tag Builder 31783958477](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/31783958477)은 양 architecture build, SPDX SBOM/Critical gate, signing/attestation, verified manifest와 final promotion을 PASS했다.
+- Registry evidence: 익명 조회한 generic digest는 `sha256:95bd8d04c34a3b3cebe463b03c6d2e6b73f1847e2529d9c9ff08a6f64fa700ef`, linux/amd64는 `sha256:19c48ec0e4cc1748296925442563190b3953677bb784279c4d40bff0de224e92`, linux/arm64는 `sha256:d054f142330b4ee24954d7ca9b6e209e066575e775950eccfff754bad798b75a`다. Generic manifest, architecture별 manifest/config와 각 8개 layer가 인증 없이 조회됐다.
+- Independent trust evidence: `gh attestation verify`로 per-architecture provenance/SPDX SBOM과 generic provenance를 검증했다. Cosign `3.0.3`으로 exact workflow identity, `refs/tags/0.7.0` source ref와 위 세 digest를 고정해 signature를 독립 검증했다. Public attestation은 [40691611](https://github.com/Kanu-Coffee/codex-for-home-assistant/attestations/40691611), [40691626](https://github.com/Kanu-Coffee/codex-for-home-assistant/attestations/40691626), [40691515](https://github.com/Kanu-Coffee/codex-for-home-assistant/attestations/40691515), [40691531](https://github.com/Kanu-Coffee/codex-for-home-assistant/attestations/40691531), [40692045](https://github.com/Kanu-Coffee/codex-for-home-assistant/attestations/40692045)다.
+- Public release: [GitHub Release 0.7.0](https://github.com/Kanu-Coffee/codex-for-home-assistant/releases/tag/0.7.0)은 draft/prerelease가 아닌 latest release로 발행됐고 repository About도 stable amd64/aarch64 제품 표면으로 갱신됐다. 실제 stable `0.7.0` HAOS 설치와 `#dev` → main source migration은 별도 수용 전까지 실행 완료로 기록하지 않는다.
 
 ### 2026-08-14 — DEV 0.7.0-dev.2 HAOS 수용 후속
 
@@ -544,9 +548,9 @@
 - [x] AppArmor+managed requirements로 root/nested `secrets.yaml`·`.storage` 고정 차단
 - [x] 실제 amd64 HAOS에서 profile 적용, protected-tree preflight, 나머지 `/config` RW·App/Ingress/browser/memory 가용성 관측 — syscall-level deny와 전체 helper 행렬은 NOT RUN/승인된 공백
 - [x] SBOM·취약점 scan·Cosign/provenance/SBOM attestation·action SHA pin·Dependabot workflow 구현
-- [x] Release workflow 실행에서 multi-arch manifest와 SBOM/scan/signing/attestation 단계 검증 — latest DEV [Builder 31760484384](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/31760484384) PASS; 독립 post-publication signature/attestation 검증은 NOT RUN
+- [x] Stable release workflow의 multi-arch manifest와 SBOM/scan/signing/attestation 검증 — [Builder 31783958477](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/31783958477), 익명 manifest/config/layer 조회, `gh attestation verify`와 Cosign `3.0.3` 독립 검증 PASS
 - [ ] 설치·복구 UX 개선
-- [x] stable 채널로 승격 — stable manifest는 `stage` 키를 생략해 Supervisor 기본값 사용, 2026-08-14 사용자 승인과 남은 NOT RUN 위험 수용 기록
+- [x] stable 채널로 승격·공개 — stable manifest는 `stage` 키를 생략해 Supervisor 기본값 사용, main/tag/amd64+aarch64 GHCR/non-prerelease latest GitHub Release 발행 완료, 2026-08-14 사용자 승인과 남은 NOT RUN 위험 수용 기록
 
 ## Open Questions / Required Spikes
 
