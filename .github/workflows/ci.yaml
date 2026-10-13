@@ -52,8 +52,9 @@ jobs:
           git grep -Il '^#!' -- codex_home_assistant/rootfs tests \
             | xargs --no-run-if-empty shellcheck
 
+      # Handoff history is immutable and is not product documentation.
       - name: Run Markdown lint
-        run: npx --yes markdownlint-cli2@0.23.0 "**/*.md" "#**/.pytest_cache/**"
+        run: npx --yes markdownlint-cli2@0.23.0 "**/*.md" "#**/.pytest_cache/**" "#.handoff/**"
 
       - name: Run Dockerfile lint
         run: |

@@ -2,7 +2,7 @@
 
 All notable changes to this App are documented in this file.
 
-## [0.7.1] - 2026-10-13
+## [0.7.1-dev.1] - 2026-10-13
 
 ### Added
 

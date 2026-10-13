@@ -2,7 +2,7 @@
   <a href="README.md">한국어</a> · <strong>English</strong>
 </p>
 
-# Codex for Home Assistant
+# Codex for Home Assistant (DEV)
 
 Use Codex inside Home Assistant to inspect your setup and improve dashboards, automations, entities, and configuration errors through an Ingress Web terminal.
 
@@ -29,7 +29,7 @@ Use Codex inside Home Assistant to inspect your setup and improve dashboards, au
 
 ## Quick start
 
-1. Install and start the app (0.7.1). It supports `amd64` and 64-bit `aarch64`. The manifest omits the `stage` key and therefore uses the Supervisor's default stable channel; `boot: manual` remains explicit. Native ARM CI and multi-architecture image validation passed for stable 0.7.0; validation for the 0.7.1 development branch remains pending before release (NOT RUN). A real Raspberry Pi/aarch64 HAOS run was not performed; release approval explicitly accepted that gap based on the automated evidence.
+1. Install and start the app (0.7.1-dev.1). It supports `amd64` and 64-bit `aarch64`. The DEV manifest uses `stage: experimental`; `boot: manual` remains explicit. Native ARM CI and multi-architecture image validation passed for stable 0.7.0; validation for the 0.7.1-dev.1 development branch remains pending before release (NOT RUN). A real Raspberry Pi/aarch64 HAOS run was not performed; release approval explicitly accepted that gap based on the automated evidence.
 2. Select **OPEN WEB UI**.
 3. Sign in once with `ha-codex-login`.
 4. Run `ha-codex`.
@@ -62,3 +62,5 @@ Direct GitHub submission requires an available candidate search, a ten-minute si
 See the [English user guide](DOCS.en.md) for installation, all settings, mobile Remote, updates, security, and troubleshooting. [한국어 사용 설명서](DOCS.md) is also available.
 
 This is an unofficial community project. It is not affiliated with or endorsed by OpenAI, Home Assistant, or Nabu Casa.
+
+DEV repository: `https://github.com/Kanu-Coffee/codex-for-home-assistant#dev`. This candidate is for device testing; the stable release remains `0.7.0`.

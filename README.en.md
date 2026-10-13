@@ -6,7 +6,7 @@
   <img src="codex_home_assistant/logo.png" alt="Codex for Home Assistant logo" width="180">
 </p>
 
-<h1 align="center">Codex for Home Assistant</h1>
+<h1 align="center">Codex for Home Assistant (DEV)</h1>
 
 <p align="center">
   Work with Codex inside Home Assistant to inspect your setup<br>
@@ -17,18 +17,18 @@
   <a href="https://github.com/Kanu-Coffee/codex-for-home-assistant/releases"><img alt="GitHub Release" src="https://img.shields.io/github/v/release/Kanu-Coffee/codex-for-home-assistant"></a>
   <a href="https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/workflows/ci.yaml"><img alt="CI" src="https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/workflows/ci.yaml/badge.svg"></a>
   <img alt="Architecture: amd64 and aarch64" src="https://img.shields.io/badge/architecture-amd64%20%7C%20aarch64-blue">
-  <img alt="Stage: stable" src="https://img.shields.io/badge/stage-stable-brightgreen">
+  <img alt="Stage: experimental" src="https://img.shields.io/badge/stage-experimental-orange">
   <a href="LICENSE"><img alt="License: Apache-2.0" src="https://img.shields.io/badge/license-Apache--2.0-green"></a>
 </p>
 
 <p align="center">
-  <a href="https://my.home-assistant.io/redirect/supervisor_add_addon_repository/?repository_url=https%3A%2F%2Fgithub.com%2FKanu-Coffee%2Fcodex-for-home-assistant"><img alt="Add the app repository to Home Assistant" src="https://my.home-assistant.io/badges/supervisor_add_addon_repository.svg"></a>
+  <a href="https://my.home-assistant.io/redirect/supervisor_add_addon_repository/?repository_url=https%3A%2F%2Fgithub.com%2FKanu-Coffee%2Fcodex-for-home-assistant%23dev"><img alt="Add the app repository to Home Assistant" src="https://my.home-assistant.io/badges/supervisor_add_addon_repository.svg"></a>
 </p>
 
 > [!WARNING]
 > This app can read and write `/config` except for protected `secrets.yaml` and `.storage` paths, and it can use the Home Assistant Core and Supervisor `manager` APIs. API responses, logs, and browser views can still contain sensitive information. Back up your system and review the plan and diff before important changes. Never expose its SSH port directly to the internet.
 
-This is an unofficial community project. It is not affiliated with or endorsed by OpenAI, Home Assistant, or Nabu Casa. Stable `0.7.1` supports `amd64` and 64-bit `aarch64`, appears in HAOS as **Codex for Home Assistant**, and uses **Codex** in the sidebar. Native ARM CI and multi-architecture image validation passed for stable 0.7.0; validation for the 0.7.1 development branch remains pending before release (NOT RUN). A real Raspberry Pi/aarch64 HAOS acceptance run was not performed; the release approval explicitly accepted that gap based on the automated evidence.
+This is an unofficial community project. It is not affiliated with or endorsed by OpenAI, Home Assistant, or Nabu Casa. Stable `0.7.1-dev.1` supports `amd64` and 64-bit `aarch64`, appears in HAOS as **Codex for Home Assistant**, and uses **Codex** in the sidebar. Native ARM CI and multi-architecture image validation passed for stable 0.7.0; validation for the 0.7.1-dev.1 development branch remains pending before release (NOT RUN). A real Raspberry Pi/aarch64 HAOS acceptance run was not performed; the release approval explicitly accepted that gap based on the automated evidence.
 
 ## Real Web terminal preview
 
@@ -86,7 +86,7 @@ flowchart LR
 ### Requirements
 
 - Home Assistant OS or another installation with Supervisor
-- Stable `0.7.1` supports **amd64** and 64-bit **aarch64** devices. Raspberry Pi requires 64-bit HAOS. 32-bit `armv7` is not supported.
+- Stable `0.7.1-dev.1` supports **amd64** and 64-bit **aarch64** devices. Raspberry Pi requires 64-bit HAOS. 32-bit `armv7` is not supported.
 - Internet access to download the public image
 - An OpenAI/ChatGPT account with access to Codex
 
@@ -249,3 +249,5 @@ Direct GitHub submission through `$ha-feedback` requires a ten-minute single-use
 ## License
 
 Project source is distributed under the [Apache License 2.0](LICENSE). See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for runtime dependency notices.
+
+DEV repository: `https://github.com/Kanu-Coffee/codex-for-home-assistant#dev`. This candidate is for device testing; the stable release remains `0.7.0`.

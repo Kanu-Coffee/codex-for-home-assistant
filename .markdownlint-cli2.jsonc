@@ -7,5 +7,5 @@
     "MD041": false,
     "MD060": false
   },
-  "globs": ["**/*.md", "#**/.pytest_cache/**"]
+  "globs": ["**/*.md", "#**/.pytest_cache/**", "#.handoff/**"]
 }
