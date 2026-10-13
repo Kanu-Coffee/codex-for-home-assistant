@@ -26,7 +26,7 @@ import { get as httpsGet } from "node:https";
 import { get as httpGet } from "node:http";
 
 export const BASELINE_VERSION = "0.162.1";
-export const APP_VERSION = "0.7.1-dev.4";
+export const APP_VERSION = "0.7.1-dev.5";
 export const DEFAULT_TIMEZONE = "Asia/Seoul";
 export const UPDATE_SLOTS = [3, 9, 15, 21];
 export const MAX_IDLE_CHECKS = 12;

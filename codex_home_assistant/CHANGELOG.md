@@ -2,6 +2,13 @@
 
 All notable changes to this App are documented in this file.
 
+## [0.7.1-dev.5] - 2026-10-13
+
+### Security
+
+- Enforce fail-closed SBOM Go binary identity preflight gate (`.github/scripts/sbom-go-binary-preflight.py`) rejecting any unreviewed binary path (/opt, etc.), mutated version, or missing identity metadata before Grype scanning.
+- Eliminate static blanket ignores from root `.grype.yaml`, dynamically emitting gated config and OpenVEX only upon verified SBOM identity.
+
 ## [0.7.1-dev.4] - 2026-10-13
 
 ### Security
