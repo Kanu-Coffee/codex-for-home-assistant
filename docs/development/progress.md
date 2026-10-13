@@ -4,8 +4,8 @@
 
 ## Project Status
 
-- 상태: **003 S6 실행 권한·FIX_01 boot smoke·updater SIGTERM wake-up 수정 Reviewer 인수 가능 / 독립 pytest 219 PASS·readiness/503/137 경계 및 TERM/INT 시험 PASS / Executor 개발 VM enforced boot PASS 기록 확인 / native CI·신규 DEV 발행·Supervisor App 설치·사용자 HAOS 수용 NOT RUN / stable 0.7.0 main 유지**
-- 현재 마일스톤: **003 구현 리뷰 통과, 신규 DEV 후보 준비·exact SHA 양 architecture CI·Supervisor 설치 검증 단계**
+- 상태: **DEV 0.7.1-dev.7 tag·public multi-arch image·GitHub prerelease 발행 완료 / exact SHA 양 architecture CI·Builder PASS / 개발 HAOS 18.2 Supervisor 설치·enforced AppArmor·2분 HTTP 200·stop/start·data 보존·exit 0 확인 / provenance·SBOM 5건 독립 검증 PASS / 실제 사용자 HAOS UI/mobile 수용 NOT RUN / stable 0.7.0 main 유지**
+- 현재 마일스톤: **DEV 0.7.1-dev.7 사용자 HAOS 설치 수용 대기**
 - 마지막 문서 기준일: **2026-10-14**
 - 저장소: public `Kanu-Coffee/codex-for-home-assistant`, default branch `main`
 
@@ -25,6 +25,27 @@
 - [x] interactive/Codex/S6 ambient `SUPERVISOR_TOKEN` 상속 제거와 private helper credential loader 구현
 
 ## Current Work
+
+### 2026-10-14 — DEV 0.7.1-dev.7 공개·Supervisor 개발 VM 검증 완료
+
+- 사용자 요청으로 003 인수 수정을 공개했다. Release commit `06bc2e39e452dac9823c00d5c9d26113095445f9`, annotated tag object `ad18b1f21353946339e62b936ccf897299c91fde`. [GitHub prerelease](https://github.com/Kanu-Coffee/codex-for-home-assistant/releases/tag/0.7.1-dev.7)를 생성했고 stable latest 0.7.0은 유지했다. Repo 채널은 `https://github.com/Kanu-Coffee/codex-for-home-assistant#dev`다.
+- 변경: AppArmor S6 실행 허용, updater SIGTERM/SIGINT slot timer wake-up, 실제 enforced 전체 부팅·정상 종료 CI gate. 기존 날짜별 idle 12회·rolling 24시간 restart cooldown·기본 자동 업데이트 ON·baseline Codex 0.162.1은 유지한다. Release metadata/package/lock/fallback/계약과 한국어·영어 README/DOCS, changelog를 dev.7로 맞췄다.
+- Release 관련 계약/보안 pytest **133 passed in 80.58s**, Markdown **38 files/0 errors**, ShellCheck·actionlint·Gitleaks·diff PASS. 직전 Reviewer 전체 pytest는 **219 passed**다.
+- [CI 38479477634](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/38479477634): exact release SHA 전체 job SUCCESS. CI lint pytest **218 passed/1 skipped in 65.05s**(기존 scanner container 부재 경로); 로컬 full suite에서는 해당 시험 포함 PASS. amd64/native ARM job 원본 로그 모두 `AppArmor enforced boot smoke passed`를 확인했다. ARM step API 일부 상태가 pending으로 남은 응답과 실제 job SUCCESS/로그를 구분해 확인했다.
+- CI 성공 후 새 태그를 발행했다. [Builder 38480093738](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/38480093738): 양 architecture 실제 파일 hash/preflight·Critical gate·push·Cosign signing·provenance/SBOM attestation·generic manifest promotion SUCCESS. Nonpublishing job skipped는 예상 조건이다.
+- 익명 public GHCR manifest/config digest와 linux/amd64·linux/arm64, io.hass.version 0.7.1-dev.7 확인 PASS. Public dev config와 profile SHA `b93d714e…`도 확인했다.
+
+| 공개 artifact | SHA256 digest |
+| --- | --- |
+| generic 0.7.1-dev.7 | 5a3220cff992069fd942c28e4ddd6a9385d865e7815f4074fc476758a0ae928a |
+| amd64 | c039bc0d8f8bb35963ae5c4f2c32722c7a3d190562066d28392a88b0513d2abd |
+| arm64 | d1e9f4156f0866cb6eaf5cae5e7589405309992bdf7bc9e64f1b3977dff63b4e |
+
+- 독립 검증: 기존 이미지에 포함된 gh 2.97.0 client의 `attestation verify`로 generic provenance, amd64/arm64 provenance와 SPDX SBOM 총 **5건 cryptographic verify PASS**. Repo, source digest, refs/tags/0.7.1-dev.7와 GitHub-hosted runner 조건을 고정했다. 이 결과는 Builder signing step 확인과 별개이며, 독립 Cosign signature client 검증을 수행한 것으로 표현하지 않는다.
+- 개발 HAOS **VM**(18.2, Supervisor 2026.09.3)의 실제 DEV Store 등록·version 노출·Supervisor install/start PASS. 일반 사용자 운영 장치가 아닌 VM 증거다. 설치 직후 자동 업데이트 기본값 true, 실제 schema `name=codex_auto_update/type=boolean` 확인. 테스트에서는 자동 업데이트·browser auto-auth를 OFF하고 SSH 외부 mapping을 비활성화해 외부 갱신/인증과 분리했다.
+- Supervisor가 적용한 `2ba6e346_codex_home_assistant (enforce)`와 protection mode true 확인. 5개 S6 서비스 up, CLI `codex-cli 0.162.1`, updater selected/bundled 0.162.1 확인. 30초 간격 4회, 총 **2분 running·HTTP 200** 유지 PASS. Supervisor stop/start 1회 후 합성 `/data` marker 보존 PASS, marker 삭제. 최종 stop의 `docker wait` exit **0** 확인. 첫 stop 뒤 Supervisor가 container를 제거해 사후 inspect가 불가능했으므로 최종 stop은 제거 전에 wait를 걸어 관측했다.
+- App은 stopped/manual로 두고 자동 업데이트·browser auto-auth ON과 기본 network mapping을 복원했다. 새 DEV App과 데이터는 개발 VM에 재검증용으로 보존했다. `haos-vm stop/status`로 원래 **shut off** 상태 복원을 확인했다. 기존 VM App/Core 설정·사용자 운영 HA를 변경하지 않았다.
+- 남음: 실제 사용자 장치의 upgrade/auth persistence, authenticated Ingress UI/mobile/모델 실제 세션, 실제 ARM HAOS 수용은 **NOT RUN**이다. 이번 VM에서는 공개 App 신규 설치와 합성 data restart persistence를 확인했고 운영 인증 데이터 upgrade를 시험했다고 주장하지 않는다. Main `a32698851e3c3539f5d4b823e60d4f0d29038df1`, stable·기존 DEV 태그/image는 유지했다.
 
 ### 2026-10-14 — DEV 배포 Executor 진행
 
