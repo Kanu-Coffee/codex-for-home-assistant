@@ -125,6 +125,7 @@ jobs:
           output-format: table
           severity-cutoff: critical
           config: .grype.yaml
+          vex: .github/security/openvex.json
 
       - name: Report high and critical vulnerabilities (non-blocking)
         if: ${{ !cancelled() }}
@@ -136,6 +137,7 @@ jobs:
           output-format: table
           severity-cutoff: high
           config: .grype.yaml
+          vex: .github/security/openvex.json
 
       - name: Install Cosign
         if: inputs.publish

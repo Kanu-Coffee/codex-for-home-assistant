@@ -2,6 +2,14 @@
 
 All notable changes to this App are documented in this file.
 
+## [0.7.1-dev.3] - 2026-10-13
+
+### Security
+
+- Scope Grype vulnerability suppression rules to exact reviewed Go package versions (`stdlib go1.26.5/go1.26.8`, `golang.org/x/net v0.55.0/v0.56.0`) and modules, ensuring unexpected/future components and unreviewed versions trigger gate failure.
+- Wire OpenVEX specification (`.github/security/openvex.json`) directly into the scanner workflow (`vex:`) and Grype configuration (`vex-documents:`), with comprehensive reachability justifications for `GO-2026-6612` and `GO-2026-6604`.
+- Enable `show-suppressed: true` in Grype configuration to maintain complete audit visibility for filtered findings.
+
 ## [0.7.1-dev.2] - 2026-10-13
 
 ### Security
