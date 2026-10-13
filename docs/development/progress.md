@@ -4,8 +4,8 @@
 
 ## Project Status
 
-- 상태: **DEV 0.7.1-dev.5 tag·amd64/aarch64 GHCR multi-arch·서명/attestation 발행 완료 (Builder 38365844933 / dev CI 38366256596 전 job PASS) / 취약점 게이트(Fail-Closed Go 바이너리 식별 사전 검증 및 동적 정책 연동) 통과 / stable 0.7.0 main 불변 유지 / 실제 amd64 HAOS 0.7.0-dev.2 App·Ingress·browser·memory ready/fresh와 AppArmor profile 적용 관측 / syscall-level 민감 경로 음성 전체 행렬과 실제 aarch64 HAOS NOT RUN·maintainer 위험 수용 / 실제 HAOS feedback live NOT RUN / 실제 HAOS `never` 14/16 승인 0회 PASS·전체 승인 행렬 PARTIAL / public 0.3.2 memory live PARTIAL(FAIL 0) / 0.5.0 자연어 memory live 수용 대기**
-- 현재 마일스톤: **DEV 0.7.1-dev.5 발행 완료와 사용자 수용 시험 대기**
+- 상태: **DEV 0.7.1-dev.6 공개 완료 / FIX_10 metadata·실제 바이너리 SHA256 검증과 새 의존성 기본 검사 fallback 구현 / exact SHA DEV CI·amd64/native ARM Builder PASS / stable 0.7.0 main 유지 / 실제 사용자 HAOS 신규 버전 설치·UI 수용 NOT RUN**
+- 현재 마일스톤: **DEV 0.7.1-dev.6 사용자 HAOS 수용 시험 대기**
 - 마지막 문서 기준일: **2026-10-13**
 - 저장소: public `Kanu-Coffee/codex-for-home-assistant`, default branch `main`
 
@@ -26,10 +26,13 @@
 
 ## Current Work
 
-### 2026-10-13 — FIX_10 Executor 진행: 배포 gate의 metadata/해시 검증과 예외 정책 단순화
+### 2026-10-13 — FIX_10 Executor 완료: 실제 바이너리 검증과 DEV 0.7.1-dev.6 배포
 
-- 사용자 요청으로 Executor를 맡았다. 검토한 gh/yq의 architecture별 실제 파일 SHA256, 빌드 image identity와 SBOM을 대조하고 해당 image에만 VEX를 생성하는 작은 수정으로 진행한다. 중복 ignore 예외는 제거한다.
-- Runtime 자동 업데이트·권한·기본 옵션은 유지한다. 필수 metadata 누락과 미검토 artifact는 차단하되, Go 없는 정상 image에는 예외 없이 기본 검사를 수행한다. 기존 handoff/tag/image와 main/stable을 보존한다.
+- [FIX_10_REPORT](../../.handoff/002_codex-auto-update/FIX_10_REPORT.md)에 구현·해시 출처·계획 조정·검증 결과를 기록했다. Metadata 누락/모순은 차단하고, 새 정상 의존성은 예외 없이 기본 취약점 검사를 수행한다. 검토한 architecture별 실제 gh/yq 파일 SHA256을 확인한 경우에만 동적 정책을 발급한다.
+- VEX는 감사 자료로만 남기며 scanner에는 검증한 SBOM snapshot과 config를 전달한다. SPDX에서 image-scoped VEX 매칭이 되지 않는 실제 한계를 반영했다. Runtime/권한/기본 옵션은 유지했다.
+- 로컬 pytest **216 passed**. 배포 SHA `22fae4ffcf71750b8dccc8418ebb1b091a894ecf`의 [DEV CI 38372005484](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/38372005484)와 [Tag Builder 38372618286](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/38372618286) SUCCESS. CI lint pytest 215 passed/1 scanner-container test skipped; 해당 scanner 시험은 로컬 PASS다.
+- DEV 0.7.1-dev.6 익명 공개 manifest/config 버전과 digest 검증 PASS. Multi-arch digest는 `sha256:d4046cbeb2da1763f95471eb1d0df21881b77c6cd2c9b269a2c6c7b2517653b5`. 양 architecture Critical gate와 signing/attestation step PASS; 독립 cryptographic verify는 이번 회차 NOT RUN이다.
+- 재검토는 timezone slotDate별 12회 후 다음 날짜에 자동 복구한다. 재시작은 영속 rolling 24시간 cooldown이며 턴별/영구 제한이 아니다. 실제 사용자 HAOS 설치·UI/mobile 수용은 NOT RUN이다. main/stable·기존 태그·운영 HA는 변경하지 않았다.
 
 ### 2026-10-13 — FIX_09 Reviewer: metadata 누락 gate 통과·hash identity 미검증 재현, FIX_10 요청
 
