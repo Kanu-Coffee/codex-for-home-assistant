@@ -117,6 +117,14 @@ jobs:
           output-file: codex-for-home-assistant-${{ matrix.arch }}.spdx.json
           upload-release-assets: false
 
+      - name: Validate Go binary identities in SBOM before vulnerability scanning
+        run: |
+          python3 .github/scripts/sbom-go-binary-preflight.py \
+            --sbom "codex-for-home-assistant-${{ matrix.arch }}.spdx.json" \
+            --template-vex .github/security/openvex.json \
+            --emit-gated-config ".grype-gated-${{ matrix.arch }}.yaml" \
+            --emit-gated-vex ".github/security/openvex-gated-${{ matrix.arch }}.json"
+
       - name: Enforce critical vulnerability gate
         uses: anchore/scan-action@e1165082ffb1fe366ebaf02d8526e7c4989ea9d2 # v7.4.0
         with:
@@ -124,8 +132,8 @@ jobs:
           fail-build: true
           output-format: table
           severity-cutoff: critical
-          config: .grype.yaml
-          vex: .github/security/openvex.json
+          config: .grype-gated-${{ matrix.arch }}.yaml
+          vex: .github/security/openvex-gated-${{ matrix.arch }}.json
 
       - name: Report high and critical vulnerabilities (non-blocking)
         if: ${{ !cancelled() }}
@@ -136,8 +144,8 @@ jobs:
           fail-build: false
           output-format: table
           severity-cutoff: high
-          config: .grype.yaml
-          vex: .github/security/openvex.json
+          config: .grype-gated-${{ matrix.arch }}.yaml
+          vex: .github/security/openvex-gated-${{ matrix.arch }}.json
 
       - name: Install Cosign
         if: inputs.publish

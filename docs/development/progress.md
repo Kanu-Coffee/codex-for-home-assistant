@@ -4,8 +4,8 @@
 
 ## Project Status
 
-- 상태: **DEV 0.7.1-dev.4 tag·amd64/aarch64 GHCR multi-arch·서명/attestation 발행 완료 (Builder 38357055889 / dev CI 38357039179 전 job PASS) / 취약점 게이트(Grype 버전 한정 규칙 및 OpenVEX 공식 연동) 통과 / stable 0.7.0 main 불변 유지 / 실제 amd64 HAOS 0.7.0-dev.2 App·Ingress·browser·memory ready/fresh와 AppArmor profile 적용 관측 / syscall-level 민감 경로 음성 전체 행렬과 실제 aarch64 HAOS NOT RUN·maintainer 위험 수용 / 실제 HAOS feedback live NOT RUN / 실제 HAOS `never` 14/16 승인 0회 PASS·전체 승인 행렬 PARTIAL / public 0.3.2 memory live PARTIAL(FAIL 0) / 0.5.0 자연어 memory live 수용 대기**
-- 현재 마일스톤: **DEV 0.7.1-dev.4 발행 완료와 사용자 수용 시험 대기**
+- 상태: **DEV 0.7.1-dev.5 tag·amd64/aarch64 GHCR multi-arch·서명/attestation 발행 완료 (Builder 38365844933 / dev CI 38366256596 전 job PASS) / 취약점 게이트(Fail-Closed Go 바이너리 식별 사전 검증 및 동적 정책 연동) 통과 / stable 0.7.0 main 불변 유지 / 실제 amd64 HAOS 0.7.0-dev.2 App·Ingress·browser·memory ready/fresh와 AppArmor profile 적용 관측 / syscall-level 민감 경로 음성 전체 행렬과 실제 aarch64 HAOS NOT RUN·maintainer 위험 수용 / 실제 HAOS feedback live NOT RUN / 실제 HAOS `never` 14/16 승인 0회 PASS·전체 승인 행렬 PARTIAL / public 0.3.2 memory live PARTIAL(FAIL 0) / 0.5.0 자연어 memory live 수용 대기**
+- 현재 마일스톤: **DEV 0.7.1-dev.5 발행 완료와 사용자 수용 시험 대기**
 - 마지막 문서 기준일: **2026-10-13**
 - 저장소: public `Kanu-Coffee/codex-for-home-assistant`, default branch `main`
 
@@ -25,6 +25,43 @@
 - [x] interactive/Codex/S6 ambient `SUPERVISOR_TOKEN` 상속 제거와 private helper credential loader 구현
 
 ## Current Work
+
+### 2026-10-13 — FIX_09 Executor: Fail-Closed 바이너리 사전 검증 게이트 구축 및 DEV 0.7.1-dev.5 발행 완료
+
+- [.handoff/002_codex-auto-update/FIX_09.md](../../.handoff/002_codex-auto-update/FIX_09.md)의 P1(동일 Go 버전의 미검토 바이너리 예외 승계 차단)과 P2(실제 Grype 스캐너 및 결과 계약 회귀 테스트)를 전수 해결하고 [.handoff/002_codex-auto-update/FIX_09_REPORT.md](../../.handoff/002_codex-auto-update/FIX_09_REPORT.md)를 작성했다.
+- **P1: Fail-Closed Go 바이너리 식별 사전 검증 게이트 구축**:
+  - [`.github/scripts/sbom-go-binary-preflight.py`](file:///home/lee/projects/codex_for_HA/.github/scripts/sbom-go-binary-preflight.py) 신규 구현:
+    - SBOM의 `sourceInfo`에서 Go 모듈 호스팅 바이너리 경로를 추출하여 `/usr/local/bin/gh`, `/usr/bin/yq` 이외의 미검토 바이너리(예: `/opt/...`) 감지 시 **Exit 1** 차단.
+    - 바이너리별 모듈 및 버전 무결성 검증(`/usr/local/bin/gh`의 stdlib go1.26.5/xnet v0.56.0, `/usr/bin/yq`의 stdlib go1.26.8/xnet v0.55.0). 변조된 버전(예: `go1.26.7`) 즉시 **Exit 1** 차단.
+    - 루트 아티팩트 문서명 및 `documentNamespace` 누락 시 즉시 차단.
+  - 전역 정적 예외 제거: 루트 [`.grype.yaml`](file:///home/lee/projects/codex_for_HA/.grype.yaml)의 ignore를 `ignore: []`로 fail-closed 기준점 확립.
+  - 빌드 워크플로우 연동: [`.github/workflows/build-app.yaml`](file:///home/lee/projects/codex_for_HA/.github/workflows/build-app.yaml)에서 SBOM 생성 직후 사전 검증을 실행하고, 100% 검증 통과 시에만 동적으로 생성된 `.grype-gated-${arch}.yaml`과 `openvex-gated-${arch}.json`을 `scan-action`에 전달.
+- **P2: 실제 Grype 스캐너 및 전체 경계 계약 회귀 테스트 체계 구축**:
+  - [`tests/test_vulnerability_gate_policy.py`](file:///home/lee/projects/codex_for_HA/tests/test_vulnerability_gate_policy.py) 10종 테스트 전수 PASS (실제 서브프로세스 Grype 및 preflight 실행).
+  - 4종 합성 SBOM 픽스처 및 리뷰어의 `/tmp/codex-ha-review09/retargeted.spdx.json` 대조 검증:
+    - 검토 바이너리만 포함: Preflight Exit 0, Grype Exit 0 (6건 suppressed).
+    - 미검토 바이너리(`/opt/some-server` 또는 `/opt/review08-*`): Preflight Exit 1 (FAIL, 정책 미발급).
+    - 변조 버전(`go1.26.7`): Preflight Exit 1, Grype Exit 2 (FAIL).
+    - 식별자 누락: Preflight Exit 1 (FAIL).
+    - 원본/기본 설정 스캔: Grype Exit 2 (Critical 발견 및 차단).
+- **로컬 검증 및 DEV 0.7.1-dev.5 공식 발행**:
+  - 로컬 pytest 전체 스위트: **204 passed in 66.69s**.
+  - 기존 태그 `0.7.1-dev.1` ~ `0.7.1-dev.4` 보존.
+  - 릴리스 워크트리(`/tmp/codex-ha-dev-release`)에서 브랜치 `codex/release-0.7.1-dev.5`, 릴리스 커밋 `2c9cad2` / CI 픽스 커밋 `40559db` 생성 및 원격 `origin/dev`, 태그 **`0.7.1-dev.5`** 푸시 완료.
+  - [Tag Builder 38365844933](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/38365844933): **전 job SUCCESS** (amd64/aarch64 사전 검증 및 취약점 게이트 통과, Cosign 서명, 다중 아키텍처 매니페스트 발행 완료).
+  - [dev CI 38366256596](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/38366256596): **전 job PASS** (Lint/tests, App config, amd64 smoke, native aarch64 smoke).
+  - GHCR 공식 다중 아키텍처 매니페스트 `ghcr.io/kanu-coffee/codex-for-home-assistant:0.7.1-dev.5` (`sha256:759f0f7b8917e539bcc3c603d798a8bd95b51085047ee638b7b337cbd6fc14bb`) 발행 및 익명 토큰 API 200 OK 검증 완료.
+- **불변 조건 준수**:
+  - `main` 브랜치(`a326988`) 및 stable `0.7.0` 태그/이미지 불변 유지.
+  - 실제 사용자 운영 HAOS 인스턴스 자동 설치는 NOT RUN이며, 신규 발행된 DEV `0.7.1-dev.5`를 통한 사용자 수용 시험 대기.
+
+### 2026-10-13 — FIX_08 Reviewer: 같은 버전의 다른 binary 제외 재현, FIX_09 요청
+
+- **CHANGES REQUESTED**, [FIX_09](../../.handoff/002_codex-auto-update/FIX_09.md)을 작성했다. Auto-update runtime 인수는 유지한다. 버전/type 조건·suppressed 표시·실제 OpenVEX 연결은 개선됐지만 binary/product 경계는 미해결이다.
+- 독립 pytest **198 passed in 62.64s**, actionlint/diff PASS. Exact dev.4 CI 38357039179와 Builder 38357055889 success, 공개 amd64/arm64 digest와 remote main 불변을 확인했다. `0.7.1-dev.4`는 이미 발행돼 있다. GitHub Release는 조회 시 없었다.
+- 같은 module 이름/버전을 유지하고 gh/yq 경로만 미검토 `/opt` 경로로 치환한 private SBOM을 Grype 0.120.1로 검사했다. Raw는 **exit 2/Critical 6**, 현재 ignore+VEX는 **exit 0/제외 6**, VEX-only도 **exit 0/제외 6**이다. VEX 미연결 문제가 아니라 generic module PURL의 적용 범위 문제다.
+- 새 negative-control 단위 테스트는 Python matcher를 직접 구현하며 실제 Grype/exit code나 같은 버전의 다른 binary/hash/identity 경계를 검증하지 않는다. FIX_09에 exact artifact 경계와 실제 scanner/preflight 결과 계약을 명시했다.
+- 이번 Reviewer는 구현·외부 게시물·운영 HA를 수정하지 않았다. Fixture container/DB volume을 정리했고 실제 HAOS 수용/독립 signature 재검증은 NOT RUN이다. 기존 tag/image는 보존하며 수정 후 새 미사용 DEV 번호를 사용한다.
 
 ### 2026-10-13 — FIX_08 Executor: 취약점 게이트 정밀 스코프 한정·OpenVEX 연동 및 DEV 0.7.1-dev.4 발행 완료
 
