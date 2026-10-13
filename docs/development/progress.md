@@ -4,9 +4,9 @@
 
 ## Project Status
 
-- 상태: **DEV 0.7.1-dev.6 공개 완료 / FIX_10 metadata·실제 바이너리 SHA256 검증과 새 의존성 기본 검사 fallback 구현 / exact SHA DEV CI·amd64/native ARM Builder PASS / stable 0.7.0 main 유지 / 실제 사용자 HAOS 신규 버전 설치·UI 수용 NOT RUN**
-- 현재 마일스톤: **DEV 0.7.1-dev.6 사용자 HAOS 수용 시험 대기**
-- 마지막 문서 기준일: **2026-10-13**
+- 상태: **003 S6 exec 거부 원인 audit으로 확정(dev.6 프로파일+image VM 재현 exit 126) / 최소 수정 `/etc/s6-overlay/** ix`와 enforced 전체 부팅 gate·계약 테스트 구현 / 개발 HAOS VM before-after PASS / native CI 실행·dev.7 발행·사용자 HAOS 수용 NOT RUN(push 승인 대기) / stable 0.7.0 main 유지**
+- 현재 마일스톤: **003 Executor 결과 리뷰와 dev.7 CI·발행 승인 범위 확정**
+- 마지막 문서 기준일: **2026-10-14**
 - 저장소: public `Kanu-Coffee/codex-for-home-assistant`, default branch `main`
 
 ## 완료된 결정
@@ -25,6 +25,22 @@
 - [x] interactive/Codex/S6 ambient `SUPERVISOR_TOKEN` 상속 제거와 private helper credential loader 구현
 
 ## Current Work
+
+### 2026-10-14 — Executor: 003 S6 AppArmor exec 거부 최소 수정과 enforced 부팅 검증
+
+- [003 REPORT](../../.handoff/003_s6-startup-permission-denied/REPORT.md)를 작성했다. 개발 HAOS VM에서 dev.6 배포 프로파일+공개 image(digest `d4046cbe…`)로 `codex-ha-init/run` exec 거부(exit 126)를 재현하고 audit의 `operation="exec" denied_mask="x"`를 확보했다. DAC/mode 문제가 아니므로 chmod는 변경하지 않았다.
+- `apparmor.txt`에 `/etc/s6-overlay/** ix,` 1줄 추가(r/w는 기존 `/** rwmkl,`이 커버). S6 inventory(run/finish 9종·halt·s6-pause·with-contenv·서비스 바이너리)와 bwrap child·민감 deny·/config RW·manager 계약을 유지·확인했다.
+- 실행 경로를 실제로 매칭하는 계약 테스트 3종(`test_runtime_contract.py`)과 enforce 전용 전체 부팅 smoke(`tests/apparmor-boot-smoke.sh`, 프로파일 미로드/비활성 시 fail-closed, 부팅·서비스 up·Ingress HTTP·보호 read 차단·degraded·stop 검증)를 추가하고 ci.yaml 양 architecture에 연결했다.
+- VM after: 레포 수정 프로파일과 **실제 slug 이름으로 enforce한 원본 파일** 모두 dev.6 image 전체 기동 PASS(runtime ready, 5서비스 up, 200 응답, secrets/.storage 차단, clean stop). 테스트 컨테이너·volume·프로파일을 정리하고 VM은 shut off로 복원했다.
+- 로컬: pytest **218 passed/1 skipped**, shellcheck/yamllint/actionlint PASS, parser는 컨테이너로 검증. dev.6 CI 로그를 확인해 markdownlint가 release tree에서 `#.handoff/**`를 제외해 온 규칙을 root ci.yaml로 동기화했고 CI 동일 명령으로 **0 errors**. GitHub CI 실기·dev.7 버전 상승/발행·사용자 운영 HA 복구·native ARM enforced boot은 NOT RUN이며 push 승인 후 수행한다. updater initial-check 중 SIGKILL(137) 관측은 보고서에 분리 기록했고 범위가 아니므로 수정하지 않았다.
+
+### 2026-10-13 — Planner: dev.6 사용자 HAOS S6 시작 실패 트러블슈팅
+
+- [003 PLAN](../../.handoff/003_s6-startup-permission-denied/PLAN.md)을 작성했다. 사용자 로그는 codex-ha-init/run exec 거부(exit 126), App 종료와 Ingress 연결 실패를 보여준다. 다른 App/Core 경고와 분리한다.
+- 공개 amd64 image의 run 파일은 0755, interpreter 경로도 확인했다. AppArmor에 `/etc/s6-overlay/**` 실행 허용이 없으며 공식 S6 프로필 예시에는 해당 규칙이 있다. Audit 기반 확정은 아직 NOT RUN이다.
+- 전체 docker-smoke는 AppArmor unconfined, enforced updater smoke는 /bin/sleep entrypoint이므로 실제 custom profile 아래 /init 기동이 검증되지 않았다. 기존 PASS 기록을 이 경로의 성공으로 해석하지 않는다.
+- 로컬 Docker는 custom profile 적용 자체에 실패해 사용자 오류를 재현하지 못했다. 개발 HAOS VM/native CI의 before/after 재현, 최소 프로필 수정, 양 architecture enforced 전체 부팅 gate, 다음 미사용 DEV(후보 dev.7) 절차를 계획했다.
+- 이번 단계는 계획만 작성했다. Runtime/프로필 load/HAOS/외부 게시를 변경하지 않았다.
 
 ### 2026-10-13 — FIX_10 Executor 완료: 실제 바이너리 검증과 DEV 0.7.1-dev.6 배포
 
@@ -204,7 +220,6 @@
   - Python `.venv/bin/pytest`: **191 passed in 62.62s** (전체 테스트 슈트 PASS).
   - Linter: `shellcheck` PASS, `hadolint` PASS, `actionlint` PASS, `git diff --check` PASS.
   - 미검증 항목(NOT RUN): 이번 세션에서는 Docker 전체 이미지 재빌드/HAOS 컨테이너 smoke/native ARM CI run은 실행하지 않음(FIX_04_REPORT의 기존 실행 증거와 구분).
-
 
 ### 2026-10-13 — FIX_04 Reviewer: GC·부분 drain 복구·쿨다운 재검토 결함 재현, FIX_05 요청
 
