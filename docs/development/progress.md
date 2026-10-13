@@ -26,6 +26,15 @@
 
 ## Current Work
 
+### 2026-10-13 — Reviewer 기능 인수·DEV CI 전 통과, image Critical gate 차단(FIX_07)
+
+- FIX_06의 GC EACCES와 timezone 날짜 경계 수정은 독립 재현과 전체 **194 passed in 62.16s**로 확인했다. 자동 업데이트 기능 코드를 인수했다.
+- 기존 승인대로 `0.7.1-dev.1`의 DEV identity를 준비하고 remote `dev`와 annotated tag를 `bd080c73d458e6a1afd2c70b32e0bd674daf7d69`에 게시했다. Release worktree는 `/tmp/codex-ha-dev-release`다. Main은 기존 `a32698851e3c3539f5d4b823e60d4f0d29038df1` 그대로다.
+- [정확한 DEV CI 38347070912](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/38347070912) **모든 job PASS**. Native ARM/amd64 build와 full 통합, 실제 AppArmor updater, public 0.7.0→candidate persistence 공백을 해소했다. 사용자 실제 HAOS 설치/UI/mobile/model turn 수용은 NOT RUN이다.
+- [Tag Builder 38347457454](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/38347457454)는 양쪽 architecture의 Critical gate에서 **FAIL**했고 최종 image/manifest 게시·서명을 수행하지 않았다. `0.7.1-dev.1` generic image는 not found이고 GitHub Release도 만들지 않았다. Source/tag만 존재하므로 현재 설치 가능한 DEV로 안내하지 않는다.
+- SBOM은 `/usr/local/bin/gh`의 Go 1.26.5/x/net 0.56.0과 `/usr/bin/yq`의 Go 1.26.8/x/net 0.55.0을 가리킨다. GO-2026-6612/6604 Critical 검출과 실제 실행 reachability는 구분한다. 기존 gate를 완화하지 않고 [FIX_07](../../.handoff/002_codex-auto-update/FIX_07.md)에 최소 dependency 수정·새 DEV 번호·게시 검증을 인계했다.
+- `0.7.1-dev.1` tag는 재사용하지 않는다. 다음 Executor는 DEV release worktree의 실제 source를 기준으로 수정하고 새 번호를 선택한다. 안정판 및 운영 HA는 변경하지 않았다.
+
 ### 2026-10-13 — FIX_06 Reviewer: 코드 인수, DEV 배포 검증 진행
 
 - 독립 pytest **194 passed in 62.16s**. ShellCheck·actionlint·Hadolint·diff와 비밀 scan PASS. EACCES reader 재현에서 resource 보존을 확인했고 Auckland의 다음 슬롯이 정확한 `2026-10-13T14:00:00Z`로 수정됐다.
