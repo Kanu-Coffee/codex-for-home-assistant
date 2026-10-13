@@ -15,12 +15,12 @@ The Home Assistant base layer itself includes S6 Overlay, Bashio, TempIO, Alpine
 
 ### OpenAI Codex CLI
 
-- Component: `codex-cli 0.144.1`
-- Artifacts: `codex-x86_64-unknown-linux-musl.tar.gz` and `codex-aarch64-unknown-linux-musl.tar.gz` from the official `rust-v0.144.1` release
+- Component: `codex-cli 0.162.1`
+- Artifacts: `codex-package-x86_64-unknown-linux-musl.tar.gz` and `codex-package-aarch64-unknown-linux-musl.tar.gz` from the official `rust-v0.162.1` release
 - Source: <https://github.com/openai/codex>
 - License: Apache License 2.0
 
-The architecture-selected release archive is downloaded during the image build and verified against the Dockerfile-pinned SHA-256: amd64 `84091ae20c65fcc7d4120db97d1bd57d7ff8df9c7609fb781c78c2ebbd4f5a28`, aarch64 `b9f8ef5f98e46ced4dbbd3756a4223e3ee299a457ff488a3305bea455da8b5b8`.
+The architecture-selected release archive is downloaded during the image build and verified against the Dockerfile-pinned SHA-256: amd64 `a676f5722aae0d86cbe3764332f08eab1fdd89dc0a300b3ad4ffbf48611fa3e3`, aarch64 `53a9ce0b94beb27a63fdeb2f7704d95199e17b3898aa33b60461a1a93ac0d88b`.
 
 ### GitHub CLI
 

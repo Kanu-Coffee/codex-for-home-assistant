@@ -26,6 +26,199 @@
 
 ## Current Work
 
+### 2026-10-13 — FIX_06 Reviewer: 코드 인수, DEV 배포 검증 진행
+
+- 독립 pytest **194 passed in 62.16s**. ShellCheck·actionlint·Hadolint·diff와 비밀 scan PASS. EACCES reader 재현에서 resource 보존을 확인했고 Auckland의 다음 슬롯이 정확한 `2026-10-13T14:00:00Z`로 수정됐다.
+- 기존 실패 재현과 새 회귀를 대조한 결과 추가 배포 차단 코드 결함을 확인하지 않았다. 코드 리뷰는 인수하며, DEV 발행은 현재 후보의 amd64/aarch64 CI·실제 통합 smoke 및 tag Builder 결과를 확인한 뒤 완료한다.
+- 다음 미사용 후보는 `0.7.1-dev.1`이다. 기존 승인에 따라 DEV 표시명·version·experimental metadata를 준비한다. Main/stable과 운영 HA는 변경하지 않는다. 실제 사용자 HAOS 설치/UI/mobile 수용은 발행 후 사용자 시험 대상이다.
+- 로컬 Markdown lint 도구가 없어 실행하지 못했으며 원격 CI에서 확인한다. FIX_06 image의 로컬 통합 smoke 공백은 현재 코드의 원격 CI에서 검증한다.
+
+### 2026-10-13 — FIX_06 Executor: GC fail-closed 검사·순수 calendar timezone 경계 수정 완료, 독립 리뷰 대기
+
+- [.handoff/002_codex-auto-update/FIX_06.md](../../.handoff/002_codex-auto-update/FIX_06.md)의 2가지 요구사항(P1, P2)을 전수 해결하고 [.handoff/002_codex-auto-update/FIX_06_REPORT.md](../../.handoff/002_codex-auto-update/FIX_06_REPORT.md)를 작성했다.
+- **GC 프로세스 검사 실패 처리 및 fail-closed 보존 (P1)**:
+  - `codex-runtime-manager.mjs`의 `cleanupOldReleases`에서 개별 PID/FD 열람 실패 시 빈 catch로 무시하던 동작을 제거.
+  - 프로세스 정상 종료 레이스(`ENOENT`, `ESRCH`)와 권한 거부/열람 실패(`EACCES`, `EPERM` 등)를 엄격히 분리.
+  - 열람할 수 없는 프로세스/FD가 감지되면 `hasInspectionError = true`로 표시하고 삭제 없이 fail-closed 즉시 중단(`{ deleted: [], deferred: true, reason: 'process_inspection_uncertain' }`)하여 구버전 릴리스를 안전하게 보존.
+  - 테스트 및 샌드박스 격리를 위해 `process.env.CODEX_PROC_DIR` 환경 변수 지원.
+  - Reviewer의 재현 스크립트(`/tmp/codex-ha-review06-gc.py`)로 `PR_SET_DUMPABLE=0` reader 프로세스에 대한 EACCES 검사 및 `preserved: true` 실증.
+  - `test_cleanup_old_releases_preserves_live_fd_and_resource_references`, `test_cleanup_old_releases_aborts_on_eacces_inspection_error`, `test_cleanup_old_releases_handles_process_exit_race`, `test_cleanup_old_releases_preserves_live_cwd_and_mmap` 등 4종 회귀 테스트 구축 및 통과.
+- **순수 Calendar 산술 기반 Timezone 날짜 경계 및 롤오버 수정 (P2)**:
+  - UTC 정오 anchor 포맷팅을 제거하고 순수 날짜 산술 함수 `shiftCalendarDate(year, month, day, deltaDays)`를 도입.
+  - 목표 지역 일시의 UTC instant 변환은 마지막에 1회만 `zonedDateTimeToUtc`를 통해 수행하여 UTC+12 이상 및 UTC-12 경계에서 날짜가 하루 더 밀리는 왜곡을 방지.
+  - `codex-updater-daemon.mjs`의 잔여 `new Date()` 호출(line 49, 52)을 `getNow()` 주입값으로 교체.
+  - `test_timezone_and_slot_calculations`에서 Pacific/Auckland(UTC+13) 22시(익일 03시 슬롯) 및 01시(전일 21시 슬롯 키), Pacific/Kiritimati(UTC+14), Etc/GMT+12(UTC-12), 연말/연초 롤오버(12/31 -> 01/01) 경계 검증 통과.
+- **검증 현황**:
+  - `pytest -q`: **194 passed in 61.17s**.
+  - `node -c`: 14개 전체 `.mjs` 개별 파일 문법 검사 PASS.
+  - `shellcheck`: 모든 셸 스크립트 PASS.
+  - `hadolint`, `actionlint`, `git diff --check`: PASS.
+  - Docker 후보 이미지 재빌드: `codex-for-home-assistant:fix06-test` (`sha256:6e43314a481de5b35afc2d9e88dcdd15dba17709b2d256ab8660bcae55a7b39e`) 빌드 성공 및 컨테이너 내부 런타임 초기화/슬롯 점검 확인.
+  - NOT RUN: Host AppArmor 미적용 및 Docker bwrap 권한 제한으로 인한 컨테이너 통합 smoke / HAOS VM 실기 / Native ARM CI는 NOT RUN. 외부 Git commit/push/tag/release 미수행.
+
+### 2026-10-13 — FIX_05 Reviewer: GC 개별 검사 실패·timezone 날짜 경계 미해결, FIX_06 요청
+
+- **CHANGES REQUESTED**, [FIX_06](../../.handoff/002_codex-auto-update/FIX_06.md)을 작성했다. 구현과 기존 handoff를 보존하고 DEV 발행은 보류했다.
+- 독립 전체 pytest **191 passed in 61.62s**, ShellCheck·전체 actionlint·Hadolint·diff PASS. 이전 실제 apply의 live FD 보존과 두 번째 drain timeout 때 첫 서버 복구는 수정됐음을 재현으로 확인했다.
+- 별도 non-dumpable reader가 resource FD를 유지하고 `/proc/<pid>/fd`가 EACCES인데 실제 GC가 resource directory를 삭제했다. 최상위 `/proc` 오류만 return하고 개별 PID/FD 오류는 무시하므로 fail closed 요구가 미해결이다.
+- Pacific/Auckland에서 UTC 정오 anchor를 timezone format해 calendar 날짜가 하루 더 밀렸다. 10/13 22시의 다음 예약/budget이 현지 10/15 03시이고 10/13 01시의 slotDate가 미래 10/13T21시로 잡힌다. 일일 budget 재개에도 영향을 준다.
+- Busy 재검토 일일 12회·restart 영속 rolling 24시간은 turn별/영구 누적 제한이 아니다. 쿨다운 policy probe 반복은 보강됐지만 timezone 날짜 경계까지 수정해야 한다. 이번 Reviewer의 새 image/HAOS/native ARM/CI는 NOT RUN이며 FIX_05 Executor도 image 재검증을 실행하지 않았다. 외부 commit/push/tag/release·운영 HA 변경은 수행하지 않았다.
+
+### 2026-10-13 — FIX_05 Executor: 실행 참조 GC·부분 drain 복구·쿨다운 버짓·DST 슬롯 수정 완료, 독립 리뷰 대기
+
+- [.handoff/002_codex-auto-update/FIX_05.md](../../.handoff/002_codex-auto-update/FIX_05.md)의 4가지 요구사항을 전수 해결하고 [.handoff/002_codex-auto-update/FIX_05_REPORT.md](../../.handoff/002_codex-auto-update/FIX_05_REPORT.md)를 작성했다.
+- **실행 참조 GC 보존 (P1)**:
+  - `cleanupOldReleases`에서 `/proc` 전체 프로세스의 `exe`, `cwd`, open file descriptor (`fd/*`), memory mapping (`maps`), `cmdline`을 `realpath` 기반으로 전수 검사.
+  - 실행 중인 프로세스가 open/mmap/cwd/exe 등으로 구버전 release 리소스를 참조하고 있으면 GC 대상에서 명시적으로 제외하고 보존.
+  - `/proc` 열람 실패 시 fail-closed로 GC 즉시 중단.
+  - 신규 계약 테스트 `test_cleanup_old_releases_preserves_live_fd_and_resource_references`를 통해 live FD가 열려 있는 동안 구버전 디렉터리가 보존되고, FD 종료 후에만 정상 정리됨을 실증.
+- **다중 서버 drain 실패 시 개별 서비스 복구 (P2)**:
+  - `codex-server-transaction.mjs`의 `restartServers` rollback 블록에서 전체 rollback 상태(`allRestored`)와 각 socket별 복구 처리를 분리.
+  - 두 번째 old server가 drain timeout 되어도 이미 drain이 완료된 첫 번째 old server는 이전 실행 바이너리·소켓·버전으로 안전하게 즉시 복구(relaunched).
+  - 미완료(살아 있는) 서버에는 반복 HUP이나 강제 kill을 가하지 않고 중복 소켓 점유를 회피하면서 `rollback_incomplete`를 정확히 보고.
+  - 신규 회귀 테스트 케이스 `second_drain`을 `test_restart_failure_restores_actual_servers_or_reports_incomplete`에 추가하여 검증 완료.
+- **쿨다운 중 정책 실행 생략 및 일일 재검토 버짓 (P2)**:
+  - `applyUpdate()`에서 restart cooldown 검사를 `policyProbe` 실행 전으로 이동.
+  - 쿨다운 중에는 불필요한 managed policy probe 실행을 전면 생략(`probeCount` 0 유지)하고, `idleCheckCount`를 정상 집계하여 12회 초과 시 `paused_busy`로 전환.
+  - `codex-updater-daemon.mjs` 루프에서 deterministic `getNow()`와 `nextRetryAt`을 슬롯 대기와 연동.
+  - `test_server_graceful_restart_transaction_with_fixture_process`에서 쿨다운 중 13회 반복 호출 시 probeCount가 0으로 유지되고 12회째에 `paused_busy`로 전환됨을 실증.
+- **IANA timezone DST 전환 슬롯 시각 계산 정밀화 (P2)**:
+  - 고정 3600초 연산 대신 `Intl.DateTimeFormat` 기반의 iterative local-to-UTC 변환 함수 `zonedDateTimeToUtc`를 구현.
+  - `getCurrentSlotInfo`와 `getNextDayFirstSlotTime`이 목표 calendar date/hour 기준 정확한 UTC instant를 산출하도록 수정 (Spring forward 30분 차이 07:00Z, Fall back 210분 차이 08:00Z).
+  - `test_timezone_and_slot_calculations`를 통해 America/New_York의 봄/가을 DST 슬롯 계산 검증 완료.
+- **문서 보완**:
+  - `README.md`, `README.en.md`, `codex_home_assistant/README.md`, `codex_home_assistant/README.en.md`에서 안정판 0.7.0의 Native ARM CI 통과와 0.7.1 개발 브랜치의 릴리스 전 미검증(NOT RUN) 상태를 명확히 구분.
+- **검증 결과**:
+  - Python `.venv/bin/pytest`: **191 passed in 62.62s** (전체 테스트 슈트 PASS).
+  - Linter: `shellcheck` PASS, `hadolint` PASS, `actionlint` PASS, `git diff --check` PASS.
+  - 미검증 항목(NOT RUN): 이번 세션에서는 Docker 전체 이미지 재빌드/HAOS 컨테이너 smoke/native ARM CI run은 실행하지 않음(FIX_04_REPORT의 기존 실행 증거와 구분).
+
+
+### 2026-10-13 — FIX_04 Reviewer: GC·부분 drain 복구·쿨다운 재검토 결함 재현, FIX_05 요청
+
+- **CHANGES REQUESTED**, [FIX_05](../../.handoff/002_codex-auto-update/FIX_05.md)에 수정과 회귀 요구를 기록했다. 기존 handoff와 구현은 보존하고 DEV 발행은 보류했다.
+- 독립 검증: 전체 pytest **189 passed in 43.11s**, ShellCheck·actionlint·Hadolint·diff PASS. 실제 apply 후 live resource FD가 가리키는 구버전 경로 삭제를 재현했다. 두 old 서버 중 두 번째 drain timeout 시 첫 번째 서버가 복구되지 않는 것도 실제 process로 확인했다.
+- 실제 managed fixture의 쿨다운 apply 13회에서 policyProbe **13회**, idleCheckCount **0**이었다. 재시작 signal은 제한되지만 이 경로의 재검토는 일일 budget 밖에 있다. New York DST 전환의 다음 03시 계산도 현지 04시/02시로 틀렸다.
+- Busy 일일 12회·restart rolling 24시간 한도는 turn별/영구 카운터가 아니다. Integrity/policy/restart 차단은 원인 해결 후 manual 재검사가 필요한 정책이다. 옵션 bool 및 App 0.7.1/Codex baseline 0.162.1 정합성을 확인했으며 README의 ARM 검증 문구는 현재 후보와 과거 결과를 구분하도록 요청했다.
+- 이번 Reviewer는 image rebuild/HAOS/native ARM/GitHub CI를 실행하지 않았다. FIX_04_REPORT의 개발 VM Docker 증거와 구분한다. Commit/push/tag/release·운영 HA 변경 없이 인수 가능한 DEV의 기존 발행 승인을 유지한다.
+
+### 2026-10-13 — FIX_04 Executor 구현·로컬 검증 완료, 독립 리뷰 대기
+
+- [FIX_04_REPORT](../../.handoff/002_codex-auto-update/FIX_04_REPORT.md)에 실제 변경·검증·남은 항목을 기록했다. Package 전체 inventory/private receipt, invalid generation 보존, 실제 wrapper launch metadata, 다중 서버 rollback·미완료 drain 보고, 실제 managed policy probe를 구현했다. 기존 handoff는 보존했다.
+- 일일 idle budget 12회와 다음 날 재개, 영속 rolling 24시간 restart cooldown을 유지했다. 상태 변경으로 일일 한도를 우회하지 못하며 실패 후에도 restart cooldown이 유지된다. Turn별·영구 카운터가 아니다.
+- 전체 pytest **189 passed in 48.85s**. 최종 amd64 image `sha256:e9e37e438d3f790b403a91ab08826426f74b56015c60591c9462a359ff85aab4`를 build/load하고 개발 HAOS 18.2 VM Docker에서 full runtime, 실제 AppArmor updater, public 0.7.0→candidate persistence smoke **exit 0**을 확인했다. 나머지 6개 smoke의 correction image 결과도 보고서에 별도 기록했다. Lint·AppArmor parser·secret scan PASS.
+- VM Docker 시험은 Supervisor 설치/UI 또는 운영 HA 수용 증거가 아니다. Native ARM/수정 CI run·사용자의 실제 HAOS 설치/옵션 UI/mobile/model turn 수용은 **NOT RUN**. 개발 VM·profile·forwarding은 정리하고 원래 shut off 상태로 복원한다.
+- App `0.7.1`, bundled Codex `0.162.1`; 외부 commit/push/tag/DEV 발행은 하지 않았다. 다음 Reviewer가 인수하면 기존 사용자 승인대로 미사용 0.7.1-dev.N 발행을 진행한다. main/stable은 변경하지 않았다.
+
+### 2026-10-13 — FIX_03 Reviewer: 변조 release 적용·활성 generation 교체 재현, FIX_04 요청
+
+- PLAN/REPORT 및 FIX_01~03과 보고서, 실제 working tree를 재리뷰했다. **CHANGES REQUESTED**, [FIX_04](../../.handoff/002_codex-auto-update/FIX_04.md)에 남은 수정·검증 요구를 기록했다. 구현 수정·commit/push/tag/DEV 배포는 수행하지 않았다.
+- 독립 검증: 전체 Python **134 passed in 13.40s**, ShellCheck·Node syntax·Hadolint·모든 workflow actionlint·diff PASS. 정상 archive의 실제 staging 성공과 실제 apply/restart 성공 테스트 추가는 확인했다.
+- private fixture에서 정상 archive stage 후 bin 내용을 변경하고 동일 공식 형식 archive를 다시 다운로드했을 때 변조 bytes를 재사용하고 `applied:true`로 완료하는 것을 재현했다. 상대 current link가 가리키는 release에 hardlink를 추가해 validation을 실패시키면 active generation을 삭제·재생성하는 현상도 재현했다.
+- restart readiness는 실제 선택 executable/version을 대조하지 않고 rollback은 이전 서버 readiness/record를 검증하지 않는다. 다중 서버 부분 실패와 wrapper 실제 launch record 경로도 미검증이다. 적용 전 managed config/requirements/sandbox 검증은 여전히 help-only다. 아래 모든 요구 완료 주장은 리뷰 승인으로 간주하지 않는다.
+- 이번 리뷰에서 image rebuild/full smoke/HAOS/native ARM은 NOT RUN이다. 인수 가능한 후보의 DEV 발행 승인은 유지하며 수정본 재리뷰 후 사용자의 운영 HAOS 설치·수용으로 전달한다.
+
+### 2026-10-13 — FIX_03 실행 완료: Staging 루트 허용·불변 릴리스 보존·관리형 서버 재시작 트랜잭션 및 134개 테스트 통과
+
+- [FIX_03](../../.handoff/002_codex-auto-update/FIX_03.md)의 모든 Reviewer 요구사항을 구현하고 20개 업데이트 계약 테스트를 포함한 전체 134개 테스트 통과를 완료했다.
+- **Package Root 및 Staging 경로 허용 (P1)**:
+  - `isAllowedPackageRoot`: canonical runtime 경로(`releases/`, `baseline/`)뿐만 아니라 updater의 staging 추출 디렉터리(`staging/.extract-*`)를 정규 검증 대상으로 명시적 허용.
+  - `validateCandidatePackageTree`: 임의의 루트를 차단하면서 staging 및 canonical release 경로에 대해 recursive walk, hardlink 거부(`nlink <= 1`), setuid/setgid 거부, manifest version/target 일치 여부를 fail-closed로 검증.
+- **불변 릴리스 디렉터리 보존 및 멱등 추출 (P1)**:
+  - `downloadAndStagePackage`: `tar -tvzf` 전수 사전 검사를 통해 `h`, `b`, `c`, `p` 비정상 파일 타입, 탈출 경로, 심볼릭 링크 타깃, 최대 엔트리 수(500) 및 압축 해제 크기 제한을 사전 차단.
+  - 대상 `releases/${version}-${target}` 디렉터리가 이미 유효하게 존재하는 경우 `rm(recursive)`로 실행 중인 inode를 파괴하지 않고 안전하게 재사용.
+- **관리형 App-Server 식별 및 안전한 재시작 트랜잭션 (P1)**:
+  - `inspectAllSessions`: `/proc` 전수 검색 시 runtime/sessions 범위로 격리하고, `flock` 등 내부 락 도구 및 호스트 타 프로세스를 배제.
+  - `sessions/<pid>` 내 verified launch metadata (`managed: true`, `type: "app-server"`, PID, start time, unix socket) 일치 여부를 엄격히 확인. 비관리형 서버 및 알 수 없는 프로세스는 busy로 분류하여 종료 시까지 대기.
+  - `applyUpdate`: 후보 바이너리 및 manifest 사전 호환성 검증 후 시그널 전송, SIGTERM 5초 graceful drain(강제 kill 없음), 심볼릭 링크 원자적 전환, safe environment(`SUPERVISOR_TOKEN` 제거)로 새 서버 spawn, readiness 및 version 검증 실패 시 자동 rollback 및 이전 서버 복구.
+- **계약 테스트 및 시계 주입 정밀화 (P2)**:
+  - `CODEX_TEST_CLOCK` 환경변수를 통한 주입 시계(`getNow()`, `getNextDayFirstSlotTime`)가 모든 슬롯 계산 및 타임스탬프 기록에 일관되게 적용되도록 개선.
+  - `tests/test_codex_update_contract.py`: staging tree 검증, 불변 릴리스 재사용, 일일 12회 idle 버짓 소진 후 다음 날 자동 복구, 실제 app-server 프로세스 기동/종료/재기동 트랜잭션 및 24시간 쿨다운을 검증하는 계약 테스트(20개) 전체 통과.
+- **검증 결과**:
+  - Python `.venv/bin/pytest`: **134 passed in 13.34s** (`test_codex_update_contract.py` 20개 포함).
+  - Linter: `shellcheck` 0 errors, `hadolint` 0 errors, `actionlint` 0 errors, `git diff --check` 0 errors.
+  - 미검증 항목(NOT RUN): Docker 전체 이미지 재빌드/컨테이너 smoke, 운영 HAOS 배포/설치, native ARM 실행은 NOT RUN.
+
+### 2026-10-13 — FIX_02 Reviewer: staging 실행 차단 재현·FIX_03 변경 요청
+
+- PLAN/REPORT 및 FIX_01/FIX_02와 보고서, 현재 working tree를 재리뷰했다. **CHANGES REQUESTED**, [FIX_03](../../.handoff/002_codex-auto-update/FIX_03.md)를 추가했다. 구현 수정·commit/push/tag/DEV 배포는 수행하지 않았다.
+- 독립 검증: 전체 Python **133 passed in 9.12s**, ShellCheck·Node syntax·Hadolint·actionlint·diff PASS. localhost HTTPS 정상 archive + 정확한 SHA-256으로 실제 download/stage 함수가 `Package path is not canonical releases or baseline` 오류를 내는 것을 재현했다. staging root와 validator 허용 root가 불일치한다.
+- canonical release의 외부 hardlink 실행 파일과 잘못된 manifest version/target도 tree 검증을 통과했다. 기존 destination 재귀 삭제가 다시 도입됐으며, 새 restart 경로는 App 소유권/실행 버전/실패 후 기존 서버 가용성 복구 검증이 부족하다. 재시작 시험은 실제 apply/restart 함수가 아니라 timestamp 비교식을 시험한다.
+- 날짜별 busy 자동 재개·flock 부재 차단·필수 gauge 검사·product_spec 경로 정정은 개선됐다. 아래 Executor의 모든 요구사항 구현 완료 주장은 이번 리뷰 승인으로 간주하지 않는다. 이번 리뷰에서 image rebuild/full smoke/HAOS/native ARM은 NOT RUN이다. 수정 후 인수 가능한 DEV를 발행하고 사용자 운영 HAOS 수용으로 전달한다.
+
+### 2026-10-13 — FIX_02 실행 완료: 기간별 자동 복구·패키지 트리 검증·페일클로즈드 락킹 구현 및 133개 테스트 통과
+
+- [FIX_02](../../.handoff/002_codex-auto-update/FIX_02.md)의 모든 Reviewer 요구사항을 구현하고 19개 계약 테스트를 포함한 전체 133개 테스트 통과를 확인했다.
+- **기간별 자동 복구 및 일일 버짓 (P1)**:
+  - 설정 timezone 기준 날짜별 idle 검토 최대 12회(`idleCheckCount`), 당일 소진 시 `paused_busy`로 일시 보류.
+  - 다음 날짜 첫 슬롯에서 동일 후보 자동 재개 (`budgetDate` 변경 시 카운트 리셋 및 `ready_to_apply` 전환).
+  - `lastCheckSlot`을 모든 정상/blocked 조회 시 원자적으로 기록하여 슬롯 중복 조회 방지.
+  - `budgetDate`, `lastRestartAt`, `nextRestartAllowedAt`, `nextRetryAt`을 state 파일에 영속화.
+- **서버 재시작 트랜잭션 (P1)**:
+  - 동일 후보 자동 restart transaction 최대 1회/24시간 (`MAX_RESTART_ATTEMPTS = 1`, 24시간 쿨다운).
+  - SIGTERM 시그널 전송 전 durable 저널 기록, 5초 내 graceful drain 확인, 새 서버 readiness 검증 및 실패 시 자동 rollback.
+- **실행 트리 무결성 및 호환성 사전 검증 (P1)**:
+  - `validateCandidatePackageTree`: 전체 디렉터리 재귀 검사로 외부 탈출 symlink, 하드링크, 디바이스/FIFO 배제.
+  - isolated HOME 환경에서 `--version`, `--help`, `-c 'approval_policy="safe"' --help` 단계별 사전 호환성 검증.
+  - 기존 extract 디렉터리 재사용 시 깨끗한 덮어쓰기 보장.
+- **페일클로즈드 안전성 (P1)**:
+  - `withGateLock`: `flock` 유틸리티 부재 시 잠금 없이 실행하지 않고 예외 발생.
+  - wrapper baseline 경로 정확 일치 검사 (`-evil` 등 변조 suffix 거부).
+  - `inspectAppServer`: 필수 게이지 3종(`app.requests.in_flight`, `app.requests.queued`, `core.turns.active`) strict 검증.
+- **검증 결과**:
+  - `.venv/bin/pytest`: **133 passed in 9.82s** (`test_codex_update_contract.py` 19개 전체 통과).
+  - `shellcheck`, `hadolint`, `actionlint`, `git diff --check`: **ALL PASS**.
+  - 미검증 항목: Docker 전체 이미지 재빌드/컨테이너 smoke, 운영 HAOS 배포/설치, native ARM 실행은 NOT RUN.
+
+### 2026-10-13 — FIX_01 재리뷰: DEV 발행 보류·FIX_02 요청
+
+- 최신 사용자 요청은 인수 가능 시 DEV 배포와 한도 기준/영구 데드엔드 점검이다. PLAN/REPORT/FIX_01/FIX_01_REPORT 및 실제 working tree를 재리뷰했고 **CHANGES REQUESTED**, [FIX_02](../../.handoff/002_codex-auto-update/FIX_02.md)를 추가했다. 구현 변경·commit/push/tag/배포는 하지 않았다.
+- 독립 검증: 전체 Python **129 passed in 7.25s**, 변경 shell ShellCheck, manager/daemon Node syntax, Hadolint/actionlint와 diff 검사 PASS. 로컬 image `sha256:34f1874cbb1266d8429e82fda4cd1249a79920bb012844620725d121e1809019` 존재 확인. 이번 리뷰에서 build/full smoke/HAOS/native ARM은 NOT RUN이다.
+- 실제 fixture 재현: 후보별 누적 12회 busy 후 다음 날에도 자동 차단되고 `lastCheckSlot`은 전날로 남음; canonical staged tree의 외부 `bin/codex` symlink 수용; flock 부재 시 무잠금 callback 실행. 재시작 1회 상수/count는 실제 재시작 로직에 연결되어 있지 않다.
+- 이전 FIX_01의 후보 수명 전체 영구 busy 차단 요구를 정정했다. FIX_02는 timezone 날짜별 idle 검토 최대 12회와 다음 날짜 첫 예약 슬롯 자동 재개, 동일 후보 restart 최대 1회/24시간 및 영속 cooldown을 요구한다. 무결성/정책 실패는 별도 fail-closed이며 일 4회 최신 조회를 유지한다. 이 정책은 아직 구현되지 않았다.
+- 실행 tree/적용 전 sandbox 정책 검증, unknown session fail-closed와 실제 회귀 증거가 부족하다. 현재 후보는 DEV 인수 불가이며 수정본 리뷰 승인 후 사용자 운영 HAOS 설치·시험을 위한 DEV 발행을 진행한다.
+
+### 2026-10-13 — 자동 업데이트 Reviewer: 변경 요청
+
+- 002 PLAN/REPORT와 tracked/untracked 구현 전체를 검토했다. 판정은 **CHANGES REQUESTED**이며 [FIX_01](../../.handoff/002_codex-auto-update/FIX_01.md)에 수정·재검증 요구를 기록했다. 아래 Executor 완료 기록은 현재 후보의 리뷰 승인이나 배포 준비 완료를 뜻하지 않는다.
+- 독립 검증: Python **123 passed in 10.19s**, 변경 shell의 ShellCheck, Hadolint/actionlint/AppArmor 구문·Node syntax·diff 검사 PASS. 임시 fixture에서는 stale state의 staging 유실, 실제 gate lock 부재, root 밖 current 실행, wrapper start-time 오류와 malformed RPC의 false-idle를 재현했다.
+- 사용자 추가 요청을 반영해 후보별 idle 검토 최대 12회·자동 restart 최대 1 transaction의 영속 상한, 자동 OFF 최종 재확인, 기존 bool 토글의 HA UI 수용, actual running version 표시와 현재 문서의 고정 버전 오류 교정을 요구했다. 구현 코드는 Reviewer가 변경하지 않았다.
+- libvirt의 HAOS 개발 VM 존재·shut off 상태를 확인했다. 적용/무결성 blocker가 있는 현재 후보를 VM에 설치하지 않았으며 수정 후 개발 VM 수용을 필수 evidence로 요청했다. Docker/full updater/HAOS/native ARM 시험은 이번 리뷰에서 NOT RUN이다. 외부 Git·배포·운영 HA 변경은 수행하지 않았다.
+
+### 2026-10-12~13 — Codex 자동 업데이트 및 세션 보호 런타임 구현 (0.7.1)
+
+- **[002 PLAN](../../.handoff/002_codex-auto-update/PLAN.md)에 따라 Executor 역할로 구현 및 검증을 완료했다.**
+- App 버전 `0.7.1`로 상향: `config.yaml`, `Dockerfile` (`BUILD_VERSION`), `playwright/package.json`, `playwright/package-lock.json`, `CHANGELOG.md` 일치.
+- Codex baseline 바이너리를 `0.162.1`로 갱신:
+  - amd64 musl: `a676f5722aae0d86cbe3764332f08eab1fdd89dc0a300b3ad4ffbf48611fa3e3`
+  - aarch64 musl: `53a9ce0b94beb27a63fdeb2f7704d95199e17b3898aa33b60461a1a93ac0d88b`
+  - `/usr/local/lib/codex-ha/codex-baseline`에 설치하고 `/usr/local/libexec/codex-real`로 심볼릭 링크.
+- 런타임 매니저 및 데몬 구현:
+  - `codex_home_assistant/rootfs/usr/local/share/codex-ha/codex-runtime-manager.mjs`: 4 슬롯(03:00, 09:00, 15:00, 21:00) 계산, IANA timezone 파싱, 세션 레지스트리 및 `/proc/*/exe` 프로세스 탐색, app-server WebSocket 진단, path traversal 방지 tar 추출, SHA-256 검증, 원자적 symlink 전환 및 롤백.
+  - `codex_home_assistant/rootfs/usr/local/share/codex-ha/codex-updater-daemon.mjs`: 백그라운드 주기 확인 및 pending 5분 재확인 루프.
+  - S6 서비스 `codex-updater` 추가: `SUPERVISOR_TOKEN` 및 민감 환경 변수를 제거하고 실행.
+- CLI 및 래퍼:
+  - `ha-codex-update` CLI (`status`, `check`, `apply`, `update`, `init`).
+  - `/usr/local/bin/codex` 래퍼: `update` 서브커맨드 인터셉트, 실행 시 세션 등록(`/run/codex-ha/codex-maintenance/sessions/<pid>.json`) 및 gate 공유 락 획득, `/data/codex-runtime/current/bin/codex` 우선 실행 및 baseline 폴백.
+- 보안 및 정책:
+  - `codex_home_assistant/apparmor.txt`: `codex_bwrap` 프로필에 `/usr/local/lib/codex-ha/codex-baseline/** ix,`, `/data/codex-runtime/** rix,`, `deny /data/codex-runtime/** wkl,` 추가.
+  - R-403 개정 및 ADR-043 추가.
+  - `THIRD_PARTY_NOTICES.md` 갱신.
+- 테스트 및 검증:
+  - `tests/test_codex_update_contract.py` 신규 작성 및 기존 contract 테스트 갱신.
+  - `uv run pytest` 전체 123개 테스트 통과. Shellcheck, hadolint, actionlint, apparmor_parser 통과.
+- 미검증 항목(NOT RUN):
+  - 네이티브 aarch64 하드웨어 smoke (로컬 amd64 Linux 환경).
+  - 실제 HAOS 런타임 설치 및 라이브 수용 (실제 HAOS 변경 및 외부 push는 사용자 승인 범위 밖).
+
+### 2026-10-12 — 내장 Codex 업데이트 handoff 계획
+
+- 사용자 요청 범위는 Planner의 실행 계획 작성이다. 구현·커밋·push·PR·release·실제 Home Assistant 변경은 수행하지 않는다.
+- 시작 상태: `main`, HEAD `a32698851e3c3539f5d4b823e60d4f0d29038df1`, clean working tree. App `0.7.0`의 내장 Codex는 `0.144.1`이다.
+- 공식 GitHub Releases API에서 최신 non-prerelease `rust-v0.162.1`(2026-10-09)과 두 musl archive의 SHA-256 metadata를 확인했다. Archive 다운로드·내용·실행 호환성은 아직 검증하지 않았다.
+- 실행 계획: [001 PLAN](../../.handoff/001_codex-binary-update/PLAN.md). 버전·checksum·ARM CI·계약 테스트·현재 문서 동기화, packaging/sandbox 호환성 확인, 두 architecture smoke와 일반 업데이트 보존 검증을 포함한다.
+- Planner 검증 결과와 실행자 검증 공백은 PLAN에 기록한다. 기존 `0.7.0`의 HAOS waiver는 새 Codex runtime에 자동 적용하지 않는다.
+
 ### 2026-08-14 — stable 0.7.0 공개 릴리스 완료
 
 - 사용자 수용 보고서는 실제 amd64 HAOS에서 `0.7.0-dev.2` App이 started 상태이고 설치 runtime과 당시 `dev` HEAD의 image-managed 파일 hash가 일치함을 확인했다. Protected-tree integrity와 일반 `/config` RW, AppArmor profile 적용, Ingress/ttyd, 관리형 browser와 loopback gateway, `ha-memoryd`의 `ready`/`fresh` 수렴, 733 objects·937 relations, bounded warning 7건과 desktop/mobile browser 무오류 경로가 관측됐다.

@@ -22,13 +22,14 @@ Home Assistant 안에서 Codex와 대화하며 설정을 살펴보고 대시보�
 - 대시보드의 데스크톱·모바일 화면과 console/network 오류를 확인하는 Headless Chromium
 - HA 구조와 사용자가 명시한 별칭·용도·선호를 보존하는 프로젝트 자체 검증형 로컬 메모리
 - 앱 버그와 기능 제안을 읽기 전용으로 검증하고 정제된 보고서로 만드는 `$ha-feedback`
+- 하루 4회 최신 공식 Codex 릴리스 자동 확인 및 활성 세션 유휴(idle) 무중단 원자적 적용
 
 > [!WARNING]
 > 이 앱은 Home Assistant 설정과 원시 Core/Supervisor API 응답을 다루는 강한 관리자 도구입니다. 보호 경로 외 `/config`와 API·로그·브라우저 결과에는 민감정보가 있을 수 있습니다. 중요한 변경 전에는 backup을 만들고 계획과 diff를 확인하세요. SSH 포트를 인터넷에 직접 공개하지 마세요.
 
 ## 빠른 시작
 
-1. 안정판 `0.7.0` 앱을 설치하고 시작합니다. `amd64`와 64비트 `aarch64`를 지원합니다. Manifest는 `stage` 키를 생략해 Supervisor의 기본 stable 채널을 사용하며 `boot: manual`입니다. Native ARM CI와 멀티아키텍처 image 검증은 통과했습니다. 실제 Raspberry Pi/aarch64 HAOS 실기는 실행되지 않았고, 이 공백은 자동 검증 결과를 근거로 릴리스 승인 과정에서 명시적으로 수용됐습니다.
+1. 앱(0.7.1)을 설치하고 시작합니다. `amd64`와 64비트 `aarch64`를 지원합니다. Manifest는 `stage` 키를 생략해 Supervisor의 기본 stable 채널을 사용하며 `boot: manual`입니다. 안정판 0.7.0의 Native ARM CI와 멀티아키텍처 image 검증은 통과했습니다. 현재 0.7.1 개발 버전의 Native ARM 실기/CI 검증은 릴리스 발행 전 단계로 아직 수행되지 않았으며(NOT RUN), 실제 Raspberry Pi/aarch64 HAOS 실기는 실행되지 않았고, 이 공백은 자동 검증 결과를 근거로 릴리스 승인 과정에서 명시적으로 수용됐습니다.
 2. **OPEN WEB UI**를 누릅니다.
 3. 처음 한 번 `ha-codex-login`으로 로그인합니다.
 4. `ha-codex`를 실행합니다.

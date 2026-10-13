@@ -224,7 +224,11 @@ def test_apparmor_scopes_bubblewrap_mount_operations_to_child_profile(
     assert not re.search(r"^\s*userns\b", profile, re.MULTILINE)
 
     transitions = re.findall(r"^\s*(\S+) Cx -> (\S+),$", profile, re.MULTILINE)
-    assert transitions == [("/usr/bin/bwrap", "codex_bwrap")]
+    assert transitions == [(path, "codex_bwrap") for path in [
+        "/usr/local/lib/codex-ha/codex-baseline/codex-resources/bwrap",
+        "/data/codex-runtime/releases/*/codex-resources/bwrap",
+        "/data/codex-runtime/staging/.extract-*/codex-resources/bwrap",
+    ]]
     assert re.search(
         r"^  profile codex_bwrap flags=\(attach_disconnected,mediate_deleted\) \{",
         profile,

@@ -186,6 +186,8 @@ helper는 토큰을 출력하지 않고 HTTP 오류를 명확히 반환한다. �
 - `browser_approval_policy` (기본 `safe`)
 - `codex_user_files_update_mode` (기본 `preserve`)
 - `home_assistant_browser_auto_auth` (기본 `true`)
+- `codex_auto_update` (기본 `true`)
+- `codex_auto_update_timezone` (기본 `Asia/Seoul`)
 - `log_level`
 
 SSH 외부 포트는 JSON 옵션이 아니라 Network 설정이다.
@@ -279,6 +281,16 @@ SSH 외부 포트는 JSON 옵션이 아니라 Network 설정이다.
 - Confirmed submit은 privacy/render/auth를 다시 검사하고 remote report ID 중복 검색이 성공한 경우에만 이슈 생성을 시도한다. 검증한 Markdown을 메모리에서 `gh issue create --body-file -`의 stdin으로 전달해 path 재열기 경쟁을 없애고, 외부 write 전에 exclusive `.submission.lock`을 만든다. `gh` 실패, 예상 밖 URL 또는 성공 후 receipt 기록 실패처럼 외부 결과가 불확실하면 lock을 보존해 같은 report의 직접 재시도를 차단하며 자동 재시도하지 않는다. 성공 URL과 private `submission.json` receipt를 모두 확인한 뒤에만 lock을 제거한다.
 - GitHub 인증은 명시적 `ha-feedback github login|logout`에서만 변경하고 `GH_CONFIG_DIR=/data/github-cli`를 사용한다. Helper는 `GH_TOKEN`, `GITHUB_TOKEN`, `SUPERVISOR_TOKEN` 등 상속 token을 제거한 최소 환경으로 `gh`를 실행한다. 로그인 전 이 root-only 영속 경로의 평문 credential이 Home Assistant App backup에 포함될 수 있음을 경고하고 사용자가 위험을 확인해야 한다.
 - 미인증, 후보·remote 중복 검색 실패 또는 `gh` 제출 실패 시 자동 재시도하거나 token을 요구하지 않는다. 짧게 prefill된 Issue Form URL과 복사용 `public-report.md`를 제공하고 브라우저의 최종 제출은 사용자가 수행한다. 외부 결과가 불확실한 실패에서는 먼저 고정 저장소에 같은 report ID의 이슈가 생성됐는지 확인하고, 긴 보고서 본문과 민감 정보는 URL에 넣지 않는다.
+
+### FR-021 Codex 런타임 자동 업데이트 및 유휴(idle) 세션 적용
+
+- 하루 4회(03:00, 09:00, 15:00, 21:00) 지정된 IANA timezone(기본 `Asia/Seoul`)으로 공식 GitHub releases의 latest stable release를 조회한다.
+- `codex_auto_update`가 `false`이면 자동 주기 확인을 수행하지 않는다.
+- 공식 tarball은 SHA-256 검증 및 path traversal 방지 검사를 거쳐 `/data/codex-runtime/releases/<version>-<target>`에 안전하게 추출된다.
+- CLI/TUI, SSH, Remote stdio, managed app-server의 활성 세션을 포괄적으로 감지하며, 활성 세션(active turn, approval wait, loaded conversation 등)이 감지되면 적용을 보류(`staged`)하고 5분 간격으로 로컬 상태만 재확인한다.
+- 모든 세션이 유휴 상태일 때 원자적 symlink 전환(`current -> releases/<version>-<target>`)을 수행한다.
+- `ha-codex-update` CLI(`status`, `check`, `apply`, `update`)와 wrapper `codex update` 라우팅을 지원한다.
+- AppArmor에서 `/data/codex-runtime/**`는 `rix`를 부여하고 write/link를 명시적으로 차단하여 샌드박스 내부 변조를 방지한다.
 
 ## 5. 비기능 요구사항
 
@@ -415,3 +427,12 @@ MVP에서는 다음을 만들지 않는다.
 8. `/config/codex-workspace/feedback`은 `0700`/`0600`, `/data/github-cli`는 `0700`/`0600`을 유지한다. Input과 managed path의 symlink, hardlink, non-regular type와 root escape를 거부하고, non-root-owned GitHub config는 소유권을 바꾸지 않은 채 direct login/submit을 비활성화한다.
 9. App image에 checksum 검증된 GitHub CLI `2.97.0`, Skill, helper와 routing instruction이 포함되고 일반 `0.5.0` → `0.6.0` update에서 Codex 인증/config/AGENTS, SSH/browser identity, memory와 Home Assistant 파일이 보존된다.
 10. 실제 HAOS의 report 생성·restart persistence·Issue Form 폴백은 별도 실기하며, 실제 GitHub 이슈 생성은 저장소에 외부 변경을 남기므로 명시적 승인 전까지 **NOT RUN**으로 기록한다.
+
+## 11. Codex 런타임 자동 업데이트 수용 기준
+
+1. 하루 4회 슬롯 계산(03:00, 09:00, 15:00, 21:00)과 유효한 IANA timezone 파싱이 정확해야 하며, 잘못된 timezone은 안전하게 기본값(`Asia/Seoul`)으로 폴백한다.
+2. 공식 release manifest/asset의 SHA-256이 불일치하거나 경로 이탈(`..` 등)이 포함된 아카이브는 추출하지 않고 fail closed한다.
+3. 세션 추적(`/run/codex-ha/codex-maintenance/sessions` 및 `/proc/*/exe`)에서 활성 프로세스가 감지되면 원자적 symlink 전환을 수행하지 않고 `staged` 상태를 유지하며 5분마다 재확인한다.
+4. 모든 세션이 종료되어 유휴 상태가 확인되면 원자적으로 `/data/codex-runtime/current` symlink를 갱신하고, 새 세션은 즉시 갱신된 버전을 사용한다.
+5. 업데이터 서비스는 `SUPERVISOR_TOKEN`을 상속하지 않으며 로그나 상태 파일에 자격증명/원시 사용자 입력을 남기지 않는다.
+6. baseline 패키지(`0.162.1`)는 `/usr/local/lib/codex-ha/codex-baseline`에 보존되며 `/data` 런타임 손상 시 fallback으로 동작한다.

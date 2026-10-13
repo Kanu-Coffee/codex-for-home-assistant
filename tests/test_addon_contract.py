@@ -45,7 +45,7 @@ def test_stable_release_is_visible_in_home_assistant_and_image(
     addon_config: dict, addon_root: Path, repository_root: Path
 ) -> None:
     assert addon_config["name"] == "Codex for Home Assistant"
-    assert addon_config["version"] == "0.7.0"
+    assert addon_config["version"] == "0.7.1"
     assert not addon_config["description"].startswith("[DEV] ")
     assert addon_config["panel_title"] == "Codex"
     assert addon_config["slug"] == "codex_home_assistant"

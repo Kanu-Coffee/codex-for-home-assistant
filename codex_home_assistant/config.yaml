@@ -1,6 +1,6 @@
 ---
 name: Codex for Home Assistant
-version: "0.7.0"
+version: "0.7.1"
 slug: codex_home_assistant
 description: "Codex CLI with verified feedback, browser, terminal, and SSH for Home Assistant"
 url: https://github.com/Kanu-Coffee/codex-for-home-assistant
@@ -40,6 +40,8 @@ options:
   browser_approval_policy: safe
   codex_user_files_update_mode: preserve
   home_assistant_browser_auto_auth: true
+  codex_auto_update: true
+  codex_auto_update_timezone: Asia/Seoul
   log_level: info
 
 schema:
@@ -53,4 +55,6 @@ schema:
   codex_user_files_update_mode: "list(preserve|refresh_agents|refresh_all)"
   home_assistant_browser_auto_auth: bool
   home_assistant_browser_token: password?
+  codex_auto_update: bool
+  codex_auto_update_timezone: str
   log_level: "list(trace|debug|info|notice|warning|error|fatal)"

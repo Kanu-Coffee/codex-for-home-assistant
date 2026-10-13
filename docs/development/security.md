@@ -40,6 +40,7 @@
 | 검증형 HA catalog/사용자 의미 메모리 | root-only SQLite + Core API + local CLI/MCP | 높음 | allowlist·provenance·bounded output으로 허용 |
 | App bug/feature read-only report | image-managed Skill + local helper | 중간 | allowlist·privacy scan·private file로 허용 |
 | GitHub issue search/submission | pinned `gh` + outbound HTTPS | 높음 | fixed repo·random 10분 1회용 preview·현재 대화 확인·exclusive claim 뒤 허용 |
+| Codex 런타임 자동 업데이트 | S6 codex-updater + GitHub Releases HTTPS | 중간 | 공식 stable SHA-256 검증 및 유휴 상태 원자적 적용으로 허용 |
 | memory HTTP/SSE listener 또는 외부 vector/cloud sync | 외부 network service | 매우 높음 | 불허 |
 | 브라우저 디버그/VNC 외부 공개 | 새 host/Ingress port | 매우 높음 | 불허 |
 | 보호 모드 변경/무제한 Supervisor | admin | 매우 높음 | 불허 |
@@ -360,6 +361,11 @@ AppArmor와 managed requirements가 고정한 `secrets.yaml`·`.storage` 밖의 
 - `hassio_role`이 manager인지 검사
 - 금지 config key가 없는지 정책 테스트
 - 실제 고위험 service call은 테스트 fixture/mock로 검증
+- custom AppArmor는 baseline/release의 bin·codex-path 실행만 허용하고, 각 package의 검증된 `codex-resources/bwrap`만 mount 권한이 있는 child profile로 전이한다. APK transitive system bwrap은 image에서 제거하여 package companion을 사용한다. `deny /data/codex-runtime/** wkl`로 child sandbox의 런타임 쓰기를 차단한다. 전체 inventory receipt는 executable tree 밖의 private ledger에 기록하며 root의 의도적 변조 격리 수단은 아니다.
+- S6 `codex-updater` 서비스는 `SUPERVISOR_TOKEN` 및 민감 환경 변수를 제거한 상태로 데몬을 실행
+- 런타임 아카이브 추출 시 path traversal 방지 및 SHA-256 해시 검증 강제
+- `/data/codex-runtime/state.json` 및 업데이터 로그에 토큰이나 민감 사용자 입력을 남기지 않음
+- 활성 세션(CLI, TUI, SSH, remote stdio, app-server) 감지 시 유휴 상태가 될 때까지 symlink 전환을 안전하게 보류
 
 ## 7. 사고 대응
 

@@ -25,8 +25,15 @@ install -d -m 0700 \
   "${SSH_DATA}" \
   "${TMUX_DATA}" \
   "${PLAYWRIGHT_OUTPUT}" \
+  /data/codex-runtime \
+  /data/codex-runtime/releases \
+  /data/codex-runtime/staging \
+  /run/codex-ha/codex-maintenance \
+  /run/codex-ha/codex-maintenance/sessions \
   /root/.ssh
 install -d -m 0755 /run/sshd
+
+node /usr/local/share/codex-ha/codex-runtime-manager.mjs init >/dev/null 2>&1 || true
 
 # The image-managed helper validates and prepares GitHub CLI credential
 # storage. Private ownership and modes reduce accidental disclosure, but the

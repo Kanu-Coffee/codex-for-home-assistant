@@ -122,7 +122,10 @@
 - Codex non-interactive mode  
   https://developers.openai.com/codex/noninteractive
 
-- Codex CLI release `0.144.1`
+- Codex CLI release `0.162.1` (image baseline)
+  https://github.com/openai/codex/releases/tag/rust-v0.162.1
+
+- Codex CLI release `0.144.1` (historical)
   https://github.com/openai/codex/releases/tag/rust-v0.144.1
 
 - Codex Linux sandbox/container guidance
@@ -187,7 +190,7 @@
 - Codex config는 `approval_policy`, `sandbox_mode`, workspace-write network access와 file credential store를 지원한다. System-managed `requirements.toml`은 허용 sandbox와 filesystem deny를 사용자 설정보다 강하게 제한할 수 있다.
 - Supervisor 2026.04부터 legacy `build.yaml`과 자동 `BUILD_FROM` 주입을 사용하지 않으며 Dockerfile이 build source of truth다.
 - 현재 generic Home Assistant Alpine base는 `3.24`, builder composite actions는 `2026.06.0`이다.
-- Codex CLI `0.144.1`과 GitHub CLI `2.97.0`은 amd64/aarch64 공식 release artifact와 고정 SHA-256을 architecture별로 사용한다. 사용하지 않는 base TempIO executable은 final image에서 제거한다. Stable `0.7.0`은 native aarch64 CI, tag Builder, generic/architecture image 발행과 익명 manifest/config/layer 조회를 PASS했다. `gh attestation verify`와 Cosign `3.0.3`으로 provenance/SBOM과 exact workflow identity, source ref, digest도 독립 검증했다. 후속 실제 amd64 HAOS 보고서는 profile 적용·일반 `/config` RW·App/Ingress/browser/memory를 관측했다. 실제 read syscall 전체 음성 행렬과 Raspberry Pi/aarch64 HAOS는 NOT RUN이며 2026-08-14 maintainer 위험 수용 대상으로 남는다.
+- Codex CLI baseline은 `0.162.1`(`0.144.1`에서 업그레이드)이며 GitHub CLI `2.97.0`과 함께 amd64/aarch64 공식 release artifact와 고정 SHA-256을 architecture별로 사용한다. App `0.7.1`부터 `/data/codex-runtime`에 공식 stable release tarball을 SHA-256 검증 및 유휴 상태 원자적 적용으로 관리하는 자동 업데이트를 지원한다. 사용하지 않는 base TempIO executable은 final image에서 제거한다. Stable `0.7.0`은 native aarch64 CI, tag Builder, generic/architecture image 발행과 익명 manifest/config/layer 조회를 PASS했다. `gh attestation verify`와 Cosign `3.0.3`으로 provenance/SBOM과 exact workflow identity, source ref, digest도 독립 검증했다. 후속 실제 amd64 HAOS 보고서는 profile 적용·일반 `/config` RW·App/Ingress/browser/memory를 관측했다. 실제 read syscall 전체 음성 행렬과 Raspberry Pi/aarch64 HAOS는 NOT RUN이며 2026-08-14 maintainer 위험 수용 대상으로 남는다.
 - 직접 Remote SSH는 remote login shell의 PATH에서 `codex`를 찾고 HA App에 저장된 Codex 인증을 요구한다.
 - Supervisor Core/App 로그 endpoint는 `Accept: text/plain` 또는 `text/x-log`를 사용하며 JSON Accept만 보내면 협상이 실패할 수 있다.
 - Codex는 `CODEX_HOME`의 `AGENTS.md`를 전역 지침으로 읽고 프로젝트 root부터 현재 디렉터리까지 더 가까운 지침을 뒤에 결합한다.
@@ -195,3 +198,11 @@
 - 일반 Supervisor App은 고정 IP를 요청하지 않고 App pool에 동적으로 연결되므로 현재 `/32`는 update/recreate 뒤 영구 신원이 아니다.
 - `trusted_networks` source가 `trusted_proxies`와 겹치면 Core가 provider login을 거부하며, Docker 전체 대역 신뢰나 synthetic X-Forwarded-For는 다른 App 사칭 범위를 넓힌다.
 - Core의 지원되는 admin WebSocket API는 `group_ids`와 `local_only`를 지정한 일반 user 생성과 Home Assistant credential 연결을 제공한다. `.storage` 직접 편집은 필요하지 않다.
+
+### FIX_04에서 재확인한 tagged Codex 동작 (2026-10-13)
+
+- [App-server shutdown signals, rust-v0.162.1](https://github.com/openai/codex/blob/rust-v0.162.1/codex-rs/app-server/src/lib.rs): SIGHUP의 GracefulOnly와 반복 신호의 비강제 drain 동작.
+- [Diagnostics gauge registry](https://github.com/openai/codex/blob/rust-v0.162.1/codex-rs/diagnostics/src/lib.rs): 최초 increment 때 register하며 snapshot은 등록된 gauge만 포함.
+- [Official diagnostics test](https://github.com/openai/codex/blob/rust-v0.162.1/codex-rs/app-server/tests/suite/v2/server_diagnostics.rs): 진단 요청 자체의 in-flight 값 1 또는 startup 중 2.
+- [Linux sandbox launcher](https://github.com/openai/codex/blob/rust-v0.162.1/codex-rs/linux-sandbox/src/launcher.rs): system bwrap을 우선 탐색하고 없으면 package의 bundled helper를 사용.
+- [OpenAI managed configuration](https://developers.openai.com/codex/enterprise/managed-configuration): image-managed config·requirements의 실제 parsing과 sandbox compatibility를 검사하는 근거. 별도 새 model 요청은 하지 않는다.

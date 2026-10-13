@@ -28,7 +28,7 @@
 > [!WARNING]
 > 이 앱은 보호된 `secrets.yaml`·`.storage`를 제외한 `/config`를 읽고 쓸 수 있고 Home Assistant Core 및 Supervisor `manager` API를 사용할 수 있는 강한 관리자 도구입니다. API 응답·로그·브라우저 화면에는 여전히 민감정보가 포함될 수 있습니다. 중요한 변경 전에는 백업하고, 계획과 diff를 확인한 뒤 적용하세요. SSH 포트를 인터넷에 직접 공개하지 마세요.
 
-비공식 커뮤니티 프로젝트이며 OpenAI 또는 Home Assistant/Nabu Casa와 제휴하거나 보증받은 제품이 아닙니다. 안정판 `0.7.0`은 `amd64`와 64비트 `aarch64`를 지원하며 HAOS에서 **Codex for Home Assistant**, 사이드바에서 **Codex**로 표시됩니다. Native ARM CI와 멀티아키텍처 이미지 검증은 통과했습니다. 실제 Raspberry Pi/aarch64 HAOS 실기는 실행되지 않았고, 이 공백은 자동 검증 결과를 근거로 릴리스 승인 과정에서 명시적으로 수용됐습니다.
+비공식 커뮤니티 프로젝트이며 OpenAI 또는 Home Assistant/Nabu Casa와 제휴하거나 보증받은 제품이 아닙니다. 안정판 `0.7.1`은 `amd64`와 64비트 `aarch64`를 지원하며 HAOS에서 **Codex for Home Assistant**, 사이드바에서 **Codex**로 표시됩니다. 안정판 0.7.0의 Native ARM CI와 멀티아키텍처 이미지 검증은 통과했습니다. 현재 0.7.1 개발 브랜치의 Native ARM 실기/CI 검증은 릴리스 발행 전 단계로 아직 수행되지 않았으며(NOT RUN), 실제 Raspberry Pi/aarch64 HAOS 실기는 실행되지 않았고, 이 공백은 자동 검증 결과를 근거로 릴리스 승인 과정에서 명시적으로 수용됐습니다.
 
 ## 실제 Web 터미널 미리보기
 
@@ -57,6 +57,7 @@
 | Home Assistant 직접 작업하기 | `/config` 파일과 지원되는 Core/Supervisor API를 이용해 변경하고, 가능한 경우 fresh API로 결과를 다시 확인합니다. |
 | 이동 중 이어서 작업하기 | Home Assistant 모바일 앱/웹의 Ingress 터미널을 사용하거나, ChatGPT 모바일 Remote에서 HA 앱의 SSH endpoint에 직접 연결합니다. |
 | 집의 맥락 기억시키기 | HA 구조와 사용자가 명시한 별칭·용도·선호를 이 프로젝트의 검증형 로컬 메모리에 보존해 다음 작업에서 관련 정보만 찾습니다. |
+| Codex 최신 버전 유지하기 | 하루 4회 새 stable 버전을 자동 확인하고, 실행 중인 세션이 모두 유휴(idle) 상태일 때 무중단으로 원자적 적용합니다. |
 
 Bubble Card, Mushroom 같은 커스텀 카드는 앱에 포함되지 않습니다. 이미 설치된 구성요소를 활용하거나 설치 계획을 먼저 검토하도록 요청하세요.
 
@@ -85,7 +86,7 @@ flowchart LR
 ### 요구사항
 
 - Home Assistant OS 또는 Supervisor가 있는 설치 환경
-- 안정판 `0.7.0`은 **amd64**와 64비트 **aarch64** 장치를 지원합니다. Raspberry Pi는 64비트 HAOS가 필요하며 32비트 `armv7`은 지원하지 않습니다.
+- 안정판 `0.7.1`은 **amd64**와 64비트 **aarch64** 장치를 지원합니다. Raspberry Pi는 64비트 HAOS가 필요하며 32비트 `armv7`은 지원하지 않습니다.
 - 공개 이미지를 내려받을 인터넷 연결
 - Codex를 사용할 수 있는 OpenAI/ChatGPT 계정
 
@@ -197,6 +198,8 @@ $ha-feedback feature 이 앱에서 개선하고 싶은 요청이 있어. 현재 
 | `browser_approval_policy` | `safe` | 조회·캡처는 자동 승인하고 클릭·입력은 확인합니다. |
 | `codex_user_files_update_mode` | `preserve` | 사용자 Codex 설정과 지침을 업데이트 중 보존합니다. |
 | `home_assistant_browser_auto_auth` | `true` | Headless browser용 local-only read-only HA 사용자를 관리합니다. |
+| `codex_auto_update` | `true` | Codex 런타임 하루 4회 자동 업데이트 활성화 여부입니다. |
+| `codex_auto_update_timezone` | `Asia/Seoul` | 업데이트 확인 기준 시간대 (IANA 타임존)입니다. |
 | `log_level` | `info` | Web 터미널 로그 수준입니다. |
 
 모든 허용값, 재시작 필요 여부와 `refresh_all` 주의사항은 [설정값 전체 안내](codex_home_assistant/DOCS.md#앱-설정)를 확인하세요.

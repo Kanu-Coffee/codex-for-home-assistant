@@ -28,7 +28,7 @@
 > [!WARNING]
 > This app can read and write `/config` except for protected `secrets.yaml` and `.storage` paths, and it can use the Home Assistant Core and Supervisor `manager` APIs. API responses, logs, and browser views can still contain sensitive information. Back up your system and review the plan and diff before important changes. Never expose its SSH port directly to the internet.
 
-This is an unofficial community project. It is not affiliated with or endorsed by OpenAI, Home Assistant, or Nabu Casa. Stable `0.7.0` supports `amd64` and 64-bit `aarch64`, appears in HAOS as **Codex for Home Assistant**, and uses **Codex** in the sidebar. Native ARM CI and multi-architecture image validation passed. A real Raspberry Pi/aarch64 HAOS acceptance run was not performed; the release approval explicitly accepted that gap based on the automated evidence.
+This is an unofficial community project. It is not affiliated with or endorsed by OpenAI, Home Assistant, or Nabu Casa. Stable `0.7.1` supports `amd64` and 64-bit `aarch64`, appears in HAOS as **Codex for Home Assistant**, and uses **Codex** in the sidebar. Native ARM CI and multi-architecture image validation passed for stable 0.7.0; validation for the 0.7.1 development branch remains pending before release (NOT RUN). A real Raspberry Pi/aarch64 HAOS acceptance run was not performed; the release approval explicitly accepted that gap based on the automated evidence.
 
 ## Real Web terminal preview
 
@@ -57,6 +57,7 @@ These images show the real Web terminal from the public `0.5.0` image, captured 
 | Work directly on Home Assistant | Change `/config` files and use supported Core/Supervisor APIs, then recheck results through fresh APIs where possible. |
 | Continue while away from home | Use the Ingress terminal in the Home Assistant mobile app or website, or connect ChatGPT mobile Remote directly to the app's SSH endpoint. |
 | Preserve context about your home | Keep verified HA structure and user-stated aliases, purposes, and preferences in this project's local memory, then retrieve only relevant context for later work. |
+| Keep Codex updated | Automatically checks for new official stable releases 4 times daily and applies them with zero downtime when sessions are idle. |
 
 Custom cards such as Bubble Card and Mushroom are not bundled with the app. Ask Codex to use components you already have, or to present an installation plan for review first.
 
@@ -85,7 +86,7 @@ flowchart LR
 ### Requirements
 
 - Home Assistant OS or another installation with Supervisor
-- Stable `0.7.0` supports **amd64** and 64-bit **aarch64** devices. Raspberry Pi requires 64-bit HAOS. 32-bit `armv7` is not supported.
+- Stable `0.7.1` supports **amd64** and 64-bit **aarch64** devices. Raspberry Pi requires 64-bit HAOS. 32-bit `armv7` is not supported.
 - Internet access to download the public image
 - An OpenAI/ChatGPT account with access to Codex
 
@@ -199,6 +200,8 @@ Keep the defaults when getting started.
 | `browser_approval_policy` | `safe` | Automatically allow inspection and capture, but confirm clicks and input. |
 | `codex_user_files_update_mode` | `preserve` | Preserve user Codex settings and instructions during updates. |
 | `home_assistant_browser_auto_auth` | `true` | Manage a local-only, read-only HA user for the Headless browser. |
+| `codex_auto_update` | `true` | Whether to enable 4-times-daily automated Codex runtime updates. |
+| `codex_auto_update_timezone` | `Asia/Seoul` | Schedule evaluation timezone (IANA timezone string). |
 | `log_level` | `info` | Web terminal log level. |
 
 See [all app settings](codex_home_assistant/DOCS.en.md#app-settings) for accepted values, restart requirements, and `refresh_all` precautions.

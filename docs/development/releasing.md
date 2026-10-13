@@ -9,7 +9,7 @@
 - Home Assistant App repository: `https://github.com/Kanu-Coffee/codex-for-home-assistant`
 - DEV canary repository: `https://github.com/Kanu-Coffee/codex-for-home-assistant#dev`
 - image: `ghcr.io/kanu-coffee/codex-for-home-assistant:<version>`
-- current stable release `0.7.0` architecture: `amd64`, `aarch64` (`armv7` 미지원)
+- current stable release `0.7.0` (target `0.7.1`) architecture: `amd64`, `aarch64` (`armv7` 미지원)
 - latest historical DEV publication: `0.7.0-dev.2`
 - stable version tag: `X.Y.Z`
 - numbered DEV version tag: `X.Y.Z-dev.N` (`N`은 1 이상의 정수이며 새 후보마다 사용하지 않은 번호 선택)
@@ -71,7 +71,7 @@ Stable `0.7.0` source는 [PR #38](https://github.com/Kanu-Coffee/codex-for-home-
 - 인증 없는 generic/per-architecture image 조회와 pull
 - image의 `io.hass.version`, `io.hass.arch`, source label
 - 예상 architecture가 각각 `linux/amd64`, `linux/arm64`인지
-- 각 image에서 Codex `0.144.1`, GitHub CLI `2.97.0` exact version과 architecture가 일치하고 `/usr/bin/tempio`가 없는지
+- 각 image에서 Codex `0.162.1`, GitHub CLI `2.97.0` exact version과 architecture가 일치하고 `/usr/bin/tempio`가 없는지
 - generic tag와 두 runtime manifest digest 기록
 - architecture별 SPDX SBOM artifact, Critical gate와 High/Critical scan 결과
 - per-architecture image의 Cosign signature, provenance와 SBOM attestation 검증

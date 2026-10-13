@@ -25,6 +25,9 @@
 - GitHub CLI `2.97.0` URL/SHA-256 pin, fixed repository/label과 feedback MCP/API/App route/service/hook/Action/telemetry/upload 부재 검사
 - amd64/aarch64별 Codex CLI·GitHub CLI asset 이름과 SHA-256, 설치 후 exact version, 미지원 architecture fail-closed, App arch 선언 일치와 final image의 `/usr/bin/tempio` 부재 검사
 - custom AppArmor의 root/nested `secrets.yaml`·`.storage` deny와 나머지 `/config` RW 규칙, `/etc/codex/requirements.toml` managed sandbox 계약 검사
+- custom AppArmor의 baseline/release bin·codex-path 실행, package별 bundled bwrap child transition과 `deny /data/codex-runtime/** wkl` 런타임 보호 규칙 검사
+- Codex baseline `0.162.1` checksum pin 및 `/usr/local/lib/codex-ha/codex-baseline` 배치 검사
+- `ha-codex-update` 및 `codex update` routing, S6 `codex-updater` 서비스 및 `user/contents.d/codex-updater` 등록 계약 검사
 - init/Codex launch의 sensitive-path shape validator가 symlink·special file·pre-existing hardlink를 값/경로 원문 없이 fail closed하는지 검사
 - GitHub Actions SHA pin, native aarch64 runner, SBOM·취약점 scan·provenance/attestation과 Dependabot 계약 검사
 
@@ -63,6 +66,12 @@ Supervisor가 없어도 검증 가능한 항목:
 - Malicious feedback fixture privacy fail-closed, security private route와 logs/screenshots/raw response 자동 수집 부재
 - Report/GitHub config path의 owner/type/link/mode/root containment, `0700`/`0600`과 restart persistence
 - Fake `gh` auth/backup warning/env scrub/candidate·remote duplicate fail-closed/random 10분 one-use preview/current-turn confirmation/concurrent claim/stdin body/success/uncertain failure lock/fallback 계약
+- Codex updater 4 슬롯(03:00, 09:00, 15:00, 21:00) 계산, IANA timezone 파싱 및 기본값(`Asia/Seoul`) 폴백 검사
+- Semver 파싱·비교 및 musl target architecture 매핑 검사
+- 세션 감지(/run 세션 파일 및 /proc/*/exe)와 active turns/approval/loaded conversation busy 판정 및 idle 감지 검사
+- Busy 상태에서의 staged 보류 및 유휴 시 원자적 symlink 전환 검사
+- `state.json` 및 업데이터 로그의 자격증명/원시 입력 비노출 검사
+- `codex update` CLI 인터셉트 및 managed updater 라우팅 검사
 - pulled GHCR image의 labels/platform 및 full smoke
 - amd64/aarch64 image의 실제 `uname -m`, Codex/GitHub CLI/Node/Chromium 실행, `/usr/bin/tempio` 부재와 architecture label 일치
 - interactive·S6 scheduler·unrelated child의 ambient `SUPERVISOR_TOKEN` 부재, purpose-specific helper process 범위, direct API loader의 owner/mode/link 검사와 고정 endpoint 사용
@@ -174,7 +183,7 @@ Supervisor가 없어도 검증 가능한 항목:
 | AT-061 | Candidate·preview·confirmation·duplicate | Fixed repository title search가 sanitized query로 최대 5개 candidate만 반환하고 hostile title을 report/prompt로 승격하지 않음. Candidate 검색 실패·malformed 결과는 token/create 없이 폴백. 무확인 submit은 preview-only이며 exact repo/title/label/body에 bind된 서로 다른 random token을 private runtime state에 저장. 10분 만료·single-use, 이전 turn/ambiguous confirmation, payload change, wrong/expired/used token, wrong repo/label/URL과 duplicate report/receipt를 거부하고 current-turn explicit confirmation만 허용. Confirmed submit 직전 remote exact report ID 검색도 unavailable이면 create 없이 fresh preview가 필요한 폴백을 반환 |
 | AT-062 | 직접 제출·Issue Form fallback | Fake success는 `Kanu-Coffee/codex-for-home-assistant`, `bug`/`enhancement`, `--body-file -`를 사용하고 검증한 exact Markdown이 stdin으로 전달되는지, fixed issue URL과 `0600` receipt를 검증. 같은 report/token의 concurrent submit은 exclusive claim으로 create 1회만 허용. `gh` nonzero, 예상 밖 URL 또는 receipt write 실패는 hidden `.submission.lock`을 보존해 direct retry를 차단하고, 미인증/검색 불가/실패는 자동 retry/token 요청 없이 report와 긴 body/secret 없는 짧은 Issue Form URL·exact copy path를 제공 |
 | AT-063 | Docker packaging·0.5.0 update 보존 | Image version `0.6.0`에 Skill/helper/`gh`가 지정 mode로 포함되고 Node syntax/help/fixture smoke 성공. Public `0.5.0` volume update에서 Codex auth/config/AGENTS, SSH host key, browser identity, memory와 Home Assistant marker가 byte/fingerprint 수준으로 보존되며 `/data/github-cli`는 새 설치에 private 생성되고 기존 safe login state는 보존 |
-| AT-064 | 멀티아키텍처 artifact 계약 | `BUILD_ARCH=amd64`와 `aarch64`가 Codex `0.144.1` musl과 GitHub CLI `2.97.0`의 정확한 asset/SHA-256으로 매핑되고 그 밖의 architecture는 다운로드 전에 실패하며 final image에는 `/usr/bin/tempio`가 없음 |
+| AT-064 | 멀티아키텍처 artifact 계약 | `BUILD_ARCH=amd64`와 `aarch64`가 Codex `0.162.1` musl과 GitHub CLI `2.97.0`의 정확한 asset/SHA-256으로 매핑되고 그 밖의 architecture는 다운로드 전에 실패하며 final image에는 `/usr/bin/tempio`가 없음 |
 | AT-065 | native aarch64 image 회귀 | native ARM runner에서 aarch64 image build, `uname -m`, image label, Codex/GitHub CLI/Node/Chromium, `/usr/bin/tempio` 부재 및 기존 full smoke가 모두 성공하며 amd64 job과 독립 판정 |
 | AT-066 | 민감 `/config` 경로 차단 | AppArmor parser가 validator에 필요한 `.storage` directory listing operation만 profile에 남기고 root/nested `secrets.yaml`, `.storage` content의 read/write/execute/link를 거부. Managed requirements는 Codex directory read도 거부. Init/Codex preflight는 symlink, FIFO/special file과 pre-existing hardlink(`st_nlink != 1`) fixture를 값·경로 원문 없이 fail closed하며 일반 `/config` fixture의 RW와 App 가용성은 유지 |
 | AT-067 | managed Codex sandbox | `/etc/codex/requirements.toml`이 `read-only\|workspace-write`만 허용해 danger mode를 제외하고 동일 민감 경로를 deny-read하며 wrapper가 실제 session의 workspace/network access를 강제. 기본·명시 workspace는 동작하고 legacy danger 입력은 warning 뒤 workspace로 변환되며 사용자 config/CLI로 managed 요구사항을 우회할 수 없음. Hosted Ubuntu CI는 immutable commit·SHA-256으로 검증한 official bubblewrap userns AppArmor profile을 ephemeral host에만 load하며 privileged/SYS_ADMIN 우회를 사용하지 않음 |
@@ -480,7 +489,7 @@ ha-api GET /states
 비밀 원문을 출력하거나 테스트 fixture로 복사하지 않는다. 테스트용 root/nested `secrets.yaml`과 `.storage`에는 실제 credential 대신 고정 marker만 사용한다.
 
 1. Native ARM CI가 생성한 aarch64 후보를 64-bit Raspberry Pi 계열 또는 동등한 aarch64 HAOS에 일반 설치한다.
-2. App info, container architecture와 image label이 aarch64로 일치하고 App 시작, Ingress terminal, 공개키 SSH와 Codex `0.144.1` 실행이 성공하는지 확인한다.
+2. App info, container architecture와 image label이 aarch64로 일치하고 App 시작, Ingress terminal, 공개키 SSH와 Codex `0.162.1` 실행이 성공하는지 확인한다.
 3. 기본 option과 legacy `danger-full-access` 저장값 각각에서 새 Codex session이 `workspace-write`와 network access로 시작하고 legacy 값은 경고만 남긴 뒤 변환되는지 확인한다.
 4. Codex에서 root/nested `secrets.yaml`과 `.storage` directory/descendant read를 시도해 managed requirements가 거부하는지 확인한다. Web/SSH 일반 root shell에서는 AppArmor validator allowance로 `.storage` entry 이름 listing만 가능하고, root/nested `secrets.yaml` 및 `.storage` non-directory content의 read/write/execute/link는 거부되는지 실제 값 없이 확인한다.
 5. 실제 Home Assistant 보호 파일을 변형하지 않는 격리 config copy에서 symlink, FIFO/special file과 pre-existing hardlink fixture를 각각 준비한다. App init 또는 Codex launch가 path/value 원문 없이 fail closed하는지 확인하고 fixture를 폐기한다.
@@ -552,3 +561,9 @@ P2:
 ```
 
 가능한 경우 CI 링크와 HAOS 버전, App 버전, 아키텍처를 기록한다. 사용자가 상세 환경이나 로그를 제공하지 않으면 이를 추정하지 않고 미제공으로 기록한다.
+
+## FIX_04 candidate 검증 범위
+
+- 실제 archive 재사용/inventory 변조, relative·absolute current 및 previous-only·staged-only 참조 보존, 일일 budget 상태 변경·다음 날 재개, server diagnostics lazy gauge와 자기 요청 카운트, 실제 process의 replacement/rollback 실패를 회귀 검사한다.
+- `tests/codex-update-smoke.sh <image>`는 로드된 `CODEX_TEST_APPARMOR`(기본 `codex_home_assistant`) 아래 synthetic `/config`와 실제 bundled Codex로 policy, companion, wrapper JSON escaping, inode/version, Unix RPC와 graceful restart를 검사한다. 동일 버전 baseline을 local fixture archive로 재포장하므로 새 upstream release 또는 사용자 모바일 세션 수용의 대체 증거가 아니다.
+- Native amd64/aarch64 CI는 bundled helper용 CI namespace profile을 전체 runtime smoke 전에 로드하고 실제 AppArmor updater smoke도 실행한다. 로컬 amd64 HAOS Docker 시험과 아직 실행하지 않은 native ARM CI를 구분한다.

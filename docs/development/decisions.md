@@ -340,3 +340,26 @@ hassio_role: manager
 - 수용 증거: 실제 amd64 HAOS `0.7.0-dev.2` 보고서는 App started, runtime hash 일치, protected-tree preflight, 일반 `/config` RW, AppArmor profile 적용, Ingress/ttyd, 관리형 browser, `ha-memoryd` ready/fresh와 bounded warning 상태를 관측했다. 이 보고서를 실행하지 않은 syscall/aarch64 행렬의 대체 PASS로 사용하지 않는다.
 - 릴리스 증거: [PR #38](https://github.com/Kanu-Coffee/codex-for-home-assistant/pull/38)을 `bc4cfcb7eda82d00de5cd92df5acf80df6ac2650`으로 main에 병합했고 annotated tag object `24386ac011336c2b50f60762144569118762e2f7`이 그 commit으로 peel된다. [Tag Builder 31783958477](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/31783958477), 익명 registry와 독립 attestation/Cosign 검증이 세 stable digest에 대해 PASS했으며 [GitHub Release 0.7.0](https://github.com/Kanu-Coffee/codex-for-home-assistant/releases/tag/0.7.0)은 non-prerelease latest로 공개됐다.
 - 배포 경계: 기존 `#dev` 설치와 main repository 설치는 Supervisor repository identity가 다르다. `#dev` → main의 in-place `/data` 보존 전환은 검증하지 않았으므로 안정판 일반 update와 동일하다고 약속하지 않는다. Stable `0.6.0` → `0.7.0` 같은-repository update 보존 계약과 분리한다.
+
+## ADR-043 Codex 런타임 자동 업데이트 및 세션 보호 유휴 적용
+
+- 상태: Implemented in candidate `0.7.1`
+- 배경: 서버 환경의 하루 5회 점검 및 유휴 재시작 자동화 참고 구현을 바탕으로, Home Assistant App에서도 Codex CLI의 안정판 자동 업데이트 및 세션 보호 적용 요구가 제기되었다.
+- 결정:
+  1. 이미지 기본본: `0.162.1` 공식 musl 패키지를 `/usr/local/lib/codex-ha/codex-baseline`에 고정 포함하고, `/usr/local/libexec/codex-real` 심볼릭 링크 및 정책 wrapper를 유지한다.
+  2. 런타임 저장소: 영속 `/data/codex-runtime/`(mode `0700`, root-owned)에 `releases/<version>-<target>/`, `current`, `previous`, `staged`와 `state.json`(mode `0600`)을 격리 관리한다.
+  3. 스케줄 및 옵션: `codex_auto_update`(boolean, 기본 true) 및 `codex_auto_update_timezone`(string, 기본 `Asia/Seoul`). 하루 4회(`03:00`, `09:00`, `15:00`, `21:00`) 공식 GitHub Releases API stable 패키지를 확인·검증·staging한다.
+  4. 세션 안전성 및 적용: 대화형 TUI/CLI, SSH, Remote stdio, app-server(진행 중인 요청/turn/로드된 대화/백그라운드 터미널)가 모두 유휴(`idle`)일 때만 원자적으로 `current` 심볼릭 링크를 전환한다. 활성 세션이 있으면 `pending_busy`로 보류하고 5분 간격으로 네트워크 없이 재시도한다.
+  5. 검증 및 롤백: 신규 바이너리 검증(`--version`) 실패 시 이전 버전 또는 baseline으로 즉시 롤백한다.
+  6. CLI 라우팅: `ha-codex-update` 도구와 wrapper의 `codex update` 서브커맨드를 제공하여 임의 self-update로 rootfs가 손상되는 것을 방지한다.
+  7. AppArmor: `/data/codex-runtime/** rix,` 실행을 허용하되 `codex_bwrap` 프로필에서 `deny /data/codex-runtime/** wkl,`를 적용하여 샌드박스 내부 명령의 런타임 변조를 차단한다.
+
+## ADR-044 검증된 package bytes와 실제 적용·복구의 연결
+
+- 상태: Implemented in FIX_04 candidate, independent review pending (2026-10-13).
+- 검증 archive에서 만든 전체 inventory(파일 SHA-256·mode·type·link·목록)를 executable tree 밖의 root-only receipt에 영속화한다. Stage 재사용, apply, wrapper admission과 init recovery가 같은 검증을 사용한다. 손상된 기존 generation은 자동 삭제·덮어쓰지 않는다. Root의 의도적 변조까지 격리하는 계약은 아니다.
+- 압축 다운로드 250 MiB, 압축 해제 합계 1 GiB, archive 5000 entries로 제한한다. 현재 실제 Codex package가 압축 해제 시 250 MiB를 넘으므로 두 byte 한도를 분리했다.
+- 실제 isolated managed config/MCP·sandbox RW/deny/local-network 및 app-server RPC/graceful 종료를 검사하고 불가 시 `blocked_policy`로 차단한다. 보호 파일에는 open-only deny를 시험하며 content read를 하지 않는다.
+- APK가 Chromium dependency로 설치하는 system bwrap 0.12는 HAOS Docker에서 proc 초기화에 실패했다. 해당 실행 파일을 image에서 제거하고 각 검증 package의 bundled bwrap을 사용한다. AppArmor의 wildcard child transition과 충돌하는 parent `file,` 실행 허용은 명시적 실행 경로로 바꾸되 일반 file RW와 보호 경로 deny, manager API·capability bounding set은 유지한다.
+- `SIGHUP`은 tagged Codex의 GracefulOnly 신호다. 재시작 전에 영속 24시간 cooldown을 기록하고 replacement/rollback 모두 실제 executable inode·version·RPC readiness·launch record를 확인한다. 여러 서버의 부분 교체도 전체 rollback 대상이며 검증 실패는 `rollback_incomplete`로 남긴다.
+- Diagnostics는 자기 요청을 in-flight 1개로 포함하며 gauge는 최초 증가 때 등록된다. 따라서 in-flight는 필수·최대 1, queue/turn은 등록된 경우 0, loaded threads는 빈 배열이어야 한다. PID·gauge 형식·필수 in-flight·RPC가 불명확하면 계속 busy로 처리한다. 이 protocol 동작을 특정 설치 버전 allowlist로 고정하지 않는다.

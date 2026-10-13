@@ -22,13 +22,14 @@ Use Codex inside Home Assistant to inspect your setup and improve dashboards, au
 - Headless Chromium checks for desktop/mobile dashboard layouts and console/network errors
 - Project-local verified memory for HA structure and user-stated aliases, purposes, and preferences
 - `$ha-feedback` for read-only app bug validation and structured feature proposals
+- 4-times-daily automated official Codex release check with zero-downtime atomic apply when sessions are idle
 
 > [!WARNING]
 > This app is a powerful administrative tool that can change Home Assistant configuration and consume raw Core/Supervisor API responses. Unprotected `/config` paths, APIs, logs, and browser output may contain sensitive information. Back up important data and review the plan and diff before changes. Never expose the SSH port directly to the internet.
 
 ## Quick start
 
-1. Install and start stable `0.7.0`. It supports `amd64` and 64-bit `aarch64`. The manifest omits the `stage` key and therefore uses the Supervisor's default stable channel; `boot: manual` remains explicit. Native ARM CI and multi-architecture image validation passed. A real Raspberry Pi/aarch64 HAOS run was not performed; release approval explicitly accepted that gap based on the automated evidence.
+1. Install and start the app (0.7.1). It supports `amd64` and 64-bit `aarch64`. The manifest omits the `stage` key and therefore uses the Supervisor's default stable channel; `boot: manual` remains explicit. Native ARM CI and multi-architecture image validation passed for stable 0.7.0; validation for the 0.7.1 development branch remains pending before release (NOT RUN). A real Raspberry Pi/aarch64 HAOS run was not performed; release approval explicitly accepted that gap based on the automated evidence.
 2. Select **OPEN WEB UI**.
 3. Sign in once with `ha-codex-login`.
 4. Run `ha-codex`.

@@ -38,13 +38,16 @@ codex-for-home-assistant/
 │     │  ├─ codex/skills/ha-feedback/
 │     │  ├─ cont-init.d/ 또는 s6-rc.d/
 │     │  ├─ s6-overlay/s6-rc.d/ha-memoryd/
+│     │  ├─ s6-overlay/s6-rc.d/codex-updater/
 │     │  ├─ services.d/ 또는 s6-rc.d/
 │     │  ├─ ssh/
 │     │  └─ profile.d/
 │     └─ usr/local/
 │        ├─ bin/
+│        │  ├─ codex
 │        │  ├─ ha-codex
 │        │  ├─ ha-codex-login
+│        │  ├─ ha-codex-update
 │        │  ├─ ha-feedback
 │        │  ├─ ha-memory
 │        │  ├─ ha-memory-mcp
@@ -56,9 +59,12 @@ codex-for-home-assistant/
 │        │  ├─ ha-addon-logs
 │        │  └─ web-terminal-entrypoint
 │        ├─ lib/codex-ha/
+│        │  ├─ codex-baseline/
 │        │  ├─ sensitive-path-policy.sh
 │        │  └─ supervisor-credential.sh
 │        └─ share/codex-ha/
+│           ├─ codex-runtime-manager.mjs
+│           ├─ codex-updater-daemon.mjs
 │           ├─ ha-feedback.mjs
 │           ├─ ha-memory-core.mjs
 │           ├─ ha-memory-ha-client.mjs
@@ -94,11 +100,11 @@ GitHub owner는 실제 계정에 맞춰 Codex가 채운다.
 
 ## 3. `config.yaml` 목표 초안
 
-Stable `0.7.0`은 다음 두 아키텍처를 선언한다. Native CI와 공개 image 검증은 통과했으며 실제 aarch64 HAOS 실기는 `NOT RUN`으로 별도 기록한다.
+미발행 후보 `0.7.1`(unreleased candidate)은 다음 두 아키텍처를 선언한다. 기발행 stable 0.7.0 역사와 분리하여 표기하며, Native CI와 이미지 검증 결과를 기록한다. 실제 aarch64 HAOS 실기는 `NOT RUN`으로 별도 관리한다.
 
 ```yaml
 name: Codex for Home Assistant
-version: "0.7.0"
+version: "0.7.1"
 slug: codex_home_assistant
 description: "Codex CLI with verified feedback, browser, terminal, and SSH for Home Assistant"
 url: https://github.com/<owner>/codex-for-home-assistant
@@ -141,6 +147,8 @@ options:
   browser_approval_policy: safe
   codex_user_files_update_mode: preserve
   home_assistant_browser_auto_auth: true
+  codex_auto_update: true
+  codex_auto_update_timezone: Asia/Seoul
   log_level: info
 
 schema:
@@ -154,6 +162,8 @@ schema:
   codex_user_files_update_mode: "list(preserve|refresh_agents|refresh_all)"
   home_assistant_browser_auto_auth: bool
   home_assistant_browser_token: password?
+  codex_auto_update: bool
+  codex_auto_update_timezone: str
   log_level: "list(trace|debug|info|notice|warning|error|fatal)"
 ```
 
@@ -281,11 +291,11 @@ nano 또는 vim
 
 우선순위:
 
-1. 공식 release `0.144.1`의 amd64 `x86_64-unknown-linux-musl`과 aarch64 `aarch64-unknown-linux-musl` artifact를 각각 고정 SHA-256으로 검증
+1. 공식 release `0.162.1`의 amd64 `x86_64-unknown-linux-musl`과 aarch64 `aarch64-unknown-linux-musl` artifact를 각각 고정 SHA-256으로 검증
 2. 공식 standalone installer를 빌드 단계에서 사용한 뒤 결과 바이너리 고정
 3. npm 방식은 Node 런타임 크기와 Remote SSH 호환성을 비교한 뒤 선택
 
-현재 checksum은 amd64 `84091ae20c65fcc7d4120db97d1bd57d7ff8df9c7609fb781c78c2ebbd4f5a28`, aarch64 `b9f8ef5f98e46ced4dbbd3756a4223e3ee299a457ff488a3305bea455da8b5b8`이다. Architecture 분기 전에 미지원 `BUILD_ARCH`를 거부한다.
+현재 checksum은 amd64 `a676f5722aae0d86cbe3764332f08eab1fdd89dc0a300b3ad4ffbf48611fa3e3`, aarch64 `53a9ce0b94beb27a63fdeb2f7704d95199e17b3898aa33b60461a1a93ac0d88b`이다. Architecture 분기 전에 미지원 `BUILD_ARCH`를 거부한다.
 
 `latest`만 의존하는 비재현 빌드는 release 전에 제거한다.
 
@@ -565,4 +575,4 @@ Stable `0.7.0` source는 [PR #38](https://github.com/Kanu-Coffee/codex-for-home-
 
 발행된 generic digest는 `sha256:95bd8d04c34a3b3cebe463b03c6d2e6b73f1847e2529d9c9ff08a6f64fa700ef`, amd64는 `sha256:19c48ec0e4cc1748296925442563190b3953677bb784279c4d40bff0de224e92`, aarch64는 `sha256:d054f142330b4ee24954d7ca9b6e209e066575e775950eccfff754bad798b75a`다. 익명 manifest/config/architecture별 8개 layer와 독립 `gh attestation verify` 및 Cosign `3.0.3` exact identity/source-ref/digest 검증이 PASS했다. [GitHub Release 0.7.0](https://github.com/Kanu-Coffee/codex-for-home-assistant/releases/tag/0.7.0)은 non-prerelease latest다. 후속 실제 amd64 HAOS 보고서는 `0.7.0-dev.2`의 App/Ingress/browser/memory와 AppArmor profile 적용을 확인했다. 실제 Raspberry Pi/aarch64 HAOS와 syscall-level 전체 음성 행렬은 **NOT RUN**이며, 2026-08-14 릴리스 승인에서 이 공백을 명시적으로 수용했지만 실행 결과로 확대하지 않는다.
 
-Playwright renderer는 `0.2.0`, 최소권한 browser 경로는 `0.2.1`, 관리형 인증은 `0.2.2`, 기본 ON 자동 인증·Codex `8099` 라우팅과 선택형 user-file refresh는 `0.2.3`, 검증형 memory 사용자 폐루프는 `0.5.0`, 검증형 App 피드백 자동화는 `0.6.0`, 멀티아키텍처·고정 민감 경로 차단 안정판은 `0.7.0`이다. Stable `X.Y.Z` 또는 `N >= 1` 번호형 DEV `X.Y.Z-dev.N` Git tag와 App version이 정확히 같을 때만 게시하며, DEV version은 repository/App 표시명, panel, description, OCI title과 MOTD에 DEV 표식을 함께 가져야 한다. Stable version에는 이 표식을 남기지 않는다. Generic, amd64와 aarch64 package의 기존 tag는 덮어쓰지 않는다. Stable manifest는 `stage` 키를 생략해 Supervisor 기본 stable 채널을 사용하며 DEV manifest만 `stage: experimental`을 명시한다. `0.6.0` live GitHub issue creation은 명시적 외부-write 승인 전까지 `NOT RUN`으로 유지한다.
+Playwright renderer는 `0.2.0`, 최소권한 browser 경로는 `0.2.1`, 관리형 인증은 `0.2.2`, 기본 ON 자동 인증·Codex `8099` 라우팅과 선택형 user-file refresh는 `0.2.3`, 검증형 memory 사용자 폐루프는 `0.5.0`, 검증형 App 피드백 자동화는 `0.6.0`, 멀티아키텍처·고정 민감 경로 차단 안정판은 `0.7.0`, Codex 런타임 자동 업데이트 및 유휴 세션 보호는 `0.7.1`이다. Stable `X.Y.Z` 또는 `N >= 1` 번호형 DEV `X.Y.Z-dev.N` Git tag와 App version이 정확히 같을 때만 게시하며, DEV version은 repository/App 표시명, panel, description, OCI title과 MOTD에 DEV 표식을 함께 가져야 한다. Stable version에는 이 표식을 남기지 않는다. Generic, amd64와 aarch64 package의 기존 tag는 덮어쓰지 않는다. Stable manifest는 `stage` 키를 생략해 Supervisor 기본 stable 채널을 사용하며 DEV manifest만 `stage: experimental`을 명시한다. `0.6.0` live GitHub issue creation은 명시적 외부-write 승인 전까지 `NOT RUN`으로 유지한다.
