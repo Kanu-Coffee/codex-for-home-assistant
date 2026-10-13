@@ -4,8 +4,8 @@
 
 ## Project Status
 
-- 상태: **003 S6 exec 거부 원인 audit으로 확정(dev.6 프로파일+image VM 재현 exit 126) / 최소 수정 `/etc/s6-overlay/** ix`와 enforced 전체 부팅 gate·계약 테스트 구현 / 개발 HAOS VM before-after PASS / native CI 실행·dev.7 발행·사용자 HAOS 수용 NOT RUN(push 승인 대기) / stable 0.7.0 main 유지**
-- 현재 마일스톤: **003 Executor 결과 리뷰와 dev.7 CI·발행 승인 범위 확정**
+- 상태: **003 S6 수정 인수 + FIX_01 boot smoke 판정 보완 완료 / 실증에서 updater SIGTERM 대기(최대 3600s) 결함 발견→대기 wake-up 최소 수정·dev.6 image clean stop 불가능 확인 / VM enforced boot smoke PASS(exit 0) / native CI 실행·dev.7 발행·Supervisor 설치·사용자 HAOS 수용 NOT RUN / stable 0.7.0 main 유지**
+- 현재 마일스톤: **003 FIX_01 결과 리뷰(daemon wake-up 수용 여부)와 dev.7 CI·DEV 전달 승인**
 - 마지막 문서 기준일: **2026-10-14**
 - 저장소: public `Kanu-Coffee/codex-for-home-assistant`, default branch `main`
 
@@ -25,6 +25,21 @@
 - [x] interactive/Codex/S6 ambient `SUPERVISOR_TOKEN` 상속 제거와 private helper credential loader 구현
 
 ## Current Work
+
+### 2026-10-14 — FIX_01 Executor: boot smoke 판정 보완과 updater SIGTERM wake-up
+
+- [FIX_01_REPORT](../../.handoff/003_s6-startup-permission-denied/FIX_01_REPORT.md)를 작성했다. 부팅 검사 하나의 deadline에서 running·init·svstat·HTTP 200을 함께 polling하고, 지속 502/503/403과 degraded stop 137을 실패로 바꿨다. busybox `pgrep` 실정에 맞춘 직접 exec 검사와 `codex_auto_update: false` fixture를 적용하고 고정 sleep을 제거했다.
+- VM 실증에서 dev.6 image의 clean stop이 양 options 모두 200s 후 SIGKILL되는 것을 재현했다. 원인은 daemon의 TERM이 최대 3600초 setTimeout 뒤에서만 반영되는 것이다. 슬롯·budget·cooldown·apply 계약은 그대로 두고 **대기만 깨우는** wake-up을 추가했으며(범위 초과 조정, 보고서에 명시) 수정 image `1635bdf1b50b`로 VM enforced boot smoke **PASS exit 0**을 확인했다.
+- stub 5종(느린 준비 PASS/503 FAIL/126 FAIL/degraded 137 FAIL/403 FAIL), pytest **218 passed/1 skipped**, ShellCheck·node --check·yamllint·actionlint PASS. debug 컨테이너·volume과 테스트 프로파일을 정리하고 VM은 shut off 복원(재검증용 fix01-test image만 보존).
+- GitHub CI 실 실행·dev.7 버전 상승/발행·Supervisor UI 설치·사용자 HAOS 수용은 NOT RUN이며 push 승인 대기다.
+
+### 2026-10-14 — Reviewer: S6 최소 수정 인수 가능, boot smoke P2 보완 요청
+
+- HEAD `d63c42c`의 PLAN/REPORT/구현을 검토하고 [FIX_01](../../.handoff/003_s6-startup-permission-denied/FIX_01.md)을 작성했다. **CHANGES REQUESTED는 검증 스크립트에 한정**하며 AppArmor ix 최소 수정과 기존 보호 경계 유지에는 이견이 없다.
+- 독립 pytest **219 passed in 80.57s**, ShellCheck/diff PASS. VM audit/before-after는 Executor 보고 증거로 검토했고 Reviewer가 VM을 재실행하지 않았다.
+- Init ready 로그는 longrun 준비 완료가 아닌데 service/HTTP를 한 번만 검사해 startup race가 있다. 현재 HTTP predicate는 403/502/503도 PASS함을 직접 확인했다. Bounded readiness polling과 정상 200 판정을 요청했다.
+- Degraded stop은 Docker 명령 성공만 확인해 SIGKILL/exit 137도 통과할 수 있다. 양 분기 공통 종료 상태/exit code 검사와 fixture 외부 의존성 통제를 요청했다. 제품 updater 재설계나 추가 보안 gate는 요구하지 않는다.
+- 실제 새 native CI·Supervisor App 설치·DEV 배포는 아직 NOT RUN이다. Remote dev `22fae4f`, main `a326988` 유지. 이번 Reviewer는 runtime/HAOS/외부 게시를 변경하지 않았다.
 
 ### 2026-10-14 — Executor: 003 S6 AppArmor exec 거부 최소 수정과 enforced 부팅 검증
 

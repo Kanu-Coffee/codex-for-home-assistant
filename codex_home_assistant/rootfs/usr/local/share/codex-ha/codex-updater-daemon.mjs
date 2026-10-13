@@ -13,6 +13,22 @@ delete process.env.SUPERVISOR_TOKEN;
 
 let isRunning = true;
 const PENDING_RETRY_INTERVAL_MS = 300 * 1000; // 5 minutes
+let wakeSleep = null;
+
+// Between slot checks the loop can sleep up to an hour. A pending signal must
+// shorten that wait instead of only flipping a flag the sleeping process will
+// observe up to 3600s later, which made every stop escalate to SIGKILL.
+function sleepBeforeNextPass(ms) {
+  return new Promise((resolve) => {
+    const timer = setTimeout(resolve, ms);
+    wakeSleep = () => {
+      clearTimeout(timer);
+      resolve();
+    };
+  }).finally(() => {
+    wakeSleep = null;
+  });
+}
 
 function log(event, details = {}) {
   const payload = {
@@ -135,17 +151,18 @@ async function loop() {
     }
 
     if (!isRunning) break;
-    await new Promise((r) => setTimeout(r, Math.max(5000, sleepMs)));
+    await sleepBeforeNextPass(Math.max(5000, sleepMs));
   }
 
   log("updater_stopped");
 }
 
-process.on("SIGTERM", () => {
+function stopOnSignal() {
   isRunning = false;
-});
-process.on("SIGINT", () => {
-  isRunning = false;
-});
+  if (wakeSleep) wakeSleep();
+}
+
+process.on("SIGTERM", stopOnSignal);
+process.on("SIGINT", stopOnSignal);
 
 loop();

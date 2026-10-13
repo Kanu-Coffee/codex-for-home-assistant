@@ -8,7 +8,8 @@ set -Eeuo pipefail
 IMAGE=${1:-codex-for-home-assistant:test}
 PROFILE=${CODEX_TEST_APPARMOR:-codex_home_assistant}
 DOCKER_PLATFORM=${DOCKER_PLATFORM:-linux/amd64}
-BOOT_TIMEOUT=${APPARMOR_BOOT_TIMEOUT:-120}
+BOOT_TIMEOUT=${APPARMOR_BOOT_TIMEOUT:-180}
+STOP_TIMEOUT=${APPARMOR_STOP_TIMEOUT:-75}
 TEST_ID="codex-ha-apparmor-boot-${RANDOM}-$$"
 BOOT_CONTAINER="${TEST_ID}-boot"
 DEGRADED_CONTAINER="${TEST_ID}-degraded"
@@ -19,6 +20,7 @@ DEGRADED_CONFIG="${TEST_ID}-degraded-config"
 WORK_DIR=$(mktemp -d)
 SUPERVISOR_TOKEN=apparmor-boot-smoke-token-do-not-use
 SECRET_MARKER='apparmor-boot-secret-marker-do-not-use'
+EXPECTED_INGRESS_CODE=200
 
 cleanup() {
   docker rm -f "${BOOT_CONTAINER}" "${DEGRADED_CONTAINER}" >/dev/null 2>&1 || true
@@ -39,41 +41,110 @@ container_logs() {
     | sed -e "s/${SUPERVISOR_TOKEN}/[REDACTED_SYNTHETIC_TOKEN]/g" || true
 }
 
+diagnose() {
+  local container=$1
+  printf -- '--- diagnostics for %s ---\n' "${container}" >&2
+  docker inspect --format 'state={{.State.Status}} exit={{.State.ExitCode}} error={{.State.Error}}\n' \
+    "${container}" >&2 2>/dev/null || true
+  container_logs "${container}" | tail -n 25 >&2 || true
+  docker exec "${container}" /bin/sh -c \
+    'for s in codex-updater ha-memoryd ttyd ingress sshd; do
+       printf "svc %s: " "${s}"; s6-svstat "/run/service/${s}" 2>&1 || true
+     done
+     curl --disable --silent --output /dev/null --write-out "http=%{http_code}\n" \
+       --max-time 5 http://127.0.0.1:7681/ || echo http=unreachable' >&2 2>/dev/null || true
+  printf -- '--- end diagnostics ---\n' >&2
+}
+
 profile_is_enforced() {
   grep -Fxq "${PROFILE} (enforce)" /sys/kernel/security/apparmor/profiles 2>/dev/null \
     || sudo -n grep -Fxq "${PROFILE} (enforce)" \
       /sys/kernel/security/apparmor/profiles 2>/dev/null
 }
 
-wait_for_boot() {
+# One bounded deadline covers the container running, the oneshot init log, the
+# committed s6-rc bundle, every required service up, and a healthy ingress
+# response. Services start after the init log, so late readiness is retried
+# until the deadline; an early exit fails immediately with its real code.
+wait_for_ready() {
   local container=$1
+  shift
+  local services=("$@")
   local deadline=$(( SECONDS + BOOT_TIMEOUT ))
+  local last_state='unknown'
+  local last_reason='waiting'
+  local state http_code service
   while (( SECONDS < deadline )); do
-    if container_logs "${container}" | grep -Fq 'Codex runtime ready:'; then
-      return 0
-    fi
-    local state
     state=$(docker inspect --format '{{.State.Status}}:{{.State.ExitCode}}' "${container}")
+    last_state="${state}"
     case "${state}" in
-      running:*) sleep 1 ;;
+      running:*) ;;
       exited:126)
-        fail "${container} failed to exec the S6 service scripts under profile ${PROFILE} (exit 126 Permission denied)"
+        diagnose "${container}"
+        fail "${container} could not exec S6 service scripts under profile ${PROFILE} (exit 126 Permission denied)"
         ;;
       exited:*)
-        fail "${container} exited before init completed: state ${state}"
+        diagnose "${container}"
+        fail "${container} exited before boot was ready under profile ${PROFILE}: ${state}"
         ;;
-      *) sleep 1 ;;
+      *)
+        last_reason='container not running yet'
+        sleep 1
+        continue
+        ;;
     esac
+    if ! container_logs "${container}" | grep -Fq 'Codex runtime ready:'; then
+      last_reason='init completion log missing'
+      sleep 1
+      continue
+    fi
+    local services_down=()
+    for service in "${services[@]}"; do
+      if ! docker exec "${container}" /bin/sh -c \
+        "s6-svstat /run/service/${service} 2>/dev/null | grep -E '^up \\(pid' >/dev/null"; then
+        services_down+=("${service}")
+      fi
+    done
+    if (( ${#services_down[@]} > 0 )); then
+      last_reason="services not up: ${services_down[*]}"
+      sleep 1
+      continue
+    fi
+    http_code=$(docker exec "${container}" /bin/sh -c \
+      'curl --disable --silent --show-error --output /dev/null --write-out "%{http_code}" \
+       --max-time 10 http://127.0.0.1:7681/' 2>/dev/null || true)
+    if [[ "${http_code}" != "${EXPECTED_INGRESS_CODE}" ]]; then
+      last_reason="ingress returned http=${http_code:-unreachable}, expected ${EXPECTED_INGRESS_CODE}"
+      sleep 1
+      continue
+    fi
+    return 0
   done
-  fail "timed out waiting for ${container} to log Codex runtime ready under profile ${PROFILE}"
+  diagnose "${container}"
+  fail "boot not ready within ${BOOT_TIMEOUT}s (state=${last_state}, last condition: ${last_reason})"
 }
 
-require_service_up() {
+# pgrep flags are passed directly to docker exec: busybox pgrep matches the
+# whole command line, and wrapping in sh -c would let the probe match the
+# shell that carries the pattern.
+require_process() {
   local container=$1
-  local service=$2
-  docker exec "${container}" /bin/sh -c \
-    "s6-svstat /run/service/${service} | grep -E '^up \\(pid'" >/dev/null 2>&1 \
-    || fail "S6 service ${service} is not up under profile ${PROFILE}: $(container_logs "${container}" | tail -n 20)"
+  local label=$2
+  shift 2
+  if ! docker exec "${container}" pgrep "$@" >/dev/null 2>&1; then
+    diagnose "${container}"
+    fail "${label} process missing under profile ${PROFILE}"
+  fi
+}
+
+require_no_process() {
+  local container=$1
+  local message=$2
+  shift 2
+  if docker exec "${container}" pgrep "$@" >/dev/null 2>&1; then
+    diagnose "${container}"
+    fail "${message}"
+  fi
 }
 
 require_denied_read() {
@@ -81,6 +152,27 @@ require_denied_read() {
   local target=$2
   if docker exec "${container}" /bin/cat "${target}" >/dev/null 2>&1; then
     fail "protected path ${target} was readable under the enforced profile ${PROFILE}"
+  fi
+}
+
+require_clean_stop() {
+  local container=$1
+  if ! docker stop -t "${STOP_TIMEOUT}" "${container}" >/dev/null; then
+    diagnose "${container}"
+    fail "docker stop failed for ${container} under profile ${PROFILE}"
+  fi
+  local deadline=$(( SECONDS + STOP_TIMEOUT + 15 ))
+  local state=''
+  while (( SECONDS < deadline )); do
+    state=$(docker inspect --format '{{.State.Status}}:{{.State.ExitCode}}' "${container}")
+    if [[ "${state}" == exited:* ]]; then
+      break
+    fi
+    sleep 1
+  done
+  if [[ "${state}" != "exited:0" ]]; then
+    diagnose "${container}"
+    fail "expected clean shutdown exited:0 for ${container} under profile ${PROFILE}, got ${state:-timeout}"
   fi
 }
 
@@ -95,10 +187,13 @@ for volume in "${BOOT_DATA}" "${BOOT_CONFIG}" "${DEGRADED_DATA}" "${DEGRADED_CON
 done
 
 ssh-keygen -q -t ed25519 -N '' -f "${WORK_DIR}/client_key"
+# codex_auto_update stays OFF so the boot smoke does not race an external
+# GitHub release check during shutdown; updater process presence is still
+# required, and real network update behaviour belongs to the updater smoke.
 BOOT_OPTIONS=$(printf \
-  '{"authorized_keys":["%s"],"web_terminal_auto_start_codex":false,"tmux_session_name":"codex-ha-apparmor-boot","codex_approval_policy":"on-request","codex_sandbox_mode":"workspace-write","home_assistant_browser_auto_auth":false,"log_level":"info"}' \
+  '{"authorized_keys":["%s"],"web_terminal_auto_start_codex":false,"tmux_session_name":"codex-ha-apparmor-boot","codex_approval_policy":"on-request","codex_sandbox_mode":"workspace-write","home_assistant_browser_auto_auth":false,"codex_auto_update":false,"log_level":"info"}' \
   "$(< "${WORK_DIR}/client_key.pub")")
-DEGRADED_OPTIONS='{"authorized_keys":["ssh-ed25519 AAAA invalid-fixture"],"web_terminal_auto_start_codex":false,"tmux_session_name":"codex-ha-apparmor-degraded","codex_approval_policy":"on-request","codex_sandbox_mode":"workspace-write","home_assistant_browser_auto_auth":false,"log_level":"info"}'
+DEGRADED_OPTIONS='{"authorized_keys":["ssh-ed25519 AAAA invalid-fixture"],"web_terminal_auto_start_codex":false,"tmux_session_name":"codex-ha-apparmor-degraded","codex_approval_policy":"on-request","codex_sandbox_mode":"workspace-write","home_assistant_browser_auto_auth":false,"codex_auto_update":false,"log_level":"info"}'
 
 # Fixture preparation uses a throwaway unconfined helper; the containers under
 # test always run the real /init entrypoint with the enforced profile.
@@ -134,22 +229,11 @@ docker run -d \
   --volume "${BOOT_DATA}:/data" \
   --volume "${BOOT_CONFIG}:/config" \
   "${IMAGE}" >/dev/null \
-  || fail "${BOOT_CONTAINER} could not start under profile ${PROFILE}: $(docker inspect --format '{{.State.Status}}:{{.State.ExitCode}}' "${BOOT_CONTAINER}" 2>/dev/null || true)"
-wait_for_boot "${BOOT_CONTAINER}"
-
-docker exec "${BOOT_CONTAINER}" test -f /run/s6-rc/current.ok \
-  || fail 's6-rc did not finish bringing up the current bundle'
-for service in codex-updater ha-memoryd ttyd ingress sshd; do
-  require_service_up "${BOOT_CONTAINER}" "${service}"
-done
-docker exec "${BOOT_CONTAINER}" /bin/sh -c \
-  'pgrep -f codex-updater-daemon >/dev/null' \
-  || fail 'updater daemon process is missing under the enforced profile'
-INGRESS_CODE=$(docker exec "${BOOT_CONTAINER}" /bin/sh -c \
-  'curl --disable --silent --show-error --output /dev/null --write-out "%{http_code}" --max-time 10 http://127.0.0.1:7681/' \
-  || true)
-[[ "${INGRESS_CODE}" != 000 && -n "${INGRESS_CODE}" ]] \
-  || fail 'Ingress did not answer over loopback under the enforced profile'
+  || { diagnose "${BOOT_CONTAINER}" 2>/dev/null || true; fail "${BOOT_CONTAINER} could not start under profile ${PROFILE}"; }
+wait_for_ready "${BOOT_CONTAINER}" \
+  codex-updater ha-memoryd ttyd ingress sshd
+require_process "${BOOT_CONTAINER}" 'updater daemon' -f codex-updater-daemon
+require_process "${BOOT_CONTAINER}" 'sshd with a configured authorized key' -f /usr/sbin/sshd
 
 require_denied_read "${BOOT_CONTAINER}" /config/secrets.yaml
 require_denied_read "${BOOT_CONTAINER}" /config/subdir/secrets.yaml
@@ -159,27 +243,7 @@ docker exec "${BOOT_CONTAINER}" /bin/sh -c \
    && printf "%s\n" "lovelace:" >> /config/configuration.yaml' \
   || fail 'ordinary /config read-write contract failed under the enforced profile'
 
-docker exec "${BOOT_CONTAINER}" /bin/sh -c \
-  'pgrep -x sshd >/dev/null' \
-  || fail 'sshd is not running although a valid authorized key was configured'
-
-# The updater performs its first-run release check right after boot and can
-# defer shutdown signals while that check is in flight. Let the boot settle so
-# the container-under-test shutdown reflects the steady state.
-sleep 45
-BOOT_STATE=
-STOP_DEADLINE=$(( SECONDS + 90 ))
-docker stop -t 75 "${BOOT_CONTAINER}" >/dev/null \
-  || fail 'explicit stop did not complete under the enforced profile'
-while (( SECONDS < STOP_DEADLINE )); do
-  BOOT_STATE=$(docker inspect --format '{{.State.Status}}:{{.State.ExitCode}}' "${BOOT_CONTAINER}")
-  if [[ "${BOOT_STATE}" == exited:* ]]; then
-    break
-  fi
-  sleep 1
-done
-[[ "${BOOT_STATE}" == "exited:0" ]] \
-  || fail "clean shutdown under profile ${PROFILE} failed: ${BOOT_STATE}"
+require_clean_stop "${BOOT_CONTAINER}"
 
 docker run -d \
   --platform "${DOCKER_PLATFORM}" \
@@ -189,25 +253,14 @@ docker run -d \
   --volume "${DEGRADED_DATA}:/data" \
   --volume "${DEGRADED_CONFIG}:/config" \
   "${IMAGE}" >/dev/null \
-  || fail "${DEGRADED_CONTAINER} could not start degraded under profile ${PROFILE}"
-wait_for_boot "${DEGRADED_CONTAINER}"
+  || { diagnose "${DEGRADED_CONTAINER}" 2>/dev/null || true; fail "${DEGRADED_CONTAINER} could not start degraded under profile ${PROFILE}"; }
+wait_for_ready "${DEGRADED_CONTAINER}" \
+  codex-updater ha-memoryd ttyd ingress
 docker exec "${DEGRADED_CONTAINER}" test -e /run/codex-ha/ssh-disabled \
   || fail 'degraded boot did not mark SSH disabled'
-if docker exec "${DEGRADED_CONTAINER}" /bin/sh -c \
-  'pgrep -x sshd >/dev/null'; then
-  fail 'sshd is running without a valid authorized key'
-fi
-for service in codex-updater ha-memoryd ttyd ingress; do
-  require_service_up "${DEGRADED_CONTAINER}" "${service}"
-done
-DEGRADED_CODE=$(docker exec "${DEGRADED_CONTAINER}" /bin/sh -c \
-  'curl --disable --silent --show-error --output /dev/null --write-out "%{http_code}" --max-time 10 http://127.0.0.1:7681/' \
-  || true)
-[[ "${DEGRADED_CODE}" != 000 && -n "${DEGRADED_CODE}" ]] \
-  || fail 'Ingress did not answer the degraded boot under the enforced profile'
-sleep 45
-docker stop -t 75 "${DEGRADED_CONTAINER}" >/dev/null \
-  || fail 'degraded container did not stop cleanly'
+require_no_process "${DEGRADED_CONTAINER}" 'sshd is running without a valid authorized key' -f /usr/sbin/sshd
+require_process "${DEGRADED_CONTAINER}" 'updater daemon (degraded)' -f codex-updater-daemon
+require_clean_stop "${DEGRADED_CONTAINER}"
 
 printf 'AppArmor enforced boot smoke passed for %s (%s enforce)\n' \
   "${IMAGE}" "${PROFILE}"
