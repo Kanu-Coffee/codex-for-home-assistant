@@ -2,6 +2,15 @@
 
 All notable changes to this App are documented in this file.
 
+## [0.7.1-dev.6] - 2026-10-13
+
+### Fixed
+
+- Verify actual amd64/arm64 gh and yq file hashes before granting build scan exceptions.
+- Reject incomplete Go metadata and bind the scan to the validated SBOM snapshot.
+- Scan new dependencies without exceptions; preserve the Critical publication gate.
+- Keep VEX as image-bound audit evidence, with a single exception policy for the verified scan.
+
 ## [0.7.1-dev.5] - 2026-10-13
 
 ### Security
