@@ -4,8 +4,8 @@
 
 ## Project Status
 
-- 상태: **003 S6 수정 인수 + FIX_01 boot smoke 판정 보완 완료 / 실증에서 updater SIGTERM 대기(최대 3600s) 결함 발견→대기 wake-up 최소 수정·dev.6 image clean stop 불가능 확인 / VM enforced boot smoke PASS(exit 0) / native CI 실행·dev.7 발행·Supervisor 설치·사용자 HAOS 수용 NOT RUN / stable 0.7.0 main 유지**
-- 현재 마일스톤: **003 FIX_01 결과 리뷰(daemon wake-up 수용 여부)와 dev.7 CI·DEV 전달 승인**
+- 상태: **003 S6 실행 권한·FIX_01 boot smoke·updater SIGTERM wake-up 수정 Reviewer 인수 가능 / 독립 pytest 219 PASS·readiness/503/137 경계 및 TERM/INT 시험 PASS / Executor 개발 VM enforced boot PASS 기록 확인 / native CI·신규 DEV 발행·Supervisor App 설치·사용자 HAOS 수용 NOT RUN / stable 0.7.0 main 유지**
+- 현재 마일스톤: **003 구현 리뷰 통과, 신규 DEV 후보 준비·exact SHA 양 architecture CI·Supervisor 설치 검증 단계**
 - 마지막 문서 기준일: **2026-10-14**
 - 저장소: public `Kanu-Coffee/codex-for-home-assistant`, default branch `main`
 
@@ -25,6 +25,20 @@
 - [x] interactive/Codex/S6 ambient `SUPERVISOR_TOKEN` 상속 제거와 private helper credential loader 구현
 
 ## Current Work
+
+### 2026-10-14 — DEV 배포 Executor 진행
+
+- 사용자 요청으로 003 인수 수정을 `0.7.1-dev.7`에 반영하고 release SHA `06bc2e39e452dac9823c00d5c9d26113095445f9`를 dev에 게시했다. [CI 38479477634](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/38479477634)에서 양 architecture enforced boot를 포함해 검증 중이다. 태그는 CI 성공 후 발행한다.
+- Release metadata·관련 계약/보안 시험 133 passed, Markdown 38 files/0 errors, ShellCheck·actionlint·Gitleaks PASS. 개발 HAOS VM(18.2)을 시작하고 DEV 저장소를 등록했다. 실제 Supervisor 설치는 이미지 게시 후 진행한다. Main/stable·기존 태그·운영 HA는 유지한다.
+
+### 2026-10-14 — Reviewer: FIX_01 인수 가능, 추가 수정 요청 없음
+
+- 기준 HEAD `4ecb7a26e83c0d42953834690c644e7932c25120`, 시작 시 clean. 003 PLAN/REPORT/FIX_01/FIX_01_REPORT와 실제 diff를 대조했다. **구현 APPROVED, 신규 DEV 배포 검증은 별도 미완료**다. 추가 FIX_02는 생성하지 않았다.
+- 부팅 검사에서 bounded service/HTTP readiness polling, HTTP 200만 허용, 두 분기 공통 exited:0 종료 판정, 외부 업데이트 OFF fixture, 직접 pgrep 검사로 이전 P2가 해결됐다. 실제 스크립트 함수에 stub Docker를 연결한 독립 검사에서 늦은 서비스 준비 후 200은 exit 0, 지속 503과 stop 137은 exit 1을 확인했다. Stub은 실제 AppArmor 부팅의 대체가 아니다.
+- Updater sleep wake-up 변경은 실행 중 check/apply를 취소하지 않고 대기 타이머만 깨운다. 실제 Node subprocess와 stub manager를 사용해 1시간 대기 상황에서 SIGTERM/SIGINT가 각각 약 5ms/4ms 내 exit 0과 updater_stopped로 끝남을 독립 확인했다. 이전 daemon은 같은 TERM 뒤 1초에도 종료되지 않는 음성 대조를 확인했다. 슬롯·날짜별 idle 예산·rolling restart cooldown 구현은 변경되지 않았다.
+- 독립 `.venv/bin/pytest -q`: **219 passed in 93.84s**. ShellCheck, node --check, actionlint, git diff --check PASS. Profile SHA `b93d714e…`, boot smoke SHA `f99636ee…`는 Executor 보고 대상과 일치한다.
+- Executor의 개발 HAOS VM enforced 전체 부팅·degraded·보호 경로·HTTP 200·정상 종료 PASS 기록을 검토했다. Reviewer가 VM을 다시 시작하거나 Supervisor App 설치를 실행하지 않았다. 수동 profile 로드 결과를 Supervisor App 등록 완료로 취급하지 않는다.
+- Native 양 architecture 신규 CI, DEV 버전/문서/changelog 준비·Builder·공개 image, 개발 VM Supervisor 설치, 사용자 운영 HA 수용은 **NOT RUN**이다. 인수 가능한 코드와 배포 완료를 구분한다. Remote dev `22fae4f`, main `a326988` 유지, 이번 리뷰에서 외부 push/tag/HA 변경 없음. 다음 Executor는 기존 DEV 승인 범위에 따라 배포 준비를 이어갈 수 있다.
 
 ### 2026-10-14 — FIX_01 Executor: boot smoke 판정 보완과 updater SIGTERM wake-up
 
