@@ -29,7 +29,7 @@ Use Codex inside Home Assistant to inspect your setup and improve dashboards, au
 
 ## Quick start
 
-1. Install and start the app (0.7.1-dev.1). It supports `amd64` and 64-bit `aarch64`. The DEV manifest uses `stage: experimental`; `boot: manual` remains explicit. Native ARM CI and multi-architecture image validation passed for stable 0.7.0; validation for the 0.7.1-dev.1 development branch remains pending before release (NOT RUN). A real Raspberry Pi/aarch64 HAOS run was not performed; release approval explicitly accepted that gap based on the automated evidence.
+1. Install and start the app (0.7.1-dev.2). It supports `amd64` and 64-bit `aarch64`. The DEV manifest uses `stage: experimental`; `boot: manual` remains explicit. Native ARM CI and multi-architecture image validation passed for stable 0.7.0; validation for the 0.7.1-dev.2 development branch remains pending before release (NOT RUN). A real Raspberry Pi/aarch64 HAOS run was not performed; release approval explicitly accepted that gap based on the automated evidence.
 2. Select **OPEN WEB UI**.
 3. Sign in once with `ha-codex-login`.
 4. Run `ha-codex`.

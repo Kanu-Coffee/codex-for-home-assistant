@@ -2,6 +2,12 @@
 
 All notable changes to this App are documented in this file.
 
+## [0.7.1-dev.2] - 2026-10-13
+
+### Security
+
+- Enforce explicit Grype vulnerability gate policy (`.grype.yaml`, OpenVEX) documenting non-applicability of upstream Go HTTP/2 server flow-control (GO-2026-6612 / CVE-2026-78663) and Windows junction traversal (GO-2026-6604 / CVE-2026-56857) in CLI binaries.
+
 ## [0.7.1-dev.1] - 2026-10-13
 
 ### Added

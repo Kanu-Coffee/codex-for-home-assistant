@@ -28,7 +28,7 @@
 > [!WARNING]
 > 이 앱은 보호된 `secrets.yaml`·`.storage`를 제외한 `/config`를 읽고 쓸 수 있고 Home Assistant Core 및 Supervisor `manager` API를 사용할 수 있는 강한 관리자 도구입니다. API 응답·로그·브라우저 화면에는 여전히 민감정보가 포함될 수 있습니다. 중요한 변경 전에는 백업하고, 계획과 diff를 확인한 뒤 적용하세요. SSH 포트를 인터넷에 직접 공개하지 마세요.
 
-비공식 커뮤니티 프로젝트이며 OpenAI 또는 Home Assistant/Nabu Casa와 제휴하거나 보증받은 제품이 아닙니다. 안정판 `0.7.1-dev.1`은 `amd64`와 64비트 `aarch64`를 지원하며 HAOS에서 **Codex for Home Assistant**, 사이드바에서 **Codex**로 표시됩니다. 안정판 0.7.0의 Native ARM CI와 멀티아키텍처 이미지 검증은 통과했습니다. 현재 0.7.1-dev.1 개발 브랜치의 Native ARM 실기/CI 검증은 릴리스 발행 전 단계로 아직 수행되지 않았으며(NOT RUN), 실제 Raspberry Pi/aarch64 HAOS 실기는 실행되지 않았고, 이 공백은 자동 검증 결과를 근거로 릴리스 승인 과정에서 명시적으로 수용됐습니다.
+비공식 커뮤니티 프로젝트이며 OpenAI 또는 Home Assistant/Nabu Casa와 제휴하거나 보증받은 제품이 아닙니다. DEV 후보 `0.7.1-dev.2`는 `amd64`와 64비트 `aarch64`를 지원하며 HAOS에서 **Codex for Home Assistant (DEV)**, 사이드바에서 **Codex DEV**로 표시됩니다. 안정판 0.7.0의 Native ARM CI와 멀티아키텍처 이미지 검증은 통과했습니다. 현재 0.7.1-dev.2 개발 브랜치의 Native ARM 실기/CI 검증은 릴리스 발행 전 단계로 아직 수행되지 않았으며(NOT RUN), 실제 Raspberry Pi/aarch64 HAOS 실기는 실행되지 않았고, 이 공백은 자동 검증 결과를 근거로 릴리스 승인 과정에서 명시적으로 수용됐습니다.
 
 ## 실제 Web 터미널 미리보기
 
@@ -86,7 +86,7 @@ flowchart LR
 ### 요구사항
 
 - Home Assistant OS 또는 Supervisor가 있는 설치 환경
-- 안정판 `0.7.1-dev.1`은 **amd64**와 64비트 **aarch64** 장치를 지원합니다. Raspberry Pi는 64비트 HAOS가 필요하며 32비트 `armv7`은 지원하지 않습니다.
+- DEV 후보 `0.7.1-dev.2`는 **amd64**와 64비트 **aarch64** 장치를 지원합니다. Raspberry Pi는 64비트 HAOS가 필요하며 32비트 `armv7`은 지원하지 않습니다.
 - 공개 이미지를 내려받을 인터넷 연결
 - Codex를 사용할 수 있는 OpenAI/ChatGPT 계정
 

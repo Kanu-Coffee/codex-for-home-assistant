@@ -1,0 +1,16 @@
+# Grype vulnerability gate policy
+# Suppresses false positives and non-applicable upstream Go stdlib / x/net findings
+# where vulnerable server / OS-specific code paths are demonstrably unreachable.
+ignore:
+  - vulnerability: GO-2026-6612
+    package:
+      name: stdlib
+    reason: "Neither /usr/local/bin/gh nor /usr/bin/yq operates as an HTTP/2 server; HTTP/2 server flow-control DoS (GO-2026-6612 / CVE-2026-78663) is unreachable."
+  - vulnerability: GO-2026-6612
+    package:
+      name: golang.org/x/net
+    reason: "Neither /usr/local/bin/gh nor /usr/bin/yq operates as an HTTP/2 server; HTTP/2 server flow-control DoS (GO-2026-6612 / CVE-2026-78663) is unreachable."
+  - vulnerability: GO-2026-6604
+    package:
+      name: stdlib
+    reason: "CVE-2026-56857 (GO-2026-6604) is a Windows-specific os.Root directory junction traversal vulnerability, not applicable to Linux musl container."
