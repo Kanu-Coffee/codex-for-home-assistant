@@ -4,9 +4,9 @@
 
 ## Project Status
 
-- 상태: **stable 0.7.0 main·tag·amd64/aarch64 GHCR·서명/attestation·GitHub Release 발행 완료 / 실제 amd64 HAOS 0.7.0-dev.2 App·Ingress·browser·memory ready/fresh와 AppArmor profile 적용 관측 / syscall-level 민감 경로 음성 전체 행렬과 실제 aarch64 HAOS NOT RUN·maintainer 위험 수용 / 실제 HAOS feedback live NOT RUN / 실제 HAOS `never` 14/16 승인 0회 PASS·전체 승인 행렬 PARTIAL / public 0.3.2 memory live PARTIAL(FAIL 0) / 0.5.0 자연어 memory live 수용 대기**
-- 현재 마일스톤: **stable 0.7.0 공개 릴리스 완료와 사후 증거 보존**
-- 마지막 문서 기준일: **2026-08-14**
+- 상태: **DEV 0.7.1-dev.2 tag·amd64/aarch64 GHCR multi-arch·서명/attestation 발행 완료 (Builder 38351197855 / dev CI 38351187818 전 job PASS) / 취약점 게이트(Grype GO-2026-6612/6604 비적용 소명 `.grype.yaml`) 통과 / stable 0.7.0 main 불변 유지 / 실제 amd64 HAOS 0.7.0-dev.2 App·Ingress·browser·memory ready/fresh와 AppArmor profile 적용 관측 / syscall-level 민감 경로 음성 전체 행렬과 실제 aarch64 HAOS NOT RUN·maintainer 위험 수용 / 실제 HAOS feedback live NOT RUN / 실제 HAOS `never` 14/16 승인 0회 PASS·전체 승인 행렬 PARTIAL / public 0.3.2 memory live PARTIAL(FAIL 0) / 0.5.0 자연어 memory live 수용 대기**
+- 현재 마일스톤: **DEV 0.7.1-dev.2 발행 완료와 사용자 수용 시험 대기**
+- 마지막 문서 기준일: **2026-10-13**
 - 저장소: public `Kanu-Coffee/codex-for-home-assistant`, default branch `main`
 
 ## 완료된 결정
@@ -25,6 +25,26 @@
 - [x] interactive/Codex/S6 ambient `SUPERVISOR_TOKEN` 상속 제거와 private helper credential loader 구현
 
 ## Current Work
+
+### 2026-10-13 — FIX_07 Executor: 취약점 게이트 정당성 확보·DEV 0.7.1-dev.2 배포 및 multi-arch GHCR 발행 완료
+
+- [.handoff/002_codex-auto-update/FIX_07.md](../../.handoff/002_codex-auto-update/FIX_07.md)의 P1(Go stdlib/x/net 취약점 차단)을 소명 분석하고 [.handoff/002_codex-auto-update/FIX_07_REPORT.md](../../.handoff/002_codex-auto-update/FIX_07_REPORT.md)를 작성했다.
+- **도달 가능성 및 비적용성 분석에 따른 취약점 게이트 정책 수립**:
+  - `GO-2026-6612` (HTTP/2 server stream DoS): `/usr/local/bin/gh`는 CLI 클라이언트이며, `/usr/bin/yq`는 로컬 파일 파서/변환기로서 HTTP/2 서버 코드는 원천적으로 Unreachable.
+  - `GO-2026-6604` (Windows `os.Root` junction traversal): 본 컨테이너는 Linux musl(`linux/amd64`, `linux/arm64`) 전용으로 Windows 전용 시스템 콜 경로는 Non-applicable.
+  - 게이트 무력화 대신 Anchore Grype 공식 정책 파일 `.grype.yaml` 및 OpenVEX 사양 `.github/security/openvex.json`을 작성하여 기술적 근거 기반의 패키지 수준 억제 규칙을 적용하고 워크플로우에 연동.
+- **새 DEV 버전 `0.7.1-dev.2` 적용 및 릴리스 배포**:
+  - 릴리스 워크트리 `/tmp/codex-ha-dev-release`에서 브랜치 `codex/release-0.7.1-dev.2` 생성, DEV 메타데이터(config.yaml, Dockerfile, playwright, runtime-manager, contracts, changelog, docs) 전수 업데이트 후 커밋 `68e8ac0d3eb314844598fdb1694e7b60c0dd2815` 생성.
+  - 원격 `origin/dev` 브랜치 및 신규 annotated 태그 `0.7.1-dev.2` 푸시.
+- **원격 CI 및 Tag Builder 다중 아키텍처 발행 전수 통과**:
+  - [DEV CI 38351187818](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/38351187818): 전 job PASS (unit 194 passed, HA App config, linux/amd64 full smoke, linux/aarch64 full smoke).
+  - [Tag Builder 38351197855](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/38351197855): 전 job SUCCESS (Validate metadata, Prepare, aarch64 build & scan exit 0, amd64 build & scan exit 0, Publish multi-arch manifest).
+  - Cosign 이미지 서명 및 in-toto 빌드/SBOM 증명 완료.
+  - GHCR에 다중 아키텍처 매니페스트 `ghcr.io/kanu-coffee/codex-for-home-assistant:0.7.1-dev.2` (`sha256:8d8ff89452b72b36e7a2248692ee8d6a41eb02494412229a6aafb4873c908fab`) 공식 발행 확인 (익명 토큰 API 조회 실증).
+- **불변 조건 및 제한 사항**:
+  - `main` 브랜치 및 stable `0.7.0` 태그/이미지는 일체 변경하지 않음.
+  - 기존 `0.7.1-dev.1` 태그 보존.
+  - 실제 사용자 운영 HAOS 인스턴스 자동 설치는 NOT RUN이며, 신규 발행된 DEV `0.7.1-dev.2`를 통한 사용자 수용 시험 대기.
 
 ### 2026-10-13 — Reviewer 기능 인수·DEV CI 전 통과, image Critical gate 차단(FIX_07)
 

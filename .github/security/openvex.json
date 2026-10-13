@@ -1,0 +1,47 @@
+{
+  "@context": "https://openvex.dev/ns/v0.2.0",
+  "@id": "https://github.com/Kanu-Coffee/codex-for-home-assistant/security/vex/2026-10-13-go-cves",
+  "author": "Kanu-Coffee maintainers",
+  "timestamp": "2026-10-13T05:00:00Z",
+  "version": 1,
+  "statements": [
+    {
+      "vulnerability": {
+        "name": "GO-2026-6612"
+      },
+      "products": [
+        {
+          "@id": "pkg:golang/stdlib@1.26.5"
+        },
+        {
+          "@id": "pkg:golang/stdlib@1.26.8"
+        },
+        {
+          "@id": "pkg:golang/golang.org/x/net@v0.55.0"
+        },
+        {
+          "@id": "pkg:golang/golang.org/x/net@v0.56.0"
+        }
+      ],
+      "status": "not_affected",
+      "justification": "vulnerable_code_not_in_execute_path",
+      "impact_statement": "Neither GitHub CLI (gh) nor yq operates as an HTTP/2 server; the vulnerable HTTP/2 server stream flow-control code path is unreachable."
+    },
+    {
+      "vulnerability": {
+        "name": "GO-2026-6604"
+      },
+      "products": [
+        {
+          "@id": "pkg:golang/stdlib@1.26.5"
+        },
+        {
+          "@id": "pkg:golang/stdlib@1.26.8"
+        }
+      ],
+      "status": "not_affected",
+      "justification": "vulnerable_code_not_in_execute_path",
+      "impact_statement": "CVE-2026-56857 (GO-2026-6604) affects Windows-specific os.Root junction traversal. The container executes strictly under Linux."
+    }
+  ]
+}

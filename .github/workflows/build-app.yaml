@@ -124,6 +124,7 @@ jobs:
           fail-build: true
           output-format: table
           severity-cutoff: critical
+          config: .grype.yaml
 
       - name: Report high and critical vulnerabilities (non-blocking)
         if: ${{ !cancelled() }}
@@ -134,6 +135,7 @@ jobs:
           fail-build: false
           output-format: table
           severity-cutoff: high
+          config: .grype.yaml
 
       - name: Install Cosign
         if: inputs.publish
