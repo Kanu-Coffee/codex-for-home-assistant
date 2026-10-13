@@ -93,7 +93,6 @@
   - Linter: `shellcheck` PASS, `hadolint` PASS, `actionlint` PASS, `git diff --check` PASS.
   - 미검증 항목(NOT RUN): 이번 세션에서는 Docker 전체 이미지 재빌드/HAOS 컨테이너 smoke/native ARM CI run은 실행하지 않음(FIX_04_REPORT의 기존 실행 증거와 구분).
 
-
 ### 2026-10-13 — FIX_04 Reviewer: GC·부분 drain 복구·쿨다운 재검토 결함 재현, FIX_05 요청
 
 - **CHANGES REQUESTED**, [FIX_05](../../.handoff/002_codex-auto-update/FIX_05.md)에 수정과 회귀 요구를 기록했다. 기존 handoff와 구현은 보존하고 DEV 발행은 보류했다.
