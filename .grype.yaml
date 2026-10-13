@@ -7,9 +7,6 @@ show-suppressed: true
 vex-documents:
   - .github/security/openvex.json
 
-vex-add:
-  - not_affected
-
 ignore:
   - vulnerability: GO-2026-6612
     package:

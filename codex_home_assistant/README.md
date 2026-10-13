@@ -29,7 +29,7 @@ Home Assistant 안에서 Codex와 대화하며 설정을 살펴보고 대시보�
 
 ## 빠른 시작
 
-1. 앱(0.7.1-dev.3)을 설치하고 시작합니다. `amd64`와 64비트 `aarch64`를 지원합니다. DEV manifest는 `stage: experimental`을 사용하며 `boot: manual`입니다. 안정판 0.7.0의 Native ARM CI와 멀티아키텍처 image 검증은 통과했습니다. 현재 0.7.1-dev.3 개발 버전의 Native ARM 실기/CI 검증은 릴리스 발행 전 단계로 아직 수행되지 않았으며(NOT RUN), 실제 Raspberry Pi/aarch64 HAOS 실기는 실행되지 않았고, 이 공백은 자동 검증 결과를 근거로 릴리스 승인 과정에서 명시적으로 수용됐습니다.
+1. 앱(0.7.1-dev.4)을 설치하고 시작합니다. `amd64`와 64비트 `aarch64`를 지원합니다. DEV manifest는 `stage: experimental`을 사용하며 `boot: manual`입니다. 안정판 0.7.0의 Native ARM CI와 멀티아키텍처 image 검증은 통과했습니다. 현재 0.7.1-dev.4 개발 버전의 Native ARM 실기/CI 검증은 릴리스 발행 전 단계로 아직 수행되지 않았으며(NOT RUN), 실제 Raspberry Pi/aarch64 HAOS 실기는 실행되지 않았고, 이 공백은 자동 검증 결과를 근거로 릴리스 승인 과정에서 명시적으로 수용됐습니다.
 2. **OPEN WEB UI**를 누릅니다.
 3. 처음 한 번 `ha-codex-login`으로 로그인합니다.
 4. `ha-codex`를 실행합니다.

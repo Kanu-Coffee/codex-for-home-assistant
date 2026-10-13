@@ -1,4 +1,4 @@
-> DEV 후보 `0.7.1-dev.3`의 설치 저장소는 `https://github.com/Kanu-Coffee/codex-for-home-assistant#dev`입니다. 아래 안정판 이력과 구분하며 실제 HAOS 수용은 사용자 시험 대상입니다.
+> DEV 후보 `0.7.1-dev.4`의 설치 저장소는 `https://github.com/Kanu-Coffee/codex-for-home-assistant#dev`입니다. 아래 안정판 이력과 구분하며 실제 HAOS 수용은 사용자 시험 대상입니다.
 
 <p align="right">
   <strong>한국어</strong> · <a href="DOCS.en.md">English</a>

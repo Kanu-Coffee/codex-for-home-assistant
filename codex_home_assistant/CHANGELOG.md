@@ -2,6 +2,12 @@
 
 All notable changes to this App are documented in this file.
 
+## [0.7.1-dev.4] - 2026-10-13
+
+### Security
+
+- Finalize Grype vulnerability gate policy with explicit OpenVEX wiring (`vex:`) and version/module-bounded ignore rules.
+
 ## [0.7.1-dev.3] - 2026-10-13
 
 ### Security
