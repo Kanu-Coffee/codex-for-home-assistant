@@ -1,372 +1,225 @@
 #!/usr/bin/env python3
+"""Issue scan exceptions only after verifying reviewed bytes in the actual image.
+
+The caller supplies Docker's identity for the exact image Syft scanned. SPDX
+file hashes are compared with the reviewed, architecture-specific manifest;
+Go module checksums are never mistaken for executable hashes. The root scanner config grants no exceptions. Unknown/missing metadata causes no exception.
 """
-SBOM Go-binary preflight: fail-closed identity and boundary verification.
-
-Enforces that Grype vulnerability gate suppressions and OpenVEX statements
-are applied ONLY when all Go binaries in the container image are strictly
-within the reviewed allowlist and match expected versions, paths, and identities.
-
-Verification contract:
-1. Exact artifact identity:
-   - Root document name and documentNamespace must exist and be non-empty.
-2. Binary path boundary:
-   - Every Go binary identified via "acquired package info from go module information: <path>"
-     must be in REVIEWED_GO_BINARIES (/usr/local/bin/gh, /usr/bin/yq).
-   - Any unreviewed binary (e.g. /opt/..., /usr/bin/server) immediately fails the gate (exit 1).
-3. Component and version integrity:
-   - For /usr/local/bin/gh:
-     stdlib must be exactly go1.26.5; golang.org/x/net must be exactly v0.56.0.
-   - For /usr/bin/yq:
-     stdlib must be exactly go1.26.8; golang.org/x/net must be exactly v0.55.0.
-   - Any mutated or unexpected version (e.g. go1.26.7) immediately fails the gate (exit 1).
-4. Checksum and metadata integrity:
-   - Packages declaring checksums must have valid, non-empty algorithm/value pairs.
-5. Gated policy generation:
-   - When --emit-gated-config and --emit-gated-vex are provided, policy files containing
-     the reviewed ignore rules and VEX statements are generated ONLY upon 100% verification.
-   - If preflight fails, no gated policy is emitted and the build halts before Grype runs.
-
-Usage:
-    python3 sbom-go-binary-preflight.py <sbom.spdx.json>
-    python3 sbom-go-binary-preflight.py --sbom <sbom.spdx.json> \
-        [--emit-gated-config <path>] [--emit-gated-vex <path>]
-"""
-
 import argparse
+import hashlib
+import subprocess
+import tempfile
+import copy
 import json
 import re
 import sys
-from pathlib import Path
-from typing import Any
+from pathlib import Path, PurePosixPath
+from urllib.parse import parse_qs, unquote, urlsplit
 
-# Reviewed binaries and their exact allowed module versions
-REVIEWED_BINARY_PROFILES: dict[str, dict[str, Any]] = {
-    "/usr/local/bin/gh": {
-        "description": "GitHub CLI 2.97.0 (gh)",
-        "expected_modules": {
-            "stdlib": "go1.26.5",
-            "golang.org/x/net": "v0.56.0",
-        },
-    },
-    "/usr/bin/yq": {
-        "description": "mikefarah/yq 4.53.3-r1 (yq-go APK)",
-        "expected_modules": {
-            "stdlib": "go1.26.8",
-            "golang.org/x/net": "v0.55.0",
-        },
-    },
+SECURITY_DIR = Path(__file__).resolve().parents[1] / 'security'
+PROFILES = {
+    '/usr/local/bin/gh': {'stdlib': 'go1.26.5', 'golang.org/x/net': 'v0.56.0'},
+    '/usr/bin/yq': {'stdlib': 'go1.26.8', 'golang.org/x/net': 'v0.55.0'},
 }
-
-REVIEWED_GO_BINARY_PATHS: frozenset[str] = frozenset(REVIEWED_BINARY_PROFILES.keys())
-
-_SOURCE_INFO_PATTERN = re.compile(
-    r"acquired package info from go module information:\s*(.+)$",
-    re.IGNORECASE,
-)
-
-# Standard reviewed ignore rules to emit when verification succeeds
-REVIEWED_IGNORE_RULES = [
-    {
-        "vulnerability": "GO-2026-6612",
-        "package": {
-            "name": "golang.org/x/net",
-            "version": "v0.55.0",
-            "type": "go-module",
-        },
-        "reason": (
-            "Verified by preflight: /usr/bin/yq 4.53.3-r1 operates strictly as an offline "
-            "YAML/JSON processor with no network listening capabilities; HTTP/2 server "
-            "flow-control DoS (GO-2026-6612 / CVE-2026-78663) is unreachable."
-        ),
-    },
-    {
-        "vulnerability": "GO-2026-6612",
-        "package": {
-            "name": "golang.org/x/net",
-            "version": "v0.56.0",
-            "type": "go-module",
-        },
-        "reason": (
-            "Verified by preflight: /usr/local/bin/gh 2.97.0 operates strictly as a CLI "
-            "API client with plain HTTP/1.1 OAuth loopback listener; HTTP/2 server "
-            "flow-control DoS (GO-2026-6612 / CVE-2026-78663) is unreachable."
-        ),
-    },
-    {
-        "vulnerability": "GO-2026-6612",
-        "package": {
-            "name": "stdlib",
-            "version": "go1.26.5",
-            "type": "go-module",
-        },
-        "reason": (
-            "Verified by preflight: /usr/local/bin/gh 2.97.0 operates strictly as a CLI "
-            "API client; net/http.Server HTTP/2 flow-control logic is unreachable."
-        ),
-    },
-    {
-        "vulnerability": "GO-2026-6612",
-        "package": {
-            "name": "stdlib",
-            "version": "go1.26.8",
-            "type": "go-module",
-        },
-        "reason": (
-            "Verified by preflight: /usr/bin/yq 4.53.3-r1 operates strictly as an offline "
-            "processor; net/http.Server HTTP/2 flow-control logic is unreachable."
-        ),
-    },
-    {
-        "vulnerability": "GO-2026-6604",
-        "package": {
-            "name": "stdlib",
-            "version": "go1.26.5",
-            "type": "go-module",
-        },
-        "reason": (
-            "Verified by preflight: Container image targets linux/amd64 and linux/arm64. "
-            "CVE-2026-56857 (GO-2026-6604) is Windows-specific os.Root junction traversal, "
-            "non-applicable under Linux."
-        ),
-    },
-    {
-        "vulnerability": "GO-2026-6604",
-        "package": {
-            "name": "stdlib",
-            "version": "go1.26.8",
-            "type": "go-module",
-        },
-        "reason": (
-            "Verified by preflight: Container image targets linux/amd64 and linux/arm64. "
-            "CVE-2026-56857 (GO-2026-6604) is Windows-specific os.Root junction traversal, "
-            "non-applicable under Linux."
-        ),
-    },
-]
+SOURCE = re.compile(r'acquired package info from go module information:\s*(/[^\n]+)$')
+SHA256 = re.compile(r'^[0-9a-f]{64}$')
 
 
-def extract_binary_modules(sbom: dict[str, Any]) -> dict[str, dict[str, str]]:
-    """Map binary path -> {module_name: version}."""
-    binary_map: dict[str, dict[str, str]] = {}
-    for pkg in sbom.get("packages", []):
-        source_info: str = pkg.get("sourceInfo", "")
-        if not source_info:
+class NotReviewed(ValueError):
+    """Valid inventory, but no reviewed exception applies; use the raw scan."""
+
+
+
+def purls(package):
+    return [r.get('referenceLocator', '') for r in package.get('externalRefs', [])
+            if r.get('referenceType') == 'purl']
+
+
+def checksum(record):
+    values = [c.get('checksumValue') for c in record.get('checksums', [])
+              if c.get('algorithm') == 'SHA256']
+    if len(values) != 1 or not isinstance(values[0], str) or not SHA256.fullmatch(values[0]):
+        raise ValueError('Missing or ambiguous SHA256')
+    return values[0]
+
+
+def validate_sbom(sbom, identity=None):
+    if not isinstance(sbom, dict) or sbom.get('spdxVersion') != 'SPDX-2.3':
+        raise ValueError('Expected SPDX-2.3 object')
+    if not sbom.get('name') or not sbom.get('documentNamespace'):
+        raise ValueError('Document name/namespace missing')
+    packages = sbom.get('packages')
+    if not isinstance(packages, list):
+        raise ValueError('Package inventory missing')
+    modules = {}
+    for pkg in packages:
+        refs = purls(pkg)
+        source = pkg.get('sourceInfo', '')
+        # Detect Go independently of the optional Syft sourceInfo description.
+        is_go = (any(p.startswith('pkg:golang/') for p in refs) or 'go module information' in source
+                 or pkg.get('name') in {'stdlib', 'golang.org/x/net'})
+        if not is_go:
             continue
-        match = _SOURCE_INFO_PATTERN.search(source_info.strip())
-        if match:
-            bin_path = match.group(1).strip()
-            name = pkg.get("name", "")
-            version = pkg.get("versionInfo", "")
-            if bin_path not in binary_map:
-                binary_map[bin_path] = {}
-            if name:
-                binary_map[bin_path][name] = version
-    return binary_map
+        match = SOURCE.fullmatch(source.strip())
+        if not match:
+            raise ValueError('Go package has missing/unknown binary mapping')
+        path = match.group(1)
+        if path not in PROFILES:
+            raise NotReviewed('Unreviewed Go binary: ' + path)
+        name, version = pkg.get('name'), pkg.get('versionInfo')
+        if not name or not version:
+            raise ValueError('Go module name/version missing')
+        if name in modules.setdefault(path, {}):
+            raise ValueError('Duplicate/ambiguous Go module mapping')
+        modules[path][name] = version
+    if not modules:
+        if identity and identity.get('binaries'):
+            raise ValueError('Actual Go binaries are absent from SBOM inventory')
+        # A genuine non-Go inventory needs no vulnerability exception.
+        return None
+    for path, found in modules.items():
+        for name, version in PROFILES[path].items():
+            if name not in found:
+                raise ValueError('Required module missing: ' + path + ' ' + name)
+            if found[name] != version:
+                raise NotReviewed('Module version has no reviewed exception: ' + path + ' ' + name)
+    if not identity or identity.get('os') != 'linux' or identity.get('architecture') not in ['amd64', 'arm64']:
+        raise ValueError('Actual Linux image identity/architecture missing or unsupported')
+    if set(identity.get('binaries', {})) != set(modules):
+        raise ValueError('Actual Go binary inventory and SBOM differ')
+    image_id = identity.get('id', '')
+    if not image_id.startswith('sha256:') or not SHA256.fullmatch(image_id[7:]):
+        raise ValueError('Actual image ID missing')
+    roots = [r.get('relatedSpdxElement') for r in sbom.get('relationships', [])
+             if r.get('spdxElementId') == sbom.get('SPDXID') and r.get('relationshipType') == 'DESCRIBES']
+    described = [p for p in packages if p.get('SPDXID') in roots]
+    if len(roots) != 1 or len(described) != 1:
+        raise ValueError('Image subject missing or ambiguous')
+    root = described[0]
+    if (root.get('name') != identity.get('name') or sbom['name'] != identity.get('name')
+            or root.get('versionInfo') != identity.get('version')):
+        raise ValueError('SBOM is not bound to the actual scan image')
+    subjects = [p for p in purls(root) if p.startswith('pkg:oci/')]
+    if len(subjects) != 1:
+        raise ValueError('OCI subject missing or ambiguous')
+    subject = subjects[0]
+    parsed = urlsplit(subject)
+    if (unquote(parsed.path.rsplit('@', 1)[-1]) != 'sha256:' + checksum(root)
+            or parse_qs(parsed.query).get('arch') != [identity['architecture']]):
+        raise ValueError('OCI image digest/architecture mismatch')
+    reviewed = json.loads((SECURITY_DIR / 'reviewed-go-binaries.json').read_text())['architectures'][identity['architecture']]
+    files = {}
+    for file in sbom.get('files', []):
+        raw = file.get('fileName', '')
+        if '..' in PurePosixPath(raw).parts:
+            raise ValueError('Unsafe inventory file path')
+        path = '/' + raw.removeprefix('./').lstrip('/')
+        if path in modules:
+            if path in files:
+                raise ValueError('Duplicate binary file identity')
+            files[path] = checksum(file)
+    for path in modules:
+        actual = identity.get('binaries', {}).get(path)
+        if not actual or files.get(path) != actual:
+            raise ValueError('SBOM file SHA256 is missing or differs from actual image: ' + path)
+        if actual != reviewed[path]:
+            raise NotReviewed('Binary bytes have no reviewed exception: ' + path)
+    return {'subject': subject, 'paths': sorted(modules), 'image_id': image_id}
 
 
-def validate_sbom(sbom: dict[str, Any]) -> tuple[bool, list[str]]:
-    """Validate SBOM against identity, path, and version boundary contracts."""
-    errors: list[str] = []
-
-    # 1. Image and Document Identity Check
-    doc_name = sbom.get("name", "")
-    doc_ns = sbom.get("documentNamespace", "")
-    if not doc_name:
-        errors.append("Document name is missing or empty")
-    if not doc_ns:
-        errors.append("Document namespace is missing or empty")
-
-    binary_modules = extract_binary_modules(sbom)
-
-    if not binary_modules:
-        # Non-Go image baseline
-        return True, []
-
-    found_paths = set(binary_modules.keys())
-    unreviewed_paths = found_paths - REVIEWED_GO_BINARY_PATHS
-
-    # 2. Strict Binary Path Boundary
-    if unreviewed_paths:
-        for p in sorted(unreviewed_paths):
-            errors.append(
-                f"Unreviewed Go binary detected at '{p}'. Current CVE suppressions "
-                "cannot be inherited by unreviewed binaries."
-            )
-
-    # 3. Component & Version Integrity for each reviewed binary present
-    for path, modules in binary_modules.items():
-        if path not in REVIEWED_BINARY_PROFILES:
-            continue
-        profile = REVIEWED_BINARY_PROFILES[path]
-        expected = profile["expected_modules"]
-        for mod_name, exp_ver in expected.items():
-            if mod_name in modules:
-                act_ver = modules[mod_name]
-                if act_ver != exp_ver:
-                    errors.append(
-                        f"Version mismatch in '{path}': module '{mod_name}' is '{act_ver}', "
-                        f"expected reviewed version '{exp_ver}'."
-                    )
-
-    # 4. Checksum sanity check
-    for pkg in sbom.get("packages", []):
-        checksums = pkg.get("checksums")
-        if checksums is not None:
-            if not isinstance(checksums, list):
-                errors.append(f"Package '{pkg.get('name')}' has invalid checksums structure")
-            for cs in checksums:
-                if not cs.get("algorithm") or not cs.get("checksumValue"):
-                    errors.append(f"Package '{pkg.get('name')}' has incomplete checksum record")
-
-    return (len(errors) == 0, errors)
-
-
-def emit_gated_policy(
-    config_path: Path,
-    vex_path: Path,
-    source_vex_template: Path | None = None,
-) -> None:
-    """Generate active Grype config and OpenVEX document bound to verified binaries."""
-    # Read existing OpenVEX template or fall back to standard bounded statements
-    if source_vex_template and source_vex_template.exists():
-        vex_data = json.loads(source_vex_template.read_text(encoding="utf-8"))
+def emit_policy(config_path, vex_path, verified, template_path, sbom_hash):
+    template = json.loads(template_path.read_text())
+    vex = copy.deepcopy(template)
+    if verified is None:
+        vex['statements'] = []
     else:
-        vex_data = {
-            "@context": "https://openvex.dev/ns/v0.2.0",
-            "@id": "https://github.com/Kanu-Coffee/codex-for-home-assistant/security/vex/gated",
-            "author": "Kanu-Coffee preflight gatekeeper",
-            "timestamp": "2026-10-13T06:00:00Z",
-            "version": 1,
-            "statements": [
-                {
-                    "vulnerability": {"name": "GO-2026-6612"},
-                    "products": [
-                        {"@id": "pkg:golang/stdlib@1.26.5"},
-                        {"@id": "pkg:golang/stdlib@1.26.8"},
-                        {"@id": "pkg:golang/golang.org/x/net@v0.55.0"},
-                        {"@id": "pkg:golang/golang.org/x/net@v0.56.0"},
-                    ],
-                    "status": "not_affected",
-                    "justification": "vulnerable_code_not_in_execute_path",
-                    "impact_statement": (
-                        "Verified by preflight: /usr/local/bin/gh and /usr/bin/yq do not "
-                        "operate HTTP/2 servers. Flow control DoS is unreachable."
-                    ),
-                },
-                {
-                    "vulnerability": {"name": "GO-2026-6604"},
-                    "products": [
-                        {"@id": "pkg:golang/stdlib@1.26.5"},
-                        {"@id": "pkg:golang/stdlib@1.26.8"},
-                    ],
-                    "status": "not_affected",
-                    "justification": "vulnerable_code_not_in_execute_path",
-                    "impact_statement": (
-                        "Verified by preflight: Linux container target. Windows os.Root "
-                        "junction traversal is non-applicable."
-                    ),
-                },
-            ],
-        }
-
+        for statement in vex['statements']:
+            statement['products'] = [{'@id': verified['subject'], 'subcomponents': statement['products']}]
+    # Audit evidence, deliberately not consumed by the scanner. SPDX adapters
+    # can lose image tags/digests needed to enforce a scoped VEX product.
+    vex['sbom_sha256'] = sbom_hash
+    vex['verified_image_id'] = verified['image_id'] if verified else None
     vex_path.parent.mkdir(parents=True, exist_ok=True)
-    vex_path.write_text(json.dumps(vex_data, indent=2) + "\n", encoding="utf-8")
-
-    # Grype YAML
-    grype_lines = [
-        "---",
-        "# Auto-generated gated policy from verified SBOM preflight.",
-        "show-suppressed: true",
-        "",
-        "vex-documents:",
-        f"  - {vex_path.as_posix()}",
-        "",
-        "ignore:",
-    ]
-    for rule in REVIEWED_IGNORE_RULES:
-        grype_lines.append(f"  - vulnerability: {rule['vulnerability']}")
-        grype_lines.append("    package:")
-        grype_lines.append(f"      name: {rule['package']['name']}")
-        grype_lines.append(f"      version: {rule['package']['version']}")
-        grype_lines.append(f"      type: {rule['package']['type']}")
-        reason_escaped = rule["reason"].replace("\n", " ").strip()
-        grype_lines.append(f"    reason: >-\n      {reason_escaped}")
-
+    vex_path.write_text(json.dumps(vex, indent=2) + '\n')
+    rules = []
+    if verified:
+        for path in verified['paths']:
+            for module, version in PROFILES[path].items():
+                vulns = ['GO-2026-6612'] + (['GO-2026-6604'] if module == 'stdlib' else [])
+                for vuln in vulns:
+                    rules.append({'vulnerability': vuln, 'package': {'name': module,
+                                  'version': version, 'type': 'go-module'},
+                                  'reason': 'Reviewed Linux CLI bytes: ' + path + '; SBOM SHA256 ' + sbom_hash})
+    # JSON is valid YAML; keeping generation dependency-free avoids another tool.
     config_path.parent.mkdir(parents=True, exist_ok=True)
-    config_path.write_text("\n".join(grype_lines) + "\n", encoding="utf-8")
+    config_path.write_text(json.dumps({'show-suppressed': True, 'ignore': rules}, indent=2) + '\n')
 
 
-def main() -> int:
-    parser = argparse.ArgumentParser(
-        description="Fail-closed SBOM preflight for Grype vulnerability gate",
-    )
-    parser.add_argument("sbom_pos", nargs="?", help="Path to SBOM file (positional)")
-    parser.add_argument("--sbom", dest="sbom_opt", help="Path to SBOM file (flag)")
-    parser.add_argument(
-        "--emit-gated-config",
-        dest="emit_config",
-        help="Target path for verified Grype configuration",
-    )
-    parser.add_argument(
-        "--emit-gated-vex",
-        dest="emit_vex",
-        help="Target path for verified OpenVEX document",
-    )
-    parser.add_argument(
-        "--template-vex",
-        dest="template_vex",
-        help="Path to template OpenVEX document",
-    )
-
-    args = parser.parse_args()
-    raw_sbom = args.sbom_opt or args.sbom_pos
-    if not raw_sbom:
-        print("PREFLIGHT ERROR: No SBOM path specified.", file=sys.stderr)
-        return 2
-
-    sbom_path = Path(raw_sbom)
-    if not sbom_path.is_file():
-        print(f"PREFLIGHT ERROR: SBOM file not found: {sbom_path}", file=sys.stderr)
-        return 2
-
+def inspect_image(image, version):
+    """Read immutable Docker image bytes without executing either architecture."""
+    info = json.loads(subprocess.check_output(['docker', 'image', 'inspect', image], text=True))[0]
+    identity = {'id': info['Id'], 'name': image.rsplit(':', 1)[0], 'version': version,
+                'os': info['Os'], 'architecture': info['Architecture'], 'binaries': {}}
+    container = subprocess.check_output(['docker', 'create', '--entrypoint', '/bin/true', info['Id']], text=True).strip()
     try:
-        sbom = json.loads(sbom_path.read_text(encoding="utf-8"))
-    except Exception as exc:
-        print(f"PREFLIGHT ERROR: Failed to parse JSON SBOM: {exc}", file=sys.stderr)
-        return 2
+        with tempfile.TemporaryDirectory(prefix='codex-go-identity-') as directory:
+            for path in PROFILES:
+                dest = Path(directory) / Path(path).name
+                subprocess.run(['docker', 'cp', container + ':' + path, str(dest)], check=True,
+                               stdout=subprocess.DEVNULL)
+                if not dest.is_file() or dest.is_symlink():
+                    raise ValueError('Expected regular binary file: ' + path)
+                with dest.open('rb') as binary:
+                    identity['binaries'][path] = hashlib.file_digest(binary, 'sha256').hexdigest()
+    finally:
+        subprocess.run(['docker', 'rm', '-f', '-v', container], check=True, stdout=subprocess.DEVNULL)
+    return identity
 
-    if sbom.get("spdxVersion", "").split("-")[0] != "SPDX":
-        print("PREFLIGHT ERROR: Document is not a valid SPDX document", file=sys.stderr)
-        return 2
 
-    valid, errors = validate_sbom(sbom)
-
-    binary_modules = extract_binary_modules(sbom)
-    print(f"PREFLIGHT: Verified allowlist: {sorted(REVIEWED_GO_BINARY_PATHS)}")
-    print(f"PREFLIGHT: Detected Go binaries: {sorted(binary_modules.keys())}")
-
-    if not valid:
-        print("\nPREFLIGHT FAIL: Policy contract violation(s) detected:\n", file=sys.stderr)
-        for err in errors:
-            print(f"  [X] {err}", file=sys.stderr)
-        print(
-            "\nDownstream Grype scan is BLOCKED. No gated policy will be emitted.",
-            file=sys.stderr,
-        )
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('sbom_pos', nargs='?')
+    parser.add_argument('--sbom')
+    parser.add_argument('--image-identity', type=Path)
+    parser.add_argument('--image')
+    parser.add_argument('--version')
+    parser.add_argument('--architecture', choices=['amd64', 'arm64', 'aarch64'])
+    parser.add_argument('--emit-gated-config', type=Path)
+    parser.add_argument('--emit-gated-vex', type=Path)
+    parser.add_argument('--template-vex', type=Path, default=SECURITY_DIR / 'openvex.json')
+    args = parser.parse_args()
+    # Never leave a previous successful exception behind after a failed check.
+    snapshot = args.emit_gated_config.with_suffix('.sbom.json') if args.emit_gated_config else None
+    for out in [args.emit_gated_config, args.emit_gated_vex, snapshot]:
+        if out:
+            out.unlink(missing_ok=True)
+    try:
+        source = args.sbom or args.sbom_pos
+        if not source:
+            raise ValueError('SBOM path missing')
+        raw_sbom = Path(source).read_bytes()
+        sbom = json.loads(raw_sbom)
+        identity = (inspect_image(args.image, args.version) if args.image else
+                    json.loads(args.image_identity.read_text()) if args.image_identity else None)
+        expected_arch = {'aarch64': 'arm64'}.get(args.architecture, args.architecture)
+        if expected_arch and (not identity or identity.get('architecture') != expected_arch):
+            raise ValueError('Build matrix architecture mismatch')
+        subject = validate_sbom(sbom, identity)
+        if bool(args.emit_gated_config) != bool(args.emit_gated_vex):
+            raise ValueError('Both policy output paths are required')
+        if args.emit_gated_config:
+            emit_policy(args.emit_gated_config, args.emit_gated_vex, subject, args.template_vex,
+                        hashlib.sha256(raw_sbom).hexdigest())
+            snapshot.write_bytes(raw_sbom)
+    except NotReviewed as error:
+        print('PREFLIGHT: No exception issued; use raw scan: ' + str(error), file=sys.stderr)
+        return 3
+    except (ValueError, TypeError, KeyError, AttributeError, OSError, subprocess.SubprocessError) as error:
+        print('PREFLIGHT FAIL: ' + str(error), file=sys.stderr)
         return 1
-
-    print("PREFLIGHT OK: All Go binary identities and versions are verified.")
-
-    if args.emit_config and args.emit_vex:
-        cfg_out = Path(args.emit_config)
-        vex_out = Path(args.emit_vex)
-        tpl_vex = Path(args.template_vex) if args.template_vex else None
-        emit_gated_policy(cfg_out, vex_out, tpl_vex)
-        print(f"PREFLIGHT: Gated Grype config emitted: {cfg_out}")
-        print(f"PREFLIGHT: Gated OpenVEX emitted:       {vex_out}")
-
+    print('PREFLIGHT OK: ' + ('no Go exceptions' if subject is None else 'reviewed binary bytes; target-bound scan policy'))
     return 0
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     sys.exit(main())

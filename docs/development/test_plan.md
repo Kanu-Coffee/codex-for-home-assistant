@@ -567,3 +567,13 @@ P2:
 - 실제 archive 재사용/inventory 변조, relative·absolute current 및 previous-only·staged-only 참조 보존, 일일 budget 상태 변경·다음 날 재개, server diagnostics lazy gauge와 자기 요청 카운트, 실제 process의 replacement/rollback 실패를 회귀 검사한다.
 - `tests/codex-update-smoke.sh <image>`는 로드된 `CODEX_TEST_APPARMOR`(기본 `codex_home_assistant`) 아래 synthetic `/config`와 실제 bundled Codex로 policy, companion, wrapper JSON escaping, inode/version, Unix RPC와 graceful restart를 검사한다. 동일 버전 baseline을 local fixture archive로 재포장하므로 새 upstream release 또는 사용자 모바일 세션 수용의 대체 증거가 아니다.
 - Native amd64/aarch64 CI는 bundled helper용 CI namespace profile을 전체 runtime smoke 전에 로드하고 실제 AppArmor updater smoke도 실행한다. 로컬 amd64 HAOS Docker 시험과 아직 실행하지 않은 native ARM CI를 구분한다.
+
+### 배포 gate 회귀
+
+Go mapping/문서 식별자/필수 module 누락, 중복 mapping, 다른 binary 경로,
+SPDX file SHA256와 실제 image 파일 hash 불일치, architecture/OS/product 불일치를
+실제 preflight subprocess로 검사한다. 알려진 파일의 exact bytes에만 예외가 발급되고
+실패 시 이전 정책과 snapshot도 제거돼야 한다. 유효한 새 dependency는 예외 없는
+raw scan으로 진행한다. 실제 Grype 대조에서 metadata 누락 fixture는 예외 발급에
+실패하고 raw Critical이 계속 차단되는지 확인한다. Runtime/HAOS 수용과 배포 gate
+회귀는 별도로 기록한다.

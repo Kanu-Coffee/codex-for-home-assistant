@@ -26,6 +26,19 @@
 
 ## Current Work
 
+### 2026-10-13 — FIX_10 Executor 진행: 배포 gate의 metadata/해시 검증과 예외 정책 단순화
+
+- 사용자 요청으로 Executor를 맡았다. 검토한 gh/yq의 architecture별 실제 파일 SHA256, 빌드 image identity와 SBOM을 대조하고 해당 image에만 VEX를 생성하는 작은 수정으로 진행한다. 중복 ignore 예외는 제거한다.
+- Runtime 자동 업데이트·권한·기본 옵션은 유지한다. 필수 metadata 누락과 미검토 artifact는 차단하되, Go 없는 정상 image에는 예외 없이 기본 검사를 수행한다. 기존 handoff/tag/image와 main/stable을 보존한다.
+
+### 2026-10-13 — FIX_09 Reviewer: metadata 누락 gate 통과·hash identity 미검증 재현, FIX_10 요청
+
+- **CHANGES REQUESTED**, [FIX_10](../../.handoff/002_codex-auto-update/FIX_10.md)을 추가했다. Runtime 인수는 유지한다. 전역 ignore 제거·미검토 경로/version 차단·실제 scanner 시험은 개선됐다.
+- 독립 pytest **204 passed in 68.09s**, actionlint/diff PASS. dev.5 공개 multi-arch digest와 main 불변을 확인했다. Builder 38365844933의 tag SHA는 `2c9cad2`, 이후 DEV CI 38366256596의 SHA는 `40559db`이며 test shebang 변경을 구분한다.
+- Go PURL/버전을 유지한 채 sourceInfo를 제거하면 preflight가 Go 없는 image로 판단해 exit 0과 예외 6개/VEX를 발급한다. Document name/namespace까지 제거해도 통과했다. 실제 Grype는 raw **exit 2/Critical 6**, 발급 정책 적용 시 **exit 0/ignored 6**이다.
+- 허용 경로/version의 선언 SHA256과 product name/namespace를 변경해도 예외가 발급됐다. Expected binary hash/image digest/architecture와 실제 target을 대조하는 검사가 없어 exact identity 확인 완료 주장은 미해결이다. Metadata/hash/architecture/product의 필수 음성 계약을 FIX_10에 명시했다.
+- 기존 handoff/tag/image와 구현은 보존했다. 이번 Reviewer는 외부 발행/회수·운영 HA 변경을 하지 않았다. Fixture container는 종료됐고 사용자 실제 HAOS 수용은 NOT RUN이다.
+
 ### 2026-10-13 — FIX_09 Executor: Fail-Closed 바이너리 사전 검증 게이트 구축 및 DEV 0.7.1-dev.5 발행 완료
 
 - [.handoff/002_codex-auto-update/FIX_09.md](../../.handoff/002_codex-auto-update/FIX_09.md)의 P1(동일 Go 버전의 미검토 바이너리 예외 승계 차단)과 P2(실제 Grype 스캐너 및 결과 계약 회귀 테스트)를 전수 해결하고 [.handoff/002_codex-auto-update/FIX_09_REPORT.md](../../.handoff/002_codex-auto-update/FIX_09_REPORT.md)를 작성했다.
