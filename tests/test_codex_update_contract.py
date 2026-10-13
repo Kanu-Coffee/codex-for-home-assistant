@@ -317,7 +317,7 @@ def test_status_output_scrubs_secrets_and_reports_honest_versions(
     console.log(JSON.stringify(status));
     """
     status = run_node_eval(script, repository_root)
-    assert status["appVersion"] == "0.7.1-dev.6"
+    assert status["appVersion"] == "0.7.1-dev.7"
     assert status["bundledVersion"] == "0.162.1"
     assert status["selectedVersion"] == "0.162.1"
     assert status["runningVersion"] in ("none", "0.162.1")

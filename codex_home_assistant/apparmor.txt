@@ -13,6 +13,10 @@ profile codex_home_assistant flags=(attach_disconnected,mediate_deleted) {
 
   # S6-Overlay
   /init ix,
+  # s6-rc executes the service run/finish scripts from this tree. The broad
+  # rule above grants r/w but not x, so an unlisted exec here fails closed
+  # with exit 126 before the init logic runs.
+  /etc/s6-overlay/** ix,
   /bin/** ix,
   /usr/bin/** ix,
   /usr/lib/** ix,

@@ -1,4 +1,6 @@
-> DEV candidate `0.7.1-dev.6` is available from `https://github.com/Kanu-Coffee/codex-for-home-assistant#dev`. Stable history below is separate; actual HAOS acceptance remains user testing.
+> DEV candidate `0.7.1-dev.7` is available from `https://github.com/Kanu-Coffee/codex-for-home-assistant#dev`. Stable history below is separate; actual HAOS acceptance remains user testing.
+
+DEV `0.7.1-dev.7` fixes startup blocked by missing S6 execution permissions in AppArmor and delayed updater shutdown. Refresh the DEV repository and update the existing App installation.
 
 <p align="right">
   <a href="DOCS.md">한국어</a> · <strong>English</strong>

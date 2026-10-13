@@ -52,8 +52,8 @@ jobs:
           git grep -Il '^#!' -- codex_home_assistant/rootfs tests \
             | xargs --no-run-if-empty shellcheck
 
-      # Handoff history is immutable and is not product documentation.
       - name: Run Markdown lint
+        # Handoff history is immutable and is not product documentation.
         run: npx --yes markdownlint-cli2@0.23.0 "**/*.md" "#**/.pytest_cache/**" "#.handoff/**"
 
       - name: Run Dockerfile lint
@@ -163,6 +163,12 @@ jobs:
           CODEX_TEST_APPARMOR=codex_home_assistant \
             bash tests/codex-update-smoke.sh codex-for-home-assistant:test
 
+      - name: Verify full /init boot under the actual app AppArmor profile
+        run: |
+          sudo apparmor_parser --replace codex_home_assistant/apparmor.txt
+          CODEX_TEST_APPARMOR=codex_home_assistant \
+            bash tests/apparmor-boot-smoke.sh codex-for-home-assistant:test
+
       - name: Verify update from released 0.7.0 preserves persistent data
         run: |
           bash tests/update-smoke.sh \
@@ -265,3 +271,9 @@ jobs:
           sudo apparmor_parser --replace codex_home_assistant/apparmor.txt
           CODEX_TEST_APPARMOR=codex_home_assistant \
             bash tests/codex-update-smoke.sh codex-for-home-assistant:aarch64-test
+
+      - name: Verify full /init boot under the actual app AppArmor profile
+        run: |
+          sudo apparmor_parser --replace codex_home_assistant/apparmor.txt
+          CODEX_TEST_APPARMOR=codex_home_assistant \
+            bash tests/apparmor-boot-smoke.sh codex-for-home-assistant:aarch64-test

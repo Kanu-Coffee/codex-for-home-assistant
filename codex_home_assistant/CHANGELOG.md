@@ -2,6 +2,14 @@
 
 All notable changes to this App are documented in this file.
 
+## [0.7.1-dev.7] - 2026-10-14
+
+### Fixed
+
+- Allow S6 service scripts to execute under the enforced AppArmor profile, fixing startup exit 126.
+- Wake the updater slot timer on SIGTERM/SIGINT so App shutdown can finish cleanly.
+- Verify complete App boot, HTTP readiness and clean shutdown under AppArmor on both architectures.
+
 ## [0.7.1-dev.6] - 2026-10-13
 
 ### Fixed

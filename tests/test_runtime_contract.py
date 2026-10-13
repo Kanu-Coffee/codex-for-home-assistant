@@ -205,3 +205,103 @@ def test_web_terminal_uses_tmux_and_returns_to_shell(rootfs: Path) -> None:
     assert "web_terminal_auto_start_codex" in session_shell
     assert "if ha-codex; then" in session_shell
     assert "exec /bin/bash -l" in session_shell
+
+
+APPARMOR_EXEC_TRANSITION_CHARS = frozenset("xpicuUCU")
+S6_INTERPRETER_AND_SERVICE_BINARIES = (
+    "/command/with-contenv",
+    "/usr/bin/node",
+    "/usr/bin/ttyd",
+    "/usr/sbin/nginx",
+    "/usr/sbin/sshd",
+    "/usr/local/bin/codex-ha-init",
+    "/run/s6/basedir/bin/halt",
+    "/command/s6-pause",
+)
+APPARMOR_UNLISTED_PATHS_WITHOUT_EXEC = (
+    "/etc/s6-overlay.d/evil/run",
+    "/opt/s6-rc.d/service/run",
+    "/var/tmp/s6-overlay-helper/run",
+)
+
+
+def _expand_apparmor_braces(pattern: str) -> tuple[str, ...]:
+    match = re.search(r"\{([^{}]*)\}", pattern)
+    if match is None:
+        return (pattern,)
+    expanded: list[str] = []
+    for alternative in match.group(1).split(","):
+        expanded.extend(
+            _expand_apparmor_braces(
+                pattern[: match.start()] + alternative + pattern[match.end() :]
+            )
+        )
+    return tuple(expanded)
+
+
+def _apparmor_pattern_matches(pattern: str, path: str) -> bool:
+    for expanded in _expand_apparmor_braces(pattern):
+        regex = re.escape(expanded)
+        regex = regex.replace(r"\*\*", "\x00")
+        regex = regex.replace(r"\*", "[^/]*")
+        regex = regex.replace(r"\?", "[^/]")
+        regex = regex.replace("\x00", ".*")
+        regex = regex.replace(r"\[", "[").replace(r"\^", "^").replace(r"\]", "]")
+        if re.fullmatch(regex, path):
+            return True
+    return False
+
+
+def _parent_profile_rules(apparmor_text: str) -> list[tuple[bool, str, set[str]]]:
+    parent = apparmor_text[: apparmor_text.index("profile codex_bwrap")]
+    rules: list[tuple[bool, str, set[str]]] = []
+    for line in parent.splitlines():
+        match = re.match(r"\s*(deny\s+)?(/[^\s]+)\s+([A-Za-z ]+),", line)
+        if match is None:
+            continue
+        permission_token = match.group(3).split("->")[0].strip()
+        rules.append((bool(match.group(1)), match.group(2), set(permission_token)))
+    assert rules
+    return rules
+
+
+def _apparmor_effective_perms(apparmor_text: str, path: str) -> set[str]:
+    allowed: set[str] = set()
+    denied: set[str] = set()
+    for is_deny, pattern, chars in _parent_profile_rules(apparmor_text):
+        if _apparmor_pattern_matches(pattern, path):
+            (denied if is_deny else allowed).update(chars)
+    return allowed - denied
+
+
+def _apparmor_allows_exec(apparmor_text: str, path: str) -> bool:
+    return bool(
+        _apparmor_effective_perms(apparmor_text, path) & APPARMOR_EXEC_TRANSITION_CHARS
+    )
+
+
+def test_apparmor_profile_grants_exec_to_s6_service_scripts(addon_root: Path) -> None:
+    apparmor_text = (addon_root / "apparmor.txt").read_text(encoding="utf-8")
+
+    for relative_path in EXECUTABLE_ROOTFS_PATHS:
+        assert _apparmor_allows_exec(apparmor_text, f"/{relative_path}"), relative_path
+
+
+def test_apparmor_profile_grants_exec_to_s6_interpreter_and_services(
+    addon_root: Path,
+) -> None:
+    apparmor_text = (addon_root / "apparmor.txt").read_text(encoding="utf-8")
+
+    for path in S6_INTERPRETER_AND_SERVICE_BINARIES:
+        assert _apparmor_allows_exec(apparmor_text, path), path
+
+
+def test_apparmor_s6_exec_allowance_stays_scoped_outside_s6_tree(
+    addon_root: Path,
+) -> None:
+    apparmor_text = (addon_root / "apparmor.txt").read_text(encoding="utf-8")
+
+    for path in APPARMOR_UNLISTED_PATHS_WITHOUT_EXEC:
+        assert not _apparmor_allows_exec(apparmor_text, path), path
+    for secret_path in ("/config/secrets.yaml", "/config/backup/secrets.yaml"):
+        assert "r" not in _apparmor_effective_perms(apparmor_text, secret_path)

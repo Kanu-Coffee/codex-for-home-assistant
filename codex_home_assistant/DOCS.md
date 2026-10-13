@@ -1,4 +1,6 @@
-> DEV 후보 `0.7.1-dev.6`의 설치 저장소는 `https://github.com/Kanu-Coffee/codex-for-home-assistant#dev`입니다. 아래 안정판 이력과 구분하며 실제 HAOS 수용은 사용자 시험 대상입니다.
+> DEV 후보 `0.7.1-dev.7`의 설치 저장소는 `https://github.com/Kanu-Coffee/codex-for-home-assistant#dev`입니다. 아래 안정판 이력과 구분하며 실제 HAOS 수용은 사용자 시험 대상입니다.
+
+DEV `0.7.1-dev.7`은 AppArmor의 S6 실행 권한 누락으로 시작하지 못하던 문제와 업데이트 데몬의 종료 지연을 수정합니다. 기존 DEV 설치에서는 저장소를 새로고침한 뒤 App을 업데이트하세요.
 
 <p align="right">
   <strong>한국어</strong> · <a href="DOCS.en.md">English</a>
