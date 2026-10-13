@@ -1,16 +1,58 @@
+---
 # Grype vulnerability gate policy
 # Suppresses false positives and non-applicable upstream Go stdlib / x/net findings
 # where vulnerable server / OS-specific code paths are demonstrably unreachable.
+show-suppressed: true
+
+vex-documents:
+  - .github/security/openvex.json
+
 ignore:
   - vulnerability: GO-2026-6612
     package:
-      name: stdlib
-    reason: "Neither /usr/local/bin/gh nor /usr/bin/yq operates as an HTTP/2 server; HTTP/2 server flow-control DoS (GO-2026-6612 / CVE-2026-78663) is unreachable."
+      name: golang.org/x/net
+      version: v0.55.0
+      type: go-module
+    reason: >-
+      Neither /usr/local/bin/gh nor /usr/bin/yq operates as an HTTP/2 server;
+      HTTP/2 server flow-control DoS (GO-2026-6612 / CVE-2026-78663) is unreachable in yq 4.53.3-r1.
   - vulnerability: GO-2026-6612
     package:
       name: golang.org/x/net
-    reason: "Neither /usr/local/bin/gh nor /usr/bin/yq operates as an HTTP/2 server; HTTP/2 server flow-control DoS (GO-2026-6612 / CVE-2026-78663) is unreachable."
+      version: v0.56.0
+      type: go-module
+    reason: >-
+      Neither /usr/local/bin/gh nor /usr/bin/yq operates as an HTTP/2 server;
+      HTTP/2 server flow-control DoS (GO-2026-6612 / CVE-2026-78663) is unreachable in gh 2.97.0.
+  - vulnerability: GO-2026-6612
+    package:
+      name: stdlib
+      version: go1.26.5
+      type: go-module
+    reason: >-
+      Neither /usr/local/bin/gh nor /usr/bin/yq operates as an HTTP/2 server;
+      HTTP/2 server flow-control DoS (GO-2026-6612 / CVE-2026-78663) is unreachable in gh 2.97.0.
+  - vulnerability: GO-2026-6612
+    package:
+      name: stdlib
+      version: go1.26.8
+      type: go-module
+    reason: >-
+      Neither /usr/local/bin/gh nor /usr/bin/yq operates as an HTTP/2 server;
+      HTTP/2 server flow-control DoS (GO-2026-6612 / CVE-2026-78663) is unreachable in yq 4.53.3-r1.
   - vulnerability: GO-2026-6604
     package:
       name: stdlib
-    reason: "CVE-2026-56857 (GO-2026-6604) is a Windows-specific os.Root directory junction traversal vulnerability, not applicable to Linux musl container."
+      version: go1.26.5
+      type: go-module
+    reason: >-
+      CVE-2026-56857 (GO-2026-6604) is a Windows-specific os.Root directory junction traversal
+      vulnerability; container targets linux/amd64 and linux/arm64.
+  - vulnerability: GO-2026-6604
+    package:
+      name: stdlib
+      version: go1.26.8
+      type: go-module
+    reason: >-
+      CVE-2026-56857 (GO-2026-6604) is a Windows-specific os.Root directory junction traversal
+      vulnerability; container targets linux/amd64 and linux/arm64.

@@ -4,8 +4,8 @@
 
 ## Project Status
 
-- 상태: **DEV 0.7.1-dev.2 tag·amd64/aarch64 GHCR multi-arch·서명/attestation 발행 완료 (Builder 38351197855 / dev CI 38351187818 전 job PASS) / 취약점 게이트(Grype GO-2026-6612/6604 비적용 소명 `.grype.yaml`) 통과 / stable 0.7.0 main 불변 유지 / 실제 amd64 HAOS 0.7.0-dev.2 App·Ingress·browser·memory ready/fresh와 AppArmor profile 적용 관측 / syscall-level 민감 경로 음성 전체 행렬과 실제 aarch64 HAOS NOT RUN·maintainer 위험 수용 / 실제 HAOS feedback live NOT RUN / 실제 HAOS `never` 14/16 승인 0회 PASS·전체 승인 행렬 PARTIAL / public 0.3.2 memory live PARTIAL(FAIL 0) / 0.5.0 자연어 memory live 수용 대기**
-- 현재 마일스톤: **DEV 0.7.1-dev.2 발행 완료와 사용자 수용 시험 대기**
+- 상태: **DEV 0.7.1-dev.4 tag·amd64/aarch64 GHCR multi-arch·서명/attestation 발행 완료 (Builder 38357055889 / dev CI 38357039179 전 job PASS) / 취약점 게이트(Grype 버전 한정 규칙 및 OpenVEX 공식 연동) 통과 / stable 0.7.0 main 불변 유지 / 실제 amd64 HAOS 0.7.0-dev.2 App·Ingress·browser·memory ready/fresh와 AppArmor profile 적용 관측 / syscall-level 민감 경로 음성 전체 행렬과 실제 aarch64 HAOS NOT RUN·maintainer 위험 수용 / 실제 HAOS feedback live NOT RUN / 실제 HAOS `never` 14/16 승인 0회 PASS·전체 승인 행렬 PARTIAL / public 0.3.2 memory live PARTIAL(FAIL 0) / 0.5.0 자연어 memory live 수용 대기**
+- 현재 마일스톤: **DEV 0.7.1-dev.4 발행 완료와 사용자 수용 시험 대기**
 - 마지막 문서 기준일: **2026-10-13**
 - 저장소: public `Kanu-Coffee/codex-for-home-assistant`, default branch `main`
 
@@ -25,6 +25,36 @@
 - [x] interactive/Codex/S6 ambient `SUPERVISOR_TOKEN` 상속 제거와 private helper credential loader 구현
 
 ## Current Work
+
+### 2026-10-13 — FIX_08 Executor: 취약점 게이트 정밀 스코프 한정·OpenVEX 연동 및 DEV 0.7.1-dev.4 발행 완료
+
+- [.handoff/002_codex-auto-update/FIX_08.md](../../.handoff/002_codex-auto-update/FIX_08.md)의 P1(광범위한 보안 제외 규칙 한정 및 음성 대조군 검증)과 P2(OpenVEX 정식 연동 및 도달 가능성 상세 소명)를 전수 해결하고 [.handoff/002_codex-auto-update/FIX_08_REPORT.md](../../.handoff/002_codex-auto-update/FIX_08_REPORT.md)를 작성했다.
+- **P1: 정밀 버전·타입 한정 및 음성 대조군 검증 체계 구축**:
+  - `.grype.yaml` 규칙을 검토된 Go 패키지 버전(`go1.26.5`, `go1.26.8`, `v0.55.0`, `v0.56.0`) 및 모듈 타입(`go-module`)에 엄격히 한정.
+  - `show-suppressed: true`를 적용하여 필터링된 항목이 감사 가능한 테이블 및 JSON 결과에서 `(suppressed)` 또는 `(suppressed by VEX)`로 투명하게 표시되도록 조치.
+  - 신규 단위 테스트 `tests/test_vulnerability_gate_policy.py`(4종)를 구축하여, 미검토 버전(`go1.26.7`, `v0.60.0`)이나 다른 패키지 출현 시 게이트가 반드시 실패(Exit 2)함을 검증.
+- **P2: OpenVEX 공식 워크플로우 연동 및 상세 기술 소명**:
+  - `.github/workflows/build-app.yaml`의 scan-action 단계에 `vex: .github/security/openvex.json`을 전달하고 `.grype.yaml`에 `vex-documents` 설정. (dev.3 실패 원인이었던 `vex-add: not_affected` 파싱 오류 제거).
+  - `GO-2026-6612` (HTTP/2 DoS): `gh`는 REST/GraphQL 클라이언트이며 루프백 OAuth 리스너는 plain HTTP/1.1 전용으로 HTTP/2 서버 코드는 Unreachable. `yq`는 오프라인 CLI로 수신 소켓 전무(Unreachable).
+  - `GO-2026-6604` (Windows junction traversal): Linux musl 컨테이너 환경에서는 Windows 전용 시스템 콜 코드가 Non-applicable.
+- **보고서 정정 및 릴리스 이력**:
+  - FIX_07_REPORT에서 `codex_auto_update` 기본값을 false로 잘못 표기했던 안내를 실제 DEV config인 **true**로 정정.
+  - `0.7.1-dev.3` 태그(Builder 게이트 파싱 실패)를 보존하고, 신규 미사용 태그 **`0.7.1-dev.4`**로 최종 발행.
+- **원격 CI 및 Tag Builder 다중 아키텍처 발행 전수 통과**:
+  - [DEV CI 38357039179](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/38357039179): 전 job PASS (단위 테스트 198 passed, App config, amd64 smoke, native aarch64 smoke).
+  - [Tag Builder 38357055889](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/38357055889): 전 job SUCCESS (Prepare, amd64/aarch64 빌드 및 취약점 게이트 Exit 0 통과, Cosign 서명 및 attestation 완료, multi-arch manifest 발행 완료).
+  - GHCR에 공식 다중 아키텍처 매니페스트 `ghcr.io/kanu-coffee/codex-for-home-assistant:0.7.1-dev.4` (`sha256:6e3a421d8e3acca71adf1db0fd1a4a2b9101a3ae2b05f830d8c3f3dbf52e6f68`) 발행 및 익명 토큰 API 200 OK 검증 완료.
+- **불변 조건 및 제한 사항**:
+  - `main` 브랜치 및 stable `0.7.0` 태그/이미지 불변 유지.
+  - 실제 사용자 운영 HAOS 인스턴스 자동 설치는 NOT RUN이며, 신규 발행된 DEV `0.7.1-dev.4`를 통한 사용자 수용 시험 대기.
+
+### 2026-10-13 — FIX_07 Reviewer: dev.2 게시 확인, 보안 제외 정책 수정 요청(FIX_08)
+
+- **CHANGES REQUESTED**, [FIX_08](../../.handoff/002_codex-auto-update/FIX_08.md)을 추가했다. 자동 업데이트 기능 인수는 유지하지만 새 보안 제외 정책은 인수하지 않았다. 구현/기존 handoff 및 remote main/tag/image는 수정하지 않았다.
+- 독립 pytest **194 passed in 61.47s**, actionlint/Hadolint/diff PASS. Exact dev CI 38351187818와 Builder 38351197855 success 및 dev.2의 공개 amd64/arm64 manifest/digest는 실제 확인했다. 이미지는 발행됐으며 이전 dev.1처럼 미발행 상태가 아니다. GitHub Release dev.2는 조회 시 없었다.
+- `.grype.yaml`은 CVE ID와 package 이름만으로 제외하며 gh/yq의 경로·버전·digest에 묶이지 않는다. Private retargeted SBOM + 기존 Grype 0.120.1에서 6건이 `ignoredMatches`로 이동하고 exit 0인 것을 재현했다. Raw scan과 제외 후 Critical 0건은 구분한다.
+- OpenVEX는 config/action의 VEX 입력에 연결되지 않았다. 제품별 identity/source/symbol 분석 및 새 component가 제외되지 않는 실제 음성 회귀가 필요하다. 양 architecture CI PASS 자체를 이 정책의 기술적 정당성 증거로 확대하지 않는다.
+- FIX_07_REPORT의 auto-update 기본 false 안내는 실제 config의 **true**와 다르다. 새 보고서에서 정정하도록 요청했다. 실제 사용자 HAOS 수용 및 이번 Reviewer의 독립 image signature verification은 NOT RUN이다. 이미 발행한 tag/image는 덮어쓰거나 임의 회수하지 않고 수정 후 새 DEV 번호를 사용한다.
 
 ### 2026-10-13 — FIX_07 Executor: 취약점 게이트 정당성 확보·DEV 0.7.1-dev.2 배포 및 multi-arch GHCR 발행 완료
 
