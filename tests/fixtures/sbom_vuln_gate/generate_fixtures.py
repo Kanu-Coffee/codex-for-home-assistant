@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Generate minimal synthetic SPDX JSON SBOM fixtures for preflight and Grype tests.
 
