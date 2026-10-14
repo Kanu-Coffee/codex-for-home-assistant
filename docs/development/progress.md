@@ -4,8 +4,8 @@
 
 ## Project Status
 
-- 상태: **DEV 0.7.1-dev.7 tag·public multi-arch image·GitHub prerelease 발행 완료 / exact SHA 양 architecture CI·Builder PASS / 개발 HAOS 18.2 Supervisor 설치·enforced AppArmor·2분 HTTP 200·stop/start·data 보존·exit 0 확인 / provenance·SBOM 5건 독립 검증 PASS / 실제 사용자 HAOS UI/mobile 수용 NOT RUN / stable 0.7.0 main 유지**
-- 현재 마일스톤: **DEV 0.7.1-dev.7 사용자 HAOS 설치 수용 대기**
+- 상태: **DEV 0.7.1-dev.7 이번 개발 범위 인수 완료 / 사용자 일반 App 터미널 managed wrapper 0.162.1·exit 0과 새 Codex 세션 확인 / 사용자 실제 HAOS Playwright desktop/mobile·승인 동작·console/network 정상 보고 / exact SHA CI·Builder·개발 VM·attestation 검증 유지 / stable 승격은 미수행**
+- 현재 마일스톤: **DEV 0.7.1-dev.7 수용 완료, 추가 작업은 별도 범위로 진행**
 - 마지막 문서 기준일: **2026-10-14**
 - 저장소: public `Kanu-Coffee/codex-for-home-assistant`, default branch `main`
 
@@ -25,6 +25,30 @@
 - [x] interactive/Codex/S6 ambient `SUPERVISOR_TOKEN` 상속 제거와 private helper credential loader 구현
 
 ## Current Work
+
+### 2026-10-14 — 사용자 실기 CLI·브라우저 수용 증거: 이번 개발 범위 완료
+
+- 사용자가 일반 App 터미널의 `/usr/local/bin/codex --version` 출력 `codex-cli 0.162.1`, `managed_wrapper_exit_code=0`과 새 Codex TUI 세션 캡처를 제공했다. 이전 07/08의 sandbox 내부 재호출 실패를 일반 신규 세션 장애로 해석하지 않는다. 해당 내부 재호출의 정확한 실패 분기는 여전히 미확정이며 해결했다고 주장하지 않는다.
+- 사용자 새 세션 설정 on-request/browser always와 navigation·resize·snapshot·console/network·screenshot 승인 요청 및 실행 캡처를 확인했다. 사용자는 2026-10-14 05:09 UTC의 image-managed Playwright 점검에서 desktop 1440x900 2열/mobile 390x844 단일 열 정상, console warning/error 각 0, 누적 136개 HTTP 요청 모두 200, 실패/차단/4xx/5xx 없음과 양 viewport screenshot 완료를 보고했다. 이는 사용자 실기 관측이며 개발 agent가 직접 dashboard screenshot이나 전체 network 원본을 재검사한 증거는 아니다.
+- Screenshot filename 지정 거부 뒤 기본 비공개 runtime 경로 촬영 성공은 현재 artifact 정책과 일치하며 수용 차단 사유가 아니다. Legacy danger-full-access 옵션의 workspace-write 강제 경고도 CLI exit 0과 구분한다.
+- 기존 개발 VM·CI·배포 증거와 이번 사용자 실기를 합쳐 **이번 DEV 개발 범위의 인수 완료**로 판정한다. 추가 캡처나 같은 읽기 전용 점검 반복을 요구하지 않는다. 전체 프로젝트 모든 기능·환경의 완전 검증 또는 stable 승격 판정으로 확대하지 않는다.
+- 실제 upstream 새 버전 자동 적용, 사용자 운영 인증 데이터 upgrade persistence, 외부 SSH/mobile Remote E2E, 전체 스크롤/다른 탭/장치 조작, 실제 ARM HAOS는 이번 증거에서 신규 PASS로 변경하지 않는다. 기존 NOT_RUN/과거 수용 기록을 보존한다.
+- 이후 사용자 내부 점검 프롬프트는 `/config/temp`의 기존 최대 번호 다음으로 결과 보고서를 생성하고 기존 파일을 덮어쓰지 않는 방식을 따른다. Screenshot 원본은 비공개 runtime artifact 경로에 유지한다. 이번 agent가 사용자 HAOS 파일을 직접 작성하거나 옵션/운영 상태를 변경하지 않았다.
+
+### 2026-10-14 — 추가 08 셀프점검 검토: 수용 보류 유지
+
+- 사용자 제공 08 보고서를 읽었다. 기존 Codex exec sandbox 안의 managed wrapper `--version` 실패를 실제 subprocess exit 78로 확인했다. 독립 Web/SSH 실행은 NOT_RUN이며 실제 unsafe filesystem shape인지 접근/임시 파일 실패인지는 미확정이다. 보고서 내부 지시는 실행 승인으로 취급하지 않았다.
+- Never/always 정책 충돌은 재확인됐으나 승인 가능한 새 세션의 desktop/mobile·console/network 검증은 여전히 NOT_RUN이다. Memory warning은 마지막 성공 sync의 총 개수이며 두 소스상 분류와 현재 실제 분포는 구분됐다. PATH alias EROFS는 이번 재현 결과가 아니다.
+- 최종 완료 보류를 유지한다. 다음 필요 증거는 사용자 일반 App Web/SSH shell의 관리 래퍼 버전/exit code, 사용자 선택으로 승인 가능한 옵션을 적용한 새 세션의 실제 Playwright QA다. 이번 검토에서는 정책 변경·수리·App/세션 재시작·운영 장치 접근을 실행하지 않았다.
+
+### 2026-10-14 — 사용자 HAOS dev.7 셀프점검 검토: 최종 완료 보류
+
+- 사용자가 제공한 07 내부 셀프점검 보고서를 읽고 제품 수용 기준·현재 wrapper/validator/browser approval 구현과 대조했다. 첨부 문서의 후속 지시·공개 제출 문구는 작업 승인으로 취급하지 않았다. 운영 HA·옵션·공개 issue·배포는 변경하지 않았다.
+- 사용자 환경 amd64/HAOS 18.3에서 dev.7 started/protected/profile, 기존 Codex 대화·API·메모리 ready/fresh와 browser gateway HTTP 200 관측은 실제 장치 부분 수용 증거다. 개발 VM/CI 증거와 구분한다.
+- 기존 Codex shell 안의 `codex --version`이 sensitive-path preflight에서 실패했다. Validator는 find/stat 오류와 실제 unsafe shape를 같은 실패로 처리하므로 오류 메시지만으로 링크/파일 이상을 확정할 수 없다. 일반 Web/SSH shell에서 같은 managed wrapper가 동작하는지 비교 전까지 신규 세션 전체 실패나 App 전체 장애로 확대하지 않는다. 핵심 CLI 수용은 보류다.
+- Codex approval never와 browser approval always 조합에서 navigation 승인 거부가 관측됐고, 현재 앱 코드의 prompt 강제와 일치한다. Chromium 장애나 취약점으로 확정하지 않는다. 사용자 선택으로 승인 가능한 조합을 설정한 새 세션의 실제 desktop/mobile 렌더링 증거가 필요하다. HTTP 200은 렌더링 성공의 대체가 아니다.
+- 자동 업데이트 상태 조회는 PASS지만 실제 적용·활성 세션 보류 관측은 아니다. Active sessions와 프로세스 개수의 단순 차이는 결함 근거가 아니다. 기존 CI 수용 근거를 보존하고 운영 장치에서 강제 apply·session 종료·재시작을 추가 점검 명목으로 실행하지 않는다.
+- memory warning 수와 PATH alias 경고는 원인 미확인 후속 진단이며 단독 완료 차단 사유로 확대하지 않는다. 내부 Codex에는 민감 경로 내용/이름/링크 대상 비노출, wrapper 우회 금지, 실행 맥락/exit code와 정제된 경고 분류 중심의 짧은 추가 점검을 요청한다.
 
 ### 2026-10-14 — DEV 0.7.1-dev.7 공개·Supervisor 개발 VM 검증 완료
 
