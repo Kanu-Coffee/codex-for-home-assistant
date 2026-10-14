@@ -3,11 +3,11 @@ ARG BUILD_FROM=ghcr.io/home-assistant/base:3.24@sha256:94ff231402a5e7ad2a82e261a
 FROM ${BUILD_FROM}
 
 ARG BUILD_ARCH=amd64
-ARG BUILD_VERSION=0.7.0
+ARG BUILD_VERSION=0.7.1
 ARG TARGETARCH
-ARG CODEX_VERSION=0.144.1
-ARG CODEX_SHA256_AMD64=84091ae20c65fcc7d4120db97d1bd57d7ff8df9c7609fb781c78c2ebbd4f5a28
-ARG CODEX_SHA256_AARCH64=b9f8ef5f98e46ced4dbbd3756a4223e3ee299a457ff488a3305bea455da8b5b8
+ARG CODEX_VERSION=0.162.1
+ARG CODEX_SHA256_AMD64=a676f5722aae0d86cbe3764332f08eab1fdd89dc0a300b3ad4ffbf48611fa3e3
+ARG CODEX_SHA256_AARCH64=53a9ce0b94beb27a63fdeb2f7704d95199e17b3898aa33b60461a1a93ac0d88b
 ARG GH_VERSION=2.97.0
 ARG GH_SHA256_AMD64=a2c9b8497e1f85b1ad0dfcb78b5a622e098801b8e461e459e88e1ee12f018112
 ARG GH_SHA256_AARCH64=73ea440ecad9c9e284429997ee6f93577bc6f7bc6fba357ef62c53ad8fb641a5
@@ -27,10 +27,12 @@ RUN case "${BUILD_ARCH}:${TARGETARCH:-}" in \
 
 COPY playwright/package.json playwright/package-lock.json /usr/local/lib/codex-ha/playwright/
 
+
+# Chromium pulls a system bwrap transitively. Codex must select the verified
+# companion from its own package; the system 0.12 helper fails in HAOS Docker.
 RUN apk upgrade --no-cache \
     && apk add --no-cache \
       bash \
-      bubblewrap \
       ca-certificates \
       chromium-headless-shell \
       coreutils \
@@ -51,7 +53,7 @@ RUN apk upgrade --no-cache \
       ttyd \
       yamllint \
       yq \
-    && rm -f /usr/bin/tempio \
+    && rm -f /usr/bin/tempio /usr/bin/bwrap \
     && apk add --no-cache --virtual .playwright-build npm \
     && resolved_arch="${TARGETARCH:-${BUILD_ARCH}}" \
     && case "${resolved_arch}" in \
@@ -72,15 +74,16 @@ RUN apk upgrade --no-cache \
         exit 1; \
         ;; \
     esac \
-    && codex_archive="codex-${codex_target}.tar.gz" \
+    && codex_archive="codex-package-${codex_target}.tar.gz" \
     && curl --fail --show-error --silent --location \
       --output "/tmp/${codex_archive}" \
       "https://github.com/openai/codex/releases/download/rust-v${CODEX_VERSION}/${codex_archive}" \
     && printf '%s  %s\n' "${codex_sha256}" "/tmp/${codex_archive}" | sha256sum --check --strict - \
-    && tar --extract --gzip --file "/tmp/${codex_archive}" --directory /tmp \
+    && install -d -m 0755 /usr/local/lib/codex-ha/codex-baseline \
+    && tar --extract --gzip --file "/tmp/${codex_archive}" --directory /usr/local/lib/codex-ha/codex-baseline \
     && install -d -m 0755 /usr/local/libexec \
-    && install -m 0755 "/tmp/codex-${codex_target}" /usr/local/libexec/codex-real \
-    && rm -f "/tmp/${codex_archive}" "/tmp/codex-${codex_target}" \
+    && ln -sf /usr/local/lib/codex-ha/codex-baseline/bin/codex /usr/local/libexec/codex-real \
+    && rm -f "/tmp/${codex_archive}" \
     && codex_version_output="$(/usr/local/libexec/codex-real --version)" \
     && [[ "${codex_version_output}" == "codex-cli ${CODEX_VERSION}" ]] \
     && gh_archive="gh_${GH_VERSION}_linux_${gh_arch}.tar.gz" \
@@ -103,7 +106,7 @@ RUN apk upgrade --no-cache \
     && node --input-type=module -e "const ws = await import('/usr/local/lib/codex-ha/playwright/node_modules/ws/wrapper.mjs'); if (typeof ws.default !== 'function') process.exit(1)" \
     && node -e "const { DatabaseSync } = require('node:sqlite'); const db = new DatabaseSync(':memory:'); db.exec('CREATE VIRTUAL TABLE smoke USING fts5(value)'); db.close()" \
     && chromium-headless-shell --version \
-    && /usr/bin/bwrap --version \
+    && /usr/local/lib/codex-ha/codex-baseline/codex-resources/bwrap --version \
     && rm -rf /tmp/npm-cache \
     && apk del .playwright-build
 
@@ -114,6 +117,7 @@ RUN printf '%s\n' "${BUILD_VERSION}" > /usr/local/share/codex-ha/app-version \
     && find /etc/codex/skills/ha-feedback -type f -exec chmod 0644 {} + \
     && chmod 0755 \
       /etc/s6-overlay/s6-rc.d/codex-ha-init/run \
+      /etc/s6-overlay/s6-rc.d/codex-updater/run \
       /etc/s6-overlay/s6-rc.d/ha-memoryd/run \
       /etc/s6-overlay/s6-rc.d/ingress/finish \
       /etc/s6-overlay/s6-rc.d/ingress/run \
@@ -132,6 +136,8 @@ RUN printf '%s\n' "${BUILD_VERSION}" > /usr/local/share/codex-ha/app-version \
       /usr/local/share/codex-ha/AGENTS.md \
       /usr/local/share/codex-ha/browser-auth-check.mjs \
       /usr/local/share/codex-ha/browser-user-admin.mjs \
+      /usr/local/share/codex-ha/codex-runtime-manager.mjs \
+      /usr/local/share/codex-ha/codex-updater-daemon.mjs \
       /usr/local/share/codex-ha/ha-memory-core.mjs \
       /usr/local/share/codex-ha/ha-memory-ha-client.mjs \
       /usr/local/share/codex-ha/ha-memory-mcp.mjs \
@@ -143,7 +149,7 @@ RUN printf '%s\n' "${BUILD_VERSION}" > /usr/local/share/codex-ha/app-version \
       /usr/local/share/codex-ha/user-files-update.mjs \
       /usr/local/share/codex-ha/app-version
 
-RUN install -d -m 0700 /data/home /data/codex /data/github-cli /run/codex-ha \
+RUN install -d -m 0700 /data/home /data/codex /data/github-cli /run/codex-ha /data/codex-runtime /run/codex-ha/codex-maintenance \
     && install -d -m 0755 /config \
     && codex_version_output="$(codex --version)" \
     && [[ "${codex_version_output}" == "codex-cli ${CODEX_VERSION}" ]] \
@@ -151,7 +157,10 @@ RUN install -d -m 0700 /data/home /data/codex /data/github-cli /run/codex-ha \
     && [[ "${gh_version_output}" == "gh version ${GH_VERSION} "* ]] \
     && [[ ! -e /usr/bin/tempio ]] \
     && node --check /usr/local/share/codex-ha/ha-feedback.mjs \
-    && ha-feedback --help | grep -Fq 'ha-feedback github submit'
+    && node --check /usr/local/share/codex-ha/codex-runtime-manager.mjs \
+    && node --check /usr/local/share/codex-ha/codex-updater-daemon.mjs \
+    && ha-feedback --help | grep -Fq 'ha-feedback github submit' \
+    && ha-codex-update --help | grep -Fq 'ha-codex-update'
 
 LABEL \
   io.hass.version="${BUILD_VERSION}" \

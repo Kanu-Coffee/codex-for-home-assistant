@@ -1,0 +1,10 @@
+---
+# Grype baseline vulnerability gate policy (Fail-closed)
+# Static blanket suppressions are strictly prohibited.
+# Exceptions are dynamically gated by .github/scripts/sbom-go-binary-preflight.py
+# and applied only to exact verified binaries (/usr/local/bin/gh, /usr/bin/yq)
+# during the CI build gate.
+show-suppressed: true
+
+# Root policy has zero static ignore rules to prevent unreviewed binary bypass.
+ignore: []

@@ -53,6 +53,18 @@ configuration:
       group is system-read-only. It is used only while automatic authentication
       is enabled and overrides the managed identity. Invalid or over-privileged
       tokens are rejected.
+  codex_auto_update:
+    name: Automatic Codex stable updates
+    description: >-
+      Check for official stable Codex packages four times daily (at 03:00, 09:00,
+      15:00, and 21:00 in the configured timezone). When an update is available,
+      it is staged and applied only when all interactive sessions, remote connections,
+      and app-server tasks are completely idle.
+  codex_auto_update_timezone:
+    name: Automatic update schedule timezone
+    description: >-
+      IANA timezone used to evaluate the 03:00, 09:00, 15:00, and 21:00 update
+      check slots (default Asia/Seoul).
   log_level:
     name: Web terminal log level
     description: Enables detailed ttyd logs for trace or debug. Secrets and authorization headers are never logged.

@@ -6,15 +6,26 @@ profile codex_home_assistant flags=(attach_disconnected,mediate_deleted) {
 
   # Keep the existing app runtime available; Docker's capability bounding set
   # and the Home Assistant protection-mode boundary still apply.
-  file,
+  /** rwmkl,
   network,
   capability,
   signal,
 
   # S6-Overlay
   /init ix,
+  # s6-rc executes the service run/finish scripts from this tree. The broad
+  # rule above grants r/w but not x, so an unlisted exec here fails closed
+  # with exit 126 before the init logic runs.
+  /etc/s6-overlay/** ix,
   /bin/** ix,
   /usr/bin/** ix,
+  /usr/lib/** ix,
+  /lib/** ix,
+  /sbin/** ix,
+  /usr/sbin/** ix,
+  /usr/local/bin/** ix,
+  /usr/local/share/codex-ha/** ix,
+  /usr/local/libexec/** ix,
   /run/{s6,s6-rc*,service}/** ix,
   /package/** ix,
   /command/** ix,
@@ -28,6 +39,11 @@ profile codex_home_assistant flags=(attach_disconnected,mediate_deleted) {
   /usr/lib/bashio/** ix,
   /tmp/** rwk,
   /data/** rw,
+  /data/home/** ix,
+  /data/codex/** ix,
+  /data/codex-runtime/** r,
+  /data/codex-runtime/{releases/*,staging/.extract-*}/{bin,codex-path}/** ix,
+  /usr/local/lib/codex-ha/codex-baseline/{bin,codex-path}/** ix,
 
   # Home Assistant configuration remains read-write except for the fixed
   # credential and registry paths below. Explicit deny rules override the
@@ -45,12 +61,14 @@ profile codex_home_assistant flags=(attach_disconnected,mediate_deleted) {
   deny /proc/*/environ r,
   deny /proc/*/task/*/environ r,
 
-  # Codex 0.144.1 delegates its Linux sandbox setup to bubblewrap. Keep
+  # Codex 0.162.1 delegates its Linux sandbox setup to bubblewrap. Keep
   # namespace mount operations out of the app-wide profile and grant them
   # only after the exact bwrap executable transitions to this child profile.
   # Home Assistant Supervisor already starts apps with seccomp=unconfined;
   # ABI 3.0 keeps user-namespace creation compatible with HAOS AppArmor 3.1.
-  /usr/bin/bwrap Cx -> codex_bwrap,
+  /usr/local/lib/codex-ha/codex-baseline/codex-resources/bwrap Cx -> codex_bwrap,
+  /data/codex-runtime/releases/*/codex-resources/bwrap Cx -> codex_bwrap,
+  /data/codex-runtime/staging/.extract-*/codex-resources/bwrap Cx -> codex_bwrap,
 
   profile codex_bwrap flags=(attach_disconnected,mediate_deleted) {
     #include <abstractions/base>
@@ -69,12 +87,15 @@ profile codex_home_assistant flags=(attach_disconnected,mediate_deleted) {
     # Bubblewrap re-executes the Codex sandbox helper before the requested
     # command. All other executables inherit this profile and Codex seccomp.
     /usr/local/libexec/codex-real ix,
+    /usr/local/lib/codex-ha/codex-baseline/** ix,
     /bin/** ix,
     /usr/bin/** ix,
 
     /run/{,**} rwk,
     /tmp/** rwk,
     /data/** rw,
+    /data/codex-runtime/** rix,
+    deny /data/codex-runtime/** wkl,
 
     # Preserve the app-wide confidentiality boundary after the transition.
     /config/{,**} rwklix,

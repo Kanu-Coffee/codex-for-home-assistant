@@ -117,23 +117,45 @@ jobs:
           output-file: codex-for-home-assistant-${{ matrix.arch }}.spdx.json
           upload-release-assets: false
 
+      - name: Validate Go binary identities in SBOM before vulnerability scanning
+        run: |
+          status=0
+          python3 .github/scripts/sbom-go-binary-preflight.py \
+            --sbom "codex-for-home-assistant-${{ matrix.arch }}.spdx.json" \
+            --image "${{ matrix.image }}:${{ needs.prepare.outputs.version }}" \
+            --version "${{ needs.prepare.outputs.version }}" \
+            --architecture "${{ matrix.arch }}" \
+            --template-vex .github/security/openvex.json \
+            --emit-gated-config ".grype-gated-${{ matrix.arch }}.yaml" \
+            --emit-gated-vex ".github/security/openvex-gated-${{ matrix.arch }}.json" || status=$?
+          if [[ "$status" == 3 ]]; then
+            echo "Unreviewed dependency: scanning all findings without exceptions."
+            cp .grype.yaml ".grype-gated-${{ matrix.arch }}.yaml"
+            cp "codex-for-home-assistant-${{ matrix.arch }}.spdx.json" \
+              ".grype-gated-${{ matrix.arch }}.sbom.json"
+          elif [[ "$status" != 0 ]]; then
+            exit "$status"
+          fi
+
       - name: Enforce critical vulnerability gate
         uses: anchore/scan-action@e1165082ffb1fe366ebaf02d8526e7c4989ea9d2 # v7.4.0
         with:
-          sbom: codex-for-home-assistant-${{ matrix.arch }}.spdx.json
+          sbom: .grype-gated-${{ matrix.arch }}.sbom.json
           fail-build: true
           output-format: table
           severity-cutoff: critical
+          config: .grype-gated-${{ matrix.arch }}.yaml
 
       - name: Report high and critical vulnerabilities (non-blocking)
         if: ${{ !cancelled() }}
         continue-on-error: true
         uses: anchore/scan-action@e1165082ffb1fe366ebaf02d8526e7c4989ea9d2 # v7.4.0
         with:
-          sbom: codex-for-home-assistant-${{ matrix.arch }}.spdx.json
+          sbom: .grype-gated-${{ matrix.arch }}.sbom.json
           fail-build: false
           output-format: table
           severity-cutoff: high
+          config: .grype-gated-${{ matrix.arch }}.yaml
 
       - name: Install Cosign
         if: inputs.publish

@@ -1,6 +1,69 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
+# Intercept top-level 'update' subcommand to route to managed updater
+# and prevent arbitrary self-update from modifying rootfs.
+# Prompts that contain the word 'update' (e.g. 'update my lights') are not intercepted.
+is_update_subcommand=false
+update_args=()
+orig_args=("$@")
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --)
+      break
+      ;;
+    update)
+      is_update_subcommand=true
+      shift
+      update_args=("$@")
+      break
+      ;;
+    -m|--model|-c|--config|-C|--cd|--profile|--color|-s|--sandbox)
+      shift 2 2>/dev/null || break
+      ;;
+    -m*|-c*|-C*)
+      shift
+      ;;
+    --model=*|--config=*|--cd=*|--profile=*|--color=*|--sandbox=*)
+      shift
+      ;;
+    -*)
+      shift
+      ;;
+    *)
+      break
+      ;;
+  esac
+done
+
+if [[ "${is_update_subcommand}" == true ]]; then
+  if [[ "${#update_args[@]}" -gt 0 ]]; then
+    first_opt="${update_args[0]}"
+    case "${first_opt}" in
+      status|--status)
+        exec /usr/local/bin/ha-codex-update status "${update_args[@]:1}"
+        ;;
+      check|--check)
+        exec /usr/local/bin/ha-codex-update check "${update_args[@]:1}"
+        ;;
+      apply|--apply)
+        exec /usr/local/bin/ha-codex-update apply "${update_args[@]:1}"
+        ;;
+      -h|--help|help)
+        exec /usr/local/bin/ha-codex-update --help
+        ;;
+      *)
+        exec /usr/local/bin/ha-codex-update "${update_args[@]}"
+        ;;
+    esac
+  else
+    exec /usr/local/bin/ha-codex-update update
+  fi
+fi
+
+# Restore positional arguments if update was not intercepted
+set -- "${orig_args[@]}"
+
 # Keep config.toml user-owned while applying the current App options to every
 # CLI/app-server invocation, including commands launched by Remote SSH.
 # shellcheck source=/dev/null
@@ -58,9 +121,83 @@ if ! codex_ha_browser_build_approval_args "${browser_approval_policy}"; then
   exit 78
 fi
 
+# Register active session in runtime maintenance gate to prevent updater apply races
+readonly CODEX_MAINTENANCE_GATE=/run/codex-ha/codex-maintenance/gate.lock
+readonly CODEX_SESSIONS_DIR=/run/codex-ha/codex-maintenance/sessions
+
+# Default to image baseline binary for resilience
+codex_real_bin="/usr/local/libexec/codex-real"
+
+if [[ -d "${CODEX_SESSIONS_DIR}" ]]; then
+  if { exec 200>"${CODEX_MAINTENANCE_GATE}"; } 2>/dev/null && timeout 2 flock -s 200 2>/dev/null; then
+    start_time=$(awk '{print $22}' "/proc/$$/stat" 2>/dev/null || echo "0")
+    is_app_server=false
+    socket_path=""
+    prev_arg=""
+    for arg in "$@"; do
+      if [[ "${arg}" == "app-server" ]]; then
+        is_app_server=true
+      elif [[ "${prev_arg}" == "--listen" ]]; then
+        socket_path="${arg}"
+      elif [[ "${arg}" == --listen=* ]]; then
+        socket_path="${arg#--listen=}"
+      fi
+      prev_arg="${arg}"
+    done
+
+    session_type="cli"
+    managed="false"
+    unix_sock=""
+    if [[ "${is_app_server}" == true ]]; then
+      session_type="app-server"
+      if [[ "${socket_path}" == unix://* ]]; then
+        managed="true"
+        unix_sock="${socket_path#unix://}"
+      fi
+    fi
+
+    # Resolve the immutable generation and verify its private inventory while
+    # holding the admission gate. Never exec through a mutable current symlink.
+    if selected_bin=$(/usr/local/bin/ha-codex-update resolve 2>/dev/null); then
+      codex_real_bin="${selected_bin}"
+    fi
+    version_output=$("${codex_real_bin}" --version 2>/dev/null || true)
+    selected_version=${version_output#codex-cli }
+    if ! jq -n --argjson pid "$$" --arg start "${start_time}" \
+      --arg type "${session_type}" --argjson managed "${managed}" \
+      --arg socketPath "${unix_sock}" --arg exe "${codex_real_bin}" \
+      --arg version "${selected_version}" --arg cwd "${PWD}" \
+      --args '{pid:$pid,start:$start,type:$type,managed:$managed,socketPath:$socketPath,exe:$exe,version:$version,cwd:$cwd,args:$ARGS.positional}' \
+      -- -c "approval_policy=\"${approval_policy}\"" \
+      -c "sandbox_mode=\"${sandbox_mode}\"" \
+      -c 'sandbox_workspace_write.network_access=true' \
+      --add-dir /data/codex-ha-memory "${CODEX_HA_BROWSER_APPROVAL_ARGS[@]}" "$@" \
+      > "${CODEX_SESSIONS_DIR}/$$"; then
+      printf '%s\n' 'codex: unable to register session safely' >&2
+      exit 78
+    fi
+
+    flock -u 200 2>/dev/null || true
+    exec 200>&-
+  else
+    codex_real_bin="/usr/local/libexec/codex-real"
+  fi
+fi
+
 # Defense in depth: even callers that bypass the normal login-shell profile
 # cannot pass the Supervisor credential to Codex or its child processes.
 unset SUPERVISOR_TOKEN
+
+if [[ "${codex_real_bin}" != "/usr/local/libexec/codex-real" && -x "${codex_real_bin}" ]]; then
+  exec "${codex_real_bin}" \
+    -c "approval_policy=\"${approval_policy}\"" \
+    -c "sandbox_mode=\"${sandbox_mode}\"" \
+    -c 'sandbox_workspace_write.network_access=true' \
+    --add-dir /data/codex-ha-memory \
+    "${CODEX_HA_BROWSER_APPROVAL_ARGS[@]}" \
+    "$@"
+fi
+
 exec /usr/local/libexec/codex-real \
   -c "approval_policy=\"${approval_policy}\"" \
   -c "sandbox_mode=\"${sandbox_mode}\"" \

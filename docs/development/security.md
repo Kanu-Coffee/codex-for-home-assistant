@@ -40,6 +40,7 @@
 | 검증형 HA catalog/사용자 의미 메모리 | root-only SQLite + Core API + local CLI/MCP | 높음 | allowlist·provenance·bounded output으로 허용 |
 | App bug/feature read-only report | image-managed Skill + local helper | 중간 | allowlist·privacy scan·private file로 허용 |
 | GitHub issue search/submission | pinned `gh` + outbound HTTPS | 높음 | fixed repo·random 10분 1회용 preview·현재 대화 확인·exclusive claim 뒤 허용 |
+| Codex 런타임 자동 업데이트 | S6 codex-updater + GitHub Releases HTTPS | 중간 | 공식 stable SHA-256 검증 및 유휴 상태 원자적 적용으로 허용 |
 | memory HTTP/SSE listener 또는 외부 vector/cloud sync | 외부 network service | 매우 높음 | 불허 |
 | 브라우저 디버그/VNC 외부 공개 | 새 host/Ingress port | 매우 높음 | 불허 |
 | 보호 모드 변경/무제한 Supervisor | admin | 매우 높음 | 불허 |
@@ -360,6 +361,11 @@ AppArmor와 managed requirements가 고정한 `secrets.yaml`·`.storage` 밖의 
 - `hassio_role`이 manager인지 검사
 - 금지 config key가 없는지 정책 테스트
 - 실제 고위험 service call은 테스트 fixture/mock로 검증
+- custom AppArmor는 baseline/release의 bin·codex-path 실행만 허용하고, 각 package의 검증된 `codex-resources/bwrap`만 mount 권한이 있는 child profile로 전이한다. APK transitive system bwrap은 image에서 제거하여 package companion을 사용한다. `deny /data/codex-runtime/** wkl`로 child sandbox의 런타임 쓰기를 차단한다. 전체 inventory receipt는 executable tree 밖의 private ledger에 기록하며 root의 의도적 변조 격리 수단은 아니다.
+- S6 `codex-updater` 서비스는 `SUPERVISOR_TOKEN` 및 민감 환경 변수를 제거한 상태로 데몬을 실행
+- 런타임 아카이브 추출 시 path traversal 방지 및 SHA-256 해시 검증 강제
+- `/data/codex-runtime/state.json` 및 업데이터 로그에 토큰이나 민감 사용자 입력을 남기지 않음
+- 활성 세션(CLI, TUI, SSH, remote stdio, app-server) 감지 시 유휴 상태가 될 때까지 symlink 전환을 안전하게 보류
 
 ## 7. 사고 대응
 
@@ -430,3 +436,23 @@ Public `0.4.0`의 정확한 공개 image 자동 회귀와 후속 실제 HAOS `ne
 검증형 메모리는 fixture의 SQLite/FTS5, state machine, allowlist와 failure injection이 통과해도 실제 HAOS의 Core WebSocket command 가용성, registry/automation 규모, Core restart 재연결, App update persistence와 S6 lifecycle을 완료로 간주하지 않는다. Public 0.3.0의 read-only HAOS 감사에서는 첫 catalog bootstrap이 FAIL했다. 정확한 public 0.3.1 image 자동 회귀는 PASS했지만 후속 실제 HAOS/Core `2026.7.2` 실기에서 `automation/config` 30건은 성공하고 automation-related 30건 중 2건이 Core `unknown_error`를 반환해 catalog bootstrap은 **FAIL**했다. Public `0.3.2` 재시험에서는 동일 2/30 오류가 config와 직접 관계를 보존한 bounded warning으로 격리됐고 catalog/DB/CLI·MCP/privacy/candidate/restart 요청 후 fresh sync/App restart persistence가 PASS했다. Actual runtime OCI digest는 Supervisor App info가 제공하지 않아 NOT RUN이고, probe에 Core 단절이나 failed refresh가 없어 disconnect/reconnect와 순간 LKG `stale/degraded`는 NOT OBSERVED이며, null-config도 NOT OBSERVED, 오류 주입과 version-tagged update는 NOT RUN이므로 최종 판정은 **PARTIAL(FAIL 0)**이다. 이 증거 공백을 해소하려고 `docker_api`, host access나 운영 장애 주입을 도입하지 않으며 실제 entity·area·automation 이름이나 memory DB를 저장소 증거로 커밋하지 않는다.
 
 검증형 App 피드백 `0.6.0`은 local fixture/fake `gh`/container/update 검증과 실제 HAOS report 생성·fallback 검증을 구분한다. 실제 GitHub issue creation은 공개 repository에 지속적인 외부 변경을 남기므로 별도 승인 전까지 **NOT RUN**이며, 이를 preview·fake `gh` 성공으로 PASS 처리하지 않는다.
+
+## 배포 취약점 예외의 범위
+
+Go HTTP/2 server 및 Windows 전용 코드에 관한 비적용 판단은 검토한 Linux CLI
+바이너리(`gh`, `yq`)에만 적용한다. `.github/security/reviewed-go-binaries.json`은
+기존 검토 image의 architecture별 실제 파일 SHA256과 근거 Builder를 기록한다.
+Preflight는 Docker의 immutable image ID로 container를 만들고 실행 없이 파일을
+복사해 해시를 확인한다. SBOM의 Go mapping·필수 module·file SHA256·image 이름과
+version·OCI architecture가 실제 scan target과 일치할 때만 예외를 발급한다.
+Go metadata가 없거나 실제 파일과 모순되면 검증 오류다. 유효하지만 검토하지 않은
+dependency는 예외 없이 raw scan을 수행하므로, 수정된 새 dependency까지 단순히
+기존 hash 목록에 없다는 이유로 배포를 막지 않는다. Critical gate 자체는 유지한다.
+
+Grype의 SPDX 변환은 image tag/repo digest를 잃을 수 있어 image-scoped VEX 매칭을
+배포 gate의 전제로 사용하지 않는다. VEX는 검토한 image subject·실제 image ID·SBOM
+hash를 담는 감사 자료이며 scanner에 전달하지 않는다. 단일 gated config와 검증 당시
+동결한 SBOM snapshot만 검사한다. Root `.grype.yaml`은 항상 빈 예외를 유지한다.
+Go module checksum을 executable checksum으로 취급하지 않으며, 새 Go 바이너리나
+hash에 이전 비적용 판단을 자동 승계하지 않는다. 실제 exploitability 검증과
+module 단위 scanner 결과, raw findings와 suppressed findings는 구분해 기록한다.

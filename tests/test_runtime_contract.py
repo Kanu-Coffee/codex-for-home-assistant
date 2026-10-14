@@ -5,9 +5,17 @@ from pathlib import Path
 
 
 S6_ROOT = Path("etc/s6-overlay/s6-rc.d")
-S6_SERVICES = ("codex-ha-init", "ha-memoryd", "ttyd", "ingress", "sshd")
+S6_SERVICES = (
+    "codex-ha-init",
+    "codex-updater",
+    "ha-memoryd",
+    "ttyd",
+    "ingress",
+    "sshd",
+)
 EXECUTABLE_ROOTFS_PATHS = (
     "etc/s6-overlay/s6-rc.d/codex-ha-init/run",
+    "etc/s6-overlay/s6-rc.d/codex-updater/run",
     "etc/s6-overlay/s6-rc.d/ha-memoryd/run",
     "etc/s6-overlay/s6-rc.d/ingress/finish",
     "etc/s6-overlay/s6-rc.d/ingress/run",
@@ -27,9 +35,10 @@ def test_s6_user_bundle_and_dependency_graph(rootfs: Path) -> None:
     assert (s6_root / "codex-ha-init/up").is_file()
     assert (s6_root / "codex-ha-init/dependencies.d/base").is_file()
 
-    for service in ("ha-memoryd", "ttyd", "ingress", "sshd"):
+    for service in ("codex-updater", "ha-memoryd", "ttyd", "ingress", "sshd"):
         assert (s6_root / service / "type").read_text().strip() == "longrun"
 
+    assert (s6_root / "codex-updater/dependencies.d/codex-ha-init").is_file()
     assert (s6_root / "ha-memoryd/dependencies.d/codex-ha-init").is_file()
     assert (s6_root / "ttyd/dependencies.d/codex-ha-init").is_file()
     assert (s6_root / "sshd/dependencies.d/codex-ha-init").is_file()
@@ -62,10 +71,10 @@ def test_codex_release_is_pinned_and_checksum_verified(addon_root: Path) -> None
     )
 
     assert version_match
-    assert version_match.group(1) == "0.144.1"
+    assert version_match.group(1) == "0.162.1"
     assert checksum_matches == {
-        "AMD64": "84091ae20c65fcc7d4120db97d1bd57d7ff8df9c7609fb781c78c2ebbd4f5a28",
-        "AARCH64": "b9f8ef5f98e46ced4dbbd3756a4223e3ee299a457ff488a3305bea455da8b5b8",
+        "AMD64": "a676f5722aae0d86cbe3764332f08eab1fdd89dc0a300b3ad4ffbf48611fa3e3",
+        "AARCH64": "53a9ce0b94beb27a63fdeb2f7704d95199e17b3898aa33b60461a1a93ac0d88b",
     }
     assert "rust-v${CODEX_VERSION}" in dockerfile
     assert "sha256sum --check --strict" in dockerfile
@@ -196,3 +205,103 @@ def test_web_terminal_uses_tmux_and_returns_to_shell(rootfs: Path) -> None:
     assert "web_terminal_auto_start_codex" in session_shell
     assert "if ha-codex; then" in session_shell
     assert "exec /bin/bash -l" in session_shell
+
+
+APPARMOR_EXEC_TRANSITION_CHARS = frozenset("xpicuUCU")
+S6_INTERPRETER_AND_SERVICE_BINARIES = (
+    "/command/with-contenv",
+    "/usr/bin/node",
+    "/usr/bin/ttyd",
+    "/usr/sbin/nginx",
+    "/usr/sbin/sshd",
+    "/usr/local/bin/codex-ha-init",
+    "/run/s6/basedir/bin/halt",
+    "/command/s6-pause",
+)
+APPARMOR_UNLISTED_PATHS_WITHOUT_EXEC = (
+    "/etc/s6-overlay.d/evil/run",
+    "/opt/s6-rc.d/service/run",
+    "/var/tmp/s6-overlay-helper/run",
+)
+
+
+def _expand_apparmor_braces(pattern: str) -> tuple[str, ...]:
+    match = re.search(r"\{([^{}]*)\}", pattern)
+    if match is None:
+        return (pattern,)
+    expanded: list[str] = []
+    for alternative in match.group(1).split(","):
+        expanded.extend(
+            _expand_apparmor_braces(
+                pattern[: match.start()] + alternative + pattern[match.end() :]
+            )
+        )
+    return tuple(expanded)
+
+
+def _apparmor_pattern_matches(pattern: str, path: str) -> bool:
+    for expanded in _expand_apparmor_braces(pattern):
+        regex = re.escape(expanded)
+        regex = regex.replace(r"\*\*", "\x00")
+        regex = regex.replace(r"\*", "[^/]*")
+        regex = regex.replace(r"\?", "[^/]")
+        regex = regex.replace("\x00", ".*")
+        regex = regex.replace(r"\[", "[").replace(r"\^", "^").replace(r"\]", "]")
+        if re.fullmatch(regex, path):
+            return True
+    return False
+
+
+def _parent_profile_rules(apparmor_text: str) -> list[tuple[bool, str, set[str]]]:
+    parent = apparmor_text[: apparmor_text.index("profile codex_bwrap")]
+    rules: list[tuple[bool, str, set[str]]] = []
+    for line in parent.splitlines():
+        match = re.match(r"\s*(deny\s+)?(/[^\s]+)\s+([A-Za-z ]+),", line)
+        if match is None:
+            continue
+        permission_token = match.group(3).split("->")[0].strip()
+        rules.append((bool(match.group(1)), match.group(2), set(permission_token)))
+    assert rules
+    return rules
+
+
+def _apparmor_effective_perms(apparmor_text: str, path: str) -> set[str]:
+    allowed: set[str] = set()
+    denied: set[str] = set()
+    for is_deny, pattern, chars in _parent_profile_rules(apparmor_text):
+        if _apparmor_pattern_matches(pattern, path):
+            (denied if is_deny else allowed).update(chars)
+    return allowed - denied
+
+
+def _apparmor_allows_exec(apparmor_text: str, path: str) -> bool:
+    return bool(
+        _apparmor_effective_perms(apparmor_text, path) & APPARMOR_EXEC_TRANSITION_CHARS
+    )
+
+
+def test_apparmor_profile_grants_exec_to_s6_service_scripts(addon_root: Path) -> None:
+    apparmor_text = (addon_root / "apparmor.txt").read_text(encoding="utf-8")
+
+    for relative_path in EXECUTABLE_ROOTFS_PATHS:
+        assert _apparmor_allows_exec(apparmor_text, f"/{relative_path}"), relative_path
+
+
+def test_apparmor_profile_grants_exec_to_s6_interpreter_and_services(
+    addon_root: Path,
+) -> None:
+    apparmor_text = (addon_root / "apparmor.txt").read_text(encoding="utf-8")
+
+    for path in S6_INTERPRETER_AND_SERVICE_BINARIES:
+        assert _apparmor_allows_exec(apparmor_text, path), path
+
+
+def test_apparmor_s6_exec_allowance_stays_scoped_outside_s6_tree(
+    addon_root: Path,
+) -> None:
+    apparmor_text = (addon_root / "apparmor.txt").read_text(encoding="utf-8")
+
+    for path in APPARMOR_UNLISTED_PATHS_WITHOUT_EXEC:
+        assert not _apparmor_allows_exec(apparmor_text, path), path
+    for secret_path in ("/config/secrets.yaml", "/config/backup/secrets.yaml"):
+        assert "r" not in _apparmor_effective_perms(apparmor_text, secret_path)

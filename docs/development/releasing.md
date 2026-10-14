@@ -9,8 +9,8 @@
 - Home Assistant App repository: `https://github.com/Kanu-Coffee/codex-for-home-assistant`
 - DEV canary repository: `https://github.com/Kanu-Coffee/codex-for-home-assistant#dev`
 - image: `ghcr.io/kanu-coffee/codex-for-home-assistant:<version>`
-- current stable release `0.7.0` architecture: `amd64`, `aarch64` (`armv7` 미지원)
-- latest historical DEV publication: `0.7.0-dev.2`
+- stable promotion target `0.7.1` (previous stable `0.7.0`) architecture: `amd64`, `aarch64` (`armv7` 미지원)
+- validated DEV candidate: `0.7.1-dev.7`
 - stable version tag: `X.Y.Z`
 - numbered DEV version tag: `X.Y.Z-dev.N` (`N`은 1 이상의 정수이며 새 후보마다 사용하지 않은 번호 선택)
 - mutable `latest` tag는 발행하지 않음
@@ -71,7 +71,7 @@ Stable `0.7.0` source는 [PR #38](https://github.com/Kanu-Coffee/codex-for-home-
 - 인증 없는 generic/per-architecture image 조회와 pull
 - image의 `io.hass.version`, `io.hass.arch`, source label
 - 예상 architecture가 각각 `linux/amd64`, `linux/arm64`인지
-- 각 image에서 Codex `0.144.1`, GitHub CLI `2.97.0` exact version과 architecture가 일치하고 `/usr/bin/tempio`가 없는지
+- 각 image에서 Codex `0.162.1`, GitHub CLI `2.97.0` exact version과 architecture가 일치하고 `/usr/bin/tempio`가 없는지
 - generic tag와 두 runtime manifest digest 기록
 - architecture별 SPDX SBOM artifact, Critical gate와 High/Critical scan 결과
 - per-architecture image의 Cosign signature, provenance와 SBOM attestation 검증
@@ -103,3 +103,12 @@ Stable `0.7.0`의 annotated tag object `24386ac011336c2b50f60762144569118762e2f7
 - 유지보수자는 immutable image/tag를 보존하고 새 patch에서 수정합니다.
 - downgrade가 `/data` schema나 사용자 config와 호환되는지 검증되지 않았다면 자동 권장하지 않습니다.
 - credential 노출이나 image 신뢰 문제가 있으면 배포 편의보다 secret 폐기와 접근 차단을 우선합니다.
+
+### Go 비적용 예외와 기본 검사
+
+배포 preflight는 실제 Docker image에서 복사한 `gh`/`yq` 파일의 architecture별
+SHA256을 검토 manifest와 대조한다. Metadata/실제 파일이 불일치하면 중단하고,
+유효한 미검토 dependency는 예외를 적용하지 않은 raw Critical scan으로 넘긴다.
+검토한 경우에만 발급된 gated config와 동결 SBOM snapshot을 사용한다. VEX는
+image/SBOM identity를 기록하는 감사 자료이며 SPDX scanner의 예외 입력으로
+사용하지 않는다. Root scanner config에는 전역 예외를 추가하지 않는다.

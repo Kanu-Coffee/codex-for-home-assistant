@@ -6,7 +6,7 @@
 
 이 문서는 Home Assistant OS 사용자가 앱을 설치하고, Web UI·SSH·모바일 Remote에서 Codex를 사용하며, 안전하게 대시보드·자동화·엔티티와 설정 오류를 다루는 방법을 설명합니다.
 
-현재 안정판 설치 기준은 앱 버전 `0.7.0`입니다. HAOS에서 App은 **Codex for Home Assistant**, 사이드바는 **Codex**로 표시됩니다.
+현재 안정판 설치 기준은 앱 버전 `0.7.1`입니다. HAOS에서 App은 **Codex for Home Assistant**, 사이드바는 **Codex**로 표시됩니다.
 
 > [!WARNING]
 > 이 앱은 보호된 `secrets.yaml`·`.storage`를 제외한 `/config`를 읽고 쓸 수 있고 Home Assistant Core 및 Supervisor `manager` API를 사용할 수 있습니다. API 응답·로그·브라우저 화면에는 민감정보가 포함될 수 있습니다. 신뢰하는 관리자만 사용하고, 변경 전 backup과 diff를 확인하세요. TCP `2223`을 인터넷에 직접 port-forward하지 마세요.
@@ -16,11 +16,11 @@
 ### 지원 환경
 
 - Home Assistant OS 또는 Supervisor가 있는 설치 환경
-- 안정판 `0.7.0`은 **amd64**와 64비트 **aarch64** 장치를 지원합니다. Raspberry Pi는 64비트 HAOS가 필요하며 32비트 `armv7`은 지원하지 않습니다.
+- 안정판 `0.7.1`은 **amd64**와 64비트 **aarch64** 장치를 지원합니다. Raspberry Pi는 64비트 HAOS가 필요하며 32비트 `armv7`은 지원하지 않습니다.
 - 앱 이미지와 Codex 인증에 필요한 인터넷 연결
 - Codex를 사용할 수 있는 OpenAI/ChatGPT 계정
 
-안정판 `0.7.0` manifest는 `stage` 키를 생략해 Supervisor의 기본 stable 채널을 사용하며 `boot: manual`입니다. 후보 payload 계보의 Native ARM CI와 공개 amd64+aarch64 image 발행·익명 조회 검증은 통과했습니다. 실제 Raspberry Pi/aarch64 HAOS 실기는 **NOT RUN**이며, 이 공백은 자동 검증 결과를 근거로 릴리스 승인 과정에서 명시적으로 수용됐습니다. HACS 설치는 지원하지 않습니다.
+안정판 `0.7.1` manifest는 `stage` 키를 생략해 Supervisor의 기본 stable 채널을 사용하며 `boot: manual`입니다. 후보 payload 계보의 Native ARM CI와 공개 amd64+aarch64 image 발행·익명 조회 검증은 통과했습니다. 실제 Raspberry Pi/aarch64 HAOS 실기는 **NOT RUN**이며, 이 공백은 자동 검증 결과를 근거로 릴리스 승인 과정에서 명시적으로 수용됐습니다. HACS 설치는 지원하지 않습니다.
 
 ### 이 앱이 제공하는 것
 
@@ -108,6 +108,8 @@ ha-codex
 | `codex_user_files_update_mode` | `preserve` | `preserve`, `refresh_agents`, `refresh_all` | 일회성 refresh 뒤 `preserve`로 되돌리세요. `refresh_all`은 사용자 Codex 설정을 초기화할 수 있습니다. |
 | `home_assistant_browser_auto_auth` | `true` | Headless browser용 전용 local-only read-only HA 사용자 자동 관리 | 끄거나 켠 뒤 앱과 browser 세션을 다시 시작하세요. |
 | `home_assistant_browser_token` | 없음 | 선택형 수동 long-lived token override | 고급 복구용입니다. 자동 인증이 ON일 때만 관리형 token보다 우선하며, local-only, non-admin, `system-read-only` 단일 그룹 사용자만 허용됩니다. |
+| `codex_auto_update` | `true` | Codex 런타임 하루 4회 자동 업데이트 활성화 여부 | 끄면 백그라운드 주기 확인을 하지 않습니다. |
+| `codex_auto_update_timezone` | `Asia/Seoul` | 업데이트 확인 시간대 (IANA 타임존) | 하루 4회(03, 09, 15, 21시)의 기준 시간대입니다. |
 | `log_level` | `info` | `trace`, `debug`, `info`, `notice`, `warning`, `error`, `fatal` | `trace`/`debug`는 진단 때만 사용하고 공유 전 로그를 검토하세요. |
 | Network `22/tcp` | `2223` | 외부 SSH host port | JSON의 `ssh_port` 옵션이 아닙니다. 비활성화하면 SSH listener를 노출하지 않습니다. |
 
@@ -122,6 +124,8 @@ codex_sandbox_mode: workspace-write
 browser_approval_policy: safe
 codex_user_files_update_mode: preserve
 home_assistant_browser_auto_auth: true
+codex_auto_update: true
+codex_auto_update_timezone: Asia/Seoul
 log_level: info
 ```
 
@@ -420,12 +424,29 @@ flowchart LR
 
 업데이트 중 Web UI/tmux와 SSH 연결이 잠시 끊기는 것은 정상입니다.
 
+### Codex 런타임 자동 업데이트 (0.7.1+)
+
+앱 이미지 업데이트와 별개로, 내장 Codex 바이너리는 `0.7.1`부터 세션을 보호하는 런타임 자동 업데이트를 지원합니다.
+
+- **주기 확인**: 하루 4회(기본 시간대 `Asia/Seoul` 기준 03:00, 09:00, 15:00, 21:00) 공식 GitHub Releases에서 새 stable 버전을 확인하고 SHA-256을 검증하여 `/data/codex-runtime/releases/<version>-<target>`에 준비(staging)합니다.
+- **유휴(idle) 세션 보호 및 기간별 한도**: 실행 중인 TUI, SSH, remote stdio, 백그라운드 작업, app-server 세션이 감지되면 업데이트 적용을 보류(`staged`)합니다.
+  - 당일 빠른 5분 재확인은 날짜별 최대 12회(1시간 분량)로 제한됩니다.
+  - 12회 도달 시 영구 차단이 아닌 일시 보류(`paused_busy`) 상태가 되어 당일 5분 확인을 멈추고, 다음 날 첫 예약 슬롯에서 동일 후보 적용을 자동으로 재개합니다.
+  - 유휴 Unix app-server의 자동 재시작 트랜잭션은 24시간당 최대 1회로 제한되어 불필요한 연속 재시작을 방지합니다.
+- **자동 적용**: 모든 세션이 종료되어 완전히 유휴 상태가 되면 원자적 심볼릭 링크 교체(`current -> releases/<version>-<target>`)를 완료합니다. 새 세션부터 즉시 갱신된 버전을 사용합니다.
+- **수동 관리**: CLI에서 `ha-codex-update status`, `ha-codex-update check`, `ha-codex-update apply`, `ha-codex-update update`를 사용할 수 있습니다. `status` 명령으로 일일 확인 횟수, 재시작 횟수, 다음 재시도 시각을 확인할 수 있습니다. 기존 `codex update` 명령도 내부적으로 이 업데이터로 안전하게 라우팅됩니다.
+
+적용 직전 실제 managed config·MCP parsing, 일반 파일 쓰기, 보호 경로 열기 거부, 로컬 네트워크와 graceful 종료를 검사합니다. 실행 환경이나 후보가 검사를 지원하지 않으면 `blocked_policy`로 적용을 차단합니다. 보호 파일은 내용을 읽지 않고 열기 거부만 확인합니다. 검증된 archive의 전체 파일 inventory를 별도 private receipt에 저장하고 재사용·적용·새 세션 시작 때 확인합니다. 손상된 기존 release는 삭제하거나 덮어쓰지 않습니다. 이 검증은 관리자 root의 의도적 변조까지 격리하지는 않습니다.
+
+유휴 app-server는 `SIGHUP`으로 종료를 기다린 뒤 재시작하므로 잠깐 연결이 끊길 수 있습니다. 실패하면 실제 이전 서버의 버전·socket·관리 record 복구를 확인하며, 복구에 실패하면 `rollback_incomplete`를 보고합니다. 재시작 한도는 턴 단위가 아닌 영속적인 24시간 cooldown이며 실패 후에도 유지됩니다.
+
 ## 주요 helper 명령
 
 | 명령 | 기능 |
 | --- | --- |
 | `ha-codex` | `/config`에서 Codex 시작 |
 | `ha-codex-login` | device code 로그인 시작 |
+| `ha-codex-update status\|check\|apply\|update` | Codex 런타임 업데이트 상태 확인 및 수동 업데이트 |
 | `ha-config-check` | Home Assistant 설정 검사 |
 | `ha-api` | Core REST API 호출 |
 | `supervisor-api` | Supervisor API 호출 |
@@ -544,7 +565,7 @@ Core가 준비될 시간을 두고 다시 확인합니다. DB/WAL을 직접 삭�
 
 ## 제한사항과 지원
 
-- 안정판 `0.7.0`은 amd64와 64비트 aarch64를 지원합니다. Native aarch64 CI와 image 검증은 통과했지만 실제 Raspberry Pi/aarch64 HAOS 실기는 **NOT RUN**이며 이 공백은 릴리스 승인 과정에서 수용됐습니다. Armv7은 지원하지 않습니다.
+- 안정판 `0.7.1`은 amd64와 64비트 aarch64를 지원합니다. Native aarch64 CI와 image 검증은 통과했지만 실제 Raspberry Pi/aarch64 HAOS 실기는 **NOT RUN**이며 이 공백은 릴리스 승인 과정에서 수용됐습니다. Armv7은 지원하지 않습니다.
 - `secrets.yaml`과 `.storage` content는 정상적인 Codex 직접 파일 접근에서 명시적으로 차단되어 그 경로로 내용이 Codex에 전달되지 않고, managed requirements는 Codex directory read도 거부합니다. 다만 AppArmor validator allowance 때문에 root shell의 `.storage` entry listing은 남습니다. 원시 API·로그·브라우저 결과의 민감값은 정화하지 않으며 root interactive process가 private runtime credential 파일을 직접 읽을 수 있는 잔여 위험도 있습니다.
 - Bubble Card와 다른 custom card를 포함하거나 자동 설치하지 않습니다.
 - 별도 채팅형 Web UI가 아닌 터미널 UI입니다.

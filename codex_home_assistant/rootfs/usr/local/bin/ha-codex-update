@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+# ha-codex-update: manual and automated inspection, check, and apply
+# for official stable Codex runtime packages in Home Assistant.
+
+exec node /usr/local/share/codex-ha/codex-runtime-manager.mjs "$@"

@@ -1,8 +1,15 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-RELEASE_IMAGE=${1:-ghcr.io/kanu-coffee/codex-for-home-assistant:0.6.0}
+RELEASE_IMAGE=${1:-ghcr.io/kanu-coffee/codex-for-home-assistant:0.7.0}
 CANDIDATE_IMAGE=${2:-codex-for-home-assistant:test}
+# Match Supervisor's sandbox prerequisites; protected-path enforcement is
+# exercised separately with the actual custom AppArmor updater smoke.
+SECURITY_OPTIONS=(--security-opt seccomp=unconfined)
+if docker info --format '{{json .SecurityOptions}}' 2>/dev/null | grep -Fq 'name=apparmor'; then
+  SECURITY_OPTIONS+=(--security-opt apparmor=unconfined)
+fi
+
 TEST_ID="codex-ha-update-${RANDOM}-$$"
 RELEASE_CONTAINER="${TEST_ID}-release"
 CANDIDATE_CONTAINER="${TEST_ID}-candidate"
@@ -103,7 +110,7 @@ start_app() {
   local container=$1
   local image=$2
 
-  docker run --detach \
+  docker run "${SECURITY_OPTIONS[@]}" --detach \
     --platform linux/amd64 \
     --name "${container}" \
     --volume "${DATA_VOLUME}:/data" \
@@ -119,6 +126,10 @@ ensure_image "${CANDIDATE_IMAGE}" false
 
 docker volume create "${DATA_VOLUME}" >/dev/null
 docker volume create "${CONFIG_VOLUME}" >/dev/null
+# Match an initialized HA configuration. Missing protected targets can make
+# upstream Codex create temporary deny placeholders during filesystem setup.
+docker run --rm --entrypoint /bin/sh --volume "${CONFIG_VOLUME}:/config" \
+  "${CANDIDATE_IMAGE}" -c 'mkdir -p /config/.storage; printf "{}\n" > /config/secrets.yaml'
 
 printf '%s' \
   "{\"authorized_keys\":[],\"web_terminal_auto_start_codex\":false,\"tmux_session_name\":\"codex-ha-update-smoke\",\"codex_approval_policy\":\"on-request\",\"codex_sandbox_mode\":\"danger-full-access\",\"codex_user_files_update_mode\":\"preserve\",\"home_assistant_browser_auto_auth\":true,\"home_assistant_browser_token\":\"${BROWSER_OPTION_MARKER}\",\"log_level\":\"info\"}" \
@@ -254,7 +265,8 @@ docker exec --workdir /config "${CANDIDATE_CONTAINER}" \
         | select(.type == "input_text")
         | .text
       ]
-      | any(
+      | join(" ")
+      | (
           contains("http://127.0.0.1:8099/")
           and contains("image-managed")
           and contains("another browser skill or plugin")

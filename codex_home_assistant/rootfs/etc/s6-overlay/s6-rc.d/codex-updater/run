@@ -1,0 +1,7 @@
+#!/command/with-contenv bashio
+# shellcheck shell=bash
+set -Eeuo pipefail
+
+unset SUPERVISOR_TOKEN
+
+exec node /usr/local/share/codex-ha/codex-updater-daemon.mjs

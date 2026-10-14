@@ -6,7 +6,7 @@
 
 This guide explains how Home Assistant OS users can install the app, use Codex through the Web UI, SSH, or mobile Remote, and safely work on dashboards, automations, entities, and configuration errors.
 
-The current stable installation baseline is app version `0.7.0`. HAOS displays the app as **Codex for Home Assistant** and the sidebar as **Codex**.
+The current stable installation baseline is app version `0.7.1`. HAOS displays the app as **Codex for Home Assistant** and the sidebar as **Codex**.
 
 > [!WARNING]
 > This app can read and write `/config` except for protected `secrets.yaml` and `.storage` paths, and it can use the Home Assistant Core and Supervisor `manager` APIs. API responses, logs, and browser views can still contain sensitive information. Allow only trusted administrators to use it, and review a backup and diff before making changes. Never port-forward TCP `2223` directly to the internet.
@@ -16,11 +16,11 @@ The current stable installation baseline is app version `0.7.0`. HAOS displays t
 ### Supported environments
 
 - Home Assistant OS or another installation with Supervisor
-- Stable `0.7.0` supports **amd64** and 64-bit **aarch64** devices. Raspberry Pi requires 64-bit HAOS. 32-bit `armv7` is not supported.
+- Stable `0.7.1` supports **amd64** and 64-bit **aarch64** devices. Raspberry Pi requires 64-bit HAOS. 32-bit `armv7` is not supported.
 - Internet access for the app image and Codex authentication
 - An OpenAI/ChatGPT account with access to Codex
 
-The stable `0.7.0` manifest omits the `stage` key and therefore uses the Supervisor's default stable channel; `boot: manual` remains explicit. The candidate payload lineage passed native ARM CI, public amd64+aarch64 image publication, and anonymous inspection. A real Raspberry Pi/aarch64 HAOS run remains **NOT RUN**; release approval explicitly accepted that gap based on the automated evidence. HACS installation is not supported.
+The stable `0.7.1` manifest omits the `stage` key and therefore uses the Supervisor's default stable channel; `boot: manual` remains explicit. The candidate payload lineage passed native ARM CI, public amd64+aarch64 image publication, and anonymous inspection. A real Raspberry Pi/aarch64 HAOS run remains **NOT RUN**; release approval explicitly accepted that gap based on the automated evidence. HACS installation is not supported.
 
 ### What the app provides
 
@@ -109,6 +109,8 @@ Keep the defaults when getting started. After changing settings, restart the app
 | `codex_user_files_update_mode` | `preserve` | `preserve`, `refresh_agents`, or `refresh_all` | Return to `preserve` after a one-time refresh. `refresh_all` can reset user Codex configuration. |
 | `home_assistant_browser_auto_auth` | `true` | Automatically manage a dedicated local-only, read-only HA user for the Headless browser | Restart the app and browser session after turning it off or on. |
 | `home_assistant_browser_token` | None | Optional manual long-lived token override | Advanced recovery only. It overrides the managed token only while automatic authentication is on; the user must be local-only, non-admin, and in only the `system-read-only` group. |
+| `codex_auto_update` | `true` | Whether to enable 4-times-daily automated Codex runtime updates | Disables background periodic checking when set to false. |
+| `codex_auto_update_timezone` | `Asia/Seoul` | Update schedule timezone (IANA timezone string) | Timezone used to evaluate the 4 daily slots (03:00, 09:00, 15:00, 21:00). |
 | `log_level` | `info` | `trace`, `debug`, `info`, `notice`, `warning`, `error`, or `fatal` | Use `trace` or `debug` only for diagnostics, and review logs before sharing. |
 | Network `22/tcp` | `2223` | External SSH host port | This is not an `ssh_port` JSON option. Disable it if you do not want to expose the SSH listener. |
 
@@ -123,6 +125,8 @@ codex_sandbox_mode: workspace-write
 browser_approval_policy: safe
 codex_user_files_update_mode: preserve
 home_assistant_browser_auto_auth: true
+codex_auto_update: true
+codex_auto_update_timezone: Asia/Seoul
 log_level: info
 ```
 
@@ -423,12 +427,29 @@ Normal updates are designed to preserve Codex authentication and settings, SSH h
 
 It is normal for Web UI/tmux and SSH connections to drop briefly during an update.
 
+### Automated Codex runtime updates (0.7.1+)
+
+Separate from Home Assistant app image updates, the bundled Codex binary supports automated updates that protect active sessions starting in `0.7.1`.
+
+- **Schedule**: Checks official GitHub Releases 4 times daily (03:00, 09:00, 15:00, 21:00 in configured timezone, default `Asia/Seoul`), verifies SHA-256 against release metadata, and stages the package under `/data/codex-runtime/releases/<version>-<target>`.
+- **Idle session protection & periodic caps**: If active sessions (TUI, SSH, remote stdio, background tasks, or app-server turns) are detected, update application is safely deferred (`staged`).
+  - Fast local checks are capped at 12 checks per calendar date (covering up to 1 hour of active session contention).
+  - Reaching 12 checks transitions the candidate to temporary pause (`paused_busy`) rather than a permanent block, pausing fast 5-minute loops for the day and automatically resuming apply attempts on the next date's first scheduled slot.
+  - Automated graceful restart for idle Unix app-servers is limited to at most 1 transaction per 24 hours to prevent churn.
+- **Automatic apply**: Once all sessions are completely idle, it flips the `/data/codex-runtime/current` symlink atomically. New sessions immediately use the updated version.
+- **Manual update**: Use `ha-codex-update status`, `ha-codex-update check`, `ha-codex-update apply`, or `ha-codex-update update`. The `status` command reports daily checks, restart counts, pause reason, and next retry time. The standard `codex update` command is also routed to this managed updater.
+
+Before applying, the updater checks actual managed config and MCP parsing, ordinary writes, denied protected-path opens, local networking, and graceful shutdown. An incompatible candidate or unavailable test environment blocks application with `blocked_policy`. Protected contents are never read by the probe. A private receipt stores the verified archive’s complete file inventory, checked on reuse, application, and new session admission. Existing damaged releases are preserved. This does not isolate deliberate tampering by container root.
+
+Idle app-servers drain with `SIGHUP` before replacement, which can briefly interrupt connections. Recovery verifies the previous server’s actual version, socket, and launch record; incomplete recovery reports `rollback_incomplete`. The restart limit is a persistent rolling 24-hour cooldown, including failed attempts, rather than a per-turn limit.
+
 ## Helper commands
 
 | Command | Purpose |
 | --- | --- |
 | `ha-codex` | Start Codex in `/config` |
 | `ha-codex-login` | Start device-code sign-in |
+| `ha-codex-update status\|check\|apply\|update` | Check Codex runtime update status or perform manual update |
 | `ha-config-check` | Check the Home Assistant configuration |
 | `ha-api` | Call the Core REST API |
 | `supervisor-api` | Call the Supervisor API |
@@ -547,7 +568,7 @@ Before uninstalling, decide how to handle any Codex configuration and authentica
 
 ## Limitations and support
 
-- Stable `0.7.0` supports amd64 and 64-bit aarch64. Native aarch64 CI and image validation passed, but a real Raspberry Pi/aarch64 HAOS run remains **NOT RUN** and was accepted as a release validation gap. Armv7 is unsupported.
+- Stable `0.7.1` supports amd64 and 64-bit aarch64. Native aarch64 CI and image validation passed, but a real Raspberry Pi/aarch64 HAOS run remains **NOT RUN** and was accepted as a release validation gap. Armv7 is unsupported.
 - `secrets.yaml` and `.storage` contents are explicitly blocked from normal direct Codex filesystem access, so their contents do not enter Codex through that path; managed requirements also deny Codex directory reads. The AppArmor validator allowance still leaves `.storage` entry listing available to a root shell. Sensitive raw API, log, and browser output is not sanitized, and a root interactive process also retains residual access to the private runtime credential file.
 - It does not bundle or automatically install Bubble Card or other custom cards.
 - The Web UI is a terminal, not a dedicated chat interface.

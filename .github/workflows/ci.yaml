@@ -53,7 +53,8 @@ jobs:
             | xargs --no-run-if-empty shellcheck
 
       - name: Run Markdown lint
-        run: npx --yes markdownlint-cli2@0.23.0 "**/*.md" "#**/.pytest_cache/**"
+        # Handoff history is immutable and is not product documentation.
+        run: npx --yes markdownlint-cli2@0.23.0 "**/*.md" "#**/.pytest_cache/**" "#.handoff/**"
 
       - name: Run Dockerfile lint
         run: |
@@ -114,6 +115,27 @@ jobs:
             exit 1
           fi
 
+      - name: Load CI-only bubblewrap user namespace profile
+        env:
+          BWRAP_PROFILE_SHA256: a964037f6cf0df1099f14226b037eaedde6237c86e715188e93eb460b30be859
+          BWRAP_PROFILE_URL: "https://gitlab.com/apparmor/apparmor/-/raw/\
+            b4dfdf50f50ed1d64161424d036a2453645f0cfe/\
+            profiles/apparmor/profiles/extras/bwrap-userns-restrict"
+        run: |
+          profile_path=$(mktemp)
+          trap 'rm -f -- "${profile_path}"' EXIT
+          curl --disable --fail --location --proto '=https' --tlsv1.2 \
+            --output "${profile_path}" "${BWRAP_PROFILE_URL}"
+          printf '%s  %s\n' "${BWRAP_PROFILE_SHA256}" "${profile_path}" \
+            | sha256sum --check --strict -
+          # Codex uses the verified companion instead of APK's system helper.
+          bwrap_paths='{usr/bin,usr/local/lib/codex-ha/codex-baseline/codex-resources,'
+          bwrap_paths+='data/codex-runtime/releases/*/codex-resources}'
+          sed -i "s|/usr/bin/bwrap |/${bwrap_paths}/bwrap |" "${profile_path}"
+          sudo apparmor_parser --replace "${profile_path}"
+          sudo grep --fixed-strings --quiet \
+            'bwrap (enforce)' /sys/kernel/security/apparmor/profiles
+
       - name: Run verified feedback delivery smoke tests
         run: bash tests/feedback-smoke.sh codex-for-home-assistant:test
 
@@ -132,30 +154,25 @@ jobs:
       - name: Run user-file update policy smoke tests
         run: bash tests/user-files-update-smoke.sh codex-for-home-assistant:test
 
-      - name: Load CI-only bubblewrap user namespace profile
-        env:
-          BWRAP_PROFILE_SHA256: a964037f6cf0df1099f14226b037eaedde6237c86e715188e93eb460b30be859
-          BWRAP_PROFILE_URL: "https://gitlab.com/apparmor/apparmor/-/raw/\
-            b4dfdf50f50ed1d64161424d036a2453645f0cfe/\
-            profiles/apparmor/profiles/extras/bwrap-userns-restrict"
-        run: |
-          profile_path=$(mktemp)
-          trap 'rm -f -- "${profile_path}"' EXIT
-          curl --disable --fail --location --proto '=https' --tlsv1.2 \
-            --output "${profile_path}" "${BWRAP_PROFILE_URL}"
-          printf '%s  %s\n' "${BWRAP_PROFILE_SHA256}" "${profile_path}" \
-            | sha256sum --check --strict -
-          sudo apparmor_parser --replace "${profile_path}"
-          sudo grep --fixed-strings --quiet \
-            'bwrap (enforce)' /sys/kernel/security/apparmor/profiles
-
       - name: Run managed Codex sandbox smoke tests
         run: bash tests/managed-sandbox-smoke.sh codex-for-home-assistant:test
 
-      - name: Verify update from released 0.6.0 preserves persistent data
+      - name: Verify updater under the actual app AppArmor profile
+        run: |
+          sudo apparmor_parser --replace codex_home_assistant/apparmor.txt
+          CODEX_TEST_APPARMOR=codex_home_assistant \
+            bash tests/codex-update-smoke.sh codex-for-home-assistant:test
+
+      - name: Verify full /init boot under the actual app AppArmor profile
+        run: |
+          sudo apparmor_parser --replace codex_home_assistant/apparmor.txt
+          CODEX_TEST_APPARMOR=codex_home_assistant \
+            bash tests/apparmor-boot-smoke.sh codex-for-home-assistant:test
+
+      - name: Verify update from released 0.7.0 preserves persistent data
         run: |
           bash tests/update-smoke.sh \
-            ghcr.io/kanu-coffee/codex-for-home-assistant:0.6.0 \
+            ghcr.io/kanu-coffee/codex-for-home-assistant:0.7.0 \
             codex-for-home-assistant:test
 
   aarch64-build-and-smoke:
@@ -199,13 +216,34 @@ jobs:
             --entrypoint /bin/bash \
             codex-for-home-assistant:aarch64-test \
             -Eeuo pipefail -c '
-              test "$(codex --version)" = "codex-cli 0.144.1"
+              test "$(codex --version)" = "codex-cli 0.162.1"
               gh --version | head -n 1 | grep -Fq "gh version 2.97.0 "
               test ! -e /usr/bin/tempio
               node --version
               chromium-headless-shell --version
               test -r /etc/codex/requirements.toml
             '
+
+      - name: Load CI-only bubblewrap user namespace profile
+        env:
+          BWRAP_PROFILE_SHA256: a964037f6cf0df1099f14226b037eaedde6237c86e715188e93eb460b30be859
+          BWRAP_PROFILE_URL: "https://gitlab.com/apparmor/apparmor/-/raw/\
+            b4dfdf50f50ed1d64161424d036a2453645f0cfe/\
+            profiles/apparmor/profiles/extras/bwrap-userns-restrict"
+        run: |
+          profile_path=$(mktemp)
+          trap 'rm -f -- "${profile_path}"' EXIT
+          curl --disable --fail --location --proto '=https' --tlsv1.2 \
+            --output "${profile_path}" "${BWRAP_PROFILE_URL}"
+          printf '%s  %s\n' "${BWRAP_PROFILE_SHA256}" "${profile_path}" \
+            | sha256sum --check --strict -
+          # Codex uses the verified companion instead of APK's system helper.
+          bwrap_paths='{usr/bin,usr/local/lib/codex-ha/codex-baseline/codex-resources,'
+          bwrap_paths+='data/codex-runtime/releases/*/codex-resources}'
+          sed -i "s|/usr/bin/bwrap |/${bwrap_paths}/bwrap |" "${profile_path}"
+          sudo apparmor_parser --replace "${profile_path}"
+          sudo grep --fixed-strings --quiet \
+            'bwrap (enforce)' /sys/kernel/security/apparmor/profiles
 
       - name: Run verified feedback delivery smoke tests
         run: bash tests/feedback-smoke.sh codex-for-home-assistant:aarch64-test
@@ -225,22 +263,17 @@ jobs:
       - name: Run user-file update policy smoke tests
         run: bash tests/user-files-update-smoke.sh codex-for-home-assistant:aarch64-test
 
-      - name: Load CI-only bubblewrap user namespace profile
-        env:
-          BWRAP_PROFILE_SHA256: a964037f6cf0df1099f14226b037eaedde6237c86e715188e93eb460b30be859
-          BWRAP_PROFILE_URL: "https://gitlab.com/apparmor/apparmor/-/raw/\
-            b4dfdf50f50ed1d64161424d036a2453645f0cfe/\
-            profiles/apparmor/profiles/extras/bwrap-userns-restrict"
-        run: |
-          profile_path=$(mktemp)
-          trap 'rm -f -- "${profile_path}"' EXIT
-          curl --disable --fail --location --proto '=https' --tlsv1.2 \
-            --output "${profile_path}" "${BWRAP_PROFILE_URL}"
-          printf '%s  %s\n' "${BWRAP_PROFILE_SHA256}" "${profile_path}" \
-            | sha256sum --check --strict -
-          sudo apparmor_parser --replace "${profile_path}"
-          sudo grep --fixed-strings --quiet \
-            'bwrap (enforce)' /sys/kernel/security/apparmor/profiles
-
       - name: Run managed Codex sandbox smoke tests
         run: bash tests/managed-sandbox-smoke.sh codex-for-home-assistant:aarch64-test
+
+      - name: Verify updater under the actual app AppArmor profile
+        run: |
+          sudo apparmor_parser --replace codex_home_assistant/apparmor.txt
+          CODEX_TEST_APPARMOR=codex_home_assistant \
+            bash tests/codex-update-smoke.sh codex-for-home-assistant:aarch64-test
+
+      - name: Verify full /init boot under the actual app AppArmor profile
+        run: |
+          sudo apparmor_parser --replace codex_home_assistant/apparmor.txt
+          CODEX_TEST_APPARMOR=codex_home_assistant \
+            bash tests/apparmor-boot-smoke.sh codex-for-home-assistant:aarch64-test

@@ -3,8 +3,8 @@ from pathlib import Path
 
 
 CODEX_CHECKSUMS = {
-    "AMD64": "84091ae20c65fcc7d4120db97d1bd57d7ff8df9c7609fb781c78c2ebbd4f5a28",
-    "AARCH64": "b9f8ef5f98e46ced4dbbd3756a4223e3ee299a457ff488a3305bea455da8b5b8",
+    "AMD64": "a676f5722aae0d86cbe3764332f08eab1fdd89dc0a300b3ad4ffbf48611fa3e3",
+    "AARCH64": "53a9ce0b94beb27a63fdeb2f7704d95199e17b3898aa33b60461a1a93ac0d88b",
 }
 
 GH_CHECKSUMS = {
@@ -45,14 +45,14 @@ def test_multiarch_binary_assets_are_exactly_pinned(addon_root: Path) -> None:
     assert "apk upgrade --no-cache" in dockerfile
     assert _checksum_args(dockerfile, "CODEX_SHA256") == CODEX_CHECKSUMS
     assert _checksum_args(dockerfile, "GH_SHA256") == GH_CHECKSUMS
-    assert 'codex_archive="codex-${codex_target}.tar.gz"' in dockerfile
+    assert 'codex_archive="codex-package-${codex_target}.tar.gz"' in dockerfile
     assert 'gh_archive="gh_${GH_VERSION}_linux_${gh_arch}.tar.gz"' in dockerfile
     assert 'codex_target="x86_64-unknown-linux-musl"' in dockerfile
     assert 'codex_target="aarch64-unknown-linux-musl"' in dockerfile
     assert 'gh_arch="amd64"' in dockerfile
     assert 'gh_arch="arm64"' in dockerfile
-    assert re.search(r"^\s+bubblewrap\s+\\$", dockerfile, re.MULTILINE)
-    assert "/usr/bin/bwrap --version" in dockerfile
+    assert "rm -f /usr/bin/tempio /usr/bin/bwrap" in dockerfile
+    assert "/usr/local/lib/codex-ha/codex-baseline/codex-resources/bwrap --version" in dockerfile
     assert "rm -f /usr/bin/tempio" in dockerfile
     assert "[[ ! -e /usr/bin/tempio ]]" in dockerfile
 

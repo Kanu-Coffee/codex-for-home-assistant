@@ -2,6 +2,29 @@
 
 All notable changes to this App are documented in this file.
 
+## [0.7.1] - 2026-10-14
+
+### Added
+
+- Automated Codex stable updates: Four daily checks (03:00, 09:00, 15:00, 21:00 in configurable timezone, default Asia/Seoul) for official stable packages, with staged downloads verified against upstream digests and safe sandboxed syntax checking.
+- Session-safe idle apply: Updates are applied only when all interactive TUI, CLI, SSH, Remote stdio, and app-server sessions are completely idle. Staged updates retry every 5 minutes without network access.
+- Managed CLI commands: Provide `ha-codex-update status`, `check`, `apply`, and `update` commands. The `codex update` subcommand is routed directly to the managed updater, preventing unmanaged self-update from modifying rootfs.
+- Pinned baseline upgrade: Update bundled Codex CLI from `0.144.1` to official stable `0.162.1` using official package archives for `amd64` and `aarch64`.
+- AppArmor hardening: Enforce read-only package boundary inside bubblewrap tool sandbox while allowing execution and resource reads.
+
+### Changed
+
+- App version bumped from `0.7.0` to `0.7.1`.
+- Config options added: `codex_auto_update` (boolean, default true) and `codex_auto_update_timezone` (string, default Asia/Seoul).
+
+### Fixed
+
+- Allow S6 service scripts to execute under AppArmor, fixing startup exit 126.
+- Wake the updater slot timer on SIGTERM/SIGINT for clean App shutdown.
+- Bound idle rechecks to 12 per configured date with automatic next-day recovery; persist the rolling 24-hour restart cooldown without a permanent pause.
+- Bind build scan exceptions to reviewed architecture-specific executable hashes and the validated SBOM; scan new dependencies without inherited exceptions.
+- Add enforced full-boot/readiness/clean-stop gates on native amd64 and ARM.
+
 ## [0.7.0] - 2026-08-14
 
 ### Added
@@ -551,3 +574,6 @@ All notable changes to this App are documented in this file.
 - Local Docker verification covers public-key SSH, password rejection, host-key/config persistence, degraded no-key operation, API helper error/redaction behavior, and the complete lint suite.
 - Actual HAOS amd64 installation, Ingress/WebSocket behavior, device-auth persistence, Network port mapping, Windows SSH, direct ChatGPT mobile Remote SSH to the bundled Codex app server on Alpine/musl, real Core service calls, and Supervisor `manager` endpoints remain unverified M2 work.
 - Only amd64 is declared. aarch64 is not supported or claimed.
+
+- Verify complete runtime inventories against private receipts, preserve damaged generations, and verify real managed sandbox compatibility before applying.
+- Use each Codex package’s bundled bubblewrap for HAOS container compatibility; verify graceful server replacement and rollback, including partial failures.

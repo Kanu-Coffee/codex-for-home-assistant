@@ -559,3 +559,30 @@ ChatGPT mobile Remote (선택)
 - Stable `0.7.0`은 official Home Assistant base가 제공하는 linux/amd64와 linux/arm64를 사용하고 App arch 이름은 `amd64`, `aarch64`로 고정한다.
 - Dockerfile은 Codex `x86_64-unknown-linux-musl`/`aarch64-unknown-linux-musl`과 GitHub CLI `2.97.0`의 `linux_amd64`/`linux_arm64`를 아키텍처별 checksum으로 검증한다. 사용하지 않고 Critical findings가 남는 base `/usr/bin/tempio`는 final image에서 제거한다. 그 밖의 target은 build를 중단하며 armv7은 지원하지 않는다.
 - Native `ubuntu-24.04-arm` build/runtime는 [dev CI 31549518729](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/31549518729)에서 PASS했다. 후속 실제 amd64 HAOS 보고서는 AppArmor profile, 일반 `/config` RW, App/Ingress/browser/memory 경로를 관측했다. 실제 read syscall 전체 음성 행렬과 64비트 Raspberry Pi/aarch64 HAOS의 설치·SSH·memory·browser·AppArmor/helper 수용은 **NOT RUN**이다. Maintainer는 2026-08-14 native CI와 멀티아키 image 증거에 근거한 stable `0.7.0`의 좁은 위험 수용으로 이를 승인했으며 PASS로 기록하지 않는다.
+
+## 13. Codex 런타임 관리 및 업데이터 아키텍처
+
+### 런타임 저장소 레이아웃 (`/data/codex-runtime`)
+
+```text
+/data/codex-runtime/
+├── current -> releases/0.162.1-x86_64-unknown-linux-musl  (활성 심볼릭 링크)
+├── staged -> releases/0.163.0-x86_64-unknown-linux-musl   (유휴 대기 중인 스테이징 심볼릭 링크)
+├── previous -> releases/0.162.0-x86_64-unknown-linux-musl (직전 성공 버전 백업 링크)
+├── state.json                                             (버전 상태 및 슬롯 이력, 0600)
+└── releases/
+    └── 0.162.1-x86_64-unknown-linux-musl/
+        └── bin/
+            └── codex                                      (실행 바이너리)
+```
+
+이미지에는 baseline 바이너리가 `/usr/local/lib/codex-ha/codex-baseline/`에 번들링되어 있으며 `/usr/local/libexec/codex-real`로 심볼릭 링크된다. `/data/codex-runtime/current`가 유효하면 wrapper는 이를 우선 실행하고, 없거나 손상된 경우 baseline으로 즉시 안전하게 폴백한다.
+
+### 세션 생명주기 및 경합 방지 (Admission Gate)
+
+1. **세션 등록**: 래퍼 `/usr/local/bin/codex`는 실행 시 `/run/codex-ha/codex-maintenance/gate.lock`에 공유 락(`flock -s`)을 획득하여 심볼릭 링크 원자적 교체 중 새 세션 진입을 직렬화한다. 세션 레지스트리 `/run/codex-ha/codex-maintenance/sessions/<pid>.json`에 PID, start-time, 바이너리 경로를 기록한다.
+2. **프로세스 탐색**: `/run` 레지스트리뿐 아니라 `/proc/*/exe`를 검사하여 unmanaged 또는 companion Codex 프로세스까지 포괄적으로 감지한다.
+3. **App-Server 진단**: 로컬 유닉스 소켓을 통해 RFC 6455 WebSocket 클라이언트로 app-server 상태를 조회한다.
+4. **보수적 유휴 판정**: 활성 요청·turn뿐만 아니라, 승인 대기, 백그라운드 터미널, 대화가 로드된 idle 세션까지 busy로 판정하여 안전하게 적용을 보류(`staged`)한다.
+5. **백그라운드 데몬 및 재시도**: S6 서비스 `codex-updater`(`codex-updater-daemon.mjs`)가 실행된다. 설정된 시간대 기준 하루 4회(03, 09, 15, 21시) 네트워크 조회를 수행하며, pending 업데이트가 존재할 때는 네트워크 요청 없이 5분마다 로컬 세션 유휴 여부만 재검사하여 모두 유휴 상태일 때 원자적 교체를 완료한다.
+6. **샌드박스 경계 강화**: AppArmor 프로필에서 `/data/codex-runtime/**` 경로에 실행(`rix`) 권한을 부여하고 쓰기/링크(`deny wkl`)를 명시적으로 차단하여 샌드박스 내부에서의 변조를 방지한다.

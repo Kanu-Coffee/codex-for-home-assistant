@@ -3,6 +3,13 @@ set -Eeuo pipefail
 
 IMAGE=${1:-codex-for-home-assistant:test}
 DOCKER_PLATFORM=${DOCKER_PLATFORM:-linux/amd64}
+# Match Supervisor's sandbox prerequisites; protected-path enforcement is
+# exercised separately with the actual custom AppArmor updater smoke.
+SECURITY_OPTIONS=(--security-opt seccomp=unconfined)
+if docker info --format '{{json .SecurityOptions}}' 2>/dev/null | grep -Fq 'name=apparmor'; then
+  SECURITY_OPTIONS+=(--security-opt apparmor=unconfined)
+fi
+
 TEST_ID="codex-ha-smoke-${RANDOM}-$$"
 PUBLIC_CONTAINER="${TEST_ID}-public"
 DEGRADED_CONTAINER="${TEST_ID}-degraded"
@@ -135,7 +142,7 @@ for (( attempt = 0; attempt < 32; attempt += 1 )); do
 done
 [[ -n "${GATEWAY_SUBNET}" ]] \
   || fail 'Unable to allocate a user-configured private subnet for IP reuse testing'
-docker create \
+docker create "${SECURITY_OPTIONS[@]}" \
   --platform "${DOCKER_PLATFORM}" \
   --name "${GATEWAY_FIXTURE}" \
   --network "${GATEWAY_NETWORK}" \
@@ -169,6 +176,11 @@ DEGRADED_OPTIONS='{"authorized_keys":["ssh-ed25519 AAAA invalid-fixture"],"web_t
 
 seed_options "${PUBLIC_DATA}" "${PUBLIC_OPTIONS}"
 seed_options "${DEGRADED_DATA}" "${DEGRADED_OPTIONS}"
+# Use the protected structures present in an initialized Home Assistant.
+for config_volume in "${PUBLIC_CONFIG}" "${DEGRADED_CONFIG}"; do
+  docker run --rm --entrypoint /bin/sh --volume "${config_volume}:/config" \
+    "${IMAGE}" -c 'mkdir -p /config/.storage; printf "{}\n" > /config/secrets.yaml'
+done
 docker run --rm \
   --platform "${DOCKER_PLATFORM}" \
   --entrypoint /bin/sh \
@@ -176,7 +188,7 @@ docker run --rm \
   "${IMAGE}" \
   -c 'mkdir -p /data/ssh /data/codex && : > /data/ssh/ssh_host_ed25519_key && printf "%s\n" "# user override" > /data/codex/AGENTS.override.md && chmod 0600 /data/codex/AGENTS.override.md'
 
-docker run --detach \
+docker run "${SECURITY_OPTIONS[@]}" --detach \
   --platform "${DOCKER_PLATFORM}" \
   --name "${PUBLIC_CONTAINER}" \
   --network "${GATEWAY_NETWORK}" \
@@ -408,9 +420,15 @@ EXPECTED_APP_VERSION=$(docker image inspect \
 APP_VERSION=$(sed -n 's/^version: "\([^"]*\)"/\1/p' codex_home_assistant/config.yaml)
 [[ -n "${APP_VERSION}" && "${EXPECTED_APP_VERSION}" == "${APP_VERSION}" ]] \
   || fail "image label version ${EXPECTED_APP_VERSION} does not match App version ${APP_VERSION}"
+CODEX_PINNED_VERSION=$(sed -n 's/^ARG CODEX_VERSION=\(.*\)$/\1/p' codex_home_assistant/Dockerfile)
 CODEX_OUTPUT=$(docker exec "${PUBLIC_CONTAINER}" codex --version)
-[[ "${CODEX_OUTPUT}" =~ ^codex-cli\ [0-9]+\.[0-9]+\.[0-9]+$ ]] \
-  || fail "unexpected Codex version output: ${CODEX_OUTPUT} (App ${EXPECTED_APP_VERSION})"
+[[ "${CODEX_OUTPUT}" == "codex-cli ${CODEX_PINNED_VERSION}" ]] \
+  || fail "unexpected Codex version output: ${CODEX_OUTPUT} (expected codex-cli ${CODEX_PINNED_VERSION})"
+CODEX_REAL_OUTPUT=$(docker exec "${PUBLIC_CONTAINER}" /usr/local/libexec/codex-real --version)
+[[ "${CODEX_REAL_OUTPUT}" == "codex-cli ${CODEX_PINNED_VERSION}" ]] \
+  || fail "unexpected codex-real version output: ${CODEX_REAL_OUTPUT} (expected codex-cli ${CODEX_PINNED_VERSION})"
+docker exec "${PUBLIC_CONTAINER}" ha-codex-update --help | grep -Fq 'ha-codex-update' \
+  || fail "ha-codex-update help check failed"
 
 docker exec "${PUBLIC_CONTAINER}" sshd -t -f /etc/ssh/sshd_config
 docker exec "${PUBLIC_CONTAINER}" nginx -t -c /etc/nginx/nginx.conf
@@ -557,7 +575,7 @@ for secret in "${SUPERVISOR_TOKEN}" "${BROWSER_TOKEN}"; do
 done
 
 docker rm -f "${PUBLIC_CONTAINER}" >/dev/null
-docker create \
+docker create "${SECURITY_OPTIONS[@]}" \
   --platform "${DOCKER_PLATFORM}" \
   --name "${IP_REUSE_CONTAINER}" \
   --network "${GATEWAY_NETWORK}" \
@@ -589,7 +607,7 @@ if docker exec "${IP_REUSE_CONTAINER}" curl \
 fi
 docker rm -f "${IP_REUSE_CONTAINER}" >/dev/null
 
-docker run --detach \
+docker run "${SECURITY_OPTIONS[@]}" --detach \
   --platform "${DOCKER_PLATFORM}" \
   --name "${PUBLIC_CONTAINER}" \
   --network "${GATEWAY_NETWORK}" \
@@ -627,7 +645,7 @@ docker exec "${PUBLIC_CONTAINER}" jq --exit-status \
   /run/codex-ha/browser-auth-status.json >/dev/null \
   || fail 'manual browser override did not return after automatic authentication was enabled'
 
-docker run --detach \
+docker run "${SECURITY_OPTIONS[@]}" --detach \
   --platform "${DOCKER_PLATFORM}" \
   --name "${DEGRADED_CONTAINER}" \
   --network "${GATEWAY_NETWORK}" \
