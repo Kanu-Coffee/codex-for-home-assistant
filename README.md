@@ -28,7 +28,7 @@
 > [!WARNING]
 > 이 앱은 보호된 `secrets.yaml`·`.storage`를 제외한 `/config`를 읽고 쓸 수 있고 Home Assistant Core 및 Supervisor `manager` API를 사용할 수 있는 강한 관리자 도구입니다. API 응답·로그·브라우저 화면에는 여전히 민감정보가 포함될 수 있습니다. 중요한 변경 전에는 백업하고, 계획과 diff를 확인한 뒤 적용하세요. SSH 포트를 인터넷에 직접 공개하지 마세요.
 
-비공식 커뮤니티 프로젝트이며 OpenAI 또는 Home Assistant/Nabu Casa와 제휴하거나 보증받은 제품이 아닙니다. 안정판 `0.7.1`은 `amd64`와 64비트 `aarch64`를 지원하며 HAOS에서 **Codex for Home Assistant**, 사이드바에서 **Codex**로 표시됩니다. 사용자 HAOS amd64에서 CLI·브라우저 수용을 확인했고 DEV 0.7.1-dev.7의 native amd64/ARM CI가 통과했습니다. Stable 후보는 같은 런타임으로 재검증합니다. 실제 Raspberry Pi/aarch64 HAOS 실기는 **NOT RUN**이며 native ARM CI와 구분합니다.
+비공식 커뮤니티 프로젝트이며 OpenAI 또는 Home Assistant/Nabu Casa와 제휴하거나 보증받은 제품이 아닙니다. 안정판 `0.7.1`은 `amd64`와 64비트 `aarch64`를 지원하며 HAOS에서 **Codex for Home Assistant**, 사이드바에서 **Codex**로 표시됩니다. 사용자 HAOS amd64에서 CLI·브라우저 수용을 확인했고 DEV 0.7.1-dev.7의 native amd64/ARM CI가 통과했습니다. Stable 0.7.1도 같은 런타임으로 양 architecture CI와 배포 검증을 통과했습니다. 실제 Raspberry Pi/aarch64 HAOS 실기는 **NOT RUN**이며 native ARM CI와 구분합니다.
 
 ## 실제 Web 터미널 미리보기
 
