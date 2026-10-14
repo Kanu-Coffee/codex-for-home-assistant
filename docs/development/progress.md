@@ -26,6 +26,11 @@
 
 ## Current Work
 
+### 2026-10-14 — Stable 0.7.1 승격 진행
+
+- 사용자가 dev.7 실기 수용 후 main 병합·운영 반영·stable 릴리스를 명시적으로 요청했다. 인수된 런타임과 동일한 stable 0.7.1 후보를 준비한다. PR의 CI/nonpublishing gate, main merge SHA CI, annotated tag Builder, 공개 release와 개발 HAOS stable 설치를 순서대로 확인한다.
+- 실제 ARM HAOS와 DEV→main source migration은 미검증 상태를 유지한다. 사용자 운영 장치의 App을 직접 제거·재설치하지 않는다. DEV 태그/브랜치는 유지한다.
+
 ### 2026-10-14 — 사용자 실기 CLI·브라우저 수용 증거: 이번 개발 범위 완료
 
 - 사용자가 일반 App 터미널의 `/usr/local/bin/codex --version` 출력 `codex-cli 0.162.1`, `managed_wrapper_exit_code=0`과 새 Codex TUI 세션 캡처를 제공했다. 이전 07/08의 sandbox 내부 재호출 실패를 일반 신규 세션 장애로 해석하지 않는다. 해당 내부 재호출의 정확한 실패 분기는 여전히 미확정이며 해결했다고 주장하지 않는다.

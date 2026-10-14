@@ -363,3 +363,10 @@ hassio_role: manager
 - APK가 Chromium dependency로 설치하는 system bwrap 0.12는 HAOS Docker에서 proc 초기화에 실패했다. 해당 실행 파일을 image에서 제거하고 각 검증 package의 bundled bwrap을 사용한다. AppArmor의 wildcard child transition과 충돌하는 parent `file,` 실행 허용은 명시적 실행 경로로 바꾸되 일반 file RW와 보호 경로 deny, manager API·capability bounding set은 유지한다.
 - `SIGHUP`은 tagged Codex의 GracefulOnly 신호다. 재시작 전에 영속 24시간 cooldown을 기록하고 replacement/rollback 모두 실제 executable inode·version·RPC readiness·launch record를 확인한다. 여러 서버의 부분 교체도 전체 rollback 대상이며 검증 실패는 `rollback_incomplete`로 남긴다.
 - Diagnostics는 자기 요청을 in-flight 1개로 포함하며 gauge는 최초 증가 때 등록된다. 따라서 in-flight는 필수·최대 1, queue/turn은 등록된 경우 0, loaded threads는 빈 배열이어야 한다. PID·gauge 형식·필수 in-flight·RPC가 불명확하면 계속 busy로 처리한다. 이 protocol 동작을 특정 설치 버전 allowlist로 고정하지 않는다.
+
+## ADR-045 Stable 0.7.1 승격과 architecture 검증 경계
+
+- 상태: 사용자 stable 승격 승인, 2026-10-14. 사용자는 dev.7 일반 CLI와 승인 가능한 Playwright desktop/mobile 실기를 확인한 뒤 main 병합·운영 반영·릴리스를 요청했다.
+- DEV 0.7.1-dev.7의 인수된 runtime을 stable 0.7.1로 승격하고 stable metadata/branding만 조정한다. Candidate/merge/tag의 exact SHA CI·양 architecture native gate·공개 image 검증을 별도로 수행한다.
+- amd64 실제 사용자 HAOS 및 개발 VM 증거와 native ARM CI를 구분한다. 실제 Raspberry Pi/aarch64 HAOS는 NOT RUN이며, 이번 사용자 승격 승인과 공개된 공백 기록을 근거로 기존 amd64/aarch64 metadata를 유지한다. 0.7.0의 과거 waiver를 새 실기 PASS로 재사용하지 않는다.
+- #dev와 main 저장소는 별도 identity다. DEV 사용자의 인증/data를 보존하는 source migration을 완료했다고 주장하지 않고, 삭제·재설치를 일반 업데이트처럼 안내하지 않는다. 기존 stable 사용자는 같은 main repository의 일반 App update를 사용한다.

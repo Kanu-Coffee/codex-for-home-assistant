@@ -9,8 +9,8 @@
 - Home Assistant App repository: `https://github.com/Kanu-Coffee/codex-for-home-assistant`
 - DEV canary repository: `https://github.com/Kanu-Coffee/codex-for-home-assistant#dev`
 - image: `ghcr.io/kanu-coffee/codex-for-home-assistant:<version>`
-- current stable release `0.7.0` (target `0.7.1`) architecture: `amd64`, `aarch64` (`armv7` 미지원)
-- latest historical DEV publication: `0.7.0-dev.2`
+- stable promotion target `0.7.1` (previous stable `0.7.0`) architecture: `amd64`, `aarch64` (`armv7` 미지원)
+- validated DEV candidate: `0.7.1-dev.7`
 - stable version tag: `X.Y.Z`
 - numbered DEV version tag: `X.Y.Z-dev.N` (`N`은 1 이상의 정수이며 새 후보마다 사용하지 않은 번호 선택)
 - mutable `latest` tag는 발행하지 않음

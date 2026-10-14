@@ -2,7 +2,7 @@
 
 All notable changes to this App are documented in this file.
 
-## [0.7.1] - 2026-10-13
+## [0.7.1] - 2026-10-14
 
 ### Added
 
@@ -16,6 +16,14 @@ All notable changes to this App are documented in this file.
 
 - App version bumped from `0.7.0` to `0.7.1`.
 - Config options added: `codex_auto_update` (boolean, default true) and `codex_auto_update_timezone` (string, default Asia/Seoul).
+
+### Fixed
+
+- Allow S6 service scripts to execute under AppArmor, fixing startup exit 126.
+- Wake the updater slot timer on SIGTERM/SIGINT for clean App shutdown.
+- Bound idle rechecks to 12 per configured date with automatic next-day recovery; persist the rolling 24-hour restart cooldown without a permanent pause.
+- Bind build scan exceptions to reviewed architecture-specific executable hashes and the validated SBOM; scan new dependencies without inherited exceptions.
+- Add enforced full-boot/readiness/clean-stop gates on native amd64 and ARM.
 
 ## [0.7.0] - 2026-08-14
 
