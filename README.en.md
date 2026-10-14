@@ -28,7 +28,7 @@
 > [!WARNING]
 > This app can read and write `/config` except for protected `secrets.yaml` and `.storage` paths, and it can use the Home Assistant Core and Supervisor `manager` APIs. API responses, logs, and browser views can still contain sensitive information. Back up your system and review the plan and diff before important changes. Never expose its SSH port directly to the internet.
 
-This is an unofficial community project. It is not affiliated with or endorsed by OpenAI, Home Assistant, or Nabu Casa. Stable `0.7.1` supports `amd64` and 64-bit `aarch64`, appears in HAOS as **Codex for Home Assistant**, and uses **Codex** in the sidebar. User acceptance confirmed the CLI and browser on amd64 HAOS, and native amd64/ARM CI passed for DEV 0.7.1-dev.7. The stable candidate revalidates the same runtime. Actual Raspberry Pi/aarch64 HAOS acceptance remains **NOT RUN**, distinct from native ARM CI.
+This is an unofficial community project. It is not affiliated with or endorsed by OpenAI, Home Assistant, or Nabu Casa. Stable `0.7.1` supports `amd64` and 64-bit `aarch64`, appears in HAOS as **Codex for Home Assistant**, and uses **Codex** in the sidebar. User acceptance confirmed the CLI and browser on amd64 HAOS, and native amd64/ARM CI passed for DEV 0.7.1-dev.7. Stable 0.7.1 reuses that runtime and passed both architectures’ release CI and publication checks. Actual Raspberry Pi/aarch64 HAOS acceptance remains **NOT RUN**, distinct from native ARM CI.
 
 ## Real Web terminal preview
 

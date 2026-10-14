@@ -356,7 +356,7 @@ hassio_role: manager
 
 ## ADR-044 검증된 package bytes와 실제 적용·복구의 연결
 
-- 상태: Implemented in FIX_04 candidate, independent review pending (2026-10-13).
+- 상태: Accepted through FIX_10/003 reviews; released in stable 0.7.1 (2026-10-14).
 - 검증 archive에서 만든 전체 inventory(파일 SHA-256·mode·type·link·목록)를 executable tree 밖의 root-only receipt에 영속화한다. Stage 재사용, apply, wrapper admission과 init recovery가 같은 검증을 사용한다. 손상된 기존 generation은 자동 삭제·덮어쓰지 않는다. Root의 의도적 변조까지 격리하는 계약은 아니다.
 - 압축 다운로드 250 MiB, 압축 해제 합계 1 GiB, archive 5000 entries로 제한한다. 현재 실제 Codex package가 압축 해제 시 250 MiB를 넘으므로 두 byte 한도를 분리했다.
 - 실제 isolated managed config/MCP·sandbox RW/deny/local-network 및 app-server RPC/graceful 종료를 검사하고 불가 시 `blocked_policy`로 차단한다. 보호 파일에는 open-only deny를 시험하며 content read를 하지 않는다.
@@ -366,7 +366,7 @@ hassio_role: manager
 
 ## ADR-045 Stable 0.7.1 승격과 architecture 검증 경계
 
-- 상태: 사용자 stable 승격 승인, 2026-10-14. 사용자는 dev.7 일반 CLI와 승인 가능한 Playwright desktop/mobile 실기를 확인한 뒤 main 병합·운영 반영·릴리스를 요청했다.
+- 상태: Stable 0.7.1 released with user approval, 2026-10-14. 사용자는 dev.7 일반 CLI와 승인 가능한 Playwright desktop/mobile 실기를 확인한 뒤 main 병합·운영 반영·릴리스를 요청했다.
 - DEV 0.7.1-dev.7의 인수된 runtime을 stable 0.7.1로 승격하고 stable metadata/branding만 조정한다. Candidate/merge/tag의 exact SHA CI·양 architecture native gate·공개 image 검증을 별도로 수행한다.
 - amd64 실제 사용자 HAOS 및 개발 VM 증거와 native ARM CI를 구분한다. 실제 Raspberry Pi/aarch64 HAOS는 NOT RUN이며, 이번 사용자 승격 승인과 공개된 공백 기록을 근거로 기존 amd64/aarch64 metadata를 유지한다. 0.7.0의 과거 waiver를 새 실기 PASS로 재사용하지 않는다.
 - #dev와 main 저장소는 별도 identity다. DEV 사용자의 인증/data를 보존하는 source migration을 완료했다고 주장하지 않고, 삭제·재설치를 일반 업데이트처럼 안내하지 않는다. 기존 stable 사용자는 같은 main repository의 일반 App update를 사용한다.

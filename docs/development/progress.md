@@ -4,8 +4,8 @@
 
 ## Project Status
 
-- 상태: **DEV 0.7.1-dev.7 이번 개발 범위 인수 완료 / 사용자 일반 App 터미널 managed wrapper 0.162.1·exit 0과 새 Codex 세션 확인 / 사용자 실제 HAOS Playwright desktop/mobile·승인 동작·console/network 정상 보고 / exact SHA CI·Builder·개발 VM·attestation 검증 유지 / stable 승격은 미수행**
-- 현재 마일스톤: **DEV 0.7.1-dev.7 수용 완료, 추가 작업은 별도 범위로 진행**
+- 상태: **Stable 0.7.1 main 병합·tag·public amd64/ARM image·GitHub latest release 공개 완료 / exact merge/tag CI·Builder PASS / 사용자 dev.7 CLI·브라우저 수용과 동일 runtime 승격 / 개발 HAOS stable 0.7.0→0.7.1 Supervisor 일반 업데이트·data/config 보존·2분 HTTP 200·종료 exit 0 확인 / 실제 ARM HAOS·DEV→main source migration 미검증 유지**
+- 현재 마일스톤: **Stable 0.7.1 운영 배포 완료**
 - 마지막 문서 기준일: **2026-10-14**
 - 저장소: public `Kanu-Coffee/codex-for-home-assistant`, default branch `main`
 
@@ -26,10 +26,32 @@
 
 ## Current Work
 
-### 2026-10-14 — Stable 0.7.1 승격 진행
+### 2026-10-14 — Stable 0.7.1 승격·latest release·일반 업데이트 검증 완료
 
-- 사용자가 dev.7 실기 수용 후 main 병합·운영 반영·stable 릴리스를 명시적으로 요청했다. 인수된 런타임과 동일한 stable 0.7.1 후보를 준비한다. PR의 CI/nonpublishing gate, main merge SHA CI, annotated tag Builder, 공개 release와 개발 HAOS stable 설치를 순서대로 확인한다.
-- 실제 ARM HAOS와 DEV→main source migration은 미검증 상태를 유지한다. 사용자 운영 장치의 App을 직접 제거·재설치하지 않는다. DEV 태그/브랜치는 유지한다.
+- 사용자 stable 승격 요청에 따라 [PR #52](https://github.com/Kanu-Coffee/codex-for-home-assistant/pull/52)를 main에 병합했다. Release merge/tag source `bd9038545da8f93f7f5f63f0a0650bcb65cfa3df`, annotated tag object `66c998c54fef6614b821dd46de48c6b6d51af971`. [Stable release 0.7.1](https://github.com/Kanu-Coffee/codex-for-home-assistant/releases/tag/0.7.1)은 draft/prerelease가 아닌 GitHub latest로 확인했다. App/패널은 DEV 표시 없이 Codex for Home Assistant/Codex, manifest stage 생략, App/package/BUILD_VERSION/fallback은 0.7.1이다.
+- 인수된 dev.7과 runtime/profile 로직이 동일하며 version fallback·MOTD branding만 stable로 바꿨다. Codex baseline 0.162.1, 자동 업데이트 기본 ON·일 4회 슬롯·일별 idle 12회·rolling 24시간 재시작 cooldown을 유지한다. 한국어·영어 current-version/ARM CI 상태 문구와 changelog를 갱신했다. 기존 stable/DEV 태그와 dev branch는 보존했다.
+- 관련 로컬 pytest **133 passed in 66.08s**, Markdown/ShellCheck/actionlint/Gitleaks/diff PASS. [PR CI 38515964689](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/38515964689), branch CI 38515960137, [nonpublishing Builder 38515964748](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/38515964748) PASS 후 merge했다. [Main merge CI 38516420055](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/38516420055)는 양 architecture enforced full boot 포함 전체 SUCCESS다. Main CI 성공 후 stable tag를 발행했다.
+- [Stable Builder 38516889684](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/38516889684): exact release SHA의 actual executable hash preflight, 양 architecture Critical gate, image push, Cosign signing, provenance/SBOM attestation, multi-arch promotion SUCCESS. 익명 public image manifest/config version·architecture·digest와 main repository/config 접근 PASS. Image의 mutable latest tag를 만든 것은 아니다.
+
+| Stable artifact | SHA256 digest |
+| --- | --- |
+| generic 0.7.1 | 332867de3ed715f52447d8bda9d7e87b9b5fa293e3c8090cb35a01898f5c4690 |
+| amd64 | c2bc6d359ffb90bf962a694e45db7295630f0497e989e5ce0e92472d52deb84f |
+| arm64 | 4653128e00e19d96ed51ad6829f9e3d3ad2b038c26e53fe354ba146926aacf09 |
+
+- 독립 `gh attestation verify`: manifest provenance, amd64/arm64 provenance와 SPDX SBOM **5건 PASS**. Repo·source digest·refs/tags/0.7.1·GitHub-hosted runner를 고정했다. 독립 Cosign client signature verification은 이번 회차 NOT RUN이며 Builder signing step 성공과 구분한다.
+- 개발 HAOS **VM** 18.2/Supervisor 2026.09.3의 main repository identity `282767e4_codex_home_assistant`에서 public stable 0.7.0을 설치·시작해 Codex 0.144.1/HTTP 200을 확인했다. 합성 data marker와 기존 user config SHA를 남긴 뒤 App을 중지하고 Store reload에서 0.7.1 update_available=true를 확인해 **Supervisor 일반 update**했다. 제거·재설치·DEV source 전환을 사용하지 않았다.
+- Update 후 profile/protected=true, `282767e4_codex_home_assistant (enforce)`, Codex 0.162.1, selected/bundled 0.162.1과 idle budget 12를 확인했다. 합성 `/data` marker 및 기존 config의 byte-exact SHA 보존 PASS. 30초 간격 4회/총 **2분 running·HTTP 200**, Supervisor stop의 **exit 0·3초** PASS. 테스트 marker/comment/hash 파일을 제거하고 options auto-update/browser auto-auth ON 및 기본 network를 복원했다. App은 stopped/manual로 재검증용 보존했다.
+- `haos-vm stop/status`로 VM이 원래의 **shut off** 상태로 복원됐음을 확인했다. 사용자 운영 장치의 App을 agent가 직접 업데이트했다고 주장하지 않는다. 기존 stable 사용자는 main repository 새로고침 후 0.7.1로 일반 업데이트할 수 있다.
+- 실제 ARM HAOS, 실제 사용자 auth의 upgrade persistence, upstream 신규 Codex runtime 적용과 이번 회차 mobile Remote E2E는 NOT_RUN/기존 수용 경계를 유지한다. User-approved dev.7 실기는 CLI/new session/browser 승인·desktop/mobile·console/network 범위다. DEV #dev와 main은 별도 identity이며 data 보존 source migration을 검증했다고 안내하지 않는다(ADR-045).
+
+### 2026-10-14 — 사용자 요청에 따른 Stable 0.7.1 승격 진행
+
+- PR CI `38515964689`, branch CI `38515960137`, nonpublishing Builder `38515964748` SUCCESS 후 PR #52를 main에 merge commit `bd9038545da8f93f7f5f63f0a0650bcb65cfa3df`로 병합했다. Main CI `38516420055` 실행 중이며 성공 후 stable tag를 생성한다.
+
+- 사용자 실기 수용 후 main 병합·운영 반영·릴리스를 명시적으로 요청받았다. [PR #52](https://github.com/Kanu-Coffee/codex-for-home-assistant/pull/52), candidate `df55a5292227521791eb9e9eaaa470543196ef8c`를 준비하고 CI·nonpublishing Builder를 실행 중이다. 인수된 dev.7 대비 런타임 차이는 App-version fallback과 MOTD branding뿐이며 updater/profile 로직은 동일하다.
+- Stable version/branding은 0.7.1, stage 생략, 원래 main repository identity를 유지한다. 사용자 문서의 오래된 current-version/ARM CI pending 문구를 정리하고 실제 ARM HAOS·DEV→main source migration의 미검증 범위를 유지했다.
+- 관련 pytest 133 passed, Markdown·ShellCheck·actionlint·Gitleaks·diff PASS. 개발 HAOS VM에서 기존 stable 0.7.0 설치 후 같은 identity의 0.7.1 일반 업데이트·data 보존을 검사할 준비를 진행한다. 사용자 운영 장치에 직접 접속하거나 DEV App을 삭제하지 않는다.
 
 ### 2026-10-14 — 사용자 실기 CLI·브라우저 수용 증거: 이번 개발 범위 완료
 
