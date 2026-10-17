@@ -10,7 +10,7 @@
 - DEV canary repository: `https://github.com/Kanu-Coffee/codex-for-home-assistant#dev`
 - image: `ghcr.io/kanu-coffee/codex-for-home-assistant:<version>`
 - current stable release `0.7.1` (previous stable `0.7.0`) architecture: `amd64`, `aarch64` (`armv7` 미지원)
-- DEV candidate: `0.7.2-dev.1` (validation and publication results: `progress.md`; previous accepted candidate `0.7.1-dev.7`)
+- DEV prerelease: `0.7.2-dev.1` (published; VM update/boot PASS, default Supervisor stop PARTIAL; details: `progress.md`; previous candidate `0.7.1-dev.7`)
 - stable version tag: `X.Y.Z`
 - numbered DEV version tag: `X.Y.Z-dev.N` (`N`은 1 이상의 정수이며 새 후보마다 사용하지 않은 번호 선택)
 - mutable `latest` tag는 발행하지 않음

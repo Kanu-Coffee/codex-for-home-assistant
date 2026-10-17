@@ -26,6 +26,17 @@
 
 ## Current Work
 
+### 2026-10-17 — DEV 0.7.2-dev.1 배포 검증
+
+- [PR #54](https://github.com/Kanu-Coffee/codex-for-home-assistant/pull/54)의 최종 head `8b43db0ad3293b6f0722906255cffa03203fb640`에서 [branch CI 39012085649](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/39012085649), [PR CI 39012088103](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/39012088103), [nonpublishing Builder 39012088075](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/39012088075)가 모두 PASS했다. 양 architecture native runtime/full smoke와 SBOM/Critical gate를 포함한다.
+- `dev` merge `5dfb4d0f516fb4699404dabb25e9d9b71783603d`의 [CI 39012428708](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/39012428708)도 PASS한 뒤 annotated tag `0.7.2-dev.1`(object `d4dc34c48a43c32a1135e6c8790c79ea7cb8ce8d`)을 같은 commit에 생성했다. Stable main `11b883996b9bc1694640b25fcc7f24b192973b71`과 stable 0.7.1은 변경하지 않았다.
+- [Tag Builder 39012762424](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/39012762424)의 양 architecture SBOM/Critical gate·signature·provenance/SBOM attestation·generic manifest promotion이 모두 PASS했다. [0.7.2-dev.1 prerelease](https://github.com/Kanu-Coffee/codex-for-home-assistant/releases/tag/0.7.2-dev.1)를 `latest=false`로 게시했다. Stable latest는 0.7.1이다.
+- 익명 공개 조회에서 generic `sha256:f32cb39cbf0565694b314af2d0c8e57a7f662105f81dd539d88dd594d9ebd9c9`, amd64 `sha256:b0b7919717f5d31e9740317fe203630c615302780c47bc19c02025cea2334276`, aarch64 `sha256:9943460e1dcc165629985def47551b3744901dce2b98ea136c68ecf8ffa85e7a`를 확인했다. Architecture별 tag·manifest/config hash·DEV/version/arch label·모든 layer 접근도 PASS다.
+- Cosign 3.0.3과 이미지에 이미 포함된 gh 2.97.0을 임시 컨테이너에서 사용해 세 digest의 exact reusable workflow identity signature, tag source ref·merge SHA에 고정한 provenance와 두 architecture SPDX attestation을 독립 검증했다. Host CLI에 없는 기능 때문에 global tool을 설치하지 않았고 기존 credential은 stdin으로만 전달해 파일·인수·출력에 기록하지 않았다.
+- **게시 이미지의 VM 정상 update·기동·데이터 보존 PASS / 전체 Supervisor lifecycle PARTIAL**: 기존 DEV 0.7.1-dev.7을 Supervisor 일반 update로 0.7.2-dev.1로 올렸다. CLI의 60초 응답 timeout 뒤 background download가 정상 완료됐으며 재업데이트하지 않고 최종 version/update_available=false를 확인했다. Config SHA256과 합성 data marker가 보존됐고, 실제 namespaced AppArmor enforce·필수 서비스·Ingress 200을 확인했다. Stable App은 0.7.1/stopped 그대로다.
+- **미해결**: Supervisor 기본 10초 stop에서는 exit 137을 관측했다. 동일 게시 App은 75초 Docker stop 유예에서 exit 0/stopped로 정상 종료됐다. 기본 정지 경로의 수용은 PASS가 아니며 prerelease note에 명시했다. 이 원인이 이번 분류 변경인지 기존 종료 지연인지 비교 검증하지 않았다. 사용자 HAOS 18.3·ARM HAOS 실장비·mobile Remote E2E도 NOT RUN이다.
+- 검사 harness 오류와 제품 결과를 구분했다. Hash-only 파일에 `sha256sum -c`를 잘못 사용한 첫 검사는 실패했지만 hash 직접 비교로 일치를 확인했다. HAOS host 도구의 stdin/regex 제약도 파일 기반 실행·호환 도구로 해소했다. 임시 marker/profile/test image를 제거하고 DEV·stable App을 stopped로 확인한 뒤 VM을 시작 전 shut off 상태로 복원했다.
+
 ### 2026-10-17 — task 004 DEV 배포 준비·VM 검증 진행
 
 - 배포 보안 검사 보완: signed Alpine yq r2의 exact bytes 검토 후 patched stdlib waiver를 제거했다. 실제 Syft CPE fixture를 사용해 공식 GO advisory의 CVE alias 2개를 기존 gh stdlib 조건에만 연결했다. CI와 동일한 Grype 0.110.0 대조는 gated Critical 0/ignored 6, metadata 제거 raw Critical 6/exit 2 PASS다. Unknown bytes·metadata 모순·Critical threshold는 계속 차단하며 gate를 우회하지 않았다. 상세 근거는 [yq r2 검토](yq-go-4.53.3-r2-review.md)를 따른다.
