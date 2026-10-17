@@ -58,7 +58,8 @@ def go_module_pkg(
             {
                 "referenceCategory": "SECURITY",
                 "referenceType": "cpe23Type",
-                "referenceLocator": f"cpe:2.3:a:{name}:{name}:{version}:*:*:*:*:*:*:*",
+                "referenceLocator": (f"cpe:2.3:a:golang:go:{version.removeprefix('go')}:-:*:*:*:*:*:*"
+                                     if name == "stdlib" else f"cpe:2.3:a:{name}:{name}:{version}:*:*:*:*:*:*:*"),
             },
             {
                 "referenceCategory": "PACKAGE-MANAGER",

@@ -150,6 +150,10 @@ def emit_policy(config_path, vex_path, verified, template_path, sbom_hash):
                 if path == '/usr/bin/yq' and module == 'stdlib':
                     continue
                 vulns = ['GO-2026-6612'] + (['GO-2026-6604'] if module == 'stdlib' else [])
+                if module == 'stdlib':
+                    # NVD/CPE and Go/PURL catalogers report the same reviewed
+                    # issues under separate IDs in real SPDX.
+                    vulns.extend(['CVE-2026-78663', 'CVE-2026-56857'])
                 for vuln in vulns:
                     rules.append({'vulnerability': vuln, 'package': {'name': module,
                                   'version': version, 'type': 'go-module'},

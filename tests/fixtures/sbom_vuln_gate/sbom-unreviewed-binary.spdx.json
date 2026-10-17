@@ -34,7 +34,7 @@
         {
           "referenceCategory": "SECURITY",
           "referenceType": "cpe23Type",
-          "referenceLocator": "cpe:2.3:a:stdlib:stdlib:go1.26.5:*:*:*:*:*:*:*"
+          "referenceLocator": "cpe:2.3:a:golang:go:1.26.5:-:*:*:*:*:*:*"
         },
         {
           "referenceCategory": "PACKAGE-MANAGER",
@@ -94,7 +94,7 @@
         {
           "referenceCategory": "SECURITY",
           "referenceType": "cpe23Type",
-          "referenceLocator": "cpe:2.3:a:stdlib:stdlib:go1.26.9:*:*:*:*:*:*:*"
+          "referenceLocator": "cpe:2.3:a:golang:go:1.26.9:-:*:*:*:*:*:*"
         },
         {
           "referenceCategory": "PACKAGE-MANAGER",
@@ -154,7 +154,7 @@
         {
           "referenceCategory": "SECURITY",
           "referenceType": "cpe23Type",
-          "referenceLocator": "cpe:2.3:a:stdlib:stdlib:go1.26.5:*:*:*:*:*:*:*"
+          "referenceLocator": "cpe:2.3:a:golang:go:1.26.5:-:*:*:*:*:*:*"
         },
         {
           "referenceCategory": "PACKAGE-MANAGER",

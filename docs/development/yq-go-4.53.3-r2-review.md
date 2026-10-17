@@ -22,10 +22,16 @@ Alpine v3.24 community의 x86_64/aarch64 APK를 공식 CDN에서 HTTPS로 가져
 남아 있는 yq x/net의 기존 적용 불가 판단은 유지한다. [해당 upstream CLI entrypoint](https://raw.githubusercontent.com/mikefarah/yq/v4.53.3/cmd/root.go)는 데이터 파일 평가 CLI이며, 같은 버전의 Alpine recipe에도 HTTP/2 서버를 시작하는 변경이 없다. 이는 기존 CLI-only 검토를 새 signed rebuild의 동일 upstream 소스에 연결한 판단이다. 네트워크 서버 코드 전체가 바이너리에 없다는 보장은 아니다. gh의 기존 binary bytes·module·client/loopback callback 용도는 변경하지 않는다.
 
 - 갱신 대상은 yq stdlib의 **정확한** 예상 버전과 architecture별 검토 해시다.
-- 생성되는 좁은 규칙은 기존 gh 3개와 yq x/net 1개, 총 4개다. 수정된 yq stdlib에는 suppression을 발급하지 않는다.
-- 새로운 취약점 ID나 임의 버전 허용을 추가하지 않는다. Root `.grype.yaml`의 빈 ignore와 Critical 차단 threshold, 실제 이미지 파일 해시·SBOM 매핑·image identity 검증은 유지한다.
+- 생성되는 좁은 규칙은 gh 5개(GO ID 3개와 같은 취약점의 CVE alias 2개)와 yq x/net 1개, 총 6개다. 수정된 yq stdlib에는 suppression을 발급하지 않는다.
+- 별도 취약점이나 임의 버전 허용은 추가하지 않는다. 공식 GO advisory가 명시한 동일 취약점의 `CVE-2026-78663` 및 `CVE-2026-56857` alias만 기존 gh stdlib `go1.26.5` 조건에 연결한다. Root `.grype.yaml`의 빈 ignore와 Critical 차단 threshold, 실제 이미지 파일 해시·SBOM 매핑·image identity 검증은 유지한다.
 - 다음 package/binary/module 변경은 여전히 미검토로 처리되고 raw scan으로 폴백한다. 서명 또는 metadata 모순은 계속 fail closed한다.
 
 ## 검증과 한계
 
 Focused preflight 회귀와 metadata/hash 변조 음성 대조, 실제 scanner의 gated/raw 대조 및 이후 exact PR/tag CI 결과는 `progress.md`에 기록한다. 현 문서는 이미지가 패치되지 않은 모든 취약점에서 안전하다는 선언이나 게시 gate 면제가 아니다. SBOM 파일 해시만 신뢰하지 않고 다음 Builder도 actual Docker image 파일과 재대조해야 게시할 수 있다.
+
+## 실제 SPDX CPE 대조 보완
+
+두 번째 Builder `39011289746`은 preflight를 통과했지만 gh stdlib의 `CVE-2026-78663` 1건을 별도로 검출했다. 실제 SPDX의 `cpe:2.3:a:golang:go:1.26.5:-:*:*:*:*:*:*`가 NVD 매칭을 추가하는 반면, 과거 synthetic fixture는 잘못된 vendor/product CPE여서 Go ID만 검출했다. fixture CPE를 실제 Syft 형식으로 맞췄다. 기존 GO waiver가 이 CVE alias까지 자동 적용된다고 가정하지 않는다.
+
+추가한 alias는 공식 GO-2026-6612 advisory가 같은 문제로 명시한 CVE이며, 검토된 gh stdlib의 정확한 버전·파일 hash·실제 이미지 검증 조건에만 적용한다. 같은 버전의 미검토 바이너리는 계속 raw scan으로 차단된다. [공식 GO-2026-6604](https://pkg.go.dev/vuln/GO-2026-6604)의 Windows 전용 문제도 NVD에서는 `CVE-2026-56857`로 별도 보고된다. 같은 Linux 비적용 판단을 정확한 gh stdlib 조건에 연결한다. Grype 0.110.0과 0.120.1은 보고 건수가 다르므로 각 버전의 실제 gated/raw 결과를 progress에 구분해 기록한다.

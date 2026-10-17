@@ -28,6 +28,7 @@
 
 ### 2026-10-17 — task 004 DEV 배포 준비·VM 검증 진행
 
+- 배포 보안 검사 보완: signed Alpine yq r2의 exact bytes 검토 후 patched stdlib waiver를 제거했다. 실제 Syft CPE fixture를 사용해 공식 GO advisory의 CVE alias 2개를 기존 gh stdlib 조건에만 연결했다. CI와 동일한 Grype 0.110.0 대조는 gated Critical 0/ignored 6, metadata 제거 raw Critical 6/exit 2 PASS다. Unknown bytes·metadata 모순·Critical threshold는 계속 차단하며 gate를 우회하지 않았다. 상세 근거는 [yq r2 검토](yq-go-4.53.3-r2-review.md)를 따른다.
 - 사용자 요청으로 VM 검증 후 DEV 배포를 진행한다. 이번 변경의 VM 검증은 시작 당시 NOT RUN이며 이전 0.7.1 실기 증거와 구분한다. `fix/runtime-update-dev-0.7.2-1`에서 미사용 `0.7.2-dev.1` 후보와 DEV 표시를 준비하며 main/stable 채널은 변경하지 않는다.
 - 개발 HAOS VM의 시작 전 상태는 shut off다. 기존 checkout 소유 helper로 시작했고 합성 volume 기반 enforced AppArmor updater/boot smoke를 수행한 뒤 원상태로 복원한다. 사용자 운영 HA 장치·인증 자료는 사용하지 않는다.
 - 로컬 DEV 후보 전체 pytest는 **240 passed, 1 skipped in 79.40s**, release metadata 집중 시험 19 PASS다. 최초 changelog heading의 대괄호 누락으로 version 계약 1건이 실패했으나 수정 후 전체 재실행에서 해소했다. Markdown/ShellCheck/Hadolint/actionlint/diff·변경 파일 Gitleaks PASS(YAML은 기존 line-length warning만 존재). 과거 progress 기록의 빈 줄·목록 번호 형식만 lint에 맞게 정리했다.
