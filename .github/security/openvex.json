@@ -2,8 +2,8 @@
   "@context": "https://openvex.dev/ns/v0.2.0",
   "@id": "https://github.com/Kanu-Coffee/codex-for-home-assistant/security/vex/2026-10-13-go-cves",
   "author": "Kanu-Coffee maintainers",
-  "timestamp": "2026-10-13T06:00:00Z",
-  "version": 2,
+  "timestamp": "2026-10-17T06:00:00Z",
+  "version": 4,
   "statements": [
     {
       "vulnerability": {
@@ -14,7 +14,7 @@
           "@id": "pkg:golang/stdlib@1.26.5"
         },
         {
-          "@id": "pkg:golang/stdlib@1.26.8"
+          "@id": "pkg:golang/stdlib@1.26.9"
         },
         {
           "@id": "pkg:golang/golang.org/x/net@v0.55.0"
@@ -25,7 +25,7 @@
       ],
       "status": "not_affected",
       "justification": "vulnerable_code_not_in_execute_path",
-      "impact_statement": "GO-2026-6612 (CVE-2026-78663) affects HTTP/2 server stream flow-control refund logic in net/http.Server. In this container, /usr/local/bin/gh (GitHub CLI 2.97.0) functions strictly as a client for GitHub REST and GraphQL APIs; its OAuth callback listener operates over plain HTTP/1.1 on loopback without TLS/ALPN or h2c, so the HTTP/2 server stream handler is unreachable. /usr/bin/yq (4.53.3-r1) is an offline command-line YAML/JSON processor with no network listening capabilities. The vulnerable server code paths are demonstrably unreachable."
+      "impact_statement": "GO-2026-6612 (CVE-2026-78663) affects HTTP/2 server stream flow-control refund logic in net/http.Server. In this container, /usr/local/bin/gh (GitHub CLI 2.97.0) functions strictly as a client for GitHub REST and GraphQL APIs; its OAuth callback listener operates over plain HTTP/1.1 on loopback without TLS/ALPN or h2c, so the HTTP/2 server stream handler is unreachable. /usr/bin/yq (4.53.3-r2) is an offline command-line YAML/JSON processor with no network listening capabilities. The vulnerable server code paths are demonstrably unreachable. The signed Alpine r2 rebuild uses patched Go 1.26.9; the yq x/net module remains v0.55.0 with the same CLI-only server-unreachable assessment. Exact new binary identities are documented in docs/development/yq-go-4.53.3-r2-review.md."
     },
     {
       "vulnerability": {
@@ -36,12 +36,38 @@
           "@id": "pkg:golang/stdlib@1.26.5"
         },
         {
-          "@id": "pkg:golang/stdlib@1.26.8"
+          "@id": "pkg:golang/stdlib@1.26.9"
         }
       ],
       "status": "not_affected",
       "justification": "vulnerable_code_not_in_execute_path",
       "impact_statement": "GO-2026-6604 (CVE-2026-56857) affects Windows-specific os.Root directory junction traversal implemented in internal/syscall/windows. This container image strictly targets linux/amd64 and linux/arm64 environments with Alpine musl, utilizing native Linux openat syscalls. The Windows-specific junction resolution code is non-applicable and cannot execute under Linux."
+    },
+    {
+      "vulnerability": {
+        "name": "CVE-2026-78663"
+      },
+      "products": [
+        {
+          "@id": "pkg:golang/stdlib@1.26.5"
+        }
+      ],
+      "status": "not_affected",
+      "justification": "vulnerable_code_not_in_execute_path",
+      "impact_statement": "This is the official CVE alias of GO-2026-6612, emitted separately by NVD/CPE matching. The unchanged exact reviewed gh 2.97.0 bytes use GitHub client APIs and a loopback HTTP/1.1 OAuth callback, not an HTTP/2 server. Apply only to the validated gh stdlib go1.26.5 identity; no rule applies to patched yq stdlib or unknown binaries."
+    },
+    {
+      "vulnerability": {
+        "name": "CVE-2026-56857"
+      },
+      "products": [
+        {
+          "@id": "pkg:golang/stdlib@1.26.5"
+        }
+      ],
+      "status": "not_affected",
+      "justification": "vulnerable_code_not_in_execute_path",
+      "impact_statement": "Official CVE alias of GO-2026-6604. The Windows-specific os.Root directory junction path cannot execute in these Linux images. This rule remains bound to exact reviewed gh stdlib go1.26.5 bytes and validated image/SBOM identity; patched yq stdlib and unknown binaries get no rule."
     }
   ]
 }

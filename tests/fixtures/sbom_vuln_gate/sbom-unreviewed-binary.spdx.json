@@ -34,7 +34,7 @@
         {
           "referenceCategory": "SECURITY",
           "referenceType": "cpe23Type",
-          "referenceLocator": "cpe:2.3:a:stdlib:stdlib:go1.26.5:*:*:*:*:*:*:*"
+          "referenceLocator": "cpe:2.3:a:golang:go:1.26.5:-:*:*:*:*:*:*"
         },
         {
           "referenceCategory": "PACKAGE-MANAGER",
@@ -76,7 +76,7 @@
     {
       "name": "stdlib",
       "SPDXID": "SPDXRef-Package-go-module-stdlib-yq-7a8b9c",
-      "versionInfo": "go1.26.8",
+      "versionInfo": "go1.26.9",
       "supplier": "NOASSERTION",
       "downloadLocation": "NOASSERTION",
       "filesAnalyzed": false,
@@ -94,12 +94,12 @@
         {
           "referenceCategory": "SECURITY",
           "referenceType": "cpe23Type",
-          "referenceLocator": "cpe:2.3:a:stdlib:stdlib:go1.26.8:*:*:*:*:*:*:*"
+          "referenceLocator": "cpe:2.3:a:golang:go:1.26.9:-:*:*:*:*:*:*"
         },
         {
           "referenceCategory": "PACKAGE-MANAGER",
           "referenceType": "purl",
-          "referenceLocator": "pkg:golang/stdlib@1.26.8"
+          "referenceLocator": "pkg:golang/stdlib@1.26.9"
         }
       ]
     },
@@ -154,7 +154,7 @@
         {
           "referenceCategory": "SECURITY",
           "referenceType": "cpe23Type",
-          "referenceLocator": "cpe:2.3:a:stdlib:stdlib:go1.26.5:*:*:*:*:*:*:*"
+          "referenceLocator": "cpe:2.3:a:golang:go:1.26.5:-:*:*:*:*:*:*"
         },
         {
           "referenceCategory": "PACKAGE-MANAGER",

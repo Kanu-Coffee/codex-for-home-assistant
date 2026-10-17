@@ -26,7 +26,7 @@ import { get as httpsGet } from "node:https";
 import { get as httpGet } from "node:http";
 
 export const BASELINE_VERSION = "0.162.1";
-export const APP_VERSION = "0.7.1-dev.7";
+export const APP_VERSION = "0.7.2-dev.1";
 export const DEFAULT_TIMEZONE = "Asia/Seoul";
 export const UPDATE_SLOTS = [3, 9, 15, 21];
 export const MAX_IDLE_CHECKS = 12;
@@ -538,6 +538,16 @@ export async function readOptions() {
   }
 }
 
+export const LAST_BLOCKER_CODES = Object.freeze([
+  "cli", "remote_stdio", "unmanaged_server", "bad_socket", "socket_inaccessible",
+  "server_busy", "unknown", "inspection_failed", "daily_budget_exhausted",
+  "restart_cooldown",
+]);
+
+function sanitizeLastBlocker(value) {
+  return typeof value === "string" && LAST_BLOCKER_CODES.includes(value) ? value : null;
+}
+
 export async function loadState() {
   const appVersion = getAppVersion();
   const bundledVersion = getBundledVersion();
@@ -565,6 +575,7 @@ export async function loadState() {
       status: data.status || "idle",
       reason: data.reason || null,
       lastError: data.lastError || null,
+      lastBlocker: sanitizeLastBlocker(data.lastBlocker),
     };
   } catch {
     return {
@@ -588,6 +599,7 @@ export async function loadState() {
       status: "idle",
       reason: null,
       lastError: null,
+      lastBlocker: null,
     };
   }
 }
@@ -617,6 +629,7 @@ export async function saveState(state) {
     status: state.status || "idle",
     reason: typeof state.reason === "string" ? state.reason.slice(0, 256) : null,
     lastError: typeof state.lastError === "string" ? state.lastError.slice(0, 256) : null,
+    lastBlocker: sanitizeLastBlocker(state.lastBlocker),
   };
   await durableJson(getStateFile(), sanitized);
 }
@@ -684,6 +697,160 @@ export async function initRuntime() {
   });
 }
 
+// Package entrypoints that are genuine Codex task processes or owned helper
+// companions. Identity is the /proc exe link or a shebang script named in the
+// interpreter argv, never a substring of the command line.
+export const PACKAGE_EXECUTABLE_ROLES = Object.freeze({
+  "bin/codex": "primary",
+  "bin/codex-code-mode-host": "companion",
+  "codex-resources/bwrap": "companion",
+  "codex-path/rg": "companion",
+  "codex-resources/voice/bin/codex-voice-host": "companion",
+  "codex-resources/zsh/bin/zsh": "companion",
+});
+
+const INTERPRETER_BASENAMES = new Set([
+  "node", "deno", "bun", "env", "sh", "bash", "dash", "zsh",
+  "python", "python3", "perl", "ruby",
+]);
+
+function withinCanonicalRoot(candidatePath, rootPath) {
+  if (typeof candidatePath !== "string" || !candidatePath.startsWith(rootPath + "/")) return null;
+  const relative = candidatePath.slice(rootPath.length + 1);
+  if (!relative || relative.split("/").some((s) => s === ".." || s === "." || s === "")) return null;
+  return relative;
+}
+
+// Canonical boundary test independent of the role allowlist: any path inside
+// the baseline or a single release generation is a managed package path even
+// when its role is not yet known.
+export function packageBoundary(candidatePath) {
+  if (typeof candidatePath !== "string") return null;
+  const clean = candidatePath.replace(/\s+\(deleted\)$/, "");
+  const baselineRelative = withinCanonicalRoot(clean, getBaselineDir());
+  if (baselineRelative) {
+    return {
+      relative: baselineRelative,
+      generation: getBaselineDir(),
+      role: PACKAGE_EXECUTABLE_ROLES[baselineRelative] || null,
+    };
+  }
+  const releasesRelative = withinCanonicalRoot(clean, getReleasesDir());
+  if (releasesRelative) {
+    const segments = releasesRelative.split("/");
+    if (segments.length < 2) return null;
+    const relative = segments.slice(1).join("/");
+    return {
+      relative,
+      generation: join(getReleasesDir(), segments[0]),
+      role: PACKAGE_EXECUTABLE_ROLES[relative] || null,
+    };
+  }
+  return null;
+}
+
+export function canonicalPackageRole(candidatePath) {
+  const boundary = packageBoundary(candidatePath);
+  if (!boundary || !boundary.role) return null;
+  return { role: boundary.role, relative: boundary.relative, generation: boundary.generation };
+}
+
+export async function executableEntrypoint(proc) {
+  const rawExe = proc.exe || "";
+  const cleanExe = rawExe.replace(/\s+\(deleted\)$/, "");
+  const exeBoundary = packageBoundary(cleanExe);
+  if (exeBoundary) return { ...exeBoundary, path: cleanExe, argvIndex: 0, deleted: cleanExe !== rawExe };
+  if (!cleanExe || !INTERPRETER_BASENAMES.has(basename(cleanExe))) return null;
+  const argv = proc.cmdline || [];
+  for (let k = 1; k <= 2; k++) {
+    const candidate = argv[k];
+    if (typeof candidate !== "string" || !candidate.startsWith("/")) continue;
+    const boundary = packageBoundary(candidate);
+    if (!boundary) continue;
+    try {
+      const real = await realpath(candidate);
+      const realBoundary = packageBoundary(real);
+      if (!realBoundary || realBoundary.relative !== boundary.relative || realBoundary.generation !== boundary.generation) continue;
+      const fd = await open(real, fsConstants.O_RDONLY | fsConstants.O_NOFOLLOW);
+      try {
+        const header = Buffer.alloc(2);
+        const { bytesRead } = await fd.read(header, 0, 2, 0);
+        if (bytesRead === 2 && header.toString() === "#!") {
+          return { ...boundary, path: real, argvIndex: k };
+        }
+      } finally {
+        await fd.close();
+      }
+    } catch {}
+  }
+  return null;
+}
+
+// Mirrors the option-aware skip in /usr/local/bin/codex. The first positional
+// token before '--' is the subcommand; option values are never subcommands.
+export function parseCodexInvocation(cmdline, startIndex = 1) {
+  // Value-taking global options verified against the real bundled 0.162.1
+  // `codex --help`; mirror of the wrapper's case list. Unknown or unclear
+  // syntax falls through conservatively (extra positional => still busy CLI).
+  const OPTION_WITH_VALUE = new Set([
+    "-m", "--model", "-c", "--config", "-C", "--cd", "--profile", "-p", "--color",
+    "-s", "--sandbox", "-a", "--ask-for-approval", "--enable", "--disable",
+    "--remote", "--remote-auth-token-env", "--local-provider", "-i", "--image",
+    "--add-dir", "--listen",
+  ]);
+  let subcommand = null;
+  let listenSocket = null;
+  let optionsEnded = false;
+  for (let i = startIndex; i < cmdline.length; i++) {
+    const token = cmdline[i];
+    if (typeof token !== "string") continue;
+    if (!optionsEnded) {
+      if (token === "--") { optionsEnded = true; continue; }
+      if (token.startsWith("--") && token.includes("=")) {
+        if (token.startsWith("--listen=")) {
+          const value = token.slice("--listen=".length);
+          if (value.startsWith("unix://")) listenSocket = value.slice(7);
+        }
+        continue;
+      }
+      if (token.startsWith("-") && token !== "-") {
+        if (OPTION_WITH_VALUE.has(token)) {
+          const value = cmdline[i + 1];
+          if (token === "--listen" && typeof value === "string" && value.startsWith("unix://")) {
+            listenSocket = value.slice(7);
+          }
+          i++;
+        }
+        continue;
+      }
+      if (subcommand === null) subcommand = token;
+    }
+  }
+  return { subcommand, listenSocket };
+}
+
+async function ancestorPids(pid, maxDepth = 32) {
+  const chain = [];
+  let current = pid;
+  for (let depth = 0; depth < maxDepth; depth++) {
+    let statStr;
+    try {
+      statStr = await readFile(`/proc/${current}/stat`, "utf-8");
+    } catch {
+      break;
+    }
+    const lastParen = statStr.lastIndexOf(")");
+    if (lastParen === -1) break;
+    const parts = statStr.slice(lastParen + 1).trim().split(/\s+/);
+    const ppid = parseInt(parts[1], 10);
+    if (!Number.isFinite(ppid) || ppid <= 0) break;
+    chain.push(ppid);
+    if (ppid === 1) break;
+    current = ppid;
+  }
+  return chain;
+}
+
 export async function inspectProcess(pid) {
   try {
     const statStr = await readFile(`/proc/${pid}/stat`, "utf-8");
@@ -710,6 +877,7 @@ export async function inspectProcess(pid) {
       state,
       start: startTime,
       startTime,
+      ppid: parts[1],
       exe,
       cmdline,
     };
@@ -981,9 +1149,36 @@ export async function inspectAppServer(socketPath, expectedPid) {
 
 export async function inspectAllSessions() {
   const busyReasons = [];
-  let sessionCount = 0;
+  const blockers = [];
   const restartableServers = [];
+  const entries = new Map();
 
+  const counts = {
+    cli: 0,
+    helpers: 0,
+    managedIdleServers: 0,
+    remoteStdio: 0,
+    unmanagedAppServers: 0,
+    unknown: 0,
+  };
+
+  const failClosed = (message) => ({
+    isIdle: false,
+    canApply: false,
+    sessionCount: -1,
+    busyReasons: [message],
+    blockers: [{ type: "inspection_failed", pid: null, detail: message }],
+    counts: { ...counts },
+    restartableServers: [],
+  });
+
+  const addBusy = (type, pid, detail) => {
+    blockers.push({ type, pid, detail });
+    busyReasons.push(`[${type}] ${detail} (pid ${pid})`);
+  };
+
+  // Pass 1: registered session records. PID+start-time identity decides whether
+  // the record is current, a reused slot, or already gone.
   const sessionsDir = getSessionsDir();
   if (existsSync(sessionsDir)) {
     try {
@@ -1000,188 +1195,210 @@ export async function inspectAllSessions() {
             continue;
           }
           if (proc.unknown) {
-            sessionCount++;
-            busyReasons.push(`registered session pid ${pid} inspection failed: ${proc.error}`);
+            entries.set(pid, { proc, kind: "unknown", registered: true });
             continue;
           }
-          if (proc.startTime !== content.start) {
+          if (String(proc.startTime) !== String(content.start)) {
             await unlink(filePath).catch(() => {});
             continue;
           }
-          if (content.type === "app-server") {
-            // App-servers are inspected in the process scan for idle state and restartability
-            continue;
-          }
-          sessionCount++;
-          busyReasons.push(`active registered session (pid ${pid})`);
+          entries.set(pid, { proc, record: content });
         } catch {
           await unlink(filePath).catch(() => {});
         }
       }
     } catch (err) {
-      return {
-        isIdle: false,
-        sessionCount: -1,
-        busyReasons: [`Failed to inspect sessions directory: ${err.message}`],
-        restartableServers: [],
-      };
+      return failClosed(`Failed to inspect sessions directory: ${err.message}`);
     }
   }
 
+  // Pass 2: /proc inventory. The same classification rules run in production
+  // and in fixtures; there is no test-only matching branch.
   let procEntries = [];
   try {
     procEntries = await readdir("/proc");
   } catch (err) {
-    return {
-      isIdle: false,
-      sessionCount: -1,
-      busyReasons: [`Failed to inspect /proc: ${err.message}`],
-      restartableServers: [],
-    };
+    return failClosed(`Failed to inspect /proc: ${err.message}`);
   }
 
-  const codexPids = [];
   for (const entry of procEntries) {
     if (!/^\d+$/.test(entry)) continue;
     const pid = parseInt(entry, 10);
-    if (pid === process.pid) continue;
+    if (pid === process.pid || entries.has(pid)) continue;
     const proc = await inspectProcess(pid);
     if (!proc) continue;
-    if (proc.unknown) { codexPids.push(proc); continue; }
-
-    let hasSessionRecord = false;
-    try {
-      if (existsSync(join(getSessionsDir(), String(pid)))) {
-        hasSessionRecord = true;
-      }
-    } catch {}
-
-    const isTestEnv = !!process.env.CODEX_RUNTIME_DIR;
-    const baseDir = getBaseRuntimeDir();
-    const exeName = basename(proc.exe.replace(/\s+\(deleted\)$/, ""));
-    const cmdStr = (proc.cmdline || []).join(" ");
-
-    let isMatch = false;
-    if (exeName !== "flock" && !cmdStr.startsWith("flock ")) {
-      if (isTestEnv) {
-        isMatch =
-          hasSessionRecord ||
-          proc.exe.startsWith(baseDir) ||
-          cmdStr.includes(baseDir);
-      } else {
-        isMatch =
-          hasSessionRecord ||
-          proc.exe.startsWith(baseDir) ||
-          cmdStr.includes(baseDir) ||
-          exeName === "codex" ||
-          exeName === "codex-real" ||
-          exeName === "ha-codex" ||
-          cmdStr.includes("codex-real") ||
-          cmdStr.startsWith("codex ") ||
-          cmdStr.includes("/bin/codex") ||
-          cmdStr.includes("app-server");
-      }
+    if (proc.unknown) {
+      entries.set(pid, { proc, kind: "unknown" });
+      continue;
     }
+    const exeName = basename((proc.exe || "").replace(/\s+\(deleted\)$/, ""));
+    const cmdStr = (proc.cmdline || []).join(" ");
+    if (exeName === "flock" || cmdStr.startsWith("flock ")) continue;
+    // Command-line strings such as "/bin/codex" or "app-server" that only
+    // appear as data never create identity here.
+    const identity = await executableEntrypoint(proc);
+    if (!identity) continue;
+    entries.set(pid, { proc, identity });
+  }
 
-    if (isMatch) {
-      codexPids.push(proc);
+  // Pass 3: classify each inventory entry from its actual entrypoint and the
+  // positional subcommand, not from argv substrings.
+  for (const [pid, e] of entries) {
+    if (e.kind === "unknown") continue;
+    const record = e.record || null;
+    const identity = e.identity || await executableEntrypoint(e.proc);
+    const invocation = parseCodexInvocation(e.proc.cmdline || [], identity ? identity.argvIndex + 1 : 1);
+    if (identity) e.identity = identity;
+    const serverByArgv = identity && identity.role === "primary" && invocation.subcommand === "app-server";
+    const serverByRecord = record && record.type === "app-server" &&
+      (!invocation.subcommand || invocation.subcommand === "app-server");
+    if (serverByArgv || serverByRecord) {
+      e.kind = "app-server";
+      e.socketPath = invocation.listenSocket;
+    } else if (!record && identity && identity.role === "companion") {
+      e.kind = "companion";
+    } else if (!record && identity && identity.role !== "primary" && identity.role !== "companion") {
+      e.kind = "unknown";
+      e.unrecognized = true;
+    } else {
+      e.kind = "cli";
     }
   }
 
-  for (const proc of codexPids) {
-    if (proc.unknown) {
-      busyReasons.push(`process pid ${proc.pid} state unknown: ${proc.error}`);
-      sessionCount++;
+  // Pass 4: companions and helpers attach to a verified live owner. An
+  // orphaned companion that cannot be attributed is held as unknown; it is
+  // never counted as an independent Codex conversation.
+  const ownerPids = new Set();
+  for (const [pid, e] of entries) {
+    if (e.kind === "cli" || e.kind === "app-server") ownerPids.add(pid);
+  }
+  for (const [pid, e] of entries) {
+    if (e.kind !== "companion") continue;
+    const chain = await ancestorPids(pid);
+    const owner = chain.find((a) => ownerPids.has(a));
+    if (owner) {
+      e.kind = "helper";
+      e.owner = owner;
+    } else {
+      e.kind = "unknown";
+      e.orphanCompanion = true;
+    }
+  }
+
+  // Pass 5: aggregate. App-servers keep the existing verified managed
+  // transaction preconditions: launch record, unix socket, and two idle
+  // diagnostics one second apart.
+  for (const [pid, e] of entries) {
+    if (e.kind === "unknown") {
+      counts.unknown++;
+      if (e.proc.unknown) {
+        addBusy("inspection_failed", pid, `process state unknown: ${e.proc.error}`);
+      } else if (e.orphanCompanion) {
+        addBusy("unknown", pid, "codex package companion without verifiable owner; held for manual review");
+      } else if (e.unrecognized) {
+        addBusy("unknown", pid, "unrecognized executable inside managed codex package; held until identity is verified");
+      } else {
+        addBusy("unknown", pid, "process identity could not be classified");
+      }
+      continue;
+    }
+    if (e.kind === "helper") {
+      counts.helpers++;
+      continue;
+    }
+    if (e.kind === "cli") {
+      counts.cli++;
+      if (e.registered) {
+        addBusy("cli", pid, "active registered session");
+      } else {
+        addBusy("cli", pid, "active codex cli process");
+      }
       continue;
     }
 
-    const isAppServer = proc.cmdline.includes("app-server");
-    if (!isAppServer) {
-      busyReasons.push(`active codex cli process (pid ${proc.pid})`);
-      sessionCount++;
-      continue;
-    }
-
-    let socketPath = null;
-    const listenIdx = proc.cmdline.indexOf("--listen");
-    if (listenIdx !== -1 && proc.cmdline[listenIdx + 1]?.startsWith("unix://")) {
-      socketPath = proc.cmdline[listenIdx + 1].slice(7);
-    }
-
+    // kind === app-server
+    const socketPath = e.socketPath || null;
     if (!socketPath) {
-      busyReasons.push(`active remote stdio app-server (pid ${proc.pid}); restart unsupported, deferred until session exits`);
-      sessionCount++;
+      counts.remoteStdio++;
+      addBusy("remote_stdio", pid,
+        "active remote stdio app-server; restart unsupported, deferred until session exits");
       continue;
     }
 
     // Verify explicit App-managed launch record in sessions directory
-    const sessionsDir = getSessionsDir();
-    const sessionFile = join(sessionsDir, String(proc.pid));
-    let managedRecord = null;
-    try {
-      if (existsSync(sessionFile)) {
-        managedRecord = JSON.parse(await readFile(sessionFile, "utf-8"));
-      }
-    } catch {}
+    const sessionFile = join(sessionsDir, String(pid));
+    let managedRecord = e.record || null;
+    if (!managedRecord) {
+      try {
+        if (existsSync(sessionFile)) {
+          managedRecord = JSON.parse(await readFile(sessionFile, "utf-8"));
+        }
+      } catch {}
+    }
 
     if (
       !managedRecord ||
       managedRecord.managed !== true ||
       managedRecord.type !== "app-server" ||
       managedRecord.socketPath !== socketPath ||
-      managedRecord.pid !== proc.pid ||
-      String(managedRecord.start) !== String(proc.startTime)
+      managedRecord.pid !== pid ||
+      String(managedRecord.start) !== String(e.proc.startTime)
     ) {
-      busyReasons.push(`active unmanaged app-server without verified launch record (pid ${proc.pid}); restart unsupported, deferred until session exits`);
-      sessionCount++;
+      counts.unmanagedAppServers++;
+      addBusy("unmanaged_server", pid,
+        "active unmanaged app-server without verified launch record; restart unsupported, deferred until session exits");
       continue;
     }
 
-    // Verify socket exists and is a unix socket
     try {
       const sockStat = await stat(socketPath);
       if (!sockStat.isSocket()) {
-        busyReasons.push(`app-server socket path is not a socket: ${socketPath} (pid ${proc.pid})`);
-        sessionCount++;
+        counts.unmanagedAppServers++;
+        addBusy("bad_socket", pid, `app-server socket path is not a socket: ${socketPath}`);
         continue;
       }
     } catch (err) {
-      busyReasons.push(`app-server socket inaccessible: ${err.message} (pid ${proc.pid})`);
-      sessionCount++;
+      counts.unmanagedAppServers++;
+      addBusy("socket_inaccessible", pid, `app-server socket inaccessible: ${err.message}`);
       continue;
     }
 
-    const check1 = await inspectAppServer(socketPath, proc.pid);
+    const check1 = await inspectAppServer(socketPath, pid);
     if (check1.busy) {
-      busyReasons.push(`app-server busy: ${check1.reason} (pid ${proc.pid})`);
-      sessionCount++;
+      counts.unmanagedAppServers++;
+      addBusy("server_busy", pid, `app-server busy: ${check1.reason}`);
       continue;
     }
 
     await new Promise((r) => setTimeout(r, 1000));
-    const check2 = await inspectAppServer(socketPath, proc.pid);
+    const check2 = await inspectAppServer(socketPath, pid);
     if (check2.busy) {
-      busyReasons.push(`app-server busy: ${check2.reason} (pid ${proc.pid})`);
-      sessionCount++;
+      counts.unmanagedAppServers++;
+      addBusy("server_busy", pid, `app-server busy: ${check2.reason}`);
       continue;
     }
 
+    counts.managedIdleServers++;
     restartableServers.push({
-      pid: proc.pid,
-      start: proc.start,
+      pid,
+      start: e.proc.start,
       socketPath,
-      proc,
+      proc: e.proc,
       managedRecord,
     });
-    sessionCount++;
   }
 
-  const isIdle = busyReasons.length === 0 && restartableServers.length === 0;
+  const sessionCount =
+    counts.cli + counts.managedIdleServers + counts.remoteStdio +
+    counts.unmanagedAppServers + counts.unknown;
 
   return {
-    isIdle,
+    isIdle: busyReasons.length === 0 && restartableServers.length === 0,
+    canApply: busyReasons.length === 0,
     sessionCount,
     busyReasons,
+    blockers,
+    counts: { detectedProcesses: entries.size, ...counts },
     restartableServers,
   };
 }
@@ -1688,6 +1905,8 @@ export async function applyUpdate(options = {}) {
     }
 
     if (!isManual && state.idleCheckCount >= MAX_IDLE_CHECKS) {
+      // Skipped before inspection: keep the last inspected process blocker.
+      // Budget exhaustion itself is visible in status/idleCheckCount/nextRetryAt.
       state.status = "paused_busy";
       state.reason = `Daily idle check budget exhausted for ${state.budgetDate}`;
       state.nextRetryAt = getNextDayFirstSlotTime(getNow(), tz).toISOString();
@@ -1732,6 +1951,7 @@ export async function applyUpdate(options = {}) {
           state.idleCheckCount = (state.idleCheckCount || 0) + 1;
           if (state.idleCheckCount >= MAX_IDLE_CHECKS) {
             state.status = "paused_busy";
+            state.lastBlocker = "daily_budget_exhausted";
             state.reason = `Candidate ${state.stagedVersion} reached daily idle check limit (${MAX_IDLE_CHECKS} checks for ${state.budgetDate}); restart cooldown active until ${state.nextRestartAllowedAt}`;
             state.nextRetryAt = getNextDayFirstSlotTime(getNow(), tz).toISOString();
             await saveState(state);
@@ -1739,6 +1959,7 @@ export async function applyUpdate(options = {}) {
           }
         }
         state.status = "paused_restart";
+        state.lastBlocker = "restart_cooldown";
         state.reason = `Restart cooldown active until ${state.nextRestartAllowedAt}; waiting for session exit (${state.idleCheckCount}/${MAX_IDLE_CHECKS} checks for ${state.budgetDate})`;
         state.nextRetryAt = state.nextRestartAllowedAt;
         await saveState(state);
@@ -1759,11 +1980,13 @@ export async function applyUpdate(options = {}) {
         state.status = "pending_busy";
         state.reason = `Deferred: ${sessions.busyReasons.join(", ")}`;
       }
+      state.lastBlocker = sessions.blockers[0]?.type || "unknown";
       await saveState(state);
       return {
         applied: false,
         reason: state.status,
         busyReasons: sessions.busyReasons,
+        blockerTypes: sessions.blockers.map((b) => b.type),
         state,
       };
     }
@@ -1855,6 +2078,7 @@ export async function applyUpdate(options = {}) {
       state.candidateVersion = null;
       state.candidateDigest = null;
       state.lastApplyAt = getNow().toISOString();
+      state.lastBlocker = null;
       state.status = "applied";
       state.reason = `Successfully applied ${newVersion} with graceful server restart`;
       state.nextRetryAt = null;
@@ -1920,6 +2144,7 @@ export async function applyUpdate(options = {}) {
     state.restartAttemptCount = 0;
     state.blockedReason = null;
     state.lastApplyAt = getNow().toISOString();
+    state.lastBlocker = null;
     state.status = "applied";
     state.reason = `Successfully applied stable Codex version ${newVersion}`;
     state.nextRetryAt = null;
@@ -2119,18 +2344,14 @@ export async function getStatus() {
     const pid = parseInt(entry, 10);
     if (pid === process.pid) continue;
     const proc = await inspectProcess(pid);
-    if (!proc) continue;
-    const exeName = basename(proc.exe.replace(/\s+\(deleted\)$/, ""));
-    if (exeName === "codex" || exeName === "codex-real") {
-      if (proc.exe.includes("/data/codex-runtime/releases/")) {
-        const match = proc.exe.match(/\/releases\/([^/]+)/);
-        if (match) {
-          const v = match[1].split("-")[0];
-          activeVersions.add(v);
-        }
-      } else {
-        activeVersions.add(bundledVersion);
-      }
+    if (!proc || proc.unknown) continue;
+    const identity = await executableEntrypoint(proc);
+    if (!identity || identity.role !== "primary") continue;
+    if (identity.generation === getBaselineDir()) {
+      activeVersions.add(bundledVersion);
+    } else {
+      const match = identity.generation.match(/\/releases\/([^/]+)$/);
+      if (match) activeVersions.add(match[1].split("-")[0]);
     }
   }
 
@@ -2160,9 +2381,88 @@ export async function getStatus() {
     lastApplyAt: state.lastApplyAt,
     status: state.status,
     reason: state.reason,
+    lastBlocker: state.lastBlocker || null,
+    // Compatibility field: unique live Codex task processes (CLI/TUI,
+    // managed servers, remote/unmanaged/unknown holders). This is a process
+    // count, not a conversation count; owned helper companions are excluded.
     activeSessions: sessions.sessionCount,
     isIdle: sessions.isIdle,
+    // Compatibility field: session-level predicate indicating whether live
+    // task/session blockers are absent (sessions.canApply).
+    // Note: This evaluates only live process blockers; it does not check
+    // autoUpdate toggle, staged candidate availability, daily check budget,
+    // or restart cooldown. For automated daemon readiness, see autoApplyReady.
+    canApply: sessions.canApply,
+    autoApplyReady: Boolean(
+      options.valid &&
+      options.autoUpdate &&
+      state.stagedVersion &&
+      !state.blockedReason &&
+      state.status !== "paused_busy" &&
+      (state.idleCheckCount || 0) < MAX_IDLE_CHECKS &&
+      sessions.canApply &&
+      (sessions.isIdle || !(state.reason === "restart_cooldown" || (state.nextRestartAllowedAt && new Date(state.nextRestartAllowedAt).getTime() > getNow().getTime())))
+    ),
+    blockerTypes: sessions.blockers.map((b) => b.type),
+    processSummary: sessions.counts,
   };
+}
+
+export function formatSessionReady(status) {
+  if (!status.canApply) {
+    return "no (waiting for real sessions or unverifiable processes to exit)";
+  }
+  if (status.isIdle) {
+    return "yes (no Codex processes; manual apply can run now)";
+  }
+  return "yes (idle managed server(s) eligible for restart; manual apply can restart now if cooldown allows)";
+}
+
+export function formatAutoApplyReady(status) {
+  if (!status.optionsValid) {
+    return "blocked (configuration options invalid)";
+  }
+  if (!status.autoUpdate) {
+    return "disabled (auto-update disabled; manual apply only)";
+  }
+  if (!status.stagedVersion) {
+    return "no (no staged update waiting to apply)";
+  }
+  if (status.blockedReason) {
+    return `blocked (${status.blockedReason})`;
+  }
+  if (status.status === "paused_busy" || (status.idleCheckCount || 0) >= status.maxIdleChecks) {
+    return `paused (daily check budget exhausted; waiting for scheduled retry at ${status.nextRetryAt || "next window"}; manual apply can re-check immediately)`;
+  }
+  if (!status.canApply) {
+    return "deferred (waiting for active sessions or unverifiable processes to clear)";
+  }
+  const nowMs = getNow().getTime();
+  const cooldownActive = Boolean(
+    !status.isIdle &&
+    (status.reason === "restart_cooldown" || (status.nextRestartAllowedAt && new Date(status.nextRestartAllowedAt).getTime() > nowMs))
+  );
+  if (cooldownActive) {
+    return `waiting (restart cooldown active until ${status.nextRestartAllowedAt || "next window"}; manual apply also respects cooldown)`;
+  }
+  return "yes (ready for next automatic apply check)";
+}
+
+function printApplyGuidance(res) {
+  const types = res.blockerTypes || [];
+  console.log("  Automatic apply waits until every blocker clears and the next allowed re-check; a manual apply re-checks now and never force-stops sessions.");
+  if (types.includes("remote_stdio")) {
+    console.log("  A Remote stdio session holds the current version: save your work and close the connection normally; the next check can apply after the process exits.");
+  }
+  if (types.includes("unknown") || types.includes("inspection_failed")) {
+    console.log("  Some processes could not be attributed; they are held conservatively and are never killed automatically.");
+  }
+  if (types.includes("server_busy")) {
+    console.log("  A managed server still has loaded conversations or in-flight work; it must drain before replacement.");
+  }
+  if (res.reason === "restart_cooldown") {
+    console.log("  Only restartable idle managed server(s) remain; replacement waits for the rolling 24-hour restart cooldown.");
+  }
 }
 
 async function main() {
@@ -2217,9 +2517,11 @@ Options:
   Timezone:          ${status.timezone}
   Daily idle checks: ${status.idleCheckCount}/${status.maxIdleChecks} (date: ${status.budgetDate || "n/a"})
   Restart attempts:  ${status.restartAttemptCount}/${status.maxRestartAttempts} (next allowed: ${status.nextRestartAllowedAt || "immediate"})
-  Blocked/Paused:    ${status.blockedReason || (status.status === "paused_busy" ? "paused_busy (daily limit reached)" : "none")}
+  Blocked/Paused:    ${status.blockedReason || (status.lastBlocker ? status.status + " (" + status.lastBlocker + ")" : status.status === "paused_busy" ? "paused_busy (daily limit reached)" : "none")}
   Next retry at:     ${status.nextRetryAt || "n/a"}
-  Active sessions:   ${status.activeSessions} (${status.isIdle ? "idle" : "busy"})
+  Codex processes:   ${status.activeSessions} unique task process(es), ${status.processSummary.helpers} helper(s) owned [CLI/TUI ${status.processSummary.cli}, managed idle server(s) ${status.processSummary.managedIdleServers}, remote stdio ${status.processSummary.remoteStdio}, unmanaged ${status.processSummary.unmanagedAppServers}, unknown ${status.processSummary.unknown}]
+  Session ready:     ${formatSessionReady(status)}
+  Auto-apply ready:  ${formatAutoApplyReady(status)}
   Status:            ${status.status}
   Reason:            ${status.reason || "none"}
   Last checked:      ${status.lastCheckAt || "never"}
@@ -2243,6 +2545,7 @@ Options:
         if (res.busyReasons?.length) {
           console.log(`  Reasons: ${res.busyReasons.join(", ")}`);
         }
+        printApplyGuidance(res);
       }
     } else if (action === "update") {
       if (args.length > 1 && !args.includes("--json")) {
@@ -2260,10 +2563,11 @@ Options:
         if (applyRes.applied) {
           console.log(`Successfully applied Codex update: ${applyRes.version}`);
         } else {
-          console.log(`Update staged but apply deferred: ${applyRes.reason}`);
-          if (applyRes.busyReasons?.length) {
-            console.log(`  Reasons: ${applyRes.busyReasons.join(", ")}`);
-          }
+        console.log(`Update staged but apply deferred: ${applyRes.reason}`);
+        if (applyRes.busyReasons?.length) {
+          console.log(`  Reasons: ${applyRes.busyReasons.join(", ")}`);
+        }
+        printApplyGuidance(applyRes);
         }
       }
     } else {

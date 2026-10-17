@@ -2,51 +2,21 @@
 
 All notable changes to this App are documented in this file.
 
-## [0.7.1-dev.7] - 2026-10-14
+## [0.7.2-dev.1]
 
 ### Fixed
 
-- Allow S6 service scripts to execute under the enforced AppArmor profile, fixing startup exit 126.
-- Wake the updater slot timer on SIGTERM/SIGINT so App shutdown can finish cleanly.
-- Verify complete App boot, HTTP readiness and clean shutdown under AppArmor on both architectures.
+- Classify Codex processes by executable identity and verified launch records, exclude owned helpers from independent session counts, and hold unknown package executables conservatively.
+- Count registered CLI processes once and recognize value-taking global options and both Unix listener forms.
+- Persist sanitized update blocker codes and distinguish session readiness from automatic update budget, cooldown, and configuration conditions.
+- Refresh the exact signed Alpine yq-go 4.53.3-r2 review and remove its obsolete stdlib scan waivers; unknown artifacts retain the raw Critical gate. Real Syft CPE fixtures also verify the official CVE aliases against the CI scanner.
 
-## [0.7.1-dev.6] - 2026-10-13
+### Validation scope
 
-### Fixed
+- Remote stdio connections remain protected until normal exit; this build does not force-disconnect or reconnect them. Daily idle-check budgets, restart cooldown, loaded-conversation protection, and managed policy checks remain enforced.
+- This is a DEV candidate; HAOS VM and native CI results are recorded separately in development progress. Real-user HAOS and ARM hardware acceptance are not implied.
 
-- Verify actual amd64/arm64 gh and yq file hashes before granting build scan exceptions.
-- Reject incomplete Go metadata and bind the scan to the validated SBOM snapshot.
-- Scan new dependencies without exceptions; preserve the Critical publication gate.
-- Keep VEX as image-bound audit evidence, with a single exception policy for the verified scan.
-
-## [0.7.1-dev.5] - 2026-10-13
-
-### Security
-
-- Enforce fail-closed SBOM Go binary identity preflight gate (`.github/scripts/sbom-go-binary-preflight.py`) rejecting any unreviewed binary path (/opt, etc.), mutated version, or missing identity metadata before Grype scanning.
-- Eliminate static blanket ignores from root `.grype.yaml`, dynamically emitting gated config and OpenVEX only upon verified SBOM identity.
-
-## [0.7.1-dev.4] - 2026-10-13
-
-### Security
-
-- Finalize Grype vulnerability gate policy with explicit OpenVEX wiring (`vex:`) and version/module-bounded ignore rules.
-
-## [0.7.1-dev.3] - 2026-10-13
-
-### Security
-
-- Scope Grype vulnerability suppression rules to exact reviewed Go package versions (`stdlib go1.26.5/go1.26.8`, `golang.org/x/net v0.55.0/v0.56.0`) and modules, ensuring unexpected/future components and unreviewed versions trigger gate failure.
-- Wire OpenVEX specification (`.github/security/openvex.json`) directly into the scanner workflow (`vex:`) and Grype configuration (`vex-documents:`), with comprehensive reachability justifications for `GO-2026-6612` and `GO-2026-6604`.
-- Enable `show-suppressed: true` in Grype configuration to maintain complete audit visibility for filtered findings.
-
-## [0.7.1-dev.2] - 2026-10-13
-
-### Security
-
-- Enforce explicit Grype vulnerability gate policy (`.grype.yaml`, OpenVEX) documenting non-applicability of upstream Go HTTP/2 server flow-control (GO-2026-6612 / CVE-2026-78663) and Windows junction traversal (GO-2026-6604 / CVE-2026-56857) in CLI binaries.
-
-## [0.7.1-dev.1] - 2026-10-13
+## [0.7.1] - 2026-10-14
 
 ### Added
 
@@ -60,6 +30,14 @@ All notable changes to this App are documented in this file.
 
 - App version bumped from `0.7.0` to `0.7.1`.
 - Config options added: `codex_auto_update` (boolean, default true) and `codex_auto_update_timezone` (string, default Asia/Seoul).
+
+### Fixed
+
+- Allow S6 service scripts to execute under AppArmor, fixing startup exit 126.
+- Wake the updater slot timer on SIGTERM/SIGINT for clean App shutdown.
+- Bound idle rechecks to 12 per configured date with automatic next-day recovery; persist the rolling 24-hour restart cooldown without a permanent pause.
+- Bind build scan exceptions to reviewed architecture-specific executable hashes and the validated SBOM; scan new dependencies without inherited exceptions.
+- Add enforced full-boot/readiness/clean-stop gates on native amd64 and ARM.
 
 ## [0.7.0] - 2026-08-14
 

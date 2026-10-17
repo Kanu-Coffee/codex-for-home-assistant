@@ -1,10 +1,10 @@
+> DEV 후보: `0.7.2-dev.1` — helper 프로세스 오분류와 업데이트 상태 표시를 개선합니다. 설치 저장소는 `https://github.com/Kanu-Coffee/codex-for-home-assistant#dev`이며 App/패널은 **Codex for Home Assistant (DEV)** / **Codex DEV**입니다. VM·CI 검증과 실제 사용자 장치 수용은 구분합니다.
+
 <p align="right">
   <strong>한국어</strong> · <a href="README.en.md">English</a>
-DEV `0.7.1-dev.7`은 AppArmor의 S6 실행 권한 누락으로 시작하지 못하던 문제와 업데이트 데몬의 종료 지연을 수정합니다. 기존 DEV 설치에서는 저장소를 새로고침한 뒤 App을 업데이트하세요.
-
 </p>
 
-# Codex for Home Assistant (DEV)
+# Codex for Home Assistant
 
 Home Assistant 안에서 Codex와 대화하며 설정을 살펴보고 대시보드, 자동화, 엔티티와 오류를 정리할 수 있는 Ingress Web 터미널 앱입니다.
 
@@ -31,7 +31,7 @@ Home Assistant 안에서 Codex와 대화하며 설정을 살펴보고 대시보�
 
 ## 빠른 시작
 
-1. 앱(0.7.1-dev.7)을 설치하고 시작합니다. `amd64`와 64비트 `aarch64`를 지원합니다. DEV manifest는 `stage: experimental`을 사용하며 `boot: manual`입니다. 안정판 0.7.0의 Native ARM CI와 멀티아키텍처 image 검증은 통과했습니다. 현재 0.7.1-dev.7 개발 버전의 Native ARM 실기/CI 검증은 릴리스 발행 전 단계로 아직 수행되지 않았으며(NOT RUN), 실제 Raspberry Pi/aarch64 HAOS 실기는 실행되지 않았고, 이 공백은 자동 검증 결과를 근거로 릴리스 승인 과정에서 명시적으로 수용됐습니다.
+1. 앱(0.7.1)을 설치하고 시작합니다. `amd64`와 64비트 `aarch64`를 지원합니다. Manifest는 `stage` 키를 생략해 Supervisor의 기본 stable 채널을 사용하며 `boot: manual`입니다. 사용자 HAOS amd64에서 CLI·브라우저 수용을 확인했고 DEV 0.7.1-dev.7의 native amd64/ARM CI가 통과했습니다. Stable 0.7.1도 같은 런타임으로 양 architecture CI와 배포 검증을 통과했습니다. 실제 Raspberry Pi/aarch64 HAOS 실기는 **NOT RUN**이며 native ARM CI와 구분합니다.
 2. **OPEN WEB UI**를 누릅니다.
 3. 처음 한 번 `ha-codex-login`으로 로그인합니다.
 4. `ha-codex`를 실행합니다.
@@ -64,5 +64,3 @@ GitHub 직접 제출은 후보 검색이 가능한 경우의 10분 만료·1회�
 설치, 전체 설정값, 모바일 Remote, 업데이트, 보안과 문제 해결은 [한국어 사용 설명서](DOCS.md)를 확인하세요. 영문 안내는 [English user guide](DOCS.en.md)에 있습니다.
 
 비공식 커뮤니티 프로젝트이며 OpenAI 또는 Home Assistant/Nabu Casa와 제휴하거나 보증받은 제품이 아닙니다.
-
-DEV 설치 저장소: `https://github.com/Kanu-Coffee/codex-for-home-assistant#dev`. 이 후보는 실기 검증용이며 안정판은 `0.7.0`입니다.

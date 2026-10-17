@@ -1,14 +1,14 @@
+> DEV candidate: `0.7.2-dev.1` improves helper process classification and update status. Use `https://github.com/Kanu-Coffee/codex-for-home-assistant#dev`; the app/panel are **Codex for Home Assistant (DEV)** / **Codex DEV**. VM/CI validation is separate from real-device acceptance.
+
 <p align="right">
   <a href="README.md">한국어</a> · <strong>English</strong>
-DEV `0.7.1-dev.7` fixes startup blocked by missing S6 execution permissions in AppArmor and delayed updater shutdown. Refresh the DEV repository and update the existing App installation.
-
 </p>
 
 <p align="center">
   <img src="codex_home_assistant/logo.png" alt="Codex for Home Assistant logo" width="180">
 </p>
 
-<h1 align="center">Codex for Home Assistant (DEV)</h1>
+<h1 align="center">Codex for Home Assistant</h1>
 
 <p align="center">
   Work with Codex inside Home Assistant to inspect your setup<br>
@@ -19,18 +19,18 @@ DEV `0.7.1-dev.7` fixes startup blocked by missing S6 execution permissions in A
   <a href="https://github.com/Kanu-Coffee/codex-for-home-assistant/releases"><img alt="GitHub Release" src="https://img.shields.io/github/v/release/Kanu-Coffee/codex-for-home-assistant"></a>
   <a href="https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/workflows/ci.yaml"><img alt="CI" src="https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/workflows/ci.yaml/badge.svg"></a>
   <img alt="Architecture: amd64 and aarch64" src="https://img.shields.io/badge/architecture-amd64%20%7C%20aarch64-blue">
-  <img alt="Stage: experimental" src="https://img.shields.io/badge/stage-experimental-orange">
+  <img alt="Stage: stable" src="https://img.shields.io/badge/stage-stable-brightgreen">
   <a href="LICENSE"><img alt="License: Apache-2.0" src="https://img.shields.io/badge/license-Apache--2.0-green"></a>
 </p>
 
 <p align="center">
-  <a href="https://my.home-assistant.io/redirect/supervisor_add_addon_repository/?repository_url=https%3A%2F%2Fgithub.com%2FKanu-Coffee%2Fcodex-for-home-assistant%23dev"><img alt="Add the app repository to Home Assistant" src="https://my.home-assistant.io/badges/supervisor_add_addon_repository.svg"></a>
+  <a href="https://my.home-assistant.io/redirect/supervisor_add_addon_repository/?repository_url=https%3A%2F%2Fgithub.com%2FKanu-Coffee%2Fcodex-for-home-assistant"><img alt="Add the app repository to Home Assistant" src="https://my.home-assistant.io/badges/supervisor_add_addon_repository.svg"></a>
 </p>
 
 > [!WARNING]
 > This app can read and write `/config` except for protected `secrets.yaml` and `.storage` paths, and it can use the Home Assistant Core and Supervisor `manager` APIs. API responses, logs, and browser views can still contain sensitive information. Back up your system and review the plan and diff before important changes. Never expose its SSH port directly to the internet.
 
-This is an unofficial community project. It is not affiliated with or endorsed by OpenAI, Home Assistant, or Nabu Casa. DEV candidate `0.7.1-dev.7` supports `amd64` and 64-bit `aarch64`, appears in HAOS as **Codex for Home Assistant (DEV)**, and uses **Codex DEV** in the sidebar. Native ARM CI and multi-architecture image validation passed for stable 0.7.0; validation for the 0.7.1-dev.7 development branch remains pending before release (NOT RUN). A real Raspberry Pi/aarch64 HAOS acceptance run was not performed; the release approval explicitly accepted that gap based on the automated evidence.
+This is an unofficial community project. It is not affiliated with or endorsed by OpenAI, Home Assistant, or Nabu Casa. Stable `0.7.1` supports `amd64` and 64-bit `aarch64`, appears in HAOS as **Codex for Home Assistant**, and uses **Codex** in the sidebar. User acceptance confirmed the CLI and browser on amd64 HAOS, and native amd64/ARM CI passed for DEV 0.7.1-dev.7. Stable 0.7.1 reuses that runtime and passed both architectures’ release CI and publication checks. Actual Raspberry Pi/aarch64 HAOS acceptance remains **NOT RUN**, distinct from native ARM CI.
 
 ## Real Web terminal preview
 
@@ -59,7 +59,7 @@ These images show the real Web terminal from the public `0.5.0` image, captured 
 | Work directly on Home Assistant | Change `/config` files and use supported Core/Supervisor APIs, then recheck results through fresh APIs where possible. |
 | Continue while away from home | Use the Ingress terminal in the Home Assistant mobile app or website, or connect ChatGPT mobile Remote directly to the app's SSH endpoint. |
 | Preserve context about your home | Keep verified HA structure and user-stated aliases, purposes, and preferences in this project's local memory, then retrieve only relevant context for later work. |
-| Keep Codex updated | Automatically checks for new official stable releases 4 times daily and applies them with zero downtime when sessions are idle. |
+| Keep Codex updated | Automatically checks for new official stable releases 4 times daily and applies them with zero downtime once real Codex session processes are verified idle (unrelated command-line strings or helper processes are never counted as sessions). |
 
 Custom cards such as Bubble Card and Mushroom are not bundled with the app. Ask Codex to use components you already have, or to present an installation plan for review first.
 
@@ -88,7 +88,7 @@ flowchart LR
 ### Requirements
 
 - Home Assistant OS or another installation with Supervisor
-- DEV candidate `0.7.1-dev.7` supports **amd64** and 64-bit **aarch64** devices. Raspberry Pi requires 64-bit HAOS. 32-bit `armv7` is not supported.
+- Stable `0.7.1` supports **amd64** and 64-bit **aarch64** devices. Raspberry Pi requires 64-bit HAOS. 32-bit `armv7` is not supported.
 - Internet access to download the public image
 - An OpenAI/ChatGPT account with access to Codex
 
@@ -125,7 +125,7 @@ flowchart LR
 See the [English user guide](codex_home_assistant/DOCS.en.md) for complete installation, sign-in, SSH, update, and recovery instructions.
 
 > [!NOTE]
-> Stable `0.7.0` provides amd64 and 64-bit aarch64 images. Native aarch64 CI and multi-architecture image validation passed, but a real Raspberry Pi/aarch64 HAOS run remains **NOT RUN**; release approval explicitly accepted that validation gap.
+> Stable `0.7.1` provides amd64 and 64-bit aarch64 images. Native aarch64 CI and multi-architecture image validation passed, but a real Raspberry Pi/aarch64 HAOS run remains **NOT RUN**; release approval explicitly accepted that validation gap.
 
 ## Prompts to try
 
@@ -224,7 +224,7 @@ App initialization and every Codex launch inspect protected paths for symlinks, 
 
 ## Current limitations
 
-- Stable `0.7.0` supports amd64 and 64-bit aarch64. Native aarch64 CI and image validation passed, but a real Raspberry Pi/aarch64 HAOS run remains **NOT RUN** and was accepted as a release validation gap. 32-bit armv7 is not supported.
+- Stable `0.7.1` supports amd64 and 64-bit aarch64. Native aarch64 CI and image validation passed, but a real Raspberry Pi/aarch64 HAOS run remains **NOT RUN** and was accepted as a release validation gap. 32-bit armv7 is not supported.
 - This is a Home Assistant App (formerly called an Add-on), so it cannot be installed through HACS.
 - The default is `boot: manual`. The stable manifest omits the `stage` key and therefore uses the Supervisor's default stable channel.
 - The Web UI is a terminal, not a dedicated mobile chat interface.
@@ -251,5 +251,3 @@ Direct GitHub submission through `$ha-feedback` requires a ten-minute single-use
 ## License
 
 Project source is distributed under the [Apache License 2.0](LICENSE). See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for runtime dependency notices.
-
-DEV repository: `https://github.com/Kanu-Coffee/codex-for-home-assistant#dev`. This candidate is for device testing; the stable release remains `0.7.0`.

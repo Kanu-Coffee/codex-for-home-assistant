@@ -1,14 +1,14 @@
+> DEV 후보: `0.7.2-dev.1` — helper 프로세스 오분류와 업데이트 상태 표시를 개선합니다. 설치 저장소는 `https://github.com/Kanu-Coffee/codex-for-home-assistant#dev`이며 App/패널은 **Codex for Home Assistant (DEV)** / **Codex DEV**입니다. VM·CI 검증과 실제 사용자 장치 수용은 구분합니다.
+
 <p align="right">
   <strong>한국어</strong> · <a href="README.en.md">English</a>
-DEV `0.7.1-dev.7`은 AppArmor의 S6 실행 권한 누락으로 시작하지 못하던 문제와 업데이트 데몬의 종료 지연을 수정합니다. 기존 DEV 설치에서는 저장소를 새로고침한 뒤 App을 업데이트하세요.
-
 </p>
 
 <p align="center">
   <img src="codex_home_assistant/logo.png" alt="Codex for Home Assistant 로고" width="180">
 </p>
 
-<h1 align="center">Codex for Home Assistant (DEV)</h1>
+<h1 align="center">Codex for Home Assistant</h1>
 
 <p align="center">
   Home Assistant 안에서 Codex와 대화하며 설정을 살펴보고,<br>
@@ -19,18 +19,18 @@ DEV `0.7.1-dev.7`은 AppArmor의 S6 실행 권한 누락으로 시작하지 못�
   <a href="https://github.com/Kanu-Coffee/codex-for-home-assistant/releases"><img alt="GitHub Release" src="https://img.shields.io/github/v/release/Kanu-Coffee/codex-for-home-assistant"></a>
   <a href="https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/workflows/ci.yaml"><img alt="CI" src="https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/workflows/ci.yaml/badge.svg"></a>
   <img alt="Architecture: amd64 and aarch64" src="https://img.shields.io/badge/architecture-amd64%20%7C%20aarch64-blue">
-  <img alt="Stage: experimental" src="https://img.shields.io/badge/stage-experimental-orange">
+  <img alt="Stage: stable" src="https://img.shields.io/badge/stage-stable-brightgreen">
   <a href="LICENSE"><img alt="License: Apache-2.0" src="https://img.shields.io/badge/license-Apache--2.0-green"></a>
 </p>
 
 <p align="center">
-  <a href="https://my.home-assistant.io/redirect/supervisor_add_addon_repository/?repository_url=https%3A%2F%2Fgithub.com%2FKanu-Coffee%2Fcodex-for-home-assistant%23dev"><img alt="Home Assistant에 앱 저장소 추가" src="https://my.home-assistant.io/badges/supervisor_add_addon_repository.svg"></a>
+  <a href="https://my.home-assistant.io/redirect/supervisor_add_addon_repository/?repository_url=https%3A%2F%2Fgithub.com%2FKanu-Coffee%2Fcodex-for-home-assistant"><img alt="Home Assistant에 앱 저장소 추가" src="https://my.home-assistant.io/badges/supervisor_add_addon_repository.svg"></a>
 </p>
 
 > [!WARNING]
 > 이 앱은 보호된 `secrets.yaml`·`.storage`를 제외한 `/config`를 읽고 쓸 수 있고 Home Assistant Core 및 Supervisor `manager` API를 사용할 수 있는 강한 관리자 도구입니다. API 응답·로그·브라우저 화면에는 여전히 민감정보가 포함될 수 있습니다. 중요한 변경 전에는 백업하고, 계획과 diff를 확인한 뒤 적용하세요. SSH 포트를 인터넷에 직접 공개하지 마세요.
 
-비공식 커뮤니티 프로젝트이며 OpenAI 또는 Home Assistant/Nabu Casa와 제휴하거나 보증받은 제품이 아닙니다. DEV 후보 `0.7.1-dev.7`는 `amd64`와 64비트 `aarch64`를 지원하며 HAOS에서 **Codex for Home Assistant (DEV)**, 사이드바에서 **Codex DEV**로 표시됩니다. 안정판 0.7.0의 Native ARM CI와 멀티아키텍처 이미지 검증은 통과했습니다. 현재 0.7.1-dev.7 개발 브랜치의 Native ARM 실기/CI 검증은 릴리스 발행 전 단계로 아직 수행되지 않았으며(NOT RUN), 실제 Raspberry Pi/aarch64 HAOS 실기는 실행되지 않았고, 이 공백은 자동 검증 결과를 근거로 릴리스 승인 과정에서 명시적으로 수용됐습니다.
+비공식 커뮤니티 프로젝트이며 OpenAI 또는 Home Assistant/Nabu Casa와 제휴하거나 보증받은 제품이 아닙니다. 안정판 `0.7.1`은 `amd64`와 64비트 `aarch64`를 지원하며 HAOS에서 **Codex for Home Assistant**, 사이드바에서 **Codex**로 표시됩니다. 사용자 HAOS amd64에서 CLI·브라우저 수용을 확인했고 DEV 0.7.1-dev.7의 native amd64/ARM CI가 통과했습니다. Stable 0.7.1도 같은 런타임으로 양 architecture CI와 배포 검증을 통과했습니다. 실제 Raspberry Pi/aarch64 HAOS 실기는 **NOT RUN**이며 native ARM CI와 구분합니다.
 
 ## 실제 Web 터미널 미리보기
 
@@ -59,7 +59,7 @@ DEV `0.7.1-dev.7`은 AppArmor의 S6 실행 권한 누락으로 시작하지 못�
 | Home Assistant 직접 작업하기 | `/config` 파일과 지원되는 Core/Supervisor API를 이용해 변경하고, 가능한 경우 fresh API로 결과를 다시 확인합니다. |
 | 이동 중 이어서 작업하기 | Home Assistant 모바일 앱/웹의 Ingress 터미널을 사용하거나, ChatGPT 모바일 Remote에서 HA 앱의 SSH endpoint에 직접 연결합니다. |
 | 집의 맥락 기억시키기 | HA 구조와 사용자가 명시한 별칭·용도·선호를 이 프로젝트의 검증형 로컬 메모리에 보존해 다음 작업에서 관련 정보만 찾습니다. |
-| Codex 최신 버전 유지하기 | 하루 4회 새 stable 버전을 자동 확인하고, 실행 중인 세션이 모두 유휴(idle) 상태일 때 무중단으로 원자적 적용합니다. |
+| Codex 최신 버전 유지하기 | 하루 4회 새 stable 버전을 자동 확인하고, 실제 실행 중인 Codex 세션 프로세스가 모두 유휴(idle)로 확인될 때(무관한 명령줄 문자열이나 helper 프로세스는 세션으로 계상하지 않음) 무중단으로 원자적 적용합니다. |
 
 Bubble Card, Mushroom 같은 커스텀 카드는 앱에 포함되지 않습니다. 이미 설치된 구성요소를 활용하거나 설치 계획을 먼저 검토하도록 요청하세요.
 
@@ -88,7 +88,7 @@ flowchart LR
 ### 요구사항
 
 - Home Assistant OS 또는 Supervisor가 있는 설치 환경
-- DEV 후보 `0.7.1-dev.7`는 **amd64**와 64비트 **aarch64** 장치를 지원합니다. Raspberry Pi는 64비트 HAOS가 필요하며 32비트 `armv7`은 지원하지 않습니다.
+- 안정판 `0.7.1`은 **amd64**와 64비트 **aarch64** 장치를 지원합니다. Raspberry Pi는 64비트 HAOS가 필요하며 32비트 `armv7`은 지원하지 않습니다.
 - 공개 이미지를 내려받을 인터넷 연결
 - Codex를 사용할 수 있는 OpenAI/ChatGPT 계정
 
@@ -124,7 +124,7 @@ flowchart LR
 전체 설치·로그인·SSH·업데이트 절차는 [한국어 사용 설명서](codex_home_assistant/DOCS.md)를 확인하세요.
 
 > [!NOTE]
-> 안정판 `0.7.0`은 amd64와 64비트 aarch64 이미지를 제공합니다. Native aarch64 CI와 멀티아키텍처 이미지 검증은 통과했지만 실제 Raspberry Pi/aarch64 HAOS 실기는 **NOT RUN**이며, 릴리스 승인 과정에서 이 검증 공백을 명시적으로 수용했습니다.
+> 안정판 `0.7.1`은 amd64와 64비트 aarch64 이미지를 제공합니다. Native aarch64 CI와 멀티아키텍처 이미지 검증은 통과했지만 실제 Raspberry Pi/aarch64 HAOS 실기는 **NOT RUN**이며, 릴리스 승인 과정에서 이 검증 공백을 명시적으로 수용했습니다.
 
 ## 이렇게 요청해 보세요
 
@@ -222,7 +222,7 @@ Custom AppArmor와 Codex 관리자 요구사항이 루트·중첩 `secrets.yaml`
 
 ## 현재 제한사항
 
-- 안정판 `0.7.0`은 amd64와 64비트 aarch64를 지원합니다. Native aarch64 CI와 이미지 검증은 통과했지만 실제 Raspberry Pi/aarch64 HAOS 실기는 **NOT RUN**이며 이 공백은 릴리스 승인 과정에서 수용됐습니다. 32비트 armv7은 지원하지 않습니다.
+- 안정판 `0.7.1`은 amd64와 64비트 aarch64를 지원합니다. Native aarch64 CI와 이미지 검증은 통과했지만 실제 Raspberry Pi/aarch64 HAOS 실기는 **NOT RUN**이며 이 공백은 릴리스 승인 과정에서 수용됐습니다. 32비트 armv7은 지원하지 않습니다.
 - Home Assistant 앱(이전 명칭: Add-on)이므로 HACS로 설치할 수 없습니다.
 - 기본 `boot: manual`이며, stable manifest는 `stage` 키를 생략해 Supervisor의 기본 stable 채널을 사용합니다.
 - Web UI는 터미널입니다. 전용 모바일 채팅 인터페이스가 아닙니다.
@@ -249,5 +249,3 @@ Custom AppArmor와 Codex 관리자 요구사항이 루트·중첩 `secrets.yaml`
 ## 라이선스
 
 프로젝트 소스는 [Apache License 2.0](LICENSE)으로 배포됩니다. 런타임 의존성 고지는 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)를 확인하세요.
-
-DEV 설치 저장소: `https://github.com/Kanu-Coffee/codex-for-home-assistant#dev`. 이 후보는 실기 검증용이며 안정판은 `0.7.0`입니다.

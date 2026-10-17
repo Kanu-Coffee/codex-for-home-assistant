@@ -1,10 +1,10 @@
+> DEV candidate: `0.7.2-dev.1` improves helper process classification and update status. Use `https://github.com/Kanu-Coffee/codex-for-home-assistant#dev`; the app/panel are **Codex for Home Assistant (DEV)** / **Codex DEV**. VM/CI validation is separate from real-device acceptance.
+
 <p align="right">
   <a href="README.md">한국어</a> · <strong>English</strong>
-DEV `0.7.1-dev.7` fixes startup blocked by missing S6 execution permissions in AppArmor and delayed updater shutdown. Refresh the DEV repository and update the existing App installation.
-
 </p>
 
-# Codex for Home Assistant (DEV)
+# Codex for Home Assistant
 
 Use Codex inside Home Assistant to inspect your setup and improve dashboards, automations, entities, and configuration errors through an Ingress Web terminal.
 
@@ -31,7 +31,7 @@ Use Codex inside Home Assistant to inspect your setup and improve dashboards, au
 
 ## Quick start
 
-1. Install and start the app (0.7.1-dev.7). It supports `amd64` and 64-bit `aarch64`. The DEV manifest uses `stage: experimental`; `boot: manual` remains explicit. Native ARM CI and multi-architecture image validation passed for stable 0.7.0; validation for the 0.7.1-dev.7 development branch remains pending before release (NOT RUN). A real Raspberry Pi/aarch64 HAOS run was not performed; release approval explicitly accepted that gap based on the automated evidence.
+1. Install and start the app (0.7.1). It supports `amd64` and 64-bit `aarch64`. The manifest omits the `stage` key and therefore uses the Supervisor's default stable channel; `boot: manual` remains explicit. User acceptance confirmed the CLI and browser on amd64 HAOS, and native amd64/ARM CI passed for DEV 0.7.1-dev.7. Stable 0.7.1 reuses that runtime and passed both architectures’ release CI and publication checks. Actual Raspberry Pi/aarch64 HAOS acceptance remains **NOT RUN**, distinct from native ARM CI.
 2. Select **OPEN WEB UI**.
 3. Sign in once with `ha-codex-login`.
 4. Run `ha-codex`.
@@ -64,5 +64,3 @@ Direct GitHub submission requires an available candidate search, a ten-minute si
 See the [English user guide](DOCS.en.md) for installation, all settings, mobile Remote, updates, security, and troubleshooting. [한국어 사용 설명서](DOCS.md) is also available.
 
 This is an unofficial community project. It is not affiliated with or endorsed by OpenAI, Home Assistant, or Nabu Casa.
-
-DEV repository: `https://github.com/Kanu-Coffee/codex-for-home-assistant#dev`. This candidate is for device testing; the stable release remains `0.7.0`.
