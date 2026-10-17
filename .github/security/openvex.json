@@ -2,8 +2,8 @@
   "@context": "https://openvex.dev/ns/v0.2.0",
   "@id": "https://github.com/Kanu-Coffee/codex-for-home-assistant/security/vex/2026-10-13-go-cves",
   "author": "Kanu-Coffee maintainers",
-  "timestamp": "2026-10-13T06:00:00Z",
-  "version": 2,
+  "timestamp": "2026-10-17T06:00:00Z",
+  "version": 3,
   "statements": [
     {
       "vulnerability": {
@@ -14,7 +14,7 @@
           "@id": "pkg:golang/stdlib@1.26.5"
         },
         {
-          "@id": "pkg:golang/stdlib@1.26.8"
+          "@id": "pkg:golang/stdlib@1.26.9"
         },
         {
           "@id": "pkg:golang/golang.org/x/net@v0.55.0"
@@ -25,7 +25,7 @@
       ],
       "status": "not_affected",
       "justification": "vulnerable_code_not_in_execute_path",
-      "impact_statement": "GO-2026-6612 (CVE-2026-78663) affects HTTP/2 server stream flow-control refund logic in net/http.Server. In this container, /usr/local/bin/gh (GitHub CLI 2.97.0) functions strictly as a client for GitHub REST and GraphQL APIs; its OAuth callback listener operates over plain HTTP/1.1 on loopback without TLS/ALPN or h2c, so the HTTP/2 server stream handler is unreachable. /usr/bin/yq (4.53.3-r1) is an offline command-line YAML/JSON processor with no network listening capabilities. The vulnerable server code paths are demonstrably unreachable."
+      "impact_statement": "GO-2026-6612 (CVE-2026-78663) affects HTTP/2 server stream flow-control refund logic in net/http.Server. In this container, /usr/local/bin/gh (GitHub CLI 2.97.0) functions strictly as a client for GitHub REST and GraphQL APIs; its OAuth callback listener operates over plain HTTP/1.1 on loopback without TLS/ALPN or h2c, so the HTTP/2 server stream handler is unreachable. /usr/bin/yq (4.53.3-r2) is an offline command-line YAML/JSON processor with no network listening capabilities. The vulnerable server code paths are demonstrably unreachable. The signed Alpine r2 rebuild uses patched Go 1.26.9; the yq x/net module remains v0.55.0 with the same CLI-only server-unreachable assessment. Exact new binary identities are documented in docs/development/yq-go-4.53.3-r2-review.md."
     },
     {
       "vulnerability": {
@@ -36,7 +36,7 @@
           "@id": "pkg:golang/stdlib@1.26.5"
         },
         {
-          "@id": "pkg:golang/stdlib@1.26.8"
+          "@id": "pkg:golang/stdlib@1.26.9"
         }
       ],
       "status": "not_affected",

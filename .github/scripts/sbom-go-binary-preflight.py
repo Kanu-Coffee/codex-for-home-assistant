@@ -19,7 +19,7 @@ from urllib.parse import parse_qs, unquote, urlsplit
 SECURITY_DIR = Path(__file__).resolve().parents[1] / 'security'
 PROFILES = {
     '/usr/local/bin/gh': {'stdlib': 'go1.26.5', 'golang.org/x/net': 'v0.56.0'},
-    '/usr/bin/yq': {'stdlib': 'go1.26.8', 'golang.org/x/net': 'v0.55.0'},
+    '/usr/bin/yq': {'stdlib': 'go1.26.9', 'golang.org/x/net': 'v0.55.0'},
 }
 SOURCE = re.compile(r'acquired package info from go module information:\s*(/[^\n]+)$')
 SHA256 = re.compile(r'^[0-9a-f]{64}$')
@@ -145,6 +145,10 @@ def emit_policy(config_path, vex_path, verified, template_path, sbom_hash):
     if verified:
         for path in verified['paths']:
             for module, version in PROFILES[path].items():
+                # The exact reviewed Alpine r2 yq uses patched Go 1.26.9.
+                # Validate its stdlib identity above, but issue no stdlib waiver.
+                if path == '/usr/bin/yq' and module == 'stdlib':
+                    continue
                 vulns = ['GO-2026-6612'] + (['GO-2026-6604'] if module == 'stdlib' else [])
                 for vuln in vulns:
                     rules.append({'vulnerability': vuln, 'package': {'name': module,

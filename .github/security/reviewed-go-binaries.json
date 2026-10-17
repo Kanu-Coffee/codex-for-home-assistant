@@ -1,18 +1,19 @@
 {
   "schema": 1,
   "evidence": {
-    "release": "0.7.1-dev.5",
-    "builder": "https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/38365844933",
-    "source_commit": "2c9cad274b781bb856703914f1c4af3176cb1547",
-    "note": "SHA256 of actual files in the reviewed Builder SPDX SBOMs. GH archive checksums are enforced in Dockerfile; yq is from Alpine signed packages. These are exception identities, not patched binaries."
+    "release": "0.7.2-dev.1",
+    "status": "candidate",
+    "builder": "https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/39010525417",
+    "source_commit": "eccd213cb64407a45c196f16209df3abeffd471e",
+    "note": "yq-go 4.53.3-r2: actual Builder SPDX file hashes independently matched Alpine v3.24 signed APKs (apk verify OK) for both architectures; stdlib go1.26.9, x/net v0.55.0. gh 2.97.0 bytes unchanged. Review: docs/development/yq-go-4.53.3-r2-review.md. These are exact reviewed exception identities; unknown bytes still fall back to the raw Critical gate."
   },
   "architectures": {
     "amd64": {
-      "/usr/bin/yq": "6f1c9630222c71eaa4718a92bb7f13655290b6e5432e5e5691059894b6ac74ad",
+      "/usr/bin/yq": "e729542bf14c1de1e09df51d61e875f8322d7ca04c5d9375fc01cbf780e1722d",
       "/usr/local/bin/gh": "141507c337e8b202ad398550c3b73d72f5af92e86f71665214538a81efd4c409"
     },
     "arm64": {
-      "/usr/bin/yq": "8a70f06c16d44de4a4caaf38907e55f2da156c0f024e5be5acb7acfa3cee76b4",
+      "/usr/bin/yq": "3455c1838dd3d8cc5a7e6847f8a84bae279d2c56f543815f3be8f6a828baf272",
       "/usr/local/bin/gh": "ccbb0f14178faefac1cb0f336a853071fa63a1d0df23ef5ab7a304fe3859e082"
     }
   }

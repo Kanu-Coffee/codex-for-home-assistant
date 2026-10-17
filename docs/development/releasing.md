@@ -113,6 +113,11 @@ SHA256을 검토 manifest와 대조한다. Metadata/실제 파일이 불일치�
 image/SBOM identity를 기록하는 감사 자료이며 SPDX scanner의 예외 입력으로
 사용하지 않는다. Root scanner config에는 전역 예외를 추가하지 않는다.
 
+`0.7.2-dev.1` 후보의 Alpine yq-go `4.53.3-r2` 재빌드 검토는
+[정확한 binary 해시·서명·적용 가능성 근거](yq-go-4.53.3-r2-review.md)를 따른다.
+수정된 Go `1.26.9` stdlib에는 waiver를 발급하지 않으며, 다음 binary/module 변경은
+다시 raw scan과 Critical 차단 대상으로 처리한다.
+
 ## Stable 0.7.1 공개 결과
 
 사용자 dev.7 수용 후 PR #52를 main `bd9038545da8f93f7f5f63f0a0650bcb65cfa3df`로 병합했다. Exact merge CI 38516420055와 tag Builder 38516889684가 통과했으며, annotated tag 0.7.1과 public amd64/arm64 image, non-prerelease latest GitHub Release를 발행했다. Generic digest는 `sha256:332867de3ed715f52447d8bda9d7e87b9b5fa293e3c8090cb35a01898f5c4690`이다.

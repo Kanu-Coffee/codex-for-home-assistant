@@ -9,6 +9,7 @@ All notable changes to this App are documented in this file.
 - Classify Codex processes by executable identity and verified launch records, exclude owned helpers from independent session counts, and hold unknown package executables conservatively.
 - Count registered CLI processes once and recognize value-taking global options and both Unix listener forms.
 - Persist sanitized update blocker codes and distinguish session readiness from automatic update budget, cooldown, and configuration conditions.
+- Refresh the exact signed Alpine yq-go 4.53.3-r2 review and remove its obsolete stdlib scan waivers; unknown artifacts retain the raw Critical gate.
 
 ### Validation scope
 

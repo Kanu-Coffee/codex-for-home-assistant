@@ -89,10 +89,10 @@ GH_XNET = go_module_pkg(
 )
 YQ_STDLIB = go_module_pkg(
     "stdlib",
-    "go1.26.8",
+    "go1.26.9",
     "stdlib-yq-7a8b9c",
     "/usr/bin/yq",
-    "pkg:golang/stdlib@1.26.8",
+    "pkg:golang/stdlib@1.26.9",
     "cccc" * 16,
 )
 YQ_XNET = go_module_pkg(
