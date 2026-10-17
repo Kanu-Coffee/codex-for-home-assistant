@@ -69,6 +69,7 @@ Supervisor가 없어도 검증 가능한 항목:
 - Codex updater 4 슬롯(03:00, 09:00, 15:00, 21:00) 계산, IANA timezone 파싱 및 기본값(`Asia/Seoul`) 폴백 검사
 - Semver 파싱·비교 및 musl target architecture 매핑 검사
 - 세션 감지(/run 세션 파일 및 /proc/*/exe)와 active turns/approval/loaded conversation busy 판정 및 idle 감지 검사
+- 프로세스 분류 회귀(`tests/test_codex_update_contract.py`): argv에 Codex 경로·`app-server`가 데이터로만 있는 무관 프로세스 제외, registry+`/proc` 중복 제거 및 PID+start-time 단일 계상, option 값의 `app-server` 문자열과 positional subcommand 구분, `--listen`/`--listen=unix://` 양쪽 해석, 관리형 idle 서버의 귀속 companion 독립 blocker화 금지, orphan companion의 `unknown` 보수 보류, `--add-dir` 포함 wrapper/runtime parser parity, 실제 subprocess 격리 smoke
 - Busy 상태에서의 staged 보류 및 유휴 시 원자적 symlink 전환 검사
 - `state.json` 및 업데이터 로그의 자격증명/원시 입력 비노출 검사
 - `codex update` CLI 인터셉트 및 managed updater 라우팅 검사

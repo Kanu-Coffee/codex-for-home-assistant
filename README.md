@@ -1,3 +1,5 @@
+> DEV 후보: `0.7.2-dev.1` — helper 프로세스 오분류와 업데이트 상태 표시를 개선합니다. 설치 저장소는 `https://github.com/Kanu-Coffee/codex-for-home-assistant#dev`이며 App/패널은 **Codex for Home Assistant (DEV)** / **Codex DEV**입니다. VM·CI 검증과 실제 사용자 장치 수용은 구분합니다.
+
 <p align="right">
   <strong>한국어</strong> · <a href="README.en.md">English</a>
 </p>
@@ -57,7 +59,7 @@
 | Home Assistant 직접 작업하기 | `/config` 파일과 지원되는 Core/Supervisor API를 이용해 변경하고, 가능한 경우 fresh API로 결과를 다시 확인합니다. |
 | 이동 중 이어서 작업하기 | Home Assistant 모바일 앱/웹의 Ingress 터미널을 사용하거나, ChatGPT 모바일 Remote에서 HA 앱의 SSH endpoint에 직접 연결합니다. |
 | 집의 맥락 기억시키기 | HA 구조와 사용자가 명시한 별칭·용도·선호를 이 프로젝트의 검증형 로컬 메모리에 보존해 다음 작업에서 관련 정보만 찾습니다. |
-| Codex 최신 버전 유지하기 | 하루 4회 새 stable 버전을 자동 확인하고, 실행 중인 세션이 모두 유휴(idle) 상태일 때 무중단으로 원자적 적용합니다. |
+| Codex 최신 버전 유지하기 | 하루 4회 새 stable 버전을 자동 확인하고, 실제 실행 중인 Codex 세션 프로세스가 모두 유휴(idle)로 확인될 때(무관한 명령줄 문자열이나 helper 프로세스는 세션으로 계상하지 않음) 무중단으로 원자적 적용합니다. |
 
 Bubble Card, Mushroom 같은 커스텀 카드는 앱에 포함되지 않습니다. 이미 설치된 구성요소를 활용하거나 설치 계획을 먼저 검토하도록 요청하세요.
 

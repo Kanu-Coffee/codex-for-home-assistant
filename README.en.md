@@ -1,3 +1,5 @@
+> DEV candidate: `0.7.2-dev.1` improves helper process classification and update status. Use `https://github.com/Kanu-Coffee/codex-for-home-assistant#dev`; the app/panel are **Codex for Home Assistant (DEV)** / **Codex DEV**. VM/CI validation is separate from real-device acceptance.
+
 <p align="right">
   <a href="README.md">한국어</a> · <strong>English</strong>
 </p>
@@ -57,7 +59,7 @@ These images show the real Web terminal from the public `0.5.0` image, captured 
 | Work directly on Home Assistant | Change `/config` files and use supported Core/Supervisor APIs, then recheck results through fresh APIs where possible. |
 | Continue while away from home | Use the Ingress terminal in the Home Assistant mobile app or website, or connect ChatGPT mobile Remote directly to the app's SSH endpoint. |
 | Preserve context about your home | Keep verified HA structure and user-stated aliases, purposes, and preferences in this project's local memory, then retrieve only relevant context for later work. |
-| Keep Codex updated | Automatically checks for new official stable releases 4 times daily and applies them with zero downtime when sessions are idle. |
+| Keep Codex updated | Automatically checks for new official stable releases 4 times daily and applies them with zero downtime once real Codex session processes are verified idle (unrelated command-line strings or helper processes are never counted as sessions). |
 
 Custom cards such as Bubble Card and Mushroom are not bundled with the app. Ask Codex to use components you already have, or to present an installation plan for review first.
 

@@ -2,6 +2,19 @@
 
 All notable changes to this App are documented in this file.
 
+## [0.7.2-dev.1]
+
+### Fixed
+
+- Classify Codex processes by executable identity and verified launch records, exclude owned helpers from independent session counts, and hold unknown package executables conservatively.
+- Count registered CLI processes once and recognize value-taking global options and both Unix listener forms.
+- Persist sanitized update blocker codes and distinguish session readiness from automatic update budget, cooldown, and configuration conditions.
+
+### Validation scope
+
+- Remote stdio connections remain protected until normal exit; this build does not force-disconnect or reconnect them. Daily idle-check budgets, restart cooldown, loaded-conversation protection, and managed policy checks remain enforced.
+- This is a DEV candidate; HAOS VM and native CI results are recorded separately in development progress. Real-user HAOS and ARM hardware acceptance are not implied.
+
 ## [0.7.1] - 2026-10-14
 
 ### Added

@@ -1,3 +1,5 @@
+> DEV 후보: `0.7.2-dev.1` — helper 프로세스 오분류와 업데이트 상태 표시를 개선합니다. 설치 저장소는 `https://github.com/Kanu-Coffee/codex-for-home-assistant#dev`이며 App/패널은 **Codex for Home Assistant (DEV)** / **Codex DEV**입니다. VM·CI 검증과 실제 사용자 장치 수용은 구분합니다.
+
 <p align="right">
   <strong>한국어</strong> · <a href="DOCS.en.md">English</a>
 </p>
@@ -430,11 +432,12 @@ flowchart LR
 
 - **주기 확인**: 하루 4회(기본 시간대 `Asia/Seoul` 기준 03:00, 09:00, 15:00, 21:00) 공식 GitHub Releases에서 새 stable 버전을 확인하고 SHA-256을 검증하여 `/data/codex-runtime/releases/<version>-<target>`에 준비(staging)합니다.
 - **유휴(idle) 세션 보호 및 기간별 한도**: 실행 중인 TUI, SSH, remote stdio, 백그라운드 작업, app-server 세션이 감지되면 업데이트 적용을 보류(`staged`)합니다.
+  - 세션 수는 프로세스 수와 다릅니다. `status`의 분류는 `/proc/<pid>/exe`의 실제 실행 파일과 관리 등록 record 기준의 고유 프로세스를 세며, 명령줄에 `/bin/codex`·`app-server` 같은 문자열이 데이터로만 포함된 무관 프로세스나 검증된 Codex 프로세스에 종속된 helper·companion(`codex-code-mode-host`, `bwrap`, `rg` 등)은 독립 세션으로 계상하지 않습니다. package 디렉터리 내부의 미식별 실행 파일을 포함해 신원을 검증할 수 없는 잔여 프로세스는 보류 사유 `unknown`으로 명시적으로 대기시킵니다.
   - 당일 빠른 5분 재확인은 날짜별 최대 12회(1시간 분량)로 제한됩니다.
   - 12회 도달 시 영구 차단이 아닌 일시 보류(`paused_busy`) 상태가 되어 당일 5분 확인을 멈추고, 다음 날 첫 예약 슬롯에서 동일 후보 적용을 자동으로 재개합니다.
   - 유휴 Unix app-server의 자동 재시작 트랜잭션은 24시간당 최대 1회로 제한되어 불필요한 연속 재시작을 방지합니다.
-- **자동 적용**: 모든 세션이 종료되어 완전히 유휴 상태가 되면 원자적 심볼릭 링크 교체(`current -> releases/<version>-<target>`)를 완료합니다. 새 세션부터 즉시 갱신된 버전을 사용합니다.
-- **수동 관리**: CLI에서 `ha-codex-update status`, `ha-codex-update check`, `ha-codex-update apply`, `ha-codex-update update`를 사용할 수 있습니다. `status` 명령으로 일일 확인 횟수, 재시작 횟수, 다음 재시도 시각을 확인할 수 있습니다. 기존 `codex update` 명령도 내부적으로 이 업데이터로 안전하게 라우팅됩니다.
+- **자동 적용**: 실제 대화형·관리형 세션 프로세스가 모두 종료되거나 검증된 유휴 상태가 되면 원자적 심볼릭 링크 교체(`current -> releases/<version>-<target>`)를 완료합니다. remote stdio 세션이 보류의 원인이라면 작업을 저장하고 연결을 정상 종료하세요. 격리 검증에서 실제 Codex stdio app-server는 입력 연결이 닫히면 스스로 종료했고, 이후 재확인부터 적용이 진행됩니다(업데이터는 원격 연결을 강제로 끊거나 재연결하지 않습니다). 새 세션부터 즉시 갱신된 버전을 사용합니다.
+- **수동 관리**: CLI에서 `ha-codex-update status`, `ha-codex-update check`, `ha-codex-update apply`, `ha-codex-update update`를 사용할 수 있습니다. `status` 명령으로 일일 확인 횟수, 재시작 횟수, 다음 재시도 시각과 최근 적용 시도 기준 보류 원인(`lastBlocker`)을 확인할 수 있습니다. `lastBlocker`는 실제 발견한 프로세스 보류(CLI/Remote stdio/unmanaged/unknown 등)와 검사 전에 스킵된 하루 재검사 예산 소진(`daily_budget_exhausted`)·재시작 cooldown(`restart_cooldown`)을 구분하며, 예산 소진 자체는 status와 잔여 확인 횟수로도 확인됩니다. 기존 `codex update` 명령도 내부적으로 이 업데이터로 안전하게 라우팅됩니다.
 
 적용 직전 실제 managed config·MCP parsing, 일반 파일 쓰기, 보호 경로 열기 거부, 로컬 네트워크와 graceful 종료를 검사합니다. 실행 환경이나 후보가 검사를 지원하지 않으면 `blocked_policy`로 적용을 차단합니다. 보호 파일은 내용을 읽지 않고 열기 거부만 확인합니다. 검증된 archive의 전체 파일 inventory를 별도 private receipt에 저장하고 재사용·적용·새 세션 시작 때 확인합니다. 손상된 기존 release는 삭제하거나 덮어쓰지 않습니다. 이 검증은 관리자 root의 의도적 변조까지 격리하지는 않습니다.
 

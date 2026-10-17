@@ -6,7 +6,7 @@
 
 - 상태: **Stable 0.7.1 main 병합·tag·public amd64/ARM image·GitHub latest release 공개 완료 / exact merge/tag CI·Builder PASS / 사용자 dev.7 CLI·브라우저 수용과 동일 runtime 승격 / 개발 HAOS stable 0.7.0→0.7.1 Supervisor 일반 업데이트·data/config 보존·2분 HTTP 200·종료 exit 0 확인 / 실제 ARM HAOS·DEV→main source migration 미검증 유지**
 - 현재 마일스톤: **Stable 0.7.1 운영 배포 완료**
-- 마지막 문서 기준일: **2026-10-14**
+- 마지막 문서 기준일: **2026-10-17**
 - 저장소: public `Kanu-Coffee/codex-for-home-assistant`, default branch `main`
 
 ## 완료된 결정
@@ -25,6 +25,149 @@
 - [x] interactive/Codex/S6 ambient `SUPERVISOR_TOKEN` 상속 제거와 private helper credential loader 구현
 
 ## Current Work
+
+### 2026-10-17 — task 004 DEV 배포 준비·VM 검증 진행
+
+- 사용자 요청으로 VM 검증 후 DEV 배포를 진행한다. 이번 변경의 VM 검증은 시작 당시 NOT RUN이며 이전 0.7.1 실기 증거와 구분한다. `fix/runtime-update-dev-0.7.2-1`에서 미사용 `0.7.2-dev.1` 후보와 DEV 표시를 준비하며 main/stable 채널은 변경하지 않는다.
+- 개발 HAOS VM의 시작 전 상태는 shut off다. 기존 checkout 소유 helper로 시작했고 합성 volume 기반 enforced AppArmor updater/boot smoke를 수행한 뒤 원상태로 복원한다. 사용자 운영 HA 장치·인증 자료는 사용하지 않는다.
+- 로컬 DEV 후보 전체 pytest는 **240 passed, 1 skipped in 79.40s**, release metadata 집중 시험 19 PASS다. 최초 changelog heading의 대괄호 누락으로 version 계약 1건이 실패했으나 수정 후 전체 재실행에서 해소했다. Markdown/ShellCheck/Hadolint/actionlint/diff·변경 파일 Gitleaks PASS(YAML은 기존 line-length warning만 존재). 과거 progress 기록의 빈 줄·목록 번호 형식만 lint에 맞게 정리했다.
+- **이번 소스의 개발 HAOS VM 검사 PASS**: HAOS 18.2/x86_64, Supervisor 2026.10.2, local image `codex-ha:0.7.2-dev.1-test`에서 `tests/codex-update-smoke.sh`가 실제 Codex 0.162.1 managed policy·package 전환·wrapper JSON·graceful server replacement를 통과했다. 같은 image의 `tests/apparmor-boot-smoke.sh`도 `codex_home_assistant (enforce)`에서 정상/degraded 전체 부팅·Ingress 200·민감 경로 deny·일반 config RW·clean stop을 통과했다. 합성 volume만 사용했고 실제 사용자 장치 검증과 구분한다.
+- HAOS host의 bash/Docker CLI 실행 환경 차이로 첫 boot harness 호출이 실패했다. 기존 개발 검증 방식대로 VM 내부 임시 Alpine Bash/Docker CLI harness로 재실행해 해소했으며, 실제 검사 대상의 enforce profile·policy probe를 약화하지 않았다. CI/native ARM·DEV 이미지 게시와 Supervisor 설치 수용은 아직 진행 전이다.
+
+### 2026-10-17 — 런타임 자동 업데이트 보류 진단과 개선계획
+
+- 사용자 진단 `hf_ac764d25d7a492e5`와 현재 소스를 검토하고 [.handoff/004_runtime-update-process-classification/PLAN.md](../../.handoff/004_runtime-update-process-classification/PLAN.md)를 작성했다. 전체 argv 문자열 매칭에 의한 helper 오분류 가능성, Remote stdio의 의도된 보류, 프로세스 기반 집계와 CLI 중복 집계 가능성을 구분했다. 실제 장비의 과거 blocker와 helper 수명은 재확인하지 않았다.
+- 계획은 executable/소유 관계 기반 분류, 고유 프로세스 집계, 적용 가능성과 보류 사유 표시, 격리 회귀 검증을 우선한다. 기존 loaded conversation 보호, 일별 12회 예산과 rolling 24시간 재시작 cooldown을 유지하며 Remote stdio 연결 보존 가능성은 별도 검증 관문으로 남겼다. 장기 Remote가 있는 모든 설치의 자동 적용 해결을 보장하지 않는다.
+- 소스·기존 테스트·인계 이력과 공식 Codex App Server 문서를 확인했다. 변경 문서 2개의 Markdown lint와 `git diff --check`를 통과했다. 최초 lint는 저장소 설정의 glob으로 기존 handoff까지 포함해 112개 형식 오류가 발생했고, 기존 이력을 수정하지 않은 채 임시 설정으로 변경 파일만 검사했다. 제품 코드 변경, 제품 테스트/image build, 실제 HAOS 재진단·update·restart와 외부 Git 작업은 수행하지 않았다. 기존 2026-10-15 정리 기록 변경은 보존했다.
+
+### 2026-10-17 — task 004 Executor: 프로세스 분류 구현과 검증
+
+- [.handoff/004_runtime-update-process-classification/PLAN.md](../../.handoff/004_runtime-update-process-classification/PLAN.md)의 A~C를 구현했다. `codex-runtime-manager.mjs`의 세션 판별이 `/proc/<pid>/exe` 실entrypoint(정확한 release/baseline 경계와 허용 companion allowlist, `(deleted)`, shebang interpreter argv 위치)와 PID+start-time 등록 record 기준으로 바뀌었고, registry+`/proc` 중복 계상이 제거되고, argv 문자열 데이터만 든 무관 프로세스와 검증된 소유자에 귀속된 helper·companion은 독립 세션·blocker가 되지 않는다. 귀속 불가능 잔여는 `unknown` blocker로 보수 보류한다. `isIdle`과 `canApply`가 분리되었고 status JSON/text에 `processSummary`·`blockerTypes`·`lastBlocker`가 추가됐으며 호환 필드 `activeSessions`는 프로세스 수로 유지·문서화했다. wrapper `codex`와 runtime parser는 positional subcommand/`--listen`/`--listen=`/`--add-dir` 해석을 공유타. 일별 12회·5분 재검사·24시간 rolling cooldown·loaded conversation 보호는 변경하지 않았다.
+- 회귀 fixture 9개(`test_codex_update_contract.py`)를 먼저 실패 확인(8/8 fail) 후 구현으로 통과시켰다. `.venv/bin/pytest -q` 전체 225 passed, 2 skipped(apparmor_parser·Grype 부재의 기존 환경 skip). `node --check`, `shellcheck`, markdownlint 0 errors, `git diff --check` 통과.
+- 실제 검증: amd64 이미지 `codex-ha:004-test` 로컬 빌드 후 미confined 컨테이너에서 실제 Codex `0.162.1`로 확인 — 실 wrapper가 unix app-server record를 정확히 등록, idle 관리형 서버 restartable+`canApply` true, argv-데이터 decoy(bash/python) 0 계상, SIGHUP graceful 종료. Remote stdio 격리 관측: stdin writer 생존 중 `remote_stdio` blocker 보류, EOF 후 프로세스 스스로 종료 후 blocker 해소(지원 가능 범위: 정상 종료 대기까지. 강제 재연결·연결 보존 교체는 미검증이며 다음 handoff 제안으로 남긴다).
+- NOT RUN: enforced AppArmor profile 아래 `tests/codex-update-smoke.sh` 전편(이 머신에 `apparmor_parser` 없음), 실제 사용자 HAOS 설치 수용, native ARM 실행, 버전 상승·Builder·GHCR·push(승인 범위 외), CHANGELOG entry(버전 미상승으로 배포 준비 시 Reviewer 판단). 상세는 같은 디렉터리 `REPORT.md`.
+
+### 2026-10-17 — task 004 Reviewer: 인수 보류·FIX_01 작성
+
+- PLAN/REPORT와 현재 working tree를 대조하고 [.handoff/004_runtime-update-process-classification/FIX_01.md](../../.handoff/004_runtime-update-process-classification/FIX_01.md)를 작성했다. P1: 실제 package 내부 미지 executable이 unknown 보류 없이 누락됨. P2: `lastBlocker`가 save/load에서 유실됨. P2: 유효한 `-p home app-server` 호출이 CLI로 오분류됨. 임시 ELF 프로세스, state round trip, parser 호출과 실제 0.162.1 image의 help로 각각 확인했다.
+- Reviewer 재검증: `.venv/bin/pytest -q tests/test_codex_update_contract.py tests/test_runtime_contract.py` **102 passed in 62.00s**. Node/Bash syntax·`git diff --check` PASS. 기존 테스트가 위 누락 사례를 검출하지 못하므로 세 수정과 회귀 검증 전까지 인수를 보류한다. 기존 Executor 테스트 수 기록 차이는 FIX_01_REPORT에서 명령·소스 시점별로 정리하도록 지시했다.
+- 제품 코드는 수정하지 않았다. 실제 업데이트·관리형 서버 교체·새 image build·enforced AppArmor·HAOS·ARM 실기는 이번 리뷰에서 NOT RUN이다. 기존 PLAN/REPORT·사용자 작업은 보존했다.
+
+### 2026-10-17 — task 004 FIX_01 Executor: 분류 누락·영속화·option 파싱 수정
+
+- Reviewer `FIX_01.md`의 F1~F3을 수정했다. F1: package 경계 판정과 역할 allowlist를 분리해 baseline/release 내부의 미식별 executable(향후 패키지 companion 포함)을 `unknown` blocker로 보류하며, 정상 종료 후 해소·`(deleted)`·형제 경로 대조 회귀를 추가했다. F2: `lastBlocker`를 `loadState`/`saveState` allowlist(`LAST_BLOCKER_CODES`)로 영속화하고 검사 전 예산 스킵이 프로세스 blocker를 덮지 않도록 했으며, 별도 Node 프로세스 `status --json` round trip과 임의 문자열 비Persist를 검증한다. F3: 실제 bundled `codex --help` 기준으로 값 있는 global option(`-p`/`--profile`, `-a`/`--ask-for-approval`, `--enable`, `--disable`, `--remote`, `--remote-auth-token-env`, `--local-provider`, `-i`/`--image`, `--add-dir`)을 wrapper record/update 라우팅과 runtime parser에 동시에 반영하고, option 값의 `app-server`/`--` 경계 음성 대조와 실그림 vector 통합 test를 추가했다.
+- 수정 전 7개 신규 fixture 전부 실패(재현), 수정 후 통과 포함 `.venv/bin/pytest -q` **233 passed, 2 skipped**(기존 환경 skip). `node --check`·`shellcheck -x`·`bash -n`·`git diff --check`·markdownlint 0 errors.
+- 이미지 `codex-ha:004-test` 재빌드 후 실Codex 0.162.1로 재확인: `codex --enable web_search app-server --listen unix://…` record `type app-server/managed true`+restartable, baseline 내부 미식별 copy binary → `unknown` 보류→종료 후 idle 해소. 참고로 실 app-server는 런타임에 `-p/--profile`를 거부하므로(도움말 파싱만 허용) `-p` 회귀는 mock·wrapper record 수준으로 검증했고 실제 거부 벡터로 주장하지 않는다.
+- helper가 붙은 관리형 서버의 `applyUpdate()` 실제 교체 통합 test를 추가했다: 교체 성공·new executable 승계·생존 old helper는 unknown 보류(독립 세션화 금지)·old release generation 참조 보존까지 확인. 상세는 `.handoff/004_runtime-update-process-classification/FIX_01_REPORT.md`. enforced AppArmor·HAOS·ARM 공백은 그대로 유지된다.
+
+### 2026-10-17 — task 004 Reviewer: FIX_01 재검토·FIX_02 작성
+
+- FIX_01의 F1~F3 수정과 새 회귀를 확인했다. `-p ... app-server --help` 성공은 실제 서버 기동 증거가 아니라는 Executor 정정을 수용한다. 실제 허용되는 `--enable` 벡터와 parser/record 수준 `-p` 검증을 구분한다.
+- 인수는 보류하며 [.handoff/004_runtime-update-process-classification/FIX_02.md](../../.handoff/004_runtime-update-process-classification/FIX_02.md)를 작성했다. P2 세 항목: 새 replacement 테스트가 성공 후 detached 서버를 남김(고유 basetemp 단독 실행 후 live process 1개 재현·해당 실행 잔류만 정리), policyProbe 성공 stub을 사용하면서 보고서가 injection 없는 검증이라고 주장함, 일별 12회 예산 소진·paused_busy 상태에서도 text status가 Auto-apply ready yes로 표시됨. 기존 FIX_01_REPORT와 코드는 수정하지 않았다.
+- Reviewer 실행: 관련 pair pytest **109 passed in 68.86s**, 누수 재현 단독 테스트 **1 passed in 4.57s**(PASS 후 잔류 확인). Node/Bash syntax·ShellCheck·`git diff --check` PASS. 전체 pytest·새 image build·실제 update/replacement·enforced AppArmor·HAOS·ARM은 이번 리뷰에서 NOT RUN이며, 단독 replacement 실행은 mock executable과 policy stub을 사용한 fixture transaction이다.
+
+### 2026-10-17 — task 004 FIX_02 Executor: fixture 프로세스 완전 회수·상태 표시 분리·검증 주장 정정
+
+- Reviewer `FIX_02.md`의 F1~F3을 완료하고 [.handoff/004_runtime-update-process-classification/FIX_02_REPORT.md](../../.handoff/004_runtime-update-process-classification/FIX_02_REPORT.md)를 작성했다.
+- **F1 (fixture 프로세스 완전 회수)**: `test_companion_server_real_replacement_preserves_old_generation_while_helper_lives`에서 setup 시작부터 teardown 보장 구조를 구축했다. 직접 자식(`proc`)은 stdout 닫기 및 `wait(timeout=2)`로 reap하고, detached 로 생성된 새 replacement server(`afterRestartable` 및 maintenance sessions 디렉터리 내 PID)와 helper PID를 `_terminate_fixture_processes`로 bounded wait 종료시켰다. 테스트 종료 시 `/proc` 검사를 통해 해당 fixture 임시 경로를 참조하는 live fixture process가 0임을 assertion으로 검증했다. 추가로 setup assertion 실패 경로에서도 잔류 프로세스가 0으로 정리되는 teardown 검증(`test_companion_server_setup_failure_teardown_leaves_zero_processes`)을 추가했다.
+- **F2 (검증 범위·주장 정정)**: `FIX_01_REPORT.md`는 변경 없이 이력으로 보존하고, 신규 `FIX_02_REPORT.md`에서 companion server replacement 테스트의 `policyProbe` 성공 stub(`{ policyProbe: async () => ({ valid: true }) }`) 사용을 명시적으로 정정했다. 이 테스트는 mock executable과 stub 정책 하에서 signal/socket 전환, session record 갱신, old generation 보존을 검증한 fixture transaction이며, 실제 Codex 바이너리와 enforced AppArmor 정책 통과 증거가 아님을 명시했다. rollback 실패 경계는 별도 기존 단위 테스트(`test_graceful_restart_failure_rolls_back_symlink_and_keeps_old_process` 등)의 증거이며 신규 테스트 범위 밖임을 명확히 구분했다. enforced smoke 및 실제 HAOS 장치 검증은 NOT RUN을 유지했다.
+- **F3 (상태 표시 정합성)**: `codex-runtime-manager.mjs`의 `getStatus()` 반환 JSON에서 `canApply`는 session-level predicate(프로세스 blocker 부재)로 하위 호환성을 유지하고 주석으로 의미를 명시했으며, 전체 자동 업데이트(daemon) 관점의 준비 상태를 위해 `autoApplyReady` 필드를 추가했다. text status 출력에서는 `Session ready:`(세션 blocker 여부 및 manual apply 가능 여부)와 `Auto-apply ready:`(예산 소진, cooldown, auto-update OFF, blocker 유무 종합)를 두 줄로 명확히 분리했다. 이를 통해 `paused_busy` 상태에서 세션이 유휴여도 오독을 원천 방지했다. 예산 소진+유휴, cooldown+idle server, auto-update OFF, busy blocker 및 CLI 텍스트 포맷 회귀 테스트를 추가했다.
+- 단일 기준 검증 실행:
+  - `.venv/bin/pytest -q tests/test_codex_update_contract.py`: **99 passed in 70.01s**
+  - `.venv/bin/pytest -q tests/test_codex_update_contract.py tests/test_runtime_contract.py`: **111 passed in 72.84s**
+  - `.venv/bin/pytest -q`: **237 passed, 1 skipped in 77.60s** (기존 환경 skip)
+  - `node --check` / `shellcheck -x` / `git diff --check`: 전부 PASS
+- NOT RUN: enforced AppArmor smoke, 실제 사용자 HAOS 적용, aarch64 실행, image 빌드, Git commit/push/PR/release(인계 승인 범위 준수).
+
+### 2026-10-17 — task 004 Reviewer: FIX_02 재검토·FIX_03 작성
+
+- FIX_02_REPORT의 policyProbe 성공 stub·fixture transaction 정정은 수용했다. 다만 P2 두 항목으로 인수를 보류하고 [.handoff/004_runtime-update-process-classification/FIX_03.md](../../.handoff/004_runtime-update-process-classification/FIX_03.md)를 작성했다. 새 teardown의 substring 경로 판정이 fixture `case`의 형제 `case-sibling` 프로세스까지 종료 대상으로 잡는 것을 재현했으며, signal 전 PID+start-time 재확인도 없다. 탐색만 수행하고 해당 helper로 무관 프로세스를 종료하지 않았다.
+- 상태 표시 재현: 미래 restart cooldown과 staged 후보가 있으나 Codex 프로세스가 없는 완전 유휴 상태에서 JSON `autoApplyReady`는 true, text는 cooldown 대기로 출력된다. 실제 apply는 실행하지 않았다. JSON/text가 동일한 세션·시간 조건을 쓰도록 수정 지시했다.
+- Reviewer 검사: `.venv/bin/pytest -q tests/test_codex_update_contract.py -k 'not companion_server' tests/test_runtime_contract.py` **110 passed, 2 deselected in 65.07s**. Node/Bash syntax·ShellCheck·새 FIX 문서 Markdown lint·`git diff --check` PASS. 신원이 확인되지 않은 대상을 종료할 수 있는 새 companion_server teardown 테스트 2건은 이번 리뷰에서 제외했다. 전체 pytest·image build·실제 Codex update/restart·enforced AppArmor·HAOS·ARM은 NOT RUN이며 제품 코드와 기존 handoff는 수정하지 않았다.
+
+### 2026-10-17 — task 004 FIX_03 Executor: 신원 기반 fixture 프로세스 회수·형제 경로 배제·cooldown JSON/text 일치
+
+- Reviewer `FIX_03.md`의 F1~F2를 완료하고 [.handoff/004_runtime-update-process-classification/FIX_03_REPORT.md](../../.handoff/004_runtime-update-process-classification/FIX_03_REPORT.md)를 작성했다.
+- **F1 (신원 기반 프로세스 정리 및 세그먼트 경계 엄격화)**:
+  - 단순 문자열 포함(`fixture_str in ...`)을 제거하고 `_is_path_inside`로 정확한 세그먼트 경계(`p == parent or p.is_relative_to(parent)`)를 확인하도록 수정했다.
+  - 실행 entrypoint가 아닌 단순 데이터 인수로 fixture 경로를 넘긴 프로세스는 매칭 대상에서 제외했다.
+  - `/proc/<pid>/stat`의 `starttime`을 조회하는 `_get_proc_start_time`을 구현하여 `(pid, start_time)` 신원을 추적했다.
+  - SIGTERM 및 SIGKILL 전송 직전에 `_verify_process_identity`로 동일 프로세스 생존 및 fixture 소유권을 재검증하여, 프로세스 종료 후 발생할 수 있는 PID 재사용(PID recycling) 시 엉뚱한 프로세스에 신호가 전송되는 위험을 원천 차단했다.
+  - 회귀 검증: `case-sibling` cwd 프로세스 배제, fixture 경로 데이터 argv 프로세스 배제(`test_find_fixture_processes_excludes_sibling_dirs_and_data_argv`), PID 재사용 불일치 시 신호 미전송(`test_terminate_fixture_processes_skips_recycled_pid_with_mismatched_start_time`), companion replacement 성공 및 setup 실패 시 잔류 0 확인.
+- **F2 (완전 유휴 상태 cooldown 처리의 JSON/text 정합성 일치)**:
+  - `codex-runtime-manager.mjs`의 `formatAutoApplyReady`에서 `optionsValid` 검사를 최우선으로 배치하여 옵션 오류(`blocked`)와 정상 비활성화(`disabled`)의 혼동을 방지했다.
+  - 시간 비교 기준을 `getNow().getTime()`으로 통일하여 `process.env.CODEX_TEST_CLOCK` 환경에서도 일관되게 동작하도록 맞췄다.
+  - restart cooldown은 실행 중인 관리형 서버가 있어 graceful restart가 필요한 상태(`!status.isIdle`)에서만 대기 사유가 되도록 수정했다. 실행 중인 프로세스가 없는 완전 유휴 상태(`status.isIdle: true`)에서는 미래의 `nextRestartAllowedAt`이 있더라도 JSON `autoApplyReady: true`와 text `yes (ready for next automatic apply check)`가 일치하여 불필요한 대기 안내가 발생하지 않는다.
+  - 회귀 검증: 완전 유휴+미래 cooldown(JSON/text ready 일치), idle managed server+미래 cooldown(JSON/text waiting 일치), invalid options blocked, auto-update OFF disabled, busy blocker deferred 분기 검증 완료.
+- 단일 기준 검증 실행:
+  - `.venv/bin/pytest -q tests/test_codex_update_contract.py`: **101 passed in 70.15s**
+  - `.venv/bin/pytest -q tests/test_codex_update_contract.py tests/test_runtime_contract.py`: **113 passed in 73.12s**
+  - `.venv/bin/pytest -q`: **239 passed, 1 skipped in 78.56s** (기존 환경 skip)
+  - `node --check` / `shellcheck -x` / `git diff --check`: 전부 PASS
+- NOT RUN: enforced AppArmor smoke, 실제 사용자 HAOS 적용, aarch64 실행, image 빌드, Git commit/push/PR/release(인계 승인 범위 준수).
+
+### 2026-10-17 — task 004 Reviewer: FIX_03 재검토·FIX_04 작성
+
+- FIX_03의 cooldown JSON/text 일치·invalid options 우선 표시·getNow 사용 변경을 수용했다. 미래 cooldown이 남아 있어도 완전 유휴 상태에서는 실제 getStatus의 `autoApplyReady true`와 text ready가 일치함을 재확인했다. fixture 경로 segment 경계와 PID+start-time 검사도 추가됐다.
+- 다만 테스트 정리 함수가 `python - <fixture/data.txt>`의 stdin 실행 모드에서 데이터 인수를 실행 스크립트로 오인해 종료 대상으로 수집하는 P2 1건을 재현했다. 탐색만 호출하고 helper로 종료 신호를 보내지 않았으며 자체 생성 Popen을 직접 정상 종료·reap했다. 인수 보류·[FIX_04.md](../../.handoff/004_runtime-update-process-classification/FIX_04.md)를 작성했고, 수정 범위는 해당 helper의 명시적 entrypoint 판정과 회귀 검증으로 제한했다.
+- Reviewer 검사: `.venv/bin/pytest -q tests/test_codex_update_contract.py -k 'not companion_server and not terminate_fixture_processes' tests/test_runtime_contract.py` **111 passed, 3 deselected in 64.49s**. Node/Bash syntax·ShellCheck·새 FIX 문서 Markdown lint·`git diff --check` PASS. 전체 pytest·해당 teardown 실행·새 image build·실제 update/restart·enforced AppArmor·HAOS·ARM은 이번 리뷰에서 NOT RUN이다. 제품 코드와 기존 handoff는 수정하지 않았다.
+
+### 2026-10-17 — task 004 FIX_04 Executor: 인터프리터 stdin/인라인 eval 모드 데이터 argv 배제
+
+- Reviewer `FIX_04.md`의 F1을 완료하고 [.handoff/004_runtime-update-process-classification/FIX_04_REPORT.md](../../.handoff/004_runtime-update-process-classification/FIX_04_REPORT.md)를 작성했다.
+- **F1 (인터프리터 stdin/인라인 코드 모드 데이터 argv 배제)**:
+  - `_is_proc_running_inside_fixture`의 인터프리터 검사에서 Python stdin 모드(`-`) 및 인라인 코드/모듈 플래그(`-c`, `-m`, `-e`, `--eval`, `-p`, `--print`)를 감지하면 스크립트 파일 실행이 아니므로 즉시 탐색 대상에서 제외(`return False`)하도록 수정했다.
+  - cwd 검사의 느슨한 문자열 포함(`codex`/`app-server`) fallback을 완전히 제거하고, 실제 실행 entrypoint(`argv[0]` 또는 `argv[1]`)가 fixture 내부에 속하는 경우에만 소유권을 인정하도록 엄격화했다.
+  - 회귀 검증: `test_find_fixture_processes_excludes_sibling_dirs_and_data_argv`에 Python stdin 모드(`sys.executable, "-", str(data_file)`) 및 Node 인라인 eval 모드(`node, "-e", ..., str(data_file)`) 케이스를 추가하여 데이터 경로 인수를 가진 외부 프로세스가 엄격히 배제됨을 확인했다.
+  - 고유 basetemp 단독 실행을 통해 companion_server 교체 성공 및 setup 실패 양쪽에서 프로세스 누수 0(잔류 프로세스 없음)을 재확인했다.
+- 단일 기준 검증 실행:
+  - `.venv/bin/pytest -q tests/test_codex_update_contract.py`: **101 passed in 70.31s**
+  - `.venv/bin/pytest -q tests/test_codex_update_contract.py tests/test_runtime_contract.py`: **113 passed in 73.12s**
+  - `.venv/bin/pytest -q`: **239 passed, 1 skipped in 79.17s** (기존 환경 skip)
+  - `node --check` / `shellcheck -x` / `git diff --check`: 전부 PASS
+- NOT RUN: enforced AppArmor smoke, 실제 사용자 HAOS 적용, aarch64 실행, image 빌드, Git commit/push/PR/release(인계 승인 범위 준수).
+
+### 2026-10-17 — task 004 Reviewer: FIX_04 재검토·FIX_05 작성
+
+- FIX_04의 stdin/분리된 eval 옵션 배제와 cwd 문자열 fallback 제거는 확인했다. 그러나 `python -cCODE <fixture/data.txt>`의 유효한 inline 실행이 여전히 fixture script로 오인되어 종료 대상으로 수집되는 P2를 재현했다. helper를 통한 실제 신호는 보내지 않았고 자체 생성 Popen만 직접 정상 종료·reap했다.
+- 인수 보류·[FIX_05.md](../../.handoff/004_runtime-update-process-classification/FIX_05.md)를 작성했다. 수정 범위는 테스트 정리 함수와 회귀로 한정하며, 플래그 예외 추가를 반복하는 대신 실제 fixture에 필요한 native executable/확인된 Node·Python의 직접 script 인수만 인정하도록 구체화했다. 제품 코드와 기존 handoff는 수정하지 않았다.
+- Reviewer 검사: `.venv/bin/pytest -q tests/test_codex_update_contract.py -k 'not companion_server and not terminate_fixture_processes' tests/test_runtime_contract.py` **111 passed, 3 deselected in 64.46s**. Node/Bash syntax·ShellCheck·새 FIX 문서 Markdown lint·`git diff --check` PASS. 전체 pytest·해당 teardown 실행·새 image build·실제 update/restart·enforced AppArmor·HAOS·ARM은 이번 리뷰에서 NOT RUN이다.
+
+### 2026-10-17 — task 004 FIX_05 Executor: 명시적 Positive Allowlist 기반 fixture 프로세스 한정
+
+- Reviewer `FIX_05.md`의 F1을 완료하고 [.handoff/004_runtime-update-process-classification/FIX_05_REPORT.md](../../.handoff/004_runtime-update-process-classification/FIX_05_REPORT.md)를 작성했다. 제품 런타임 코드는 일체 수정하지 않고 테스트 헬퍼 및 회귀 테스트만 수정했다.
+- **F1 (엄격한 Positive Allowlist 기반 fixture 프로세스 판정)**:
+  - `_is_proc_running_inside_fixture`를 플래그 예외 블랙리스트 및 cwd fallback 방식에서 엄격한 positive allowlist로 전면 재작성했다.
+  - 1) **Native executable**: `/proc/<pid>/exe`의 symlink target이 canonical `fixture_dir` 내부인 경우에만 True를 반환한다(`_is_path_inside(exe_target, fixture_dir)`).
+  - 1) **Interpreter fixture**: `/proc/<pid>/exe`의 target realpath가 확인된 Node/Python 인터프리터(`sys.executable`, `which node`, 표준 시스템 바이너리 경로)이고, `len(argv) >= 2`이며, `argv[1]`이 옵션(`-`로 시작)이 아니고 canonical `fixture_dir` 내부의 실제 regular file(`Path(argv[1]).is_file()`)일 때만 True를 반환한다. 붙여 쓴 `-cCODE`, `-m`, `--eval=CODE`, `-` 등 어떤 인터프리터 옵션이라도 선행하면 보수적으로 제외한다.
+  - 1) **Fallback 완전 제거**: `argv[0]`의 basename prefix 검사, `cwd` 내부 여부, `argv[2:]`에서 비옵션 토큰을 찾는 루프 등 불확실한 소유권 추정 fallback을 완전히 제거했다.
+  - 1) **안전한 신원 확인 유지**: `(pid, start_time)` 기반 신원 추적, 직접 자식 reap, bounded wait, 신호 전송 직전 프로세스 신원 재확인은 유지했다.
+- **검증 실행**:
+  - **독립 재현 확인**: 수정 전 `sys.executable, "-cimport time; time.sleep(30)", str(data_file)` 실행 시 `matched: True` (F1 버그 재현) -> 수정 후 `matched: False` (정상 배제 확인).
+  - **회귀 테스트 강화**:
+    - `test_find_fixture_processes_excludes_sibling_dirs_and_data_argv`: sibling cwd, 분리된 `-c`, 붙여 쓴 `-cCODE`, stdin `-`, Node 분리된 `-e`, Node 붙여 쓴 `--eval=CODE`, fixture cwd 외부 프로세스, argv[0] 위장 imposter 프로세스 배제 및 Python script, Node script, native binary 실행 프로세스 탐색 확인.
+    - `test_is_proc_running_inside_fixture_synthetic_proc` 신규 추가: 합성 `/proc` 구조를 통해 argv[0] 위장, 붙여 쓴 inline 플래그, cwd fallback 제거, 정식 Python/Node/Native 프로세스 수집을 결정론적 단위 검증.
+    - `companion_server` 및 `terminate_fixture_processes` 고유 basetemp(`/tmp/pytest-fix05-companion`) 실행: 3 passed in 4.36s, basetemp 잔류 프로세스 0개 확인.
+  - **단일 기준 검증 실행**:
+    - `.venv/bin/pytest -q tests/test_codex_update_contract.py`: **102 passed in 70.64s**
+    - `.venv/bin/pytest -q`: **240 passed, 1 skipped in 78.80s** (기존 환경 skip)
+    - `node --check` / `shellcheck -x` / `git diff --check`: 전부 PASS
+- NOT RUN: enforced AppArmor smoke, 실제 사용자 HAOS 적용, aarch64 실행, image 빌드, Git commit/push/PR/release(인계 승인 범위 준수).
+
+### 2026-10-17 — task 004 Reviewer: FIX_05 인수·로컬 구현 리뷰 통과
+
+- PLAN/REPORT와 FIX_01~FIX_05 및 각 REPORT, 현재 소스·테스트·문서 diff를 재검토했다. **로컬 구현 인수 가능(APPROVED)**이며 추가 FIX_06은 작성하지 않았다. 이전 인수 보류 사유는 이번 판정으로 해소한다. 기존 handoff 이력과 사용자 변경은 보존했다.
+- 실제 executable 경계 또는 확인된 Node/Python의 직접 script 실행만 인정하는 fixture 탐색을 확인했다. Reviewer 독립 재현에서 붙여 쓴 `python -cCODE` 및 stdin 데이터 인수는 제외되고 실제 Python fixture script는 탐색됐다. PID+start-time 재검사, 형제 경로·argv 위장 배제, replacement 성공·setup 실패 정리 회귀를 포함해 실행했다. 제품 분류·집계·lastBlocker 영속화·예산/cooldown 상태 표시의 앞선 수정도 유지된다.
+- Reviewer가 고유 임시 basetemp에서 `.venv/bin/pytest -q tests/test_codex_update_contract.py tests/test_runtime_contract.py --basetemp <review-temp>/pytest`를 **제외 없이 실행해 115 passed in 69.17s**를 확인했다. 테스트 종료 후 `/proc`에서 해당 실행의 fixture entrypoint를 참조하는 live 프로세스 **0개**를 독립 확인했다. 이 수치는 이번 리뷰 시점 소스의 실제 결과이며 이전 보고서의 다른 시점 수치를 승계하지 않는다.
+- manager Node syntax, wrapper Bash syntax/ShellCheck, `git diff --check` PASS. 이번 Reviewer 기록의 Markdown lint는 PASS이며 progress 전체 lint에는 앞선 Executor 기록의 빈 줄·목록 번호 형식 오류 6건이 남아 있다(101/123/136/137/138/151행). 제품 인수 차단 결함으로 분류하지 않고 기존 기록을 보존했다. Reviewer는 제품 코드를 수정하거나 commit/push/PR/release·버전 상승·실제 HAOS 변경을 수행하지 않았다. 이번 pair의 replacement는 mock executable과 policyProbe 성공 stub을 사용한 fixture transaction이며 실제 Codex/enforced policy 적용 증거로 확대하지 않는다.
+- **배포·실환경 수용 완료 판정은 아니다.** 전체 pytest 재실행, 새 image build, enforced AppArmor updater/boot smoke, 실제 사용자 HAOS·Remote 자동 업데이트 및 native ARM 검증은 이번 리뷰에서 NOT RUN이다. 기존 장기 Remote stdio는 계속 정상 종료까지 보류하며 모든 설치의 자동 적용 완료를 보장하지 않는다. 해당 검증·발행은 별도 요청 범위에서 진행한다.
+
+### 2026-10-15 — 개발 잔여물 정리 완료
+
+- 사용자 요청으로 컨테이너가 참조하지 않는 Codex for HA 로컬 이미지 7개(fix01/fix04/fix06/test/dev.2/public dev.6/0.7.0)를 삭제했다. 공개 registry의 이미지·tag·release는 변경하지 않았다.
+- clean 상태의 완료된 임시 release Git worktree 2개를 `git worktree remove`로 제거했다. `/tmp/codex-ha*` 임시 자료와 저장소의 pytest/개발 스크립트 Python 캐시 등 88개 항목을 정리했다.
+- 정리 전후 `df -B1` 측정: 루트 디스크 사용량 330,167,263,232 → 321,879,351,296 bytes(약 7.72 GiB 감소), `/tmp` tmpfs 사용량 2,488,979,456 → 2,408,816,640 bytes(약 76.45 MiB 감소). 다른 프로세스의 동시 쓰기에 따라 수치는 변할 수 있다.
+- 소스·문서용 이미지·Git branch/tag/history·handoff·인증·HAOS VM 디스크/설치 데이터·개발 도구/venv·다른 프로젝트 컨테이너·공유 Docker build cache/volume은 보존했다. 작업트리 제거 후 main만 남고, 정리 과정에서 tracked 파일 삭제가 없음을 확인했다. 제품 코드 변경이 없어 런타임 재테스트는 수행하지 않았다.
 
 ### 2026-10-14 — Stable 0.7.1 승격·latest release·일반 업데이트 검증 완료
 

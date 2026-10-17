@@ -1,3 +1,5 @@
+> DEV 후보: `0.7.2-dev.1` — helper 프로세스 오분류와 업데이트 상태 표시를 개선합니다. 설치 저장소는 `https://github.com/Kanu-Coffee/codex-for-home-assistant#dev`이며 App/패널은 **Codex for Home Assistant (DEV)** / **Codex DEV**입니다. VM·CI 검증과 실제 사용자 장치 수용은 구분합니다.
+
 <p align="right">
   <strong>한국어</strong> · <a href="README.en.md">English</a>
 </p>
