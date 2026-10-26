@@ -34,6 +34,7 @@
 - 최신 local image `codex-ha:0.7.2-dev.2-test` (`sha256:9372aaa7dd5fe25046d884101f1f3a096146bc482e9b9fbca8cae3fe749b7893`)를 개발 HAOS VM에서 재검증했다. 실제 `/init`·S6·기존 namespaced AppArmor enforce·합성 자료로 정상 및 active trickle I/O 조건 모두 Ingress 200/5개 서비스 up, **30초 Docker stop 유예에서 각각 약 3초·exit 0**, data marker 보존 PASS다. Active-I/O용 preload/loopback server는 fixture이며 release image에 포함하지 않는다.
 - 개발 VM의 test container/fixture/image를 정리했다. 기존 DEV App은 0.7.2-dev.1/stopped, stable App은 0.7.1/stopped로 유지됐다. VM은 시작 전과 같은 shut off로 복원했으며 `virsh domstate`로 확인했다. 게시 CI/run/digest는 이어서 확정 기록한다. VM Docker stop 증거는 실제 Supervisor 일반 stop/restart와 구별한다.
 - 로컬 구현 및 최신 격리 VM 범위의 인수 후 PR/CI와 immutable dev.2 배포를 진행한다. Native ARM CI, tag Builder/SBOM/Critical gate·서명/attestation·공개 조회를 통과해야 게시 완료로 기록한다. 사용자 Web/SSH/Remote·Supervisor restart·ARM 실장비 수용과 memory/PATH 경고 영향 분류는 게시 후 실기기 과제로 남긴다.
+- [PR #55](https://github.com/Kanu-Coffee/codex-for-home-assistant/pull/55)의 최초 CI는 직접 wrapper 격리 회귀에 필요한 host `bwrap` 미설치로 1건 실패했다(246 passed/1 skipped). 제품 dependency를 추가하지 않고 lint/unit CI에 bubblewrap과 기존 digest 검증 CI-only userns profile 준비를 적용했다. 로컬 actionlint/YAML/diff PASS 후 새 head에서 CI를 다시 실행한다. 이 변경은 VM에서 검증한 제품 runtime bytes를 바꾸지 않는다.
 
 ### 2026-10-26 — task 004 FIX_09 Executor: F1(부분 관측 피드백 구조화 전달)·F2(활성 I/O 네트워크 중단 취소·타임아웃) 및 개발용 HAOS VM S6/AppArmor 종료 실측 완료
 
