@@ -581,6 +581,8 @@ raw scan으로 진행한다. 실제 Grype 대조에서 metadata 누락 fixture�
 
 ## 6. FIX_09 수용 행렬 (dev.2 후보 보완 및 HAOS VM 검증)
 
+> 2026-10-26 후속 수용: 사용자가 잔여 실기기 항목을 포함해 전체 검증 완료·정상을 확인하고 stable 0.7.2 승격을 승인했다. 아래 표는 당시 개발/VM의 측정 이력이며 NOT RUN을 임의의 측정 PASS로 덮어쓰지 않는다. 사용자 수용과 exact stable CI/Builder/공개 게시 결과는 `progress.md`의 Stable 0.7.2 완료 기록을 따른다. 상세 ARM 하드웨어 및 DEV→main source migration 측정 증거는 별도로 제공되지 않았다.
+
 ### 6.1 실행 경계별 수용 판정
 
 | 진입 경로 | `/config` 보호 경로 상태 | 기대 동작 및 반환 코드 | 판정 상태 |

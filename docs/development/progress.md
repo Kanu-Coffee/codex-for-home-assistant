@@ -4,8 +4,8 @@
 
 ## Project Status
 
-- 상태: **Stable 0.7.1 main 병합·tag·public amd64/ARM image·GitHub latest release 공개 완료 / exact merge/tag CI·Builder PASS / 사용자 dev.7 CLI·브라우저 수용과 동일 runtime 승격 / 개발 HAOS stable 0.7.0→0.7.1 Supervisor 일반 업데이트·data/config 보존·2분 HTTP 200·종료 exit 0 확인 / 실제 ARM HAOS·DEV→main source migration 미검증 유지**
-- 현재 마일스톤: **사용자 실기기 전체 검증 완료·정식판 승격 승인 / Stable 0.7.2 게시 진행**
+- 상태: **Stable 0.7.2 main·tag·public amd64/aarch64 image·GitHub latest 정식 릴리스 게시 완료 / 사용자 dev.2 실기기 전체 정상 확인·승격 승인 / exact PR/main CI·Builder·독립 공개/서명/provenance/SPDX 검증 PASS / task 004 개발 PLAN 종료**
+- 현재 마일스톤: **Stable 0.7.2 정식 배포 완료**
 - 마지막 문서 기준일: **2026-10-26**
 - 저장소: public `Kanu-Coffee/codex-for-home-assistant`, default branch `main`
 
@@ -25,6 +25,20 @@
 - [x] interactive/Codex/S6 ambient `SUPERVISOR_TOKEN` 상속 제거와 private helper credential loader 구현
 
 ## Current Work
+
+### 2026-10-26 — Stable 0.7.2 정식 배포 완료
+
+- 사용자의 실기기 전체 검증 정상 확인·정식판 승격 및 배포 승인에 따라 [PR #57](https://github.com/Kanu-Coffee/codex-for-home-assistant/pull/57)을 main에 병합했다. 수용된 dev.2의 rootfs 차이는 MOTD DEV 표시 제거와 App version 상수 변경뿐이다. Baseline Codex 0.162.1, slug/data/API 권한·민감 경로 보호·기존 DEV tag/image는 유지한다.
+- Source merge `4465ff4f81c09725efc434f27d9ef6a499905ddf`, annotated tag `0.7.2` object `b95a95f7231045e05e0b0cdefda1618e38abc181`. [PR CI 40289566094](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/40289566094), [non-publishing Builder 40289565994](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/40289565994), [exact main CI 40290251763](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/40290251763) 모두 PASS. Native amd64/aarch64 full smoke·실제 AppArmor updater 및 /init boot/clean-stop 검사 포함이다.
+- [Tag Builder 40290906498](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/40290906498)의 양 architecture SBOM/Critical gate·signature/provenance/SPDX·multiarch manifest 및 final promotion PASS. [0.7.2 GitHub 정식 릴리스](https://github.com/Kanu-Coffee/codex-for-home-assistant/releases/tag/0.7.2)는 draft=false, prerelease=false이며 latest로 확인했다.
+- 게시 후 독립 검증: generic/architecture tag digest 및 config SHA·linux arch·stable/version label 일치, 모든 layer HEAD 익명 접근 PASS. 세 subject Cosign signature와 provenance, 양 architecture SPDX attestation을 exact workflow identity·tag/source SHA 및 GitHub-hosted runner 조건으로 검증해 PASS했다. Public main repository/config의 익명 GET 및 stable metadata PASS.
+- 공개 digest:
+  - generic: `sha256:47fd2b224809ba98fe2bfa3ddec56786e4a2a1070d9a6e84b0b10fdbde9bfdf6`
+  - amd64: `sha256:0c722d2187ab2cf2261fcb9b0418a601557ff7a7a178e8237ea9790e429a6db2`
+  - aarch64: `sha256:5099b1e1706b884229715d8536f52f52b45dcf48b1867a89f80c7251ec0eb150`
+- 로컬 전체 **247 passed, 1 skipped in 85.23s**, stable build·정적 검사 PASS. 로컬 full Docker smoke의 host bwrap loopback 권한 제한 FAIL은 아래 기록에 보존하며, exact main 양 architecture CI의 전체 smoke PASS와 구별한다. 사용자 실기기 수용은 사용자 제공 증거이며 이 개발 세션에서 운영 장치를 업데이트/재시작한 것은 아니다.
+- 기존 정식판 사용자는 같은 저장소의 일반 App update로 0.7.2를 설치한다. DEV #dev→main source migration이나 별도 ARM 하드웨어의 상세 측정 증거를 새로 생성하지 않았다. 기존 migration·플랫폼 세부 미검증 기록은 유지하며 이번 승인에서 포괄적으로 확인된 사실을 임의의 측정값으로 바꾸지 않는다.
+- task 004 개발 PLAN과 정식판 승격·공개 게시 작업 완료. 이 후속 증거 문서 commit은 immutable release source/tag를 바꾸지 않는다.
 
 ### 2026-10-26 — 사용자 전체 정상 확인·Stable 0.7.2 승격 승인 및 게시 진행
 
