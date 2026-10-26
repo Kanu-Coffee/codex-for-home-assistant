@@ -1,3 +1,5 @@
+> Stable `0.7.2` promotes the user-accepted `0.7.2-dev.2` runtime with process classification, diagnostic/version reporting, and graceful shutdown improvements. Install from `https://github.com/Kanu-Coffee/codex-for-home-assistant`.
+
 <p align="right">
   <a href="DOCS.md">한국어</a> · <strong>English</strong>
 </p>
@@ -6,7 +8,7 @@
 
 This guide explains how Home Assistant OS users can install the app, use Codex through the Web UI, SSH, or mobile Remote, and safely work on dashboards, automations, entities, and configuration errors.
 
-The current stable installation baseline is app version `0.7.1`. HAOS displays the app as **Codex for Home Assistant** and the sidebar as **Codex**.
+The current stable installation baseline is app version `0.7.2`. HAOS displays the app as **Codex for Home Assistant** and the sidebar as **Codex**.
 
 > [!WARNING]
 > This app can read and write `/config` except for protected `secrets.yaml` and `.storage` paths, and it can use the Home Assistant Core and Supervisor `manager` APIs. API responses, logs, and browser views can still contain sensitive information. Allow only trusted administrators to use it, and review a backup and diff before making changes. Never port-forward TCP `2223` directly to the internet.
@@ -16,11 +18,11 @@ The current stable installation baseline is app version `0.7.1`. HAOS displays t
 ### Supported environments
 
 - Home Assistant OS or another installation with Supervisor
-- Stable `0.7.1` supports **amd64** and 64-bit **aarch64** devices. Raspberry Pi requires 64-bit HAOS. 32-bit `armv7` is not supported.
+- Stable `0.7.2` supports **amd64** and 64-bit **aarch64** devices. Raspberry Pi requires 64-bit HAOS. 32-bit `armv7` is not supported.
 - Internet access for the app image and Codex authentication
 - An OpenAI/ChatGPT account with access to Codex
 
-The stable `0.7.1` manifest omits the `stage` key and therefore uses the Supervisor's default stable channel; `boot: manual` remains explicit. The candidate payload lineage passed native ARM CI, public amd64+aarch64 image publication, and anonymous inspection. A real Raspberry Pi/aarch64 HAOS run remains **NOT RUN**; release approval explicitly accepted that gap based on the automated evidence. HACS installation is not supported.
+The stable `0.7.2` manifest omits the `stage` key and therefore uses the Supervisor's default stable channel; `boot: manual` remains explicit. The candidate payload lineage passed native ARM CI, public amd64+aarch64 image publication, and anonymous inspection. A real Raspberry Pi/aarch64 HAOS run remains **NOT RUN**; release approval explicitly accepted that gap based on the automated evidence. HACS installation is not supported.
 
 ### What the app provides
 
@@ -433,11 +435,12 @@ Separate from Home Assistant app image updates, the bundled Codex binary support
 
 - **Schedule**: Checks official GitHub Releases 4 times daily (03:00, 09:00, 15:00, 21:00 in configured timezone, default `Asia/Seoul`), verifies SHA-256 against release metadata, and stages the package under `/data/codex-runtime/releases/<version>-<target>`.
 - **Idle session protection & periodic caps**: If active sessions (TUI, SSH, remote stdio, background tasks, or app-server turns) are detected, update application is safely deferred (`staged`).
+  - Session counts are not process counts. Classification uses the actual `/proc/<pid>/exe` entrypoint and managed launch records; unrelated processes that merely carry `/bin/codex` or `app-server` strings as argv data, and helper companions (`codex-code-mode-host`, `bwrap`, `rg`, …) owned by a verified Codex process, never become independent sessions. Processes whose identity cannot be verified - including unrecognized executables inside the managed package directory - are held explicitly as an `unknown` blocker.
   - Fast local checks are capped at 12 checks per calendar date (covering up to 1 hour of active session contention).
   - Reaching 12 checks transitions the candidate to temporary pause (`paused_busy`) rather than a permanent block, pausing fast 5-minute loops for the day and automatically resuming apply attempts on the next date's first scheduled slot.
   - Automated graceful restart for idle Unix app-servers is limited to at most 1 transaction per 24 hours to prevent churn.
-- **Automatic apply**: Once all sessions are completely idle, it flips the `/data/codex-runtime/current` symlink atomically. New sessions immediately use the updated version.
-- **Manual update**: Use `ha-codex-update status`, `ha-codex-update check`, `ha-codex-update apply`, or `ha-codex-update update`. The `status` command reports daily checks, restart counts, pause reason, and next retry time. The standard `codex update` command is also routed to this managed updater.
+- **Automatic apply**: Once every real interactive or managed session process has exited or is verified idle, it flips the `/data/codex-runtime/current` symlink atomically. If a remote stdio session is the blocker, save your work and close the connection normally; isolated verification showed the real Codex stdio app-server exits by itself when its input connection closes, and the next re-check proceeds (the updater never force-disconnects or reconnects a remote). New sessions immediately use the updated version.
+- **Manual update**: Use `ha-codex-update status`, `ha-codex-update check`, `ha-codex-update apply`, or `ha-codex-update update`. The `status` command reports daily checks, restart counts, pause reason, next retry time, and the last apply attempt's `lastBlocker`, which distinguishes an observed process blocker (CLI/remote stdio/unmanaged/unknown) from a pre-inspection skip (`daily_budget_exhausted` or `restart_cooldown`). The standard `codex update` command is also routed to this managed updater.
 
 Before applying, the updater checks actual managed config and MCP parsing, ordinary writes, denied protected-path opens, local networking, and graceful shutdown. An incompatible candidate or unavailable test environment blocks application with `blocked_policy`. Protected contents are never read by the probe. A private receipt stores the verified archive’s complete file inventory, checked on reuse, application, and new session admission. Existing damaged releases are preserved. This does not isolate deliberate tampering by container root.
 
@@ -568,7 +571,7 @@ Before uninstalling, decide how to handle any Codex configuration and authentica
 
 ## Limitations and support
 
-- Stable `0.7.1` supports amd64 and 64-bit aarch64. Native aarch64 CI and image validation passed, but a real Raspberry Pi/aarch64 HAOS run remains **NOT RUN** and was accepted as a release validation gap. Armv7 is unsupported.
+- Stable `0.7.2` supports amd64 and 64-bit aarch64. Native aarch64 CI and image validation passed, but a real Raspberry Pi/aarch64 HAOS run remains **NOT RUN** and was accepted as a release validation gap. Armv7 is unsupported.
 - `secrets.yaml` and `.storage` contents are explicitly blocked from normal direct Codex filesystem access, so their contents do not enter Codex through that path; managed requirements also deny Codex directory reads. The AppArmor validator allowance still leaves `.storage` entry listing available to a root shell. Sensitive raw API, log, and browser output is not sanitized, and a root interactive process also retains residual access to the private runtime credential file.
 - It does not bundle or automatically install Bubble Card or other custom cards.
 - The Web UI is a terminal, not a dedicated chat interface.

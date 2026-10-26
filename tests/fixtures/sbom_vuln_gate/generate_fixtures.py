@@ -58,7 +58,8 @@ def go_module_pkg(
             {
                 "referenceCategory": "SECURITY",
                 "referenceType": "cpe23Type",
-                "referenceLocator": f"cpe:2.3:a:{name}:{name}:{version}:*:*:*:*:*:*:*",
+                "referenceLocator": (f"cpe:2.3:a:golang:go:{version.removeprefix('go')}:-:*:*:*:*:*:*"
+                                     if name == "stdlib" else f"cpe:2.3:a:{name}:{name}:{version}:*:*:*:*:*:*:*"),
             },
             {
                 "referenceCategory": "PACKAGE-MANAGER",
@@ -89,10 +90,10 @@ GH_XNET = go_module_pkg(
 )
 YQ_STDLIB = go_module_pkg(
     "stdlib",
-    "go1.26.8",
+    "go1.26.9",
     "stdlib-yq-7a8b9c",
     "/usr/bin/yq",
-    "pkg:golang/stdlib@1.26.8",
+    "pkg:golang/stdlib@1.26.9",
     "cccc" * 16,
 )
 YQ_XNET = go_module_pkg(

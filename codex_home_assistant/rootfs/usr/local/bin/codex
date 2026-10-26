@@ -18,13 +18,13 @@ while [[ $# -gt 0 ]]; do
       update_args=("$@")
       break
       ;;
-    -m|--model|-c|--config|-C|--cd|--profile|--color|-s|--sandbox)
+    -m|--model|-c|--config|-C|--cd|--profile|--color|-s|--sandbox|-p|-a|--ask-for-approval|--enable|--disable|--remote|--remote-auth-token-env|--local-provider|-i|--image|--add-dir)
       shift 2 2>/dev/null || break
       ;;
     -m*|-c*|-C*)
       shift
       ;;
-    --model=*|--config=*|--cd=*|--profile=*|--color=*|--sandbox=*)
+    --model=*|--config=*|--cd=*|--profile=*|--color=*|--sandbox=*|--enable=*|--disable=*|--remote=*|--remote-auth-token-env=*|--local-provider=*|--add-dir=*)
       shift
       ;;
     -*)
@@ -75,11 +75,7 @@ set -- "${orig_args[@]}"
 # shellcheck source=/dev/null
 . /usr/local/lib/codex-ha/sensitive-path-policy.sh
 
-if ! codex_ha_sensitive_paths_validate /config; then
-  printf '%s\n' \
-    'codex: protected Home Assistant paths have an unsafe link or file type; Codex will not start' >&2
-  exit 78
-fi
+codex_ha_sensitive_paths_enforce /config codex
 
 approval_policy=on-request
 sandbox_mode=workspace-write
@@ -131,19 +127,52 @@ codex_real_bin="/usr/local/libexec/codex-real"
 if [[ -d "${CODEX_SESSIONS_DIR}" ]]; then
   if { exec 200>"${CODEX_MAINTENANCE_GATE}"; } 2>/dev/null && timeout 2 flock -s 200 2>/dev/null; then
     start_time=$(awk '{print $22}' "/proc/$$/stat" 2>/dev/null || echo "0")
+    # Determine the positional subcommand and its --listen value using the same
+    # option-aware skip as the runtime classifier (parseCodexInvocation in
+    # codex-runtime-manager.mjs). Option values and post-'--' prompts are never
+    # treated as subcommands.
+    codex_subcommand=""
+    codex_listen=""
+    options_ended=false
+    idx=0
+    args=("$@")
+    while [[ "${idx}" -lt "${#args[@]}" ]]; do
+      token="${args[${idx}]}"
+      if [[ "${options_ended}" == true ]]; then
+        idx=$((idx + 1))
+        continue
+      fi
+      if [[ "${token}" != -* ]]; then
+        if [[ -z "${codex_subcommand}" ]]; then
+          codex_subcommand="${token}"
+        fi
+      else
+        case "${token}" in
+          --)
+            options_ended=true
+            ;;
+          --listen=*)
+            codex_listen="${token#--listen=}"
+            ;;
+          -m|--model|-c|--config|-C|--cd|--profile|--color|-s|--sandbox|--add-dir|-p|-a|--ask-for-approval|--enable|--disable|--remote|--remote-auth-token-env|--local-provider|-i|--image)
+            idx=$((idx + 1))
+            ;;
+          --listen)
+            if [[ "${codex_subcommand}" == "app-server" ]]; then
+              codex_listen="${args[$((idx + 1))]:-}"
+            fi
+            idx=$((idx + 1))
+            ;;
+        esac
+      fi
+      idx=$((idx + 1))
+    done
     is_app_server=false
     socket_path=""
-    prev_arg=""
-    for arg in "$@"; do
-      if [[ "${arg}" == "app-server" ]]; then
-        is_app_server=true
-      elif [[ "${prev_arg}" == "--listen" ]]; then
-        socket_path="${arg}"
-      elif [[ "${arg}" == --listen=* ]]; then
-        socket_path="${arg#--listen=}"
-      fi
-      prev_arg="${arg}"
-    done
+    if [[ "${codex_subcommand}" == "app-server" ]]; then
+      is_app_server=true
+      socket_path="${codex_listen}"
+    fi
 
     session_type="cli"
     managed="false"

@@ -39,7 +39,29 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -r requirements-dev.txt
           sudo apt-get update
-          sudo apt-get install --yes apparmor-utils jq shellcheck
+          sudo apt-get install --yes apparmor-utils bubblewrap jq shellcheck
+
+      - name: Load CI-only bubblewrap user namespace profile
+        env:
+          BWRAP_PROFILE_SHA256: a964037f6cf0df1099f14226b037eaedde6237c86e715188e93eb460b30be859
+          BWRAP_PROFILE_URL: "https://gitlab.com/apparmor/apparmor/-/raw/\
+            b4dfdf50f50ed1d64161424d036a2453645f0cfe/\
+            profiles/apparmor/profiles/extras/bwrap-userns-restrict"
+        run: |
+          profile_path=$(mktemp)
+          trap 'rm -f -- "${profile_path}"' EXIT
+          curl --disable --fail --location --proto '=https' --tlsv1.2 \
+            --output "${profile_path}" "${BWRAP_PROFILE_URL}"
+          printf '%s  %s\n' "${BWRAP_PROFILE_SHA256}" "${profile_path}" \
+            | sha256sum --check --strict -
+          # Codex uses the verified companion instead of APK's system helper.
+          bwrap_paths='{usr/bin,usr/local/lib/codex-ha/codex-baseline/codex-resources,'
+          bwrap_paths+='data/codex-runtime/releases/*/codex-resources}'
+          sed -i "s|/usr/bin/bwrap |/${bwrap_paths}/bwrap |" "${profile_path}"
+          sudo apparmor_parser --replace "${profile_path}"
+          sudo grep --fixed-strings --quiet \
+            'bwrap (enforce)' /sys/kernel/security/apparmor/profiles
+
 
       - name: Run Python policy and helper tests
         run: python -m pytest -ra

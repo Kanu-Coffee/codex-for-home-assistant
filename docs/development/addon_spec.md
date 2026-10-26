@@ -343,8 +343,13 @@ nano 또는 vim
 - `/data/github-cli`와 내부 directory는 image-managed `ha-feedback github storage-init` helper가 root-owned `0700`, regular single-link file은 `0600`으로 생성·검증한다. Symlink/non-directory는 login/direct submission을 비활성화하고, non-root-owned root path는 자동 `chown`하지 않은 채 helper가 fail closed한다. Root Codex로부터의 완전한 credential 격리는 별도 broker 없이는 보장하지 않는다.
 - `/config/codex-workspace/feedback`은 report 생성 시 helper가 관리한다. 각 report directory는 `0700`, `report.json`, `public-report.md`, optional `submission.json`은 `0600`이며 init이 기존 report를 삭제·내용 검사·자동 제출하지 않는다. 외부 submit 결과가 불확실한 bundle에는 direct retry를 막는 hidden `0600` `.submission.lock`이 남을 수 있으며 init은 이를 제거하지 않는다.
 - `/config` 쓰기 테스트는 안전한 임시 파일을 생성 후 삭제해 수행
-- App init과 매 `/usr/local/bin/codex` launch는 `sensitive-path-policy.sh`로 모든 root/nested `secrets.yaml`과 `.storage` tree를 `find -P` 검사한다. Symlink, special file 또는 link count가 1이 아닌 파일이 있으면 보호 path/value를 출력하지 않고 fail closed한다.
+- App init과 매 `/usr/local/bin/codex` launch는 `sensitive-path-policy.sh`로 모든 root/nested `secrets.yaml`과 `.storage` tree를 `find -P` 검사한다.
+  - 실제 검출된 unsafe shape(symlink, hardlink alias, FIFO/특수 파일)은 exit code 1과 함께 alias 검출 메시지를 출력한다.
+  - 접근 권한 없음(EACCES/EPERM), unreadable directory 등 순회/검사 미완료는 exit code 78과 함께 검사 불능(access or traversal restricted) 메시지로 분리하여 오안내를 방지한다.
+  - 도구 sandbox(`workspace-write`) 내부에서는 deny-read 정책에 의해 보호 경로 접근이 차단되므로 sandbox 내부의 `codex` wrapper 재실행은 의도된 제한에 의해 명시적으로 fail closed(코드 78)된다. 독립 Web 터미널 및 SSH 세션의 정상 실행 가능 여부는 실환경 및 격리 검증 경계로 분리하여 관리한다.
 - 위 검사는 pathname 기반 preflight다. 검사 뒤 다른 외부 process가 hardlink를 추가하는 TOCTOU와 사용자가 보호 값을 비보호 `/config` path에 복사한 경우는 차단 보장이 아니며 문서에 잔여 한계로 공개한다.
+- App 설정(`config.yaml`)에 후보 `timeout: 30`을 명시하여 Supervisor 일반 stop/restart 시 복합 서비스 스택(Ingress, ttyd, sshd, ha-memoryd, updater-daemon)에 대한 최대 30초 유예를 요청한다. 실제 Supervisor stop 시의 소요 시간 및 exit 0 달성 여부는 실장비/HAOS 현장 시험을 통해 최종 검증한다.
+- 피드백 환경 스키마(`ha-feedback`)는 기존 `codex_version`(번들) 외에 optional `codex_selected_version` 및 `codex_running_versions`를 지원하여 번들·선택·관측 실행 버전을 명확히 분리하고 복수 실행 버전 및 유휴 상태를 구분한다.
 - Supervisor credential은 `/run/codex-ha/runtime.env`에 root-only `0600`으로 만든 뒤 S6 shared environment, Web/SSH/Codex와 장기 scheduler에서 제거한다. API/browser/memory 등 용도가 고정된 image helper만 실행 시 fixed private path를 읽고 필요한 process lifetime으로 제한한다. Direct API helper는 owner/type/link/mode를 추가 검증하며 raw API response 계약은 유지한다.
 - 이전 기본 Playwright output을 init 시작 때 제거하고 `/run/codex-ha` 아래 `0700`으로 재생성한다. Feedback preview state는 sandbox-writable `/tmp/codex-ha-feedback-previews` `0700` 아래에 두고 container restart 때 폐기한다. 검증된 browser token과 preview file은 `0600`으로 만들고 browser profile을 `/data`에 만들지 않음
 - guarded `ha-memory init`이 링크를 따라가지 않고 `/data/codex-ha-memory`를 root-owned `0700`, database/WAL/SHM을 `0600`으로 만들거나 검증한다. unsafe path는 memory만 fail closed하며 main init은 계속된다. main init은 Core catalog를 동기화하지 않고 독립 S6 `ha-memoryd`가 retry 가능한 bootstrap/refresh를 담당한다.

@@ -10,7 +10,7 @@
 - DEV canary repository: `https://github.com/Kanu-Coffee/codex-for-home-assistant#dev`
 - image: `ghcr.io/kanu-coffee/codex-for-home-assistant:<version>`
 - current stable release `0.7.1` (previous stable `0.7.0`) architecture: `amd64`, `aarch64` (`armv7` 미지원)
-- validated DEV candidate: `0.7.1-dev.7`
+- DEV prerelease: [`0.7.2-dev.2`](https://github.com/Kanu-Coffee/codex-for-home-assistant/releases/tag/0.7.2-dev.2) (published; native CI·SBOM/Critical gate·public image/signature/provenance/SPDX verification PASS; development VM Docker stop PASS; user Supervisor lifecycle/hardware acceptance pending; details: `progress.md`; previous candidate `0.7.2-dev.1`)
 - stable version tag: `X.Y.Z`
 - numbered DEV version tag: `X.Y.Z-dev.N` (`N`은 1 이상의 정수이며 새 후보마다 사용하지 않은 번호 선택)
 - mutable `latest` tag는 발행하지 않음
@@ -112,6 +112,11 @@ SHA256을 검토 manifest와 대조한다. Metadata/실제 파일이 불일치�
 검토한 경우에만 발급된 gated config와 동결 SBOM snapshot을 사용한다. VEX는
 image/SBOM identity를 기록하는 감사 자료이며 SPDX scanner의 예외 입력으로
 사용하지 않는다. Root scanner config에는 전역 예외를 추가하지 않는다.
+
+`0.7.2-dev.1` 후보의 Alpine yq-go `4.53.3-r2` 재빌드 검토는
+[정확한 binary 해시·서명·적용 가능성 근거](yq-go-4.53.3-r2-review.md)를 따른다.
+수정된 Go `1.26.9` stdlib에는 waiver를 발급하지 않으며, 다음 binary/module 변경은
+다시 raw scan과 Critical 차단 대상으로 처리한다.
 
 ## Stable 0.7.1 공개 결과
 

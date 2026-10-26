@@ -26,7 +26,7 @@ import { get as httpsGet } from "node:https";
 import { get as httpGet } from "node:http";
 
 export const BASELINE_VERSION = "0.162.1";
-export const APP_VERSION = "0.7.1";
+export const APP_VERSION = "0.7.2";
 export const DEFAULT_TIMEZONE = "Asia/Seoul";
 export const UPDATE_SLOTS = [3, 9, 15, 21];
 export const MAX_IDLE_CHECKS = 12;
@@ -470,11 +470,29 @@ export async function withGateLock(mode = "exclusive", timeoutSec = 15, fn = asy
 
 export async function readOptions() {
   const optionsPath = getOptionsPath();
-  if (!existsSync(optionsPath)) {
+  try {
+    const st = await lstat(optionsPath);
+    if (!st.isFile() || st.isSymbolicLink() || st.size > 1048576) {
+      return {
+        autoUpdate: false,
+        timezone: DEFAULT_TIMEZONE,
+        valid: false,
+        error: "Options file is not a regular file or exceeds size limit",
+      };
+    }
+  } catch (err) {
+    if (err?.code === "ENOENT") {
+      return {
+        autoUpdate: true,
+        timezone: DEFAULT_TIMEZONE,
+        valid: true,
+      };
+    }
     return {
-      autoUpdate: true,
+      autoUpdate: false,
       timezone: DEFAULT_TIMEZONE,
-      valid: true,
+      valid: false,
+      error: `Options file inaccessible: ${err.message}`,
     };
   }
 
@@ -538,17 +556,32 @@ export async function readOptions() {
   }
 }
 
+export const LAST_BLOCKER_CODES = Object.freeze([
+  "cli", "remote_stdio", "unmanaged_server", "bad_socket", "socket_inaccessible",
+  "server_busy", "unknown", "inspection_failed", "daily_budget_exhausted",
+  "restart_cooldown",
+]);
+
+function sanitizeLastBlocker(value) {
+  return typeof value === "string" && LAST_BLOCKER_CODES.includes(value) ? value : null;
+}
+
 export async function loadState() {
   const appVersion = getAppVersion();
   const bundledVersion = getBundledVersion();
   try {
-    const raw = await readFile(getStateFile(), "utf-8");
+    const stateFile = getStateFile();
+    const st = await lstat(stateFile);
+    if (!st.isFile() || st.isSymbolicLink() || st.size > 1048576) {
+      throw new Error("State file is not a regular file or exceeds size limit");
+    }
+    const raw = await readFile(stateFile, "utf-8");
     const data = JSON.parse(raw);
     return {
       appVersion,
       bundledVersion,
       selectedDigest: data.selectedDigest || null,
-      selectedVersion: data.selectedVersion || bundledVersion,
+      selectedVersion: typeof data.selectedVersion === "string" ? data.selectedVersion : null,
       stagedVersion: data.stagedVersion || null,
       candidateVersion: data.candidateVersion || null,
       candidateDigest: data.candidateDigest || null,
@@ -565,13 +598,14 @@ export async function loadState() {
       status: data.status || "idle",
       reason: data.reason || null,
       lastError: data.lastError || null,
+      lastBlocker: sanitizeLastBlocker(data.lastBlocker),
     };
   } catch {
     return {
       appVersion,
       bundledVersion,
       selectedDigest: null,
-      selectedVersion: bundledVersion,
+      selectedVersion: null,
       stagedVersion: null,
       candidateVersion: null,
       candidateDigest: null,
@@ -588,6 +622,7 @@ export async function loadState() {
       status: "idle",
       reason: null,
       lastError: null,
+      lastBlocker: null,
     };
   }
 }
@@ -617,6 +652,7 @@ export async function saveState(state) {
     status: state.status || "idle",
     reason: typeof state.reason === "string" ? state.reason.slice(0, 256) : null,
     lastError: typeof state.lastError === "string" ? state.lastError.slice(0, 256) : null,
+    lastBlocker: sanitizeLastBlocker(state.lastBlocker),
   };
   await durableJson(getStateFile(), sanitized);
 }
@@ -684,6 +720,160 @@ export async function initRuntime() {
   });
 }
 
+// Package entrypoints that are genuine Codex task processes or owned helper
+// companions. Identity is the /proc exe link or a shebang script named in the
+// interpreter argv, never a substring of the command line.
+export const PACKAGE_EXECUTABLE_ROLES = Object.freeze({
+  "bin/codex": "primary",
+  "bin/codex-code-mode-host": "companion",
+  "codex-resources/bwrap": "companion",
+  "codex-path/rg": "companion",
+  "codex-resources/voice/bin/codex-voice-host": "companion",
+  "codex-resources/zsh/bin/zsh": "companion",
+});
+
+const INTERPRETER_BASENAMES = new Set([
+  "node", "deno", "bun", "env", "sh", "bash", "dash", "zsh",
+  "python", "python3", "perl", "ruby",
+]);
+
+function withinCanonicalRoot(candidatePath, rootPath) {
+  if (typeof candidatePath !== "string" || !candidatePath.startsWith(rootPath + "/")) return null;
+  const relative = candidatePath.slice(rootPath.length + 1);
+  if (!relative || relative.split("/").some((s) => s === ".." || s === "." || s === "")) return null;
+  return relative;
+}
+
+// Canonical boundary test independent of the role allowlist: any path inside
+// the baseline or a single release generation is a managed package path even
+// when its role is not yet known.
+export function packageBoundary(candidatePath) {
+  if (typeof candidatePath !== "string") return null;
+  const clean = candidatePath.replace(/\s+\(deleted\)$/, "");
+  const baselineRelative = withinCanonicalRoot(clean, getBaselineDir());
+  if (baselineRelative) {
+    return {
+      relative: baselineRelative,
+      generation: getBaselineDir(),
+      role: PACKAGE_EXECUTABLE_ROLES[baselineRelative] || null,
+    };
+  }
+  const releasesRelative = withinCanonicalRoot(clean, getReleasesDir());
+  if (releasesRelative) {
+    const segments = releasesRelative.split("/");
+    if (segments.length < 2) return null;
+    const relative = segments.slice(1).join("/");
+    return {
+      relative,
+      generation: join(getReleasesDir(), segments[0]),
+      role: PACKAGE_EXECUTABLE_ROLES[relative] || null,
+    };
+  }
+  return null;
+}
+
+export function canonicalPackageRole(candidatePath) {
+  const boundary = packageBoundary(candidatePath);
+  if (!boundary || !boundary.role) return null;
+  return { role: boundary.role, relative: boundary.relative, generation: boundary.generation };
+}
+
+export async function executableEntrypoint(proc) {
+  const rawExe = proc.exe || "";
+  const cleanExe = rawExe.replace(/\s+\(deleted\)$/, "");
+  const exeBoundary = packageBoundary(cleanExe);
+  if (exeBoundary) return { ...exeBoundary, path: cleanExe, argvIndex: 0, deleted: cleanExe !== rawExe };
+  if (!cleanExe || !INTERPRETER_BASENAMES.has(basename(cleanExe))) return null;
+  const argv = proc.cmdline || [];
+  for (let k = 1; k <= 2; k++) {
+    const candidate = argv[k];
+    if (typeof candidate !== "string" || !candidate.startsWith("/")) continue;
+    const boundary = packageBoundary(candidate);
+    if (!boundary) continue;
+    try {
+      const real = await realpath(candidate);
+      const realBoundary = packageBoundary(real);
+      if (!realBoundary || realBoundary.relative !== boundary.relative || realBoundary.generation !== boundary.generation) continue;
+      const fd = await open(real, fsConstants.O_RDONLY | fsConstants.O_NOFOLLOW);
+      try {
+        const header = Buffer.alloc(2);
+        const { bytesRead } = await fd.read(header, 0, 2, 0);
+        if (bytesRead === 2 && header.toString() === "#!") {
+          return { ...boundary, path: real, argvIndex: k };
+        }
+      } finally {
+        await fd.close();
+      }
+    } catch {}
+  }
+  return null;
+}
+
+// Mirrors the option-aware skip in /usr/local/bin/codex. The first positional
+// token before '--' is the subcommand; option values are never subcommands.
+export function parseCodexInvocation(cmdline, startIndex = 1) {
+  // Value-taking global options verified against the real bundled 0.162.1
+  // `codex --help`; mirror of the wrapper's case list. Unknown or unclear
+  // syntax falls through conservatively (extra positional => still busy CLI).
+  const OPTION_WITH_VALUE = new Set([
+    "-m", "--model", "-c", "--config", "-C", "--cd", "--profile", "-p", "--color",
+    "-s", "--sandbox", "-a", "--ask-for-approval", "--enable", "--disable",
+    "--remote", "--remote-auth-token-env", "--local-provider", "-i", "--image",
+    "--add-dir", "--listen",
+  ]);
+  let subcommand = null;
+  let listenSocket = null;
+  let optionsEnded = false;
+  for (let i = startIndex; i < cmdline.length; i++) {
+    const token = cmdline[i];
+    if (typeof token !== "string") continue;
+    if (!optionsEnded) {
+      if (token === "--") { optionsEnded = true; continue; }
+      if (token.startsWith("--") && token.includes("=")) {
+        if (token.startsWith("--listen=")) {
+          const value = token.slice("--listen=".length);
+          if (value.startsWith("unix://")) listenSocket = value.slice(7);
+        }
+        continue;
+      }
+      if (token.startsWith("-") && token !== "-") {
+        if (OPTION_WITH_VALUE.has(token)) {
+          const value = cmdline[i + 1];
+          if (token === "--listen" && typeof value === "string" && value.startsWith("unix://")) {
+            listenSocket = value.slice(7);
+          }
+          i++;
+        }
+        continue;
+      }
+      if (subcommand === null) subcommand = token;
+    }
+  }
+  return { subcommand, listenSocket };
+}
+
+async function ancestorPids(pid, maxDepth = 32) {
+  const chain = [];
+  let current = pid;
+  for (let depth = 0; depth < maxDepth; depth++) {
+    let statStr;
+    try {
+      statStr = await readFile(`/proc/${current}/stat`, "utf-8");
+    } catch {
+      break;
+    }
+    const lastParen = statStr.lastIndexOf(")");
+    if (lastParen === -1) break;
+    const parts = statStr.slice(lastParen + 1).trim().split(/\s+/);
+    const ppid = parseInt(parts[1], 10);
+    if (!Number.isFinite(ppid) || ppid <= 0) break;
+    chain.push(ppid);
+    if (ppid === 1) break;
+    current = ppid;
+  }
+  return chain;
+}
+
 export async function inspectProcess(pid) {
   try {
     const statStr = await readFile(`/proc/${pid}/stat`, "utf-8");
@@ -710,6 +900,7 @@ export async function inspectProcess(pid) {
       state,
       start: startTime,
       startTime,
+      ppid: parts[1],
       exe,
       cmdline,
     };
@@ -979,11 +1170,39 @@ export async function inspectAppServer(socketPath, expectedPid) {
   }
 }
 
-export async function inspectAllSessions() {
+export async function inspectAllSessions(options = {}) {
+  const readOnly = Boolean(options.readOnly);
   const busyReasons = [];
-  let sessionCount = 0;
+  const blockers = [];
   const restartableServers = [];
+  const entries = new Map();
 
+  const counts = {
+    cli: 0,
+    helpers: 0,
+    managedIdleServers: 0,
+    remoteStdio: 0,
+    unmanagedAppServers: 0,
+    unknown: 0,
+  };
+
+  const failClosed = (message) => ({
+    isIdle: false,
+    canApply: false,
+    sessionCount: -1,
+    busyReasons: [message],
+    blockers: [{ type: "inspection_failed", pid: null, detail: message }],
+    counts: { ...counts },
+    restartableServers: [],
+  });
+
+  const addBusy = (type, pid, detail) => {
+    blockers.push({ type, pid, detail });
+    busyReasons.push(`[${type}] ${detail} (pid ${pid})`);
+  };
+
+  // Pass 1: registered session records. PID+start-time identity decides whether
+  // the record is current, a reused slot, or already gone.
   const sessionsDir = getSessionsDir();
   if (existsSync(sessionsDir)) {
     try {
@@ -993,240 +1212,304 @@ export async function inspectAllSessions() {
         const pid = parseInt(file, 10);
         const filePath = join(sessionsDir, file);
         try {
+          const st = await lstat(filePath).catch(() => null);
+          if (!st || !st.isFile() || st.isSymbolicLink() || st.size > 65536) {
+            if (!readOnly) await unlink(filePath).catch(() => {});
+            continue;
+          }
           const content = JSON.parse(await readFile(filePath, "utf-8"));
           const proc = await inspectProcess(pid);
           if (!proc) {
-            await unlink(filePath).catch(() => {});
+            if (!readOnly) await unlink(filePath).catch(() => {});
             continue;
           }
           if (proc.unknown) {
-            sessionCount++;
-            busyReasons.push(`registered session pid ${pid} inspection failed: ${proc.error}`);
+            entries.set(pid, { proc, kind: "unknown", registered: true });
             continue;
           }
-          if (proc.startTime !== content.start) {
-            await unlink(filePath).catch(() => {});
+          if (String(proc.startTime) !== String(content.start)) {
+            if (!readOnly) await unlink(filePath).catch(() => {});
             continue;
           }
-          if (content.type === "app-server") {
-            // App-servers are inspected in the process scan for idle state and restartability
-            continue;
-          }
-          sessionCount++;
-          busyReasons.push(`active registered session (pid ${pid})`);
+          entries.set(pid, { proc, record: content });
         } catch {
-          await unlink(filePath).catch(() => {});
+          if (!readOnly) await unlink(filePath).catch(() => {});
         }
       }
     } catch (err) {
-      return {
-        isIdle: false,
-        sessionCount: -1,
-        busyReasons: [`Failed to inspect sessions directory: ${err.message}`],
-        restartableServers: [],
-      };
+      return failClosed(`Failed to inspect sessions directory: ${err.message}`);
     }
   }
 
+  // Pass 2: /proc inventory. The same classification rules run in production
+  // and in fixtures; there is no test-only matching branch.
   let procEntries = [];
   try {
     procEntries = await readdir("/proc");
   } catch (err) {
-    return {
-      isIdle: false,
-      sessionCount: -1,
-      busyReasons: [`Failed to inspect /proc: ${err.message}`],
-      restartableServers: [],
-    };
+    return failClosed(`Failed to inspect /proc: ${err.message}`);
   }
 
-  const codexPids = [];
   for (const entry of procEntries) {
     if (!/^\d+$/.test(entry)) continue;
     const pid = parseInt(entry, 10);
-    if (pid === process.pid) continue;
+    if (pid === process.pid || entries.has(pid)) continue;
     const proc = await inspectProcess(pid);
     if (!proc) continue;
-    if (proc.unknown) { codexPids.push(proc); continue; }
-
-    let hasSessionRecord = false;
-    try {
-      if (existsSync(join(getSessionsDir(), String(pid)))) {
-        hasSessionRecord = true;
-      }
-    } catch {}
-
-    const isTestEnv = !!process.env.CODEX_RUNTIME_DIR;
-    const baseDir = getBaseRuntimeDir();
-    const exeName = basename(proc.exe.replace(/\s+\(deleted\)$/, ""));
-    const cmdStr = (proc.cmdline || []).join(" ");
-
-    let isMatch = false;
-    if (exeName !== "flock" && !cmdStr.startsWith("flock ")) {
-      if (isTestEnv) {
-        isMatch =
-          hasSessionRecord ||
-          proc.exe.startsWith(baseDir) ||
-          cmdStr.includes(baseDir);
-      } else {
-        isMatch =
-          hasSessionRecord ||
-          proc.exe.startsWith(baseDir) ||
-          cmdStr.includes(baseDir) ||
-          exeName === "codex" ||
-          exeName === "codex-real" ||
-          exeName === "ha-codex" ||
-          cmdStr.includes("codex-real") ||
-          cmdStr.startsWith("codex ") ||
-          cmdStr.includes("/bin/codex") ||
-          cmdStr.includes("app-server");
-      }
+    if (proc.unknown) {
+      entries.set(pid, { proc, kind: "unknown" });
+      continue;
     }
+    const exeName = basename((proc.exe || "").replace(/\s+\(deleted\)$/, ""));
+    const cmdStr = (proc.cmdline || []).join(" ");
+    if (exeName === "flock" || cmdStr.startsWith("flock ")) continue;
+    // Command-line strings such as "/bin/codex" or "app-server" that only
+    // appear as data never create identity here.
+    const identity = await executableEntrypoint(proc);
+    if (!identity) continue;
+    entries.set(pid, { proc, identity });
+  }
 
-    if (isMatch) {
-      codexPids.push(proc);
+  // Pass 3: classify each inventory entry from its actual entrypoint and the
+  // positional subcommand, not from argv substrings.
+  for (const [pid, e] of entries) {
+    if (e.kind === "unknown") continue;
+    const record = e.record || null;
+    const identity = e.identity || await executableEntrypoint(e.proc);
+    const invocation = parseCodexInvocation(e.proc.cmdline || [], identity ? identity.argvIndex + 1 : 1);
+    if (identity) e.identity = identity;
+    const serverByArgv = identity && identity.role === "primary" && invocation.subcommand === "app-server";
+    const serverByRecord = record && record.type === "app-server" &&
+      (!invocation.subcommand || invocation.subcommand === "app-server");
+    if (serverByArgv || serverByRecord) {
+      e.kind = "app-server";
+      e.socketPath = invocation.listenSocket;
+    } else if (!record && identity && identity.role === "companion") {
+      e.kind = "companion";
+    } else if (!record && identity && identity.role !== "primary" && identity.role !== "companion") {
+      e.kind = "unknown";
+      e.unrecognized = true;
+    } else {
+      e.kind = "cli";
     }
   }
 
-  for (const proc of codexPids) {
-    if (proc.unknown) {
-      busyReasons.push(`process pid ${proc.pid} state unknown: ${proc.error}`);
-      sessionCount++;
+  // Pass 4: companions and helpers attach to a verified live owner. An
+  // orphaned companion that cannot be attributed is held as unknown; it is
+  // never counted as an independent Codex conversation.
+  const ownerPids = new Set();
+  for (const [pid, e] of entries) {
+    if (e.kind === "cli" || e.kind === "app-server") ownerPids.add(pid);
+  }
+  for (const [pid, e] of entries) {
+    if (e.kind !== "companion") continue;
+    const chain = await ancestorPids(pid);
+    const owner = chain.find((a) => ownerPids.has(a));
+    if (owner) {
+      e.kind = "helper";
+      e.owner = owner;
+    } else {
+      e.kind = "unknown";
+      e.orphanCompanion = true;
+    }
+  }
+
+  // Pass 5: aggregate. App-servers keep the existing verified managed
+  // transaction preconditions: launch record, unix socket, and two idle
+  // diagnostics one second apart.
+  for (const [pid, e] of entries) {
+    if (e.kind === "unknown") {
+      counts.unknown++;
+      if (e.proc.unknown) {
+        addBusy("inspection_failed", pid, `process state unknown: ${e.proc.error}`);
+      } else if (e.orphanCompanion) {
+        addBusy("unknown", pid, "codex package companion without verifiable owner; held for manual review");
+      } else if (e.unrecognized) {
+        addBusy("unknown", pid, "unrecognized executable inside managed codex package; held until identity is verified");
+      } else {
+        addBusy("unknown", pid, "process identity could not be classified");
+      }
+      continue;
+    }
+    if (e.kind === "helper") {
+      counts.helpers++;
+      continue;
+    }
+    if (e.kind === "cli") {
+      counts.cli++;
+      if (e.registered) {
+        addBusy("cli", pid, "active registered session");
+      } else {
+        addBusy("cli", pid, "active codex cli process");
+      }
       continue;
     }
 
-    const isAppServer = proc.cmdline.includes("app-server");
-    if (!isAppServer) {
-      busyReasons.push(`active codex cli process (pid ${proc.pid})`);
-      sessionCount++;
-      continue;
-    }
-
-    let socketPath = null;
-    const listenIdx = proc.cmdline.indexOf("--listen");
-    if (listenIdx !== -1 && proc.cmdline[listenIdx + 1]?.startsWith("unix://")) {
-      socketPath = proc.cmdline[listenIdx + 1].slice(7);
-    }
-
+    // kind === app-server
+    const socketPath = e.socketPath || null;
     if (!socketPath) {
-      busyReasons.push(`active remote stdio app-server (pid ${proc.pid}); restart unsupported, deferred until session exits`);
-      sessionCount++;
+      counts.remoteStdio++;
+      addBusy("remote_stdio", pid,
+        "active remote stdio app-server; restart unsupported, deferred until session exits");
       continue;
     }
 
     // Verify explicit App-managed launch record in sessions directory
-    const sessionsDir = getSessionsDir();
-    const sessionFile = join(sessionsDir, String(proc.pid));
-    let managedRecord = null;
-    try {
-      if (existsSync(sessionFile)) {
-        managedRecord = JSON.parse(await readFile(sessionFile, "utf-8"));
-      }
-    } catch {}
+    const sessionFile = join(sessionsDir, String(pid));
+    let managedRecord = e.record || null;
+    if (!managedRecord) {
+      try {
+        if (existsSync(sessionFile)) {
+          managedRecord = JSON.parse(await readFile(sessionFile, "utf-8"));
+        }
+      } catch {}
+    }
 
     if (
       !managedRecord ||
       managedRecord.managed !== true ||
       managedRecord.type !== "app-server" ||
       managedRecord.socketPath !== socketPath ||
-      managedRecord.pid !== proc.pid ||
-      String(managedRecord.start) !== String(proc.startTime)
+      managedRecord.pid !== pid ||
+      String(managedRecord.start) !== String(e.proc.startTime)
     ) {
-      busyReasons.push(`active unmanaged app-server without verified launch record (pid ${proc.pid}); restart unsupported, deferred until session exits`);
-      sessionCount++;
+      counts.unmanagedAppServers++;
+      addBusy("unmanaged_server", pid,
+        "active unmanaged app-server without verified launch record; restart unsupported, deferred until session exits");
       continue;
     }
 
-    // Verify socket exists and is a unix socket
     try {
       const sockStat = await stat(socketPath);
       if (!sockStat.isSocket()) {
-        busyReasons.push(`app-server socket path is not a socket: ${socketPath} (pid ${proc.pid})`);
-        sessionCount++;
+        counts.unmanagedAppServers++;
+        addBusy("bad_socket", pid, `app-server socket path is not a socket: ${socketPath}`);
         continue;
       }
     } catch (err) {
-      busyReasons.push(`app-server socket inaccessible: ${err.message} (pid ${proc.pid})`);
-      sessionCount++;
+      counts.unmanagedAppServers++;
+      addBusy("socket_inaccessible", pid, `app-server socket inaccessible: ${err.message}`);
       continue;
     }
 
-    const check1 = await inspectAppServer(socketPath, proc.pid);
+    const check1 = await inspectAppServer(socketPath, pid);
     if (check1.busy) {
-      busyReasons.push(`app-server busy: ${check1.reason} (pid ${proc.pid})`);
-      sessionCount++;
+      counts.unmanagedAppServers++;
+      addBusy("server_busy", pid, `app-server busy: ${check1.reason}`);
       continue;
     }
 
     await new Promise((r) => setTimeout(r, 1000));
-    const check2 = await inspectAppServer(socketPath, proc.pid);
+    const check2 = await inspectAppServer(socketPath, pid);
     if (check2.busy) {
-      busyReasons.push(`app-server busy: ${check2.reason} (pid ${proc.pid})`);
-      sessionCount++;
+      counts.unmanagedAppServers++;
+      addBusy("server_busy", pid, `app-server busy: ${check2.reason}`);
       continue;
     }
 
+    counts.managedIdleServers++;
     restartableServers.push({
-      pid: proc.pid,
-      start: proc.start,
+      pid,
+      start: e.proc.start,
       socketPath,
-      proc,
+      proc: e.proc,
       managedRecord,
     });
-    sessionCount++;
   }
 
-  const isIdle = busyReasons.length === 0 && restartableServers.length === 0;
+  const sessionCount =
+    counts.cli + counts.managedIdleServers + counts.remoteStdio +
+    counts.unmanagedAppServers + counts.unknown;
 
   return {
-    isIdle,
+    isIdle: busyReasons.length === 0 && restartableServers.length === 0,
+    canApply: busyReasons.length === 0,
     sessionCount,
     busyReasons,
+    blockers,
+    counts: { detectedProcesses: entries.size, ...counts },
     restartableServers,
   };
 }
 
-export function fetchJson(url) {
+export function fetchJson(url, options = {}) {
   return new Promise((resolvePromise, rejectPromise) => {
-    const appVersion = getAppVersion();
-    const getter = url.startsWith("http://") ? httpGet : httpsGet;
-    const req = getter(
-      url,
-      {
-        headers: {
-          "User-Agent": `codex-ha-updater/${appVersion} (Home Assistant App)`,
-          Accept: "application/vnd.github.v3+json",
-        },
-      },
-      (res) => {
-        if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
-          fetchJson(res.headers.location).then(resolvePromise, rejectPromise);
-          return;
-        }
-        if (res.statusCode !== 200) {
-          rejectPromise(new Error(`HTTP ${res.statusCode} from ${url}`));
-          return;
-        }
-        let data = "";
-        res.on("data", (chunk) => (data += chunk));
-        res.on("end", () => {
-          try {
-            resolvePromise(JSON.parse(data));
-          } catch (e) {
-            rejectPromise(e);
+    const signal = options.signal;
+    let req = null;
+    let res = null;
+    let timer = null;
+    let settled = false;
+    let hop = 0;
+    const cleanup = () => {
+      clearTimeout(timer);
+      signal?.removeEventListener("abort", onAbort);
+    };
+    const reject = (error) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      res?.destroy();
+      req?.destroy();
+      rejectPromise(error);
+    };
+    const onAbort = () => reject(new Error("Operation aborted"));
+    if (signal?.aborted) { onAbort(); return; }
+    signal?.addEventListener("abort", onAbort, { once: true });
+    // One wall-clock budget covers the entire redirect chain.
+    timer = setTimeout(() => reject(new Error(`Total timeout fetching ${url}`)), options.totalTimeoutMs || 30000);
+    const request = (currentUrl) => {
+      if (settled) return;
+      if (++hop > 10) { reject(new Error("Too many release redirects")); return; }
+      const thisHop = hop;
+      const fail = (error) => { if (thisHop === hop) reject(error); };
+      try {
+        const getter = currentUrl.startsWith("http://") ? httpGet : httpsGet;
+        req = getter(currentUrl, {
+          headers: {
+            "User-Agent": `codex-ha-updater/${getAppVersion()} (Home Assistant App)`,
+            Accept: "application/vnd.github.v3+json",
+          },
+        }, (response) => {
+          if (settled || thisHop !== hop) { response.destroy(); return; }
+          res = response;
+          response.on("error", fail);
+          if (response.statusCode >= 300 && response.statusCode < 400 && response.headers.location) {
+            const nextUrl = new URL(response.headers.location, currentUrl).href;
+            // A redirect body can continue indefinitely; close it before
+            // transferring ownership to the next request and abort listener.
+            response.destroy();
+            req.destroy();
+            req = null;
+            res = null;
+            request(nextUrl);
+            return;
           }
+          if (response.statusCode !== 200) { fail(new Error(`HTTP ${response.statusCode} from ${currentUrl}`)); return; }
+          let data = "";
+          response.on("data", (chunk) => { data += chunk; });
+          response.on("end", () => {
+            if (settled) return;
+            try {
+              const value = JSON.parse(data);
+              settled = true;
+              cleanup();
+              resolvePromise(value);
+            } catch (error) { fail(error); }
+          });
         });
-      }
-    );
-    req.on("error", rejectPromise);
-    req.setTimeout(30000, () => {
-      req.destroy();
-      rejectPromise(new Error(`Timeout fetching ${url}`));
-    });
+        req.on("error", fail);
+        req.setTimeout(options.socketTimeoutMs || 30000, () => fail(new Error(`Timeout fetching ${currentUrl}`)));
+      } catch (error) { fail(error); }
+    };
+    request(url);
   });
 }
 
-export async function downloadAndStagePackage(releaseInfo, customDownloadUrl = null) {
+export async function downloadAndStagePackage(releaseInfo, customDownloadUrl = null, options = {}) {
+  const signal = options.signal;
+  if (signal?.aborted) {
+    throw new Error("Operation aborted");
+  }
   const version = releaseInfo.version;
   const target = resolveTargetArchitecture();
   const packageName = `codex-package-${target}.tar.gz`;
@@ -1252,56 +1535,102 @@ export async function downloadAndStagePackage(releaseInfo, customDownloadUrl = n
   await mkdir(getStagingDir(), { recursive: true, mode: 0o700 });
   const tempArchive = join(getStagingDir(), `.download-${process.pid}-${Date.now()}.tar.gz`);
   const extractDir = join(getStagingDir(), `.extract-${process.pid}-${Date.now()}`);
+  const pendingOpens = [];
 
   try {
     await new Promise((resolvePromise, rejectPromise) => {
       const hasher = createHash("sha256");
       let totalBytes = 0;
+      let activeReq = null;
+      let activeRes = null;
+      let activeInStream = null;
+      let activeOutStream = null;
+      let onAbort = null;
+      let settled = false;
+      let generation = 0;
+
       const timeoutTimer = setTimeout(() => {
-        rejectPromise(new Error("Download exceeded timeout limit"));
+        safeReject(new Error("Download exceeded timeout limit"));
       }, DOWNLOAD_TIMEOUT_MS);
 
+      const cleanup = () => {
+        clearTimeout(timeoutTimer);
+        if (signal && onAbort) {
+          signal.removeEventListener("abort", onAbort);
+          onAbort = null;
+        }
+      };
+
+      const safeReject = (err) => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        if (activeReq) { try { activeReq.destroy(); } catch {} }
+        if (activeRes) { try { activeRes.destroy(); } catch {} }
+        if (activeInStream) { try { activeInStream.destroy(); } catch {} }
+        if (activeOutStream) { try { activeOutStream.destroy(); } catch {} }
+        rejectPromise(err);
+      };
+
+      const safeResolve = () => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        resolvePromise();
+      };
+
+      if (signal) {
+        onAbort = () => {
+          safeReject(new Error("Operation aborted"));
+        };
+        signal.addEventListener("abort", onAbort, { once: true });
+      }
+
       const downloadReq = (url) => {
+        if (settled) return;
+        const thisGeneration = ++generation;
+        if (generation > 10) { safeReject(new Error("Too many package redirects")); return; }
+        const fail = (error) => { if (thisGeneration === generation) safeReject(error); };
+        if (signal?.aborted) {
+          safeReject(new Error("Operation aborted"));
+          return;
+        }
         if (url.startsWith("file://")) {
           const filePath = url.slice(7);
-          open(tempArchive, "w", 0o600).then((fileHandle) => {
-            const outStream = fileHandle.createWriteStream();
-            const inStream = createReadStream(filePath);
-            inStream.on("data", (chunk) => {
+          pendingOpens.push(open(tempArchive, "w", 0o600).then(async (fileHandle) => {
+            if (settled || signal?.aborted) {
+              await fileHandle.close().catch(() => {});
+              safeReject(new Error("Operation aborted"));
+              return;
+            }
+            activeOutStream = fileHandle.createWriteStream();
+            activeInStream = createReadStream(filePath);
+            activeInStream.on("data", (chunk) => {
               totalBytes += chunk.length;
               if (totalBytes > MAX_DOWNLOAD_BYTES) {
-                clearTimeout(timeoutTimer);
-                inStream.destroy();
-                rejectPromise(new Error("Package size exceeded maximum allowed limit"));
+                safeReject(new Error("Package size exceeded maximum allowed limit"));
                 return;
               }
               hasher.update(chunk);
             });
-            inStream.pipe(outStream);
-            outStream.on("finish", () => {
-              clearTimeout(timeoutTimer);
+            activeInStream.pipe(activeOutStream);
+            activeOutStream.on("finish", () => {
               const actualDigest = hasher.digest("hex");
               if (actualDigest !== expectedDigest) {
-                rejectPromise(new Error(`SHA-256 mismatch: expected ${expectedDigest}, got ${actualDigest}`));
+                safeReject(new Error(`SHA-256 mismatch: expected ${expectedDigest}, got ${actualDigest}`));
                 return;
               }
-              resolvePromise();
+              safeResolve();
             });
-            inStream.on("error", (err) => {
-              clearTimeout(timeoutTimer);
-              rejectPromise(err);
-            });
-            outStream.on("error", (err) => {
-              clearTimeout(timeoutTimer);
-              rejectPromise(err);
-            });
-          }).catch(rejectPromise);
+            activeInStream.on("error", safeReject);
+            activeOutStream.on("error", safeReject);
+          }).catch(safeReject));
           return;
         }
 
         const appVersion = getAppVersion();
         const getter = url.startsWith("http://") ? httpGet : httpsGet;
-        getter(
+        activeReq = getter(
           url,
           {
             headers: {
@@ -1309,53 +1638,60 @@ export async function downloadAndStagePackage(releaseInfo, customDownloadUrl = n
             },
           },
           (res) => {
+            if (settled || thisGeneration !== generation) { res.destroy(); return; }
+            activeRes = res;
+            res.on("error", fail);
+            if (signal?.aborted) {
+              safeReject(new Error("Operation aborted"));
+              return;
+            }
             if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
-              downloadReq(res.headers.location);
+              const nextUrl = new URL(res.headers.location, url).href;
+              res.destroy();
+              activeReq.destroy();
+              activeReq = null;
+              activeRes = null;
+              downloadReq(nextUrl);
               return;
             }
             if (res.statusCode !== 200) {
-              clearTimeout(timeoutTimer);
-              rejectPromise(new Error(`HTTP ${res.statusCode} downloading package`));
+              safeReject(new Error(`HTTP ${res.statusCode} downloading package`));
               return;
             }
 
-            open(tempArchive, "w", 0o600).then((fileHandle) => {
-              const stream = fileHandle.createWriteStream();
+            pendingOpens.push(open(tempArchive, "w", 0o600).then(async (fileHandle) => {
+              if (settled || signal?.aborted) {
+                await fileHandle.close().catch(() => {});
+                safeReject(new Error("Operation aborted"));
+                return;
+              }
+              activeOutStream = fileHandle.createWriteStream();
               res.on("data", (chunk) => {
                 totalBytes += chunk.length;
                 if (totalBytes > MAX_DOWNLOAD_BYTES) {
-                  clearTimeout(timeoutTimer);
-                  res.destroy();
-                  rejectPromise(new Error("Package size exceeded maximum allowed limit"));
+                  safeReject(new Error("Package size exceeded maximum allowed limit"));
                   return;
                 }
                 hasher.update(chunk);
               });
 
-              res.pipe(stream);
-              stream.on("finish", () => {
-                clearTimeout(timeoutTimer);
+              res.pipe(activeOutStream);
+              activeOutStream.on("finish", () => {
                 const actualDigest = hasher.digest("hex");
                 if (actualDigest !== expectedDigest) {
-                  rejectPromise(
+                  safeReject(
                     new Error(
                       `SHA-256 mismatch: expected ${expectedDigest}, got ${actualDigest}`
                     )
                   );
                   return;
                 }
-                resolvePromise();
+                safeResolve();
               });
-              stream.on("error", (err) => {
-                clearTimeout(timeoutTimer);
-                rejectPromise(err);
-              });
-            }).catch(rejectPromise);
+              activeOutStream.on("error", safeReject);
+            }).catch(safeReject));
           }
-        ).on("error", (err) => {
-          clearTimeout(timeoutTimer);
-          rejectPromise(err);
-        });
+        ).on("error", fail);
       };
 
       downloadReq(downloadUrl);
@@ -1489,13 +1825,22 @@ export async function downloadAndStagePackage(releaseInfo, customDownloadUrl = n
       path: destDir,
     };
   } finally {
+    // An abort can beat an asynchronous open. Wait for it to close before
+    // unlinking, otherwise it could recreate the archive after cleanup.
+    await Promise.allSettled(pendingOpens);
     await unlink(tempArchive).catch(() => {});
     await rm(extractDir, { recursive: true, force: true }).catch(() => {});
   }
 }
 
 export async function checkUpdate(targetVersion = null, options = {}) {
+  if (options.signal?.aborted) {
+    throw new Error("Operation aborted");
+  }
   return withGateLock("exclusive", 15, async () => {
+    if (options.signal?.aborted) {
+      throw new Error("Operation aborted");
+    }
     const state = await loadState();
     const currentVersion = state.selectedVersion || getBundledVersion();
 
@@ -1522,10 +1867,12 @@ export async function checkUpdate(targetVersion = null, options = {}) {
     if (options.fixtureRelease) {
       releaseData = options.fixtureRelease;
     } else {
-      const url = targetVersion
-        ? `https://api.github.com/repos/openai/codex/releases/tags/rust-v${targetVersion}`
-        : "https://api.github.com/repos/openai/codex/releases/latest";
-      releaseData = await fetchJson(url);
+      const url =
+        options.releaseUrl ||
+        (targetVersion
+          ? `https://api.github.com/repos/openai/codex/releases/tags/rust-v${targetVersion}`
+          : "https://api.github.com/repos/openai/codex/releases/latest");
+      releaseData = await fetchJson(url, options);
     }
 
     if (releaseData.prerelease || releaseData.draft) {
@@ -1604,7 +1951,8 @@ export async function checkUpdate(targetVersion = null, options = {}) {
           assets: releaseData.assets,
           expectedSha256: expectedDigest,
         },
-        options.downloadUrl
+        options.downloadUrl,
+        options
       );
     }
 
@@ -1624,7 +1972,13 @@ export async function checkUpdate(targetVersion = null, options = {}) {
 }
 
 export async function applyUpdate(options = {}) {
+  if (options.signal?.aborted) {
+    throw new Error("Operation aborted");
+  }
   return withGateLock("exclusive", 15, async () => {
+    if (options.signal?.aborted) {
+      throw new Error("Operation aborted");
+    }
     const isManual = options.isManual === true;
     const state = await loadState();
 
@@ -1688,6 +2042,8 @@ export async function applyUpdate(options = {}) {
     }
 
     if (!isManual && state.idleCheckCount >= MAX_IDLE_CHECKS) {
+      // Skipped before inspection: keep the last inspected process blocker.
+      // Budget exhaustion itself is visible in status/idleCheckCount/nextRetryAt.
       state.status = "paused_busy";
       state.reason = `Daily idle check budget exhausted for ${state.budgetDate}`;
       state.nextRetryAt = getNextDayFirstSlotTime(getNow(), tz).toISOString();
@@ -1732,6 +2088,7 @@ export async function applyUpdate(options = {}) {
           state.idleCheckCount = (state.idleCheckCount || 0) + 1;
           if (state.idleCheckCount >= MAX_IDLE_CHECKS) {
             state.status = "paused_busy";
+            state.lastBlocker = "daily_budget_exhausted";
             state.reason = `Candidate ${state.stagedVersion} reached daily idle check limit (${MAX_IDLE_CHECKS} checks for ${state.budgetDate}); restart cooldown active until ${state.nextRestartAllowedAt}`;
             state.nextRetryAt = getNextDayFirstSlotTime(getNow(), tz).toISOString();
             await saveState(state);
@@ -1739,6 +2096,7 @@ export async function applyUpdate(options = {}) {
           }
         }
         state.status = "paused_restart";
+        state.lastBlocker = "restart_cooldown";
         state.reason = `Restart cooldown active until ${state.nextRestartAllowedAt}; waiting for session exit (${state.idleCheckCount}/${MAX_IDLE_CHECKS} checks for ${state.budgetDate})`;
         state.nextRetryAt = state.nextRestartAllowedAt;
         await saveState(state);
@@ -1759,11 +2117,13 @@ export async function applyUpdate(options = {}) {
         state.status = "pending_busy";
         state.reason = `Deferred: ${sessions.busyReasons.join(", ")}`;
       }
+      state.lastBlocker = sessions.blockers[0]?.type || "unknown";
       await saveState(state);
       return {
         applied: false,
         reason: state.status,
         busyReasons: sessions.busyReasons,
+        blockerTypes: sessions.blockers.map((b) => b.type),
         state,
       };
     }
@@ -1855,6 +2215,7 @@ export async function applyUpdate(options = {}) {
       state.candidateVersion = null;
       state.candidateDigest = null;
       state.lastApplyAt = getNow().toISOString();
+      state.lastBlocker = null;
       state.status = "applied";
       state.reason = `Successfully applied ${newVersion} with graceful server restart`;
       state.nextRetryAt = null;
@@ -1920,6 +2281,7 @@ export async function applyUpdate(options = {}) {
     state.restartAttemptCount = 0;
     state.blockedReason = null;
     state.lastApplyAt = getNow().toISOString();
+    state.lastBlocker = null;
     state.status = "applied";
     state.reason = `Successfully applied stable Codex version ${newVersion}`;
     state.nextRetryAt = null;
@@ -2103,47 +2465,103 @@ export async function cleanupOldReleases(currentVersion, previousTarget) {
 
 export async function getStatus() {
   const state = await loadState();
-  const sessions = await inspectAllSessions();
+  const sessions = await inspectAllSessions({ readOnly: true });
   const options = await readOptions();
   const appVersion = getAppVersion();
   const bundledVersion = getBundledVersion();
 
   let procEntries = [];
+  let procInspectionFailed = false;
   try {
     procEntries = await readdir("/proc");
-  } catch {}
+  } catch {
+    procInspectionFailed = true;
+  }
 
   const activeVersions = new Set();
-  for (const entry of procEntries) {
-    if (!/^\d+$/.test(entry)) continue;
-    const pid = parseInt(entry, 10);
-    if (pid === process.pid) continue;
-    const proc = await inspectProcess(pid);
-    if (!proc) continue;
-    const exeName = basename(proc.exe.replace(/\s+\(deleted\)$/, ""));
-    if (exeName === "codex" || exeName === "codex-real") {
-      if (proc.exe.includes("/data/codex-runtime/releases/")) {
-        const match = proc.exe.match(/\/releases\/([^/]+)/);
-        if (match) {
-          const v = match[1].split("-")[0];
-          activeVersions.add(v);
-        }
-      } else {
+  let hasUnrecognizedOrUnknown =
+    (sessions.counts && sessions.counts.unknown > 0) ||
+    (Array.isArray(sessions.blockers) &&
+      sessions.blockers.some((b) => b.type === "unknown" || b.type === "inspection_failed"));
+
+  if (!procInspectionFailed) {
+    for (const entry of procEntries) {
+      if (!/^\d+$/.test(entry)) continue;
+      const pid = parseInt(entry, 10);
+      if (pid === process.pid) continue;
+      const proc = await inspectProcess(pid);
+      if (!proc) continue;
+      if (proc.unknown) {
+        hasUnrecognizedOrUnknown = true;
+        continue;
+      }
+      const identity = await executableEntrypoint(proc);
+      if (!identity || identity.role !== "primary") continue;
+      if (identity.generation === getBaselineDir()) {
         activeVersions.add(bundledVersion);
+      } else {
+        const match = identity.generation.match(/\/releases\/([^/]+)$/);
+        if (match) activeVersions.add(match[1].split("-")[0]);
       }
     }
   }
 
-  const runningVersions = Array.from(activeVersions);
-  const runningVersion = runningVersions.length === 0 ? "none" : runningVersions.join(", ");
+  const sessionInspectionIncomplete =
+    procInspectionFailed ||
+    sessions.sessionCount === -1 ||
+    hasUnrecognizedOrUnknown;
+
+  let runningVersions = null;
+  let runningVersion = "unobserved";
+  let runningObservation = "unobserved";
+
+  if (!sessionInspectionIncomplete) {
+    runningVersions = Array.from(activeVersions).sort();
+    runningVersion = runningVersions.length === 0 ? "none" : runningVersions.join(", ");
+    runningObservation = "complete";
+  } else if (activeVersions.size > 0) {
+    runningVersions = Array.from(activeVersions).sort();
+    runningVersion = runningVersions.join(", ") + " (partial)";
+    runningObservation = "partial";
+  }
+
+  // Cross-reference selectedVersion with actual current symlink and release package metadata
+  let verifiedSelectedVersion = null;
+  try {
+    const currentLink = getCurrentLink();
+    if (existsSync(currentLink)) {
+      const currentCheck = await validateSymlinkContainment(currentLink);
+      if (currentCheck.valid && existsSync(currentCheck.target)) {
+        const resolvedTarget = resolve(currentCheck.target);
+        if (resolvedTarget === resolve(getBaselineDir())) {
+          if (state.selectedVersion && state.selectedVersion === bundledVersion) {
+            verifiedSelectedVersion = bundledVersion;
+          }
+        } else {
+          const pkgPath = join(resolvedTarget, "codex-package.json");
+          const st = await lstat(pkgPath).catch(() => null);
+          if (st && st.isFile()) {
+            const pkgJson = JSON.parse(await readFile(pkgPath, "utf-8"));
+            if (typeof pkgJson.version === "string" && pkgJson.version.trim()) {
+              const ver = pkgJson.version.trim();
+              if (state.selectedVersion === ver) {
+                verifiedSelectedVersion = ver;
+              }
+            }
+          }
+        }
+      }
+    }
+  } catch {}
 
   return {
     appVersion,
     bundledVersion,
-    selectedVersion: state.selectedVersion,
+    selectedVersion: verifiedSelectedVersion,
     stagedVersion: state.stagedVersion,
     runningVersion,
     runningVersions,
+    runningObservation,
     autoUpdate: options.autoUpdate,
     optionsValid: options.valid,
     timezone: options.timezone,
@@ -2160,9 +2578,88 @@ export async function getStatus() {
     lastApplyAt: state.lastApplyAt,
     status: state.status,
     reason: state.reason,
+    lastBlocker: state.lastBlocker || null,
+    // Compatibility field: unique live Codex task processes (CLI/TUI,
+    // managed servers, remote/unmanaged/unknown holders). This is a process
+    // count, not a conversation count; owned helper companions are excluded.
     activeSessions: sessions.sessionCount,
     isIdle: sessions.isIdle,
+    // Compatibility field: session-level predicate indicating whether live
+    // task/session blockers are absent (sessions.canApply).
+    // Note: This evaluates only live process blockers; it does not check
+    // autoUpdate toggle, staged candidate availability, daily check budget,
+    // or restart cooldown. For automated daemon readiness, see autoApplyReady.
+    canApply: sessions.canApply,
+    autoApplyReady: Boolean(
+      options.valid &&
+      options.autoUpdate &&
+      state.stagedVersion &&
+      !state.blockedReason &&
+      state.status !== "paused_busy" &&
+      (state.idleCheckCount || 0) < MAX_IDLE_CHECKS &&
+      sessions.canApply &&
+      (sessions.isIdle || !(state.reason === "restart_cooldown" || (state.nextRestartAllowedAt && new Date(state.nextRestartAllowedAt).getTime() > getNow().getTime())))
+    ),
+    blockerTypes: sessions.blockers.map((b) => b.type),
+    processSummary: sessions.counts,
   };
+}
+
+export function formatSessionReady(status) {
+  if (!status.canApply) {
+    return "no (waiting for real sessions or unverifiable processes to exit)";
+  }
+  if (status.isIdle) {
+    return "yes (no Codex processes; manual apply can run now)";
+  }
+  return "yes (idle managed server(s) eligible for restart; manual apply can restart now if cooldown allows)";
+}
+
+export function formatAutoApplyReady(status) {
+  if (!status.optionsValid) {
+    return "blocked (configuration options invalid)";
+  }
+  if (!status.autoUpdate) {
+    return "disabled (auto-update disabled; manual apply only)";
+  }
+  if (!status.stagedVersion) {
+    return "no (no staged update waiting to apply)";
+  }
+  if (status.blockedReason) {
+    return `blocked (${status.blockedReason})`;
+  }
+  if (status.status === "paused_busy" || (status.idleCheckCount || 0) >= status.maxIdleChecks) {
+    return `paused (daily check budget exhausted; waiting for scheduled retry at ${status.nextRetryAt || "next window"}; manual apply can re-check immediately)`;
+  }
+  if (!status.canApply) {
+    return "deferred (waiting for active sessions or unverifiable processes to clear)";
+  }
+  const nowMs = getNow().getTime();
+  const cooldownActive = Boolean(
+    !status.isIdle &&
+    (status.reason === "restart_cooldown" || (status.nextRestartAllowedAt && new Date(status.nextRestartAllowedAt).getTime() > nowMs))
+  );
+  if (cooldownActive) {
+    return `waiting (restart cooldown active until ${status.nextRestartAllowedAt || "next window"}; manual apply also respects cooldown)`;
+  }
+  return "yes (ready for next automatic apply check)";
+}
+
+function printApplyGuidance(res) {
+  const types = res.blockerTypes || [];
+  console.log("  Automatic apply waits until every blocker clears and the next allowed re-check; a manual apply re-checks now and never force-stops sessions.");
+  if (types.includes("remote_stdio")) {
+    console.log("  A Remote stdio session holds the current version: save your work and close the connection normally; the next check can apply after the process exits.");
+  }
+  if (types.includes("unknown") || types.includes("inspection_failed")) {
+    console.log("  Some processes could not be attributed; they are held conservatively and are never killed automatically.");
+  }
+  if (types.includes("server_busy")) {
+    console.log("  A managed server still has loaded conversations or in-flight work; it must drain before replacement.");
+  }
+  if (res.reason === "restart_cooldown") {
+    console.log("  Only restartable idle managed server(s) remain; replacement waits for the rolling 24-hour restart cooldown.");
+  }
 }
 
 async function main() {
@@ -2217,9 +2714,11 @@ Options:
   Timezone:          ${status.timezone}
   Daily idle checks: ${status.idleCheckCount}/${status.maxIdleChecks} (date: ${status.budgetDate || "n/a"})
   Restart attempts:  ${status.restartAttemptCount}/${status.maxRestartAttempts} (next allowed: ${status.nextRestartAllowedAt || "immediate"})
-  Blocked/Paused:    ${status.blockedReason || (status.status === "paused_busy" ? "paused_busy (daily limit reached)" : "none")}
+  Blocked/Paused:    ${status.blockedReason || (status.lastBlocker ? status.status + " (" + status.lastBlocker + ")" : status.status === "paused_busy" ? "paused_busy (daily limit reached)" : "none")}
   Next retry at:     ${status.nextRetryAt || "n/a"}
-  Active sessions:   ${status.activeSessions} (${status.isIdle ? "idle" : "busy"})
+  Codex processes:   ${status.activeSessions} unique task process(es), ${status.processSummary.helpers} helper(s) owned [CLI/TUI ${status.processSummary.cli}, managed idle server(s) ${status.processSummary.managedIdleServers}, remote stdio ${status.processSummary.remoteStdio}, unmanaged ${status.processSummary.unmanagedAppServers}, unknown ${status.processSummary.unknown}]
+  Session ready:     ${formatSessionReady(status)}
+  Auto-apply ready:  ${formatAutoApplyReady(status)}
   Status:            ${status.status}
   Reason:            ${status.reason || "none"}
   Last checked:      ${status.lastCheckAt || "never"}
@@ -2243,6 +2742,7 @@ Options:
         if (res.busyReasons?.length) {
           console.log(`  Reasons: ${res.busyReasons.join(", ")}`);
         }
+        printApplyGuidance(res);
       }
     } else if (action === "update") {
       if (args.length > 1 && !args.includes("--json")) {
@@ -2260,10 +2760,11 @@ Options:
         if (applyRes.applied) {
           console.log(`Successfully applied Codex update: ${applyRes.version}`);
         } else {
-          console.log(`Update staged but apply deferred: ${applyRes.reason}`);
-          if (applyRes.busyReasons?.length) {
-            console.log(`  Reasons: ${applyRes.busyReasons.join(", ")}`);
-          }
+        console.log(`Update staged but apply deferred: ${applyRes.reason}`);
+        if (applyRes.busyReasons?.length) {
+          console.log(`  Reasons: ${applyRes.busyReasons.join(", ")}`);
+        }
+        printApplyGuidance(applyRes);
         }
       }
     } else {

@@ -5,6 +5,7 @@ import http from "node:http";
 import path from "node:path";
 import process from "node:process";
 import readline from "node:readline/promises";
+import { fileURLToPath } from "node:url";
 
 const SCHEMA_VERSION = "1";
 const TARGET_REPOSITORY = "Kanu-Coffee/codex-for-home-assistant";
@@ -229,6 +230,53 @@ function normalizeAppOptions(value) {
   return options;
 }
 
+function normalizeOptionalVersion(value, name) {
+  if (value === null || value === undefined) return null;
+  if (typeof value !== "string") {
+    fail(`${name} must be a string or null`, 64);
+  }
+  const trimmed = value.trim();
+  if (trimmed.length === 0) return null;
+  if (trimmed.length > 32 || !/^[0-9A-Za-z._+-]+$/u.test(trimmed)) {
+    fail(`${name} has an invalid version format`, 64);
+  }
+  return trimmed;
+}
+
+function normalizeOptionalVersionArray(value, name, maxItems = 8) {
+  if (value === null || value === undefined) return null;
+  if (!Array.isArray(value)) {
+    fail(`${name} must be an array or null`, 64);
+  }
+  if (value.length > maxItems) {
+    fail(`${name} exceeds maximum items (${maxItems})`, 64);
+  }
+  const normalized = [];
+  for (let i = 0; i < value.length; i++) {
+    const item = value[i];
+    if (typeof item !== "string") {
+      fail(`${name}[${i}] must be a string`, 64);
+    }
+    const trimmed = item.trim();
+    if (trimmed.length === 0 || trimmed.length > 32 || !/^[0-9A-Za-z._+-]+$/u.test(trimmed)) {
+      fail(`${name}[${i}] has an invalid version format`, 64);
+    }
+    normalized.push(trimmed);
+  }
+  return Array.from(new Set(normalized)).sort();
+}
+
+function normalizeRunningObservation(value, label) {
+  if (value === null || value === undefined) return null;
+  if (typeof value === "string") {
+    const norm = value.trim();
+    if (["complete", "partial", "unobserved"].includes(norm)) {
+      return norm;
+    }
+  }
+  fail(`${label} must be 'complete', 'partial', or 'unobserved'`, 64);
+}
+
 function normalizeEnvironment(value = {}) {
   assertPlainObject(value, "environment");
   assertOnlyKeys(
@@ -236,6 +284,9 @@ function normalizeEnvironment(value = {}) {
     new Set([
       "app_version",
       "codex_version",
+      "codex_selected_version",
+      "codex_running_versions",
+      "codex_running_observation",
       "core_version",
       "supervisor_version",
       "os_version",
@@ -244,7 +295,7 @@ function normalizeEnvironment(value = {}) {
     ]),
     "environment",
   );
-  return {
+  const result = {
     app_version: normalizeVersion(value.app_version, "environment.app_version"),
     codex_version: normalizeVersion(
       value.codex_version,
@@ -262,6 +313,27 @@ function normalizeEnvironment(value = {}) {
     arch: normalizeVersion(value.arch, "environment.arch"),
     app_options: normalizeAppOptions(value.app_options),
   };
+
+  if ("codex_selected_version" in value) {
+    result.codex_selected_version = normalizeOptionalVersion(
+      value.codex_selected_version,
+      "environment.codex_selected_version",
+    );
+  }
+  if ("codex_running_versions" in value) {
+    result.codex_running_versions = normalizeOptionalVersionArray(
+      value.codex_running_versions,
+      "environment.codex_running_versions",
+    );
+  }
+  if ("codex_running_observation" in value) {
+    result.codex_running_observation = normalizeRunningObservation(
+      value.codex_running_observation,
+      "environment.codex_running_observation",
+    );
+  }
+
+  return result;
 }
 
 function normalizeDraft(kind, input) {
@@ -715,6 +787,102 @@ function readCodexVersion() {
   }
 }
 
+function readCodexBaselineVersion() {
+  try {
+    const raw = safeReadSmallFile(
+      "/usr/local/lib/codex-ha/codex-baseline/codex-package.json",
+      4096,
+    );
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (typeof parsed?.version === "string" && /^[0-9A-Za-z._+-]+$/u.test(parsed.version.trim())) {
+        return parsed.version.trim();
+      }
+    }
+  } catch {}
+  return readCodexVersion();
+}
+
+async function readCodexRuntimeVersions(fallbackVersion) {
+  const bundledFallback = readCodexBaselineVersion() || fallbackVersion;
+  try {
+    const managerPath =
+      process.env.CODEX_RUNTIME_MANAGER_PATH ||
+      path.resolve(
+        path.dirname(fileURLToPath(import.meta.url)),
+        "codex-runtime-manager.mjs",
+      );
+    const script = `
+      try {
+        const { getStatus } = await import(${JSON.stringify(managerPath)});
+        const status = await getStatus();
+        process.stdout.write(JSON.stringify({
+          bundled: status?.bundledVersion || null,
+          selected: status?.selectedVersion || null,
+          running: Array.isArray(status?.runningVersions) ? status.runningVersions : null,
+          runningObservation: status?.runningObservation || (Array.isArray(status?.runningVersions) ? "complete" : "unobserved")
+        }));
+        process.exit(0);
+      } catch {
+        process.exit(1);
+      }
+    `;
+    const childEnv = {
+      PATH: process.env.PATH || "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+      LANG: "C.UTF-8",
+      HOME: "/data/home",
+      CODEX_HOME: "/data/codex",
+    };
+    if (process.env.CODEX_RUNTIME_DIR) childEnv.CODEX_RUNTIME_DIR = process.env.CODEX_RUNTIME_DIR;
+    if (process.env.CODEX_MAINTENANCE_DIR) childEnv.CODEX_MAINTENANCE_DIR = process.env.CODEX_MAINTENANCE_DIR;
+    if (process.env.CODEX_BASELINE_DIR) childEnv.CODEX_BASELINE_DIR = process.env.CODEX_BASELINE_DIR;
+    if (process.env.CODEX_HA_OPTIONS_FILE) childEnv.CODEX_HA_OPTIONS_FILE = process.env.CODEX_HA_OPTIONS_FILE;
+    if (process.env.CODEX_TEST_CLOCK) childEnv.CODEX_TEST_CLOCK = process.env.CODEX_TEST_CLOCK;
+    if (process.env.CODEX_RUNTIME_MANAGER_PATH) childEnv.CODEX_RUNTIME_MANAGER_PATH = process.env.CODEX_RUNTIME_MANAGER_PATH;
+
+    const res = childProcess.spawnSync(process.execPath, ["--input-type=module", "-e", script], {
+      timeout: 3000,
+      killSignal: "SIGKILL",
+      encoding: "utf8",
+      maxBuffer: 64 * 1024,
+      env: childEnv,
+    });
+    if (res.status === 0 && res.stdout) {
+      const parsed = JSON.parse(res.stdout);
+      const bundled =
+        (typeof parsed.bundled === "string" && parsed.bundled.trim()) || bundledFallback;
+      const selected =
+        typeof parsed.selected === "string" && parsed.selected.trim()
+          ? parsed.selected.trim()
+          : null;
+      let running = null;
+      if (Array.isArray(parsed.running)) {
+        running = Array.from(
+          new Set(
+            parsed.running
+              .filter((v) => typeof v === "string" && v.trim().length > 0)
+              .map((v) => v.trim()),
+          ),
+        ).sort();
+      }
+      const runningObservation =
+        typeof parsed.runningObservation === "string" &&
+        ["complete", "partial", "unobserved"].includes(parsed.runningObservation.trim())
+          ? parsed.runningObservation.trim()
+          : (running !== null ? "complete" : "unobserved");
+      return { bundled, selected, running, runningObservation };
+    }
+  } catch {}
+
+  // Fallback if manager is not importable or fails
+  return {
+    bundled: bundledFallback,
+    selected: null,
+    running: null,
+    runningObservation: "unobserved",
+  };
+}
+
 function supervisorRequest(endpoint) {
   const token = process.env.SUPERVISOR_TOKEN;
   if (!token || /[\r\n]/u.test(token)) return Promise.resolve(null);
@@ -768,9 +936,11 @@ async function collectEnvironment(fallback) {
     128,
   );
   const detectedArch = process.arch === "x64" ? "amd64" : process.arch;
-  return normalizeEnvironment({
+  const codexVersions = await readCodexRuntimeVersions(fallback.codex_version);
+
+  const envData = {
     app_version: localAppVersion || fallback.app_version,
-    codex_version: readCodexVersion() || fallback.codex_version,
+    codex_version: codexVersions.bundled || fallback.codex_version,
     core_version: systemInfo?.homeassistant || fallback.core_version,
     supervisor_version: systemInfo?.supervisor || fallback.supervisor_version,
     os_version: systemInfo?.hassos || fallback.os_version,
@@ -779,7 +949,19 @@ async function collectEnvironment(fallback) {
       ...fallback.app_options,
       ...readSafeOptions(),
     },
-  });
+  };
+
+  if (codexVersions.selected !== undefined) {
+    envData.codex_selected_version = codexVersions.selected;
+  }
+  if (codexVersions.running !== undefined) {
+    envData.codex_running_versions = codexVersions.running;
+  }
+  if (codexVersions.runningObservation !== undefined) {
+    envData.codex_running_observation = codexVersions.runningObservation;
+  }
+
+  return normalizeEnvironment(envData);
 }
 
 function overallAssessment(checks) {
@@ -817,12 +999,49 @@ function githubTitle(report) {
 function renderReport(report) {
   const environmentRows = [
     ["App", report.environment.app_version],
-    ["Codex", report.environment.codex_version],
+  ];
+
+  if (
+    "codex_selected_version" in report.environment ||
+    "codex_running_versions" in report.environment
+  ) {
+    environmentRows.push(["Codex (bundled)", report.environment.codex_version]);
+    let selectedStr = "none / 선택 없음";
+    if (typeof report.environment.codex_selected_version === "string") {
+      selectedStr = report.environment.codex_selected_version;
+    } else if (report.environment.codex_selected_version === null) {
+      selectedStr = "unverified / 미검증";
+    }
+    environmentRows.push(["Codex (selected)", selectedStr]);
+
+    let runningStr = "none / 실행 중 없음";
+    const obs = report.environment.codex_running_observation;
+    if (obs === "unobserved" || report.environment.codex_running_versions === null) {
+      runningStr = "unobserved / 관측 불가";
+    } else if (Array.isArray(report.environment.codex_running_versions)) {
+      if (report.environment.codex_running_versions.length === 0) {
+        runningStr = "none / 실행 중 없음";
+      } else {
+        const verStr = report.environment.codex_running_versions.join(", ");
+        if (obs === "partial") {
+          runningStr = `${verStr} (partial / 부분 관측)`;
+        } else {
+          runningStr = verStr;
+        }
+      }
+    }
+    environmentRows.push(["Codex (running)", runningStr]);
+  } else {
+    // Backward-compatible single row for legacy reports
+    environmentRows.push(["Codex", report.environment.codex_version]);
+  }
+
+  environmentRows.push(
     ["Home Assistant Core", report.environment.core_version],
     ["Supervisor", report.environment.supervisor_version],
     ["Home Assistant OS", report.environment.os_version],
     ["Architecture", report.environment.arch],
-  ];
+  );
   const optionRows = Object.entries(report.environment.app_options).map(
     ([key, value]) => [key, String(value)],
   );
@@ -1928,14 +2147,21 @@ async function main() {
   fail("unknown github command", 64);
 }
 
-try {
-  await main();
-} catch (error) {
-  if (error instanceof FeedbackError) {
-    process.stderr.write(`ha-feedback: ${error.message}\n`);
-    process.exitCode = error.exitCode;
-  } else {
-    process.stderr.write("ha-feedback: unexpected internal error; no report or submission was completed\n");
-    process.exitCode = 70;
+if (
+  process.argv[1] &&
+  path.resolve(process.argv[1]) === path.resolve(fileURLToPath(import.meta.url))
+) {
+  try {
+    await main();
+  } catch (error) {
+    if (error instanceof FeedbackError) {
+      process.stderr.write(`ha-feedback: ${error.message}\n`);
+      process.exitCode = error.exitCode;
+    } else {
+      process.stderr.write(
+        "ha-feedback: unexpected internal error; no report or submission was completed\n",
+      );
+      process.exitCode = 70;
+    }
   }
 }

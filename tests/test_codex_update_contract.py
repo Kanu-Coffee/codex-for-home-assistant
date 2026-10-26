@@ -1,6 +1,8 @@
+import functools
 import hashlib
 import http.server
 import io
+import shutil
 import json
 import os
 import subprocess
@@ -308,7 +310,22 @@ def test_status_output_scrubs_secrets_and_reports_honest_versions(
     runtime_dir.mkdir()
     maint_dir.mkdir()
 
+    baseline_dir = tmp_path / "baseline"
+    baseline_dir.mkdir()
+    (baseline_dir / "codex-package.json").write_text(
+        json.dumps({
+            "version": "0.162.1",
+            "target": "x86_64-unknown-linux-musl",
+            "entrypoint": "bin/codex",
+        }),
+        encoding="utf-8",
+    )
+    (baseline_dir / "bin").mkdir()
+    (baseline_dir / "bin" / "codex").write_text("#!/bin/sh\nexit 0\n")
+    (baseline_dir / "bin" / "codex").chmod(0o755)
+
     script = f"""
+    process.env.CODEX_BASELINE_DIR = '{baseline_dir}';
     process.env.CODEX_RUNTIME_DIR = '{runtime_dir}';
     process.env.CODEX_MAINTENANCE_DIR = '{maint_dir}';
     process.env.SUPERVISOR_TOKEN = 'secret-token-should-not-leak';
@@ -317,7 +334,7 @@ def test_status_output_scrubs_secrets_and_reports_honest_versions(
     console.log(JSON.stringify(status));
     """
     status = run_node_eval(script, repository_root)
-    assert status["appVersion"] == "0.7.1"
+    assert status["appVersion"] == "0.7.2"
     assert status["bundledVersion"] == "0.162.1"
     assert status["selectedVersion"] == "0.162.1"
     assert status["runningVersion"] in ("none", "0.162.1")
@@ -754,7 +771,9 @@ def test_wrapper_argument_parsing_distinguishes_subcommands(repository_root: Pat
 
     # Verify loop structure handles flag arguments
     assert "while [[ $# -gt 0 ]]; do" in wrapper_content
-    assert "-m|--model|-c|--config|-C|--cd|--profile|--color|-s|--sandbox)" in wrapper_content
+    assert ("-m|--model|-c|--config|-C|--cd|--profile|--color|-s|--sandbox|-p|-a|"
+            "--ask-for-approval|--enable|--disable|--remote|--remote-auth-token-env|"
+            "--local-provider|-i|--image|--add-dir)") in wrapper_content
     assert "shift 2" in wrapper_content
     assert "--)" in wrapper_content
     assert "update)" in wrapper_content
@@ -774,7 +793,7 @@ def test_wrapper_argument_parsing_distinguishes_subcommands(repository_root: Pat
             update_args=("$@")
             break
             ;;
-          -m|--model|-c|--config|-C|--cd|--profile|--color|-s|--sandbox)
+          -m|--model|-c|--config|-C|--cd|--profile|--color|-s|--sandbox|-p|-a|--ask-for-approval|--enable|--disable|--remote|--remote-auth-token-env|--local-provider|-i|--image|--add-dir)
             shift 2 2>/dev/null || break
             ;;
           -m*|-c*|-C*) shift ;;
@@ -791,6 +810,10 @@ def test_wrapper_argument_parsing_distinguishes_subcommands(repository_root: Pat
     echo "3:$(parse_args --model update prompt)"
     echo "4:$(parse_args -- update)"
     echo "5:$(parse_args update status --json)"
+    echo "6:$(parse_args -p home update --status)"
+    echo "7:$(parse_args -a never update)"
+    echo "8:$(parse_args --remote ws://host update status)"
+    echo "9:$(parse_args -p prompt update my lights)"
     """
     proc = subprocess.run(["bash", "-c", bash_test], capture_output=True, text=True, check=True)
     lines = proc.stdout.strip().split("\n")
@@ -799,6 +822,10 @@ def test_wrapper_argument_parsing_distinguishes_subcommands(repository_root: Pat
     assert lines[2] == "3:subcommand=false;count=0"
     assert lines[3] == "4:subcommand=false;count=0"
     assert lines[4] == "5:subcommand=true;count=2"
+    assert lines[5] == "6:subcommand=true;count=1"
+    assert lines[6] == "7:subcommand=true;count=0"
+    assert lines[7] == "8:subcommand=true;count=1"
+    assert lines[8] == "9:subcommand=true;count=2"
 
 
 def test_codex_updater_s6_service_contract(rootfs: Path) -> None:
@@ -1749,3 +1776,1757 @@ def test_cleanup_old_releases_preserves_live_cwd_and_mmap(
     assert rel_cwd.exists()
     assert rel_map.exists()
 
+
+
+# --- task 004: process classification fixtures (helper vs real CLI vs server) ---
+
+MOCK_APP_SERVER_JS = """
+import net from 'node:net';
+import crypto from 'node:crypto';
+import fs from 'node:fs';
+
+process.on('SIGHUP', () => process.exit(0));
+let buf = Buffer.alloc(0);
+const server = net.createServer((socket) => {
+  socket.on('data', (data) => {
+    const text = data.toString('utf-8');
+    if (text.includes('Upgrade: websocket')) {
+      const keyMatch = text.match(/Sec-WebSocket-Key: ([^\\r\\n]+)/);
+      const key = keyMatch ? keyMatch[1].trim() : '';
+      const accept = crypto.createHash('sha1')
+        .update(key + '258EAFA5-E914-47DA-95CA-C5AB0DC85B11')
+        .digest('base64');
+      socket.write(
+        'HTTP/1.1 101 Switching Protocols\\r\\n' +
+        'Upgrade: websocket\\r\\n' +
+        'Connection: Upgrade\\r\\n' +
+        'Sec-WebSocket-Accept: ' + accept + '\\r\\n\\r\\n'
+      );
+      return;
+    }
+    buf = Buffer.concat([buf, data]);
+    while (buf.length >= 2) {
+      const b1 = buf[1];
+      const isMasked = (b1 & 0x80) !== 0;
+      let len = b1 & 0x7f;
+      let offset = 2;
+      if (len === 126) { if (buf.length < 4) break; len = buf.readUInt16BE(2); offset = 4; }
+      else if (len === 127) { if (buf.length < 10) break; len = Number(buf.readBigUInt64BE(2)); offset = 10; }
+      let maskKey = null;
+      if (isMasked) { if (buf.length < offset + 4) break; maskKey = buf.slice(offset, offset + 4); offset += 4; }
+      if (buf.length < offset + len) break;
+      const payload = Buffer.from(buf.slice(offset, offset + len));
+      buf = buf.slice(offset + len);
+      if (maskKey) { for (let i = 0; i < len; i++) payload[i] ^= maskKey[i % 4]; }
+      try {
+        const msg = JSON.parse(payload.toString('utf-8'));
+        let result = {};
+        if (msg.method === 'initialize') result = { serverInfo: { name: 'mock-004' } };
+        else if (msg.method === 'server/diagnostics') result = {
+          process: { id: process.pid },
+          gauges: [
+            { name: 'app.requests.in_flight', value: 0 },
+            { name: 'app.requests.queued', value: 0 },
+            { name: 'core.turns.active', value: 0 }
+          ]
+        };
+        else if (msg.method === 'thread/loaded/list') result = { data: [] };
+        else if (msg.method === 'initialized') continue;
+        const respPayload = Buffer.from(JSON.stringify({ id: msg.id, result }));
+        let header;
+        if (respPayload.length < 126) header = Buffer.from([0x81, respPayload.length]);
+        else { header = Buffer.alloc(4); header[0] = 0x81; header[1] = 126; header.writeUInt16BE(respPayload.length, 2); }
+        socket.write(Buffer.concat([header, respPayload]));
+      } catch (e) {}
+    }
+  });
+});
+try { fs.unlinkSync(SOCKET); } catch {}
+server.listen(SOCKET, () => console.log('READY'));
+""".replace("SOCKET", "{socket!r}")
+
+
+def _start_mock_server(socket_path: Path, launcher: Path, extra_listen_arg: bool = False) -> subprocess.Popen:
+    launcher.parent.mkdir(parents=True, exist_ok=True)
+    launcher.write_text(
+        "#!/usr/bin/env node\n" + MOCK_APP_SERVER_JS.replace("{socket!r}", repr(str(socket_path))),
+        encoding="utf-8",
+    )
+    launcher.chmod(0o755)
+    listen = f"--listen=unix://{socket_path}" if extra_listen_arg else f"unix://{socket_path}"
+    args = [str(launcher), "app-server"] + ([listen] if extra_listen_arg else ["--listen", listen])
+    proc = subprocess.Popen(args, stdout=subprocess.PIPE, text=True)
+    assert "READY" in proc.stdout.readline()
+    return proc
+
+
+def _register_session(maint_dir: Path, proc_pid: int, record: dict) -> None:
+    stat_parts = Path(f"/proc/{proc_pid}/stat").read_text().rsplit(")", 1)[1].split()
+    sessions_dir = maint_dir / "sessions"
+    sessions_dir.mkdir(parents=True, exist_ok=True)
+    full = {"pid": proc_pid, "start": stat_parts[19], **record}
+    (sessions_dir / str(proc_pid)).write_text(json.dumps(full), encoding="utf-8")
+
+
+def _inspect(repository_root: Path, runtime_dir: Path, maint_dir: Path, baseline_dir: Path | None = None) -> dict:
+    baseline_line = f"process.env.CODEX_BASELINE_DIR = '{baseline_dir}';" if baseline_dir else ""
+    script = f"""
+    process.env.CODEX_RUNTIME_DIR = '{runtime_dir}';
+    process.env.CODEX_MAINTENANCE_DIR = '{maint_dir}';
+    {baseline_line}
+    const res = await mgr.inspectAllSessions();
+    res.busyReasons = res.busyReasons;
+    console.log(JSON.stringify(res));
+    """
+    return run_node_eval(script, repository_root)
+
+
+def test_unrelated_process_with_codex_argv_data_is_not_a_session(repository_root: Path, tmp_path: Path) -> None:
+    runtime_dir = tmp_path / "runtime"
+    maint_dir = tmp_path / "maint"
+    runtime_dir.mkdir()
+    maint_dir.mkdir()
+    release_bin = runtime_dir / "releases" / "0.99.0-x86_64-unknown-linux-musl" / "bin" / "codex"
+    decoys = [
+        # codex paths and 'app-server' appear only as argv data, never as an exec identity
+        subprocess.Popen(["python3", "-c", "import time; time.sleep(60)",
+                          "/usr/local/bin/codex", "app-server", str(release_bin)]),
+        subprocess.Popen(["bash", "-c", f'cd "{runtime_dir}" && echo /usr/local/bin/codex app-server && sleep 60']),
+        subprocess.Popen(["grep", "-r", "app-server codex-real", str(tmp_path)]),
+    ]
+    try:
+        time.sleep(0.2)
+        res = _inspect(repository_root, runtime_dir, maint_dir)
+        assert res["isIdle"] is True, res["busyReasons"]
+        assert res["busyReasons"] == []
+        assert res["sessionCount"] == 0
+    finally:
+        for d in decoys:
+            d.terminate()
+            d.wait()
+
+
+def test_registered_cli_counted_once_with_cli_reason(repository_root: Path, tmp_path: Path) -> None:
+    runtime_dir = tmp_path / "runtime"
+    maint_dir = tmp_path / "maint"
+    runtime_dir.mkdir()
+    maint_dir.mkdir()
+    _register_session(maint_dir, os.getpid(), {"type": "cli", "managed": False, "socketPath": ""})
+    res = _inspect(repository_root, runtime_dir, maint_dir)
+    assert res["isIdle"] is False
+    assert res["sessionCount"] == 1
+    assert len(res["busyReasons"]) == 1
+    assert f"pid {os.getpid()}" in res["busyReasons"][0]
+    assert res["blockers"][0]["type"] == "cli"
+    assert res["counts"]["cli"] == 1
+    assert res["canApply"] is False
+
+
+def test_option_value_app_server_string_is_cli_not_remote_stdio(repository_root: Path, tmp_path: Path) -> None:
+    runtime_dir = tmp_path / "runtime"
+    maint_dir = tmp_path / "maint"
+    runtime_dir.mkdir()
+    maint_dir.mkdir()
+    proc = subprocess.Popen([
+        "python3", "-c", "import time; time.sleep(60)",
+        "-c", "mcp_servers.playwright.tools.app-server.mode=\"prompt\"",
+        "--add-dir", "/data/codex-ha-memory", "exec", "hello",
+    ])
+    try:
+        _register_session(maint_dir, proc.pid, {
+            "type": "cli", "managed": False, "socketPath": "",
+            "exe": "/usr/local/libexec/codex-real",
+            "args": ["-c", "mcp_servers.playwright.tools.app-server.mode=\"prompt\"",
+                     "--add-dir", "/data/codex-ha-memory", "exec", "hello"],
+        })
+        res = _inspect(repository_root, runtime_dir, maint_dir)
+        assert res["blockers"][0]["type"] == "cli", res["busyReasons"]
+        assert res["counts"]["remoteStdio"] == 0
+        assert res["sessionCount"] == 1
+    finally:
+        proc.terminate()
+        proc.wait()
+
+
+def test_parse_codex_invocation_subcommand_and_listen_forms(repository_root: Path) -> None:
+    script = """
+    const bin = '/data/codex-runtime/releases/0.163.0-x86_64-unknown-linux-musl/bin/codex';
+    const cases = [
+      mgr.parseCodexInvocation([bin, 'app-server', '--listen', 'unix:///x.sock']),
+      mgr.parseCodexInvocation([bin, '--listen=unix:///y.sock', 'app-server']),
+      mgr.parseCodexInvocation([bin, '-c', 'approval_policy=\"on-request\"', '--add-dir', '/data/codex-ha-memory', '-c', 'mcp_servers.playwright.tools.browser_click.approval_mode=\"approve\"', 'app-server', '--listen', 'unix:///z.sock']),
+      mgr.parseCodexInvocation([bin, '-c', 'mcp.playwright.tools.app-server.mode=\"prompt\"', 'exec', 'hello app-server update']),
+      mgr.parseCodexInvocation([bin, '--', 'app-server']),
+      mgr.parseCodexInvocation([bin]),
+    ];
+    console.log(JSON.stringify(cases));
+    """
+    cases = run_node_eval(script, repository_root)
+    assert cases[0] == {"subcommand": "app-server", "listenSocket": "/x.sock"}
+    assert cases[1] == {"subcommand": "app-server", "listenSocket": "/y.sock"}
+    assert cases[2] == {"subcommand": "app-server", "listenSocket": "/z.sock"}
+    assert cases[3] == {"subcommand": "exec", "listenSocket": None}
+    assert cases[4] == {"subcommand": None, "listenSocket": None}
+    assert cases[5] == {"subcommand": None, "listenSocket": None}
+
+
+def test_managed_idle_server_with_owned_companion_is_restartable(repository_root: Path, tmp_path: Path) -> None:
+    runtime_dir = tmp_path / "runtime"
+    maint_dir = tmp_path / "maint"
+    runtime_dir.mkdir()
+    maint_dir.mkdir()
+    release = runtime_dir / "releases" / "0.162.1-x86_64-unknown-linux-musl"
+    socket_path = tmp_path / "managed.sock"
+    companion = release / "bin" / "codex-code-mode-host"
+    companion.parent.mkdir(parents=True, exist_ok=True)
+    companion.write_text("#!/usr/bin/env node\nsetTimeout(() => {}, 600000);\n", encoding="utf-8")
+    companion.chmod(0o755)
+    launcher = release / "bin" / "codex"
+    launcher.write_text(
+        "#!/usr/bin/env node\nimport { spawn } from 'node:child_process';\n"
+        f"spawn({str(companion)!r}, [], {{ stdio: 'ignore' }});\n"
+        + MOCK_APP_SERVER_JS.replace("{socket!r}", repr(str(socket_path))),
+        encoding="utf-8",
+    )
+    launcher.chmod(0o755)
+    proc = subprocess.Popen([str(launcher), "app-server", "--listen", f"unix://{socket_path}"],
+                            stdout=subprocess.PIPE, text=True)
+    try:
+        assert "READY" in proc.stdout.readline()
+        time.sleep(0.3)
+        _register_session(maint_dir, proc.pid, {
+            "type": "app-server", "managed": True, "socketPath": str(socket_path),
+            "exe": str(launcher), "version": "0.162.1", "cwd": str(tmp_path),
+            "args": ["app-server", "--listen", f"unix://{socket_path}"],
+        })
+        res = _inspect(repository_root, runtime_dir, maint_dir)
+        assert res["busyReasons"] == [], res["busyReasons"]
+        assert res["canApply"] is True
+        assert res["isIdle"] is False
+        assert len(res["restartableServers"]) == 1
+        assert res["restartableServers"][0]["pid"] == proc.pid
+        assert res["sessionCount"] == 1
+        assert res["counts"]["helpers"] >= 1
+        assert res["counts"]["cli"] == 0
+    finally:
+        stat_children = Path(f"/proc/{proc.pid}/task/{proc.pid}/children").read_text().split()
+        proc.terminate()
+        proc.wait()
+        for child in stat_children:
+            try:
+                os.kill(int(child), 15)
+            except (ProcessLookupError, ValueError):
+                pass
+
+
+def test_managed_server_listen_equals_form_is_restartable(repository_root: Path, tmp_path: Path) -> None:
+    runtime_dir = tmp_path / "runtime"
+    maint_dir = tmp_path / "maint"
+    runtime_dir.mkdir()
+    maint_dir.mkdir()
+    baseline = tmp_path / "baseline"
+    socket_path = tmp_path / "eq.sock"
+    launcher = baseline / "bin" / "codex"
+    proc = _start_mock_server(socket_path, launcher, extra_listen_arg=True)
+    try:
+        _register_session(maint_dir, proc.pid, {
+            "type": "app-server", "managed": True, "socketPath": str(socket_path),
+            "exe": str(launcher), "version": "0.162.1", "cwd": str(tmp_path),
+            "args": ["app-server", f"--listen=unix://{socket_path}"],
+        })
+        res = _inspect(repository_root, runtime_dir, maint_dir, baseline_dir=baseline)
+        assert res["counts"]["remoteStdio"] == 0, res["busyReasons"]
+        assert len(res["restartableServers"]) == 1
+        assert res["canApply"] is True
+    finally:
+        proc.terminate()
+        proc.wait()
+
+
+def test_orphan_companion_holds_conservatively_as_unknown(repository_root: Path, tmp_path: Path) -> None:
+    runtime_dir = tmp_path / "runtime"
+    maint_dir = tmp_path / "maint"
+    runtime_dir.mkdir()
+    maint_dir.mkdir()
+    release = runtime_dir / "releases" / "0.162.1-x86_64-unknown-linux-musl"
+    companion = release / "bin" / "codex-code-mode-host"
+    companion.parent.mkdir(parents=True, exist_ok=True)
+    companion.write_text("#!/usr/bin/env node\nsetTimeout(() => {}, 600000);\n", encoding="utf-8")
+    companion.chmod(0o755)
+    proc = subprocess.Popen([str(companion)], stdout=subprocess.DEVNULL)
+    try:
+        time.sleep(0.2)
+        res = _inspect(repository_root, runtime_dir, maint_dir)
+        assert res["isIdle"] is False
+        assert res["counts"]["cli"] == 0
+        assert res["blockers"][0]["type"] == "unknown", res["busyReasons"]
+        assert res["canApply"] is False
+    finally:
+        proc.terminate()
+        proc.wait()
+
+
+def test_status_exposes_process_summary_and_dedicated_labels(repository_root: Path, tmp_path: Path) -> None:
+    runtime_dir = tmp_path / "runtime"
+    maint_dir = tmp_path / "maint"
+    runtime_dir.mkdir()
+    maint_dir.mkdir()
+    _register_session(maint_dir, os.getpid(), {"type": "cli", "managed": False, "socketPath": ""})
+    script = f"""
+    process.env.CODEX_RUNTIME_DIR = '{runtime_dir}';
+    process.env.CODEX_MAINTENANCE_DIR = '{maint_dir}';
+    await mgr.initRuntime();
+    const status = await mgr.getStatus();
+    console.log(JSON.stringify(status));
+    """
+    status = run_node_eval(script, repository_root)
+    assert status["activeSessions"] == 1  # compatibility field kept
+    assert status["processSummary"]["cli"] == 1
+    assert status["processSummary"]["managedIdleServers"] == 0
+    assert status["canApply"] is False
+    assert status["isIdle"] is False
+
+    proc = subprocess.run(
+        ["node", "codex_home_assistant/rootfs/usr/local/share/codex-ha/codex-runtime-manager.mjs", "status"],
+        cwd=repository_root,
+        capture_output=True,
+        text=True,
+        env={**os.environ, "CODEX_RUNTIME_DIR": str(runtime_dir), "CODEX_MAINTENANCE_DIR": str(maint_dir)},
+    )
+    assert proc.returncode == 0, proc.stderr
+    assert "Codex processes" in proc.stdout
+    assert "Active sessions" not in proc.stdout
+
+
+def test_wrapper_subcommand_block_matches_runtime_parser(repository_root: Path) -> None:
+    wrapper = (repository_root / "codex_home_assistant/rootfs/usr/local/bin/codex").read_text(encoding="utf-8")
+    start = wrapper.index('codex_subcommand=""')
+    end = wrapper.index('socket_path="${codex_listen}"')
+    end = wrapper.index("fi", end) + 2
+    block = wrapper[start:end]
+
+    harness = f"""
+    run_case() {{
+      local codex_subcommand="" codex_listen="" options_ended=false idx=0
+      local args=("$@") token
+      {block}
+      echo "sub=${{codex_subcommand}};listen=${{codex_listen}};app=${{is_app_server}}"
+    }}
+    run_case app-server --listen unix:///x.sock
+    run_case app-server --listen=unix:///y.sock
+    run_case -c 'approval_policy="on-request"' --add-dir /data/codex-ha-memory app-server --listen unix:///z.sock
+    run_case -c 'mcp.playwright.tools.app-server.mode="prompt"' exec hello
+    run_case -- app-server
+    run_case
+    run_case exec 'update my lights'
+    """
+    proc = subprocess.run(["bash", "-c", harness], capture_output=True, text=True)
+    assert proc.returncode == 0, proc.stderr
+    lines = proc.stdout.strip().splitlines()
+    assert lines[0] == "sub=app-server;listen=unix:///x.sock;app=true"
+    assert lines[1] == "sub=app-server;listen=unix:///y.sock;app=true"
+    assert lines[2] == "sub=app-server;listen=unix:///z.sock;app=true"
+    assert lines[3] == "sub=exec;listen=;app=false"
+    assert lines[4] == "sub=;listen=;app=false"
+    assert lines[5] == "sub=;listen=;app=false"
+    assert lines[6] == "sub=exec;listen=;app=false"
+
+
+# --- task 004 FIX_01 regression fixtures (F1 unknown package exe, F2 lastBlocker, F3 option vectors) ---
+
+def test_unrecognized_package_executable_is_held_unknown(repository_root: Path, tmp_path: Path) -> None:
+    runtime_dir = tmp_path / "runtime"
+    sibling_dir = tmp_path / "runtime-sibling"
+    maint_dir = tmp_path / "maint"
+    (runtime_dir / "releases").mkdir(parents=True)
+    sibling_dir.mkdir()
+    maint_dir.mkdir()
+
+    real_node = shutil.which("node")
+    baseline = tmp_path / "baseline"
+    (baseline / "bin").mkdir(parents=True)
+    unknown_baseline = baseline / "bin" / "codex-future-helper"
+    shutil.copy(real_node, unknown_baseline)
+
+    rel = runtime_dir / "releases" / "0.163.0-x86_64-unknown-linux-musl" / "bin"
+    rel.mkdir(parents=True)
+    unknown_release = rel / "codex-new-helper"
+    shutil.copy(real_node, unknown_release)
+
+    keep_alive = "setInterval(() => {}, 600000)"
+    deleted_proc = subprocess.Popen([str(unknown_release), "-e", keep_alive],
+                                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    unknown_release.unlink()  # exe becomes '<path> (deleted)'
+
+    sibling_copy = sibling_dir / "releases" / "0.163.0-x" / "bin"
+    sibling_copy.mkdir(parents=True)
+    sibling_bin = sibling_copy / "codex-sibling"
+    shutil.copy(real_node, sibling_bin)
+    sibling_proc = subprocess.Popen([str(sibling_bin), "-e", keep_alive],
+                                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+    procs = [deleted_proc, sibling_proc,
+             subprocess.Popen([str(unknown_baseline), "-e", keep_alive],
+                              stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)]
+    try:
+        time.sleep(0.2)
+        res = _inspect(repository_root, runtime_dir, maint_dir, baseline_dir=baseline)
+        types = [b["type"] for b in res["blockers"]]
+        assert types.count("unknown") == 2, res["busyReasons"]
+        assert res["counts"]["cli"] == 0
+        assert res["counts"]["detectedProcesses"] == 2  # sibling path stays outside the boundary
+        assert res["canApply"] is False
+        assert res["isIdle"] is False
+        for p in procs[:1] + procs[2:]:
+            p.terminate()
+            p.wait()
+        # after the two unknown package processes exit, only the sibling path
+        # (outside canonical boundaries) remains and must be ignored
+        res2 = _inspect(repository_root, runtime_dir, maint_dir, baseline_dir=baseline)
+        assert res2["isIdle"] is True, res2["busyReasons"]
+        assert res2["canApply"] is True
+        assert res2["counts"]["unknown"] == 0
+    finally:
+        for p in procs:
+            p.terminate()
+            p.wait()
+
+
+def test_last_blocker_round_trips_and_sanitizes(repository_root: Path, tmp_path: Path) -> None:
+    runtime_dir = tmp_path / "runtime"
+    maint_dir = tmp_path / "maint"
+    runtime_dir.mkdir()
+    maint_dir.mkdir()
+    script = f"""
+    process.env.CODEX_RUNTIME_DIR = '{runtime_dir}';
+    process.env.CODEX_MAINTENANCE_DIR = '{maint_dir}';
+    await mgr.initRuntime();
+    await mgr.updateState(s => {{ s.status = 'pending_busy'; s.lastBlocker = 'remote_stdio'; }});
+    const state = await mgr.loadState();
+    console.log(JSON.stringify({{ state }}));
+    """
+    res = run_node_eval(script, repository_root)
+    assert res["state"]["lastBlocker"] == "remote_stdio"
+
+    # cross-process read via the real status command
+    proc = subprocess.run(
+        ["node", "codex_home_assistant/rootfs/usr/local/share/codex-ha/codex-runtime-manager.mjs", "status", "--json"],
+        cwd=repository_root,
+        capture_output=True,
+        text=True,
+        env={**os.environ, "CODEX_RUNTIME_DIR": str(runtime_dir), "CODEX_MAINTENANCE_DIR": str(maint_dir)},
+    )
+    assert proc.returncode == 0, proc.stderr
+    status = json.loads(proc.stdout)
+    assert status["lastBlocker"] == "remote_stdio"
+    assert "lastBlocker" in json.dumps(json.loads((runtime_dir / "state.json").read_text()))
+
+    script2 = f"""
+    process.env.CODEX_RUNTIME_DIR = '{runtime_dir}';
+    process.env.CODEX_MAINTENANCE_DIR = '{maint_dir}';
+    await mgr.updateState(s => {{ s.lastBlocker = 'raw /home/user/secret note'; }});
+    const rejected = await mgr.loadState();
+    const fileText = await (await import('node:fs/promises')).readFile('{runtime_dir}/state.json', 'utf-8');
+    await mgr.updateState(s => {{ s.lastBlocker = null; }});
+    const cleared = await mgr.loadState();
+    console.log(JSON.stringify({{ rejected: rejected.lastBlocker, leak: fileText.includes('raw /home/user/secret'), cleared: cleared.lastBlocker }}));
+    """
+    res2 = run_node_eval(script2, repository_root)
+    assert res2["rejected"] is None  # unlisted text never persists
+    assert res2["leak"] is False
+    assert res2["cleared"] is None
+
+
+def test_budget_paused_busy_keeps_process_blocker_type(repository_root: Path, tmp_path: Path) -> None:
+    runtime_dir = tmp_path / "runtime"
+    maint_dir = tmp_path / "maint"
+    runtime_dir.mkdir()
+    sessions_dir = maint_dir / "sessions"
+    sessions_dir.mkdir(parents=True)
+    options_file = tmp_path / "options.json"
+    options_file.write_text(json.dumps({"codex_auto_update_timezone": "UTC"}), encoding="utf-8")
+    _register_session(maint_dir, os.getpid(), {"type": "cli", "managed": False, "socketPath": ""})
+
+    script = f"""
+    process.env.CODEX_RUNTIME_DIR = '{runtime_dir}';
+    process.env.CODEX_MAINTENANCE_DIR = '{maint_dir}';
+    process.env.CODEX_HA_OPTIONS_FILE = '{options_file}';
+    process.env.CODEX_TEST_CLOCK = '2026-10-13T10:00:00Z';
+    await mgr.initRuntime();
+    const candidateDir = mgr.getReleasesDir() + '/0.163.0-x86_64-unknown-linux-musl';
+    await (await import('node:fs/promises')).mkdir(candidateDir + '/bin', {{ recursive: true }});
+    await (await import('node:fs/promises')).writeFile(candidateDir + '/bin/codex', '#!/bin/sh\\necho codex-cli 0.163.0\\n');
+    await (await import('node:fs/promises')).chmod(candidateDir + '/bin/codex', 0o755);
+    await (await import('node:fs/promises')).writeFile(candidateDir + '/codex-package.json',
+      JSON.stringify({{ version: '0.163.0', target: 'x86_64-unknown-linux-musl', entrypoint: 'bin/codex' }}));
+    await sealFixture(candidateDir);
+    await (await import('node:fs/promises')).symlink(candidateDir, mgr.getStagedLink());
+    await mgr.updateState(s => {{ s.stagedVersion = '0.163.0'; s.status = 'ready_to_apply'; }});
+    const results = [];
+    for (let i = 0; i < 13; i++) {{
+      const r = await mgr.applyUpdate();
+      const st = await mgr.loadState();
+      results.push({{ reason: r.reason, lastBlocker: st.lastBlocker, status: st.status }});
+    }}
+    console.log(JSON.stringify(results));
+    """
+    results = run_node_eval(script, repository_root)
+    assert all(r["lastBlocker"] == "cli" for r in results[:11]), results
+    assert results[11]["status"] == "paused_busy"
+    assert results[11]["lastBlocker"] == "cli"
+    assert results[12]["reason"] == "paused_busy"
+    assert results[12]["lastBlocker"] == "cli"
+    assert results[11]["reason"] == "paused_busy"
+
+
+def test_parse_codex_invocation_real_release_global_options(repository_root: Path) -> None:
+    script = """
+    const bin = '/usr/local/lib/codex-ha/codex-baseline/bin/codex';
+    const cases = [
+      mgr.parseCodexInvocation([bin, '-p', 'home', 'app-server', '--listen', 'unix:///tmp/review.sock']),
+      mgr.parseCodexInvocation([bin, '-a', 'never', 'exec', 'hello']),
+      mgr.parseCodexInvocation([bin, '--enable', 'web_search', '--disable', 'beta', 'app-server', '--listen', 'unix:///x']),
+      mgr.parseCodexInvocation([bin, '--profile', 'home', 'app-server']),
+      mgr.parseCodexInvocation([bin, '--remote', 'ws://127.0.0.1:1', 'app-server']),
+      mgr.parseCodexInvocation([bin, '--remote-auth-token-env', 'RT', '-i', 'shot.png', 'app-server']),
+      mgr.parseCodexInvocation([bin, '-p', 'app-server', 'exec', 'hi']),
+    ];
+    console.log(JSON.stringify(cases));
+    """
+    cases = run_node_eval(script, repository_root)
+    assert cases[0]["subcommand"] == "app-server" and cases[0]["listenSocket"] == "/tmp/review.sock"
+    assert cases[1]["subcommand"] == "exec"
+    assert cases[2]["subcommand"] == "app-server" and cases[2]["listenSocket"] == "/x"
+    assert cases[3]["subcommand"] == "app-server"
+    assert cases[4]["subcommand"] == "app-server"
+    assert cases[5]["subcommand"] == "app-server"
+    # -p consumes 'app-server' as its value; first remaining positional is exec -> conservative CLI
+    assert cases[6]["subcommand"] == "exec"
+
+
+def test_wrapper_blocks_handle_real_release_global_options(repository_root: Path) -> None:
+    wrapper = (repository_root / "codex_home_assistant/rootfs/usr/local/bin/codex").read_text(encoding="utf-8")
+
+    start = wrapper.index('codex_subcommand=""')
+    end = wrapper.index('socket_path="${codex_listen}"')
+    end = wrapper.index("fi", end) + 2
+    block = wrapper[start:end]
+    harness = f"""
+    run_case() {{
+      local codex_subcommand="" codex_listen="" options_ended=false idx=0
+      local args=("$@") token
+      {block}
+      echo "sub=${{codex_subcommand}};listen=${{codex_listen}};app=${{is_app_server}}"
+    }}
+    run_case -p home app-server --listen unix:///tmp/review.sock
+    run_case -a never exec hello
+    run_case --enable web_search --disable beta app-server --listen=unix:///x.sock
+    run_case --remote-auth-token-env RT -i shot.png app-server
+    """
+    proc = subprocess.run(["bash", "-c", harness], capture_output=True, text=True)
+    assert proc.returncode == 0, proc.stderr
+    lines = proc.stdout.strip().splitlines()
+    assert lines[0] == "sub=app-server;listen=unix:///tmp/review.sock;app=true"
+    assert lines[1] == "sub=exec;listen=;app=false"
+    assert lines[2] == "sub=app-server;listen=unix:///x.sock;app=true"
+    assert lines[3] == "sub=app-server;listen=;app=true"
+
+    # update routing must not leak a valid global-option invocation to the real binary
+    up_start = wrapper.index("is_update_subcommand=false")
+    up_end = wrapper.index("if [[ \"${is_update_subcommand}\" == true ]]; then")
+    up_block = wrapper[up_start:up_end]
+    up_harness = f"""
+    route_case() {{
+      local {up_block}
+      echo "update=${{is_update_subcommand}}"
+    }}
+    route_case -p home update --status
+    route_case -a never update
+    route_case --remote ws://host update status
+    """
+    proc2 = subprocess.run(["bash", "-c", up_harness], capture_output=True, text=True)
+    assert proc2.returncode == 0, proc2.stderr + proc2.stdout
+    up_lines = proc2.stdout.strip().splitlines()
+    assert up_lines[0] == "update=true"
+    assert up_lines[1] == "update=true"
+    assert up_lines[2] == "update=true"
+
+
+def test_managed_server_with_global_option_prefix_is_restartable(repository_root: Path, tmp_path: Path) -> None:
+    runtime_dir = tmp_path / "runtime"
+    maint_dir = tmp_path / "maint"
+    runtime_dir.mkdir()
+    maint_dir.mkdir()
+    baseline = tmp_path / "baseline"
+    socket_path = tmp_path / "optpref.sock"
+    launcher = baseline / "bin" / "codex"
+    launcher.parent.mkdir(parents=True, exist_ok=True)
+    launcher.write_text(
+        "#!/usr/bin/env node\n"
+        "if (process.argv.includes('--version')) { console.log('codex-cli 0.162.1'); process.exit(0); }\n"
+        + MOCK_APP_SERVER_JS.replace("{socket!r}", repr(str(socket_path))),
+        encoding="utf-8",
+    )
+    launcher.chmod(0o755)
+    proc = subprocess.Popen([str(launcher), "-p", "home", "app-server", "--listen", f"unix://{socket_path}"],
+                            stdout=subprocess.PIPE, text=True)
+    try:
+        assert "READY" in proc.stdout.readline()
+        _register_session(maint_dir, proc.pid, {
+            "type": "app-server", "managed": True, "socketPath": str(socket_path),
+            "exe": str(launcher), "version": "0.162.1", "cwd": str(tmp_path),
+            "args": ["-p", "home", "app-server", "--listen", f"unix://{socket_path}"],
+        })
+        res = _inspect(repository_root, runtime_dir, maint_dir, baseline_dir=baseline)
+        assert res["counts"]["remoteStdio"] == 0, res["busyReasons"]
+        assert res["counts"]["cli"] == 0, res["busyReasons"]
+        assert len(res["restartableServers"]) == 1
+        assert res["canApply"] is True
+    finally:
+        proc.terminate()
+        proc.wait()
+
+
+def _get_proc_start_time(pid: int) -> str | None:
+    try:
+        stat_content = Path(f"/proc/{pid}/stat").read_text(encoding="utf-8")
+        return stat_content.rsplit(")", 1)[1].split()[19]
+    except (FileNotFoundError, ProcessLookupError, PermissionError, IndexError):
+        return None
+
+
+def _is_path_inside(child_path_str: str, parent_dir: Path) -> bool:
+    if not child_path_str:
+        return False
+    try:
+        p = Path(child_path_str).resolve()
+        parent = parent_dir.resolve()
+        return p == parent or p.is_relative_to(parent)
+    except (ValueError, OSError):
+        return False
+
+
+@functools.lru_cache(maxsize=1)
+def _get_known_interpreters() -> set[str]:
+    interpreters: set[str] = set()
+    if sys.executable:
+        try:
+            interpreters.add(os.path.realpath(sys.executable))
+        except OSError:
+            pass
+    node_bin = shutil.which("node")
+    if node_bin:
+        try:
+            interpreters.add(os.path.realpath(node_bin))
+        except OSError:
+            pass
+    for candidate in ("/usr/bin/node", "/usr/local/bin/node", "/bin/node", "/usr/bin/python3", "/usr/local/bin/python3"):
+        if os.path.exists(candidate):
+            try:
+                interpreters.add(os.path.realpath(candidate))
+            except OSError:
+                pass
+    return interpreters
+
+
+def _is_proc_running_inside_fixture(entry: Path, fixture_dir: Path) -> bool:
+    try:
+        # 1. Native executable inside fixture directory
+        exe_path = entry / "exe"
+        if not exe_path.exists():
+            return False
+
+        try:
+            exe_target = os.readlink(exe_path)
+        except OSError:
+            return False
+
+        if _is_path_inside(exe_target, fixture_dir):
+            return True
+
+        # 2. Confirmed Node/Python interpreter executing a script inside fixture directory
+        exe_target_real = os.path.realpath(exe_target)
+        known_interpreters = _get_known_interpreters()
+        if exe_target_real not in known_interpreters:
+            return False
+
+        cmdline_path = entry / "cmdline"
+        try:
+            raw_cmdline = cmdline_path.read_bytes()
+        except OSError:
+            return False
+
+        if not raw_cmdline:
+            return False
+
+        argv = [arg.decode("utf-8", "replace") for arg in raw_cmdline.split(b"\x00") if arg]
+        # Must have at least interpreter and script path: argv[1]
+        if len(argv) < 2:
+            return False
+
+        script_arg = argv[1]
+        # Reject any interpreter option preceding the script (e.g. -c, -cCODE, -m, -e, --eval, -, etc.)
+        if script_arg.startswith("-"):
+            return False
+
+        # Script must be inside canonical fixture_dir
+        if not _is_path_inside(script_arg, fixture_dir):
+            return False
+
+        # Target script must be an actual regular file
+        script_file = Path(script_arg)
+        if not script_file.is_file():
+            return False
+
+        return True
+    except (FileNotFoundError, ProcessLookupError, PermissionError):
+        return False
+
+
+
+def _find_fixture_processes_for_dir(fixture_dir: Path) -> list[tuple[int, str]]:
+    """Return live fixture processes explicitly running inside fixture_dir with (pid, start_time)."""
+    matches: list[tuple[int, str]] = []
+    for entry in Path("/proc").iterdir():
+        if not entry.name.isdigit():
+            continue
+        pid = int(entry.name)
+        if pid == os.getpid():
+            continue
+        if _is_proc_running_inside_fixture(entry, fixture_dir):
+            start_time = _get_proc_start_time(pid)
+            if start_time is not None:
+                matches.append((pid, start_time))
+    return matches
+
+
+def _verify_process_identity(pid: int, expected_start: str, fixture_dir: Path | None = None) -> bool:
+    """Verify that PID is alive, matches expected start_time, and belongs to fixture_dir if specified."""
+    curr_start = _get_proc_start_time(pid)
+    if curr_start is None or curr_start != expected_start:
+        return False
+    if fixture_dir is not None:
+        if not _is_proc_running_inside_fixture(Path(f"/proc/{pid}"), fixture_dir):
+            return False
+    return True
+
+
+def _terminate_fixture_processes(
+    tracked_identities: set[tuple[int, str]],
+    fixture_dir: Path | None = None,
+    direct_children: list[subprocess.Popen] | None = None,
+    timeout: float = 5.0,
+) -> None:
+    """Bounded wait termination of fixture processes verified by PID+start_time."""
+    identities: set[tuple[int, str]] = set(tracked_identities)
+    if fixture_dir is not None:
+        for ident in _find_fixture_processes_for_dir(fixture_dir):
+            identities.add(ident)
+
+    # Close stdout pipes of direct children and terminate
+    if direct_children:
+        for child in direct_children:
+            try:
+                if child.stdout:
+                    child.stdout.close()
+            except Exception:
+                pass
+            if child.poll() is None:
+                try:
+                    child.terminate()
+                except ProcessLookupError:
+                    pass
+
+    # Send SIGTERM only after verifying PID + start_time (+ fixture boundary)
+    for pid, start_time in list(identities):
+        if _verify_process_identity(pid, start_time, fixture_dir):
+            try:
+                os.kill(pid, 15)
+            except ProcessLookupError:
+                identities.discard((pid, start_time))
+        else:
+            identities.discard((pid, start_time))
+
+    # Wait for direct children to be reaped
+    if direct_children:
+        for child in direct_children:
+            try:
+                child.wait(timeout=2.0)
+            except (subprocess.TimeoutExpired, ProcessLookupError):
+                try:
+                    child.kill()
+                    child.wait(timeout=1.0)
+                except Exception:
+                    pass
+
+    # Bounded wait for detached processes to exit
+    deadline = time.monotonic() + timeout
+    while identities and time.monotonic() < deadline:
+        for pid, start_time in list(identities):
+            if not _verify_process_identity(pid, start_time, fixture_dir):
+                identities.discard((pid, start_time))
+        if identities:
+            time.sleep(0.05)
+
+    # Force kill any stubborn fixture process only if identity still matches
+    for pid, start_time in list(identities):
+        if _verify_process_identity(pid, start_time, fixture_dir):
+            try:
+                os.kill(pid, 9)
+            except ProcessLookupError:
+                pass
+
+
+def test_companion_server_real_replacement_preserves_old_generation_while_helper_lives(
+    repository_root: Path, tmp_path: Path
+) -> None:
+    runtime_dir = tmp_path / "runtime"
+    maint_dir = tmp_path / "maint"
+    (runtime_dir / "releases").mkdir(parents=True)
+    maint_dir.mkdir()
+    baseline = tmp_path / "baseline"
+    socket_path = tmp_path / "replace.sock"
+    companion_file = tmp_path / "companion_pid"
+
+    old_gen = runtime_dir / "releases" / "0.162.1-x86_64-unknown-linux-musl"
+    new_gen = runtime_dir / "releases" / "0.163.0-x86_64-unknown-linux-musl"
+    (old_gen / "bin").mkdir(parents=True)
+    (new_gen / "bin").mkdir(parents=True)
+    companion = old_gen / "bin" / "codex-code-mode-host"
+    companion.write_text("#!/usr/bin/env node\nsetTimeout(() => {}, 600000);\n", encoding="utf-8")
+    companion.chmod(0o755)
+    old_bin = old_gen / "bin" / "codex"
+    old_bin.write_text(
+        "#!/usr/bin/env node\n"
+        "if (process.argv.includes('--version')) { console.log('codex-cli 0.162.1'); process.exit(0); }\n"
+        f"import {{ spawn }} from 'node:child_process';\n"
+        f"const kid = spawn({str(companion)!r}, [], {{ stdio: 'ignore' }});\n"
+        f"fs.writeFileSync({str(companion_file)!r}, String(kid.pid));\n"
+        + MOCK_APP_SERVER_JS.replace("{socket!r}", repr(str(socket_path))),
+        encoding="utf-8",
+    )
+    old_bin.chmod(0o755)
+    new_bin = new_gen / "bin" / "codex"
+    new_bin.write_text(
+        "#!/usr/bin/env node\n"
+        "if (process.argv.includes('--version')) { console.log('codex-cli 0.163.0'); process.exit(0); }\n"
+        + MOCK_APP_SERVER_JS.replace("{socket!r}", repr(str(socket_path))),
+        encoding="utf-8",
+    )
+    new_bin.chmod(0o755)
+    (old_gen / "codex-package.json").write_text(json.dumps({"version": "0.162.1", "target": "x86_64-unknown-linux-musl", "entrypoint": "bin/codex"}))
+    (new_gen / "codex-package.json").write_text(json.dumps({"version": "0.163.0", "target": "x86_64-unknown-linux-musl", "entrypoint": "bin/codex"}))
+
+    tracked_identities: set[tuple[int, str]] = set()
+    proc: subprocess.Popen | None = None
+    try:
+        proc = subprocess.Popen([str(old_bin), "app-server", "--listen", f"unix://{socket_path}"],
+                                stdout=subprocess.PIPE, text=True)
+        old_start = _get_proc_start_time(proc.pid)
+        if old_start:
+            tracked_identities.add((proc.pid, old_start))
+        line = proc.stdout.readline()
+        assert "READY" in line
+
+        deadline = time.monotonic() + 3.0
+        while not companion_file.exists() and time.monotonic() < deadline:
+            time.sleep(0.05)
+        assert companion_file.exists(), "companion PID file not created"
+        helper_pid = int(companion_file.read_text().strip())
+        helper_start = _get_proc_start_time(helper_pid)
+        if helper_start:
+            tracked_identities.add((helper_pid, helper_start))
+
+        _register_session(maint_dir, proc.pid, {
+            "type": "app-server", "managed": True, "socketPath": str(socket_path),
+            "exe": str(old_bin), "version": "0.162.1", "cwd": str(tmp_path),
+            "args": ["app-server", "--listen", f"unix://{socket_path}"],
+        })
+
+        script = f"""
+        process.env.CODEX_RUNTIME_DIR = '{runtime_dir}';
+        process.env.CODEX_MAINTENANCE_DIR = '{maint_dir}';
+        process.env.CODEX_BASELINE_DIR = '{baseline}';
+        await (await import('node:fs/promises')).mkdir('{baseline}', {{ recursive: true }});
+        await mgr.initRuntime();
+        await sealFixture('{new_gen}');
+        await (await import('node:fs/promises')).symlink('{new_gen}', mgr.getStagedLink());
+        await mgr.updateState(s => {{ s.stagedVersion = '0.163.0'; s.candidateVersion = '0.163.0'; s.status = 'ready_to_apply'; }});
+        const before = await mgr.inspectAllSessions();
+        const applied = await mgr.applyUpdate({{ policyProbe: async () => ({{ valid: true }}) }});
+        const state = await mgr.loadState();
+        const after = await mgr.inspectAllSessions();
+        console.log(JSON.stringify({{
+          beforeRestartable: before.restartableServers.map(s => s.pid),
+          beforeBusy: before.busyReasons,
+          applied: applied.applied, reason: applied.reason, version: applied.version,
+          selected: state.selectedVersion, lastBlocker: state.lastBlocker,
+          afterBusy: after.busyReasons, afterTypes: after.blockers.map(b => b.type),
+          afterRestartable: after.restartableServers.map(s => s.pid),
+          afterCounts: after.counts, canApply: after.canApply
+        }}));
+        """
+        res = run_node_eval(script, repository_root)
+        for srv in res.get("afterRestartable", []):
+            spid = srv if isinstance(srv, int) else srv.get("pid")
+            if spid:
+                s_start = _get_proc_start_time(spid)
+                if s_start:
+                    tracked_identities.add((spid, s_start))
+
+        assert res["beforeBusy"] == [], res["beforeBusy"]
+        assert len(res["beforeRestartable"]) == 1 and res["beforeRestartable"][0] == proc.pid
+        assert res["applied"] is True, res["reason"]
+        assert res["version"] == "0.163.0"
+        assert res["selected"] == "0.163.0"
+        assert res["lastBlocker"] is None
+        assert proc.wait(timeout=5) is not None  # old server exited gracefully (reaped)
+        # the surviving old-generation helper is unattributed -> unknown hold, not a CLI
+        assert res["afterTypes"] == ["unknown"], res["afterBusy"]
+        assert res["afterCounts"]["cli"] == 0
+        assert res["canApply"] is False
+        # new server restartable on the same socket, different pid
+        assert len(res["afterRestartable"]) == 1
+        assert res["afterRestartable"][0] != proc.pid
+        # old generation still referenced by the live helper exe -> preserved
+        assert old_gen.exists()
+    finally:
+        sessions_dir = maint_dir / "sessions"
+        if sessions_dir.exists():
+            for sf in sessions_dir.iterdir():
+                if sf.name.isdigit():
+                    try:
+                        record = json.loads(sf.read_text(encoding="utf-8"))
+                        r_pid = int(record["pid"])
+                        r_start = record.get("start") or _get_proc_start_time(r_pid)
+                        if r_start:
+                            tracked_identities.add((r_pid, str(r_start)))
+                    except Exception:
+                        pass
+
+        _terminate_fixture_processes(
+            tracked_identities=tracked_identities,
+            fixture_dir=tmp_path,
+            direct_children=[proc] if proc is not None else None,
+        )
+        surviving = _find_fixture_processes_for_dir(tmp_path)
+        assert surviving == [], f"surviving fixture processes: {surviving}"
+
+
+def test_companion_server_setup_failure_teardown_leaves_zero_processes(
+    repository_root: Path, tmp_path: Path
+) -> None:
+    """Verify that if setup or assertion fails, teardown reaps direct children and detached helpers."""
+    socket_path = tmp_path / "fail.sock"
+    companion_file = tmp_path / "companion_fail_pid"
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir(parents=True)
+    companion = bin_dir / "codex-code-mode-host"
+    companion.write_text("#!/usr/bin/env node\nsetTimeout(() => {}, 600000);\n", encoding="utf-8")
+    companion.chmod(0o755)
+    mock_bin = bin_dir / "codex"
+    mock_bin.write_text(
+        "#!/usr/bin/env node\n"
+        f"import {{ spawn }} from 'node:child_process';\n"
+        f"const kid = spawn({str(companion)!r}, [], {{ stdio: 'ignore' }});\n"
+        f"fs.writeFileSync({str(companion_file)!r}, String(kid.pid));\n"
+        + MOCK_APP_SERVER_JS.replace("{socket!r}", repr(str(socket_path))),
+        encoding="utf-8",
+    )
+    mock_bin.chmod(0o755)
+
+    tracked_identities: set[tuple[int, str]] = set()
+    proc: subprocess.Popen | None = None
+    failed_as_expected = False
+    try:
+        proc = subprocess.Popen([str(mock_bin), "app-server", "--listen", f"unix://{socket_path}"],
+                                stdout=subprocess.PIPE, text=True)
+        old_start = _get_proc_start_time(proc.pid)
+        if old_start:
+            tracked_identities.add((proc.pid, old_start))
+        line = proc.stdout.readline()
+        assert "READY" in line
+
+        deadline = time.monotonic() + 3.0
+        while not companion_file.exists() and time.monotonic() < deadline:
+            time.sleep(0.05)
+        helper_pid = int(companion_file.read_text().strip())
+        helper_start = _get_proc_start_time(helper_pid)
+        if helper_start:
+            tracked_identities.add((helper_pid, helper_start))
+
+        # Simulate unexpected assertion failure during setup
+        raise RuntimeError("Simulated setup assertion failure")
+    except RuntimeError as e:
+        if str(e) == "Simulated setup assertion failure":
+            failed_as_expected = True
+    finally:
+        _terminate_fixture_processes(
+            tracked_identities=tracked_identities,
+            fixture_dir=tmp_path,
+            direct_children=[proc] if proc is not None else None,
+        )
+        surviving = _find_fixture_processes_for_dir(tmp_path)
+        assert surviving == [], f"surviving fixture processes after setup failure: {surviving}"
+
+    assert failed_as_expected is True
+
+
+def test_find_fixture_processes_excludes_sibling_dirs_and_data_argv(
+    tmp_path: Path
+) -> None:
+    """Verify _find_fixture_processes_for_dir:
+    1. Excludes sibling directories (/tmp/.../case-sibling vs /tmp/.../case)
+    2. Excludes python separated '-c' and attached '-cCODE' with fixture data argv
+    3. Excludes python in stdin mode ('-') where fixture path is a data argument
+    4. Excludes node in eval mode ('-e') and '--eval=CODE' where fixture path is a data argument
+    5. Excludes external processes running with cwd inside fixture_dir
+    6. Excludes imposter processes where argv[0] is named python/node but exe is external binary
+    7. Includes python fixture script
+    8. Includes node fixture script
+    9. Includes native executable located inside fixture directory
+    """
+    case_dir = tmp_path / "case"
+    sibling_dir = tmp_path / "case-sibling"
+    case_dir.mkdir()
+    sibling_dir.mkdir()
+    data_file = case_dir / "data.txt"
+    data_file.write_text("data\n", encoding="utf-8")
+
+    sleep_bin = shutil.which("sleep") or "/bin/sleep"
+
+    # Python fixture script
+    script = case_dir / "worker.py"
+    script.write_text("import time; time.sleep(60)\n", encoding="utf-8")
+
+    # Node fixture script
+    node_script = case_dir / "worker.mjs"
+    node_script.write_text("setInterval(() => {}, 60000);\n", encoding="utf-8")
+
+    # Native fixture executable: keep binary name 'sleep' so multi-call coreutils recognises it
+    native_bin = case_dir / "sleep"
+    shutil.copy(sleep_bin, native_bin)
+    native_bin.chmod(0o755)
+
+    # 1. cwd is sibling_dir
+    p_sibling = subprocess.Popen(
+        ["python3", "-c", "import time; time.sleep(60)"],
+        cwd=str(sibling_dir),
+    )
+    # 2. Separated -c mode with data argv
+    p_data = subprocess.Popen(
+        ["python3", "-c", "import time; time.sleep(60)", str(case_dir)],
+        cwd=str(tmp_path),
+    )
+    # 3. Attached -cCODE mode with data argv (FIX_05 reproduction case)
+    p_attached_c = subprocess.Popen(
+        [sys.executable, "-cimport time; time.sleep(60)", str(data_file)],
+        cwd=str(tmp_path),
+    )
+    # 4. Python stdin mode '-' with data_file argument
+    p_stdin = subprocess.Popen(
+        [sys.executable, "-", str(data_file)],
+        stdin=subprocess.PIPE,
+        cwd=str(tmp_path),
+    )
+    # 5. Node inline eval mode '-e' with data_file argument
+    p_node_eval = subprocess.Popen(
+        ["node", "-e", "setInterval(() => {}, 60000)", str(data_file)],
+        cwd=str(tmp_path),
+    )
+    # 6. Node attached '--eval=CODE' with data_file argument
+    p_node_eval_eq = subprocess.Popen(
+        ["node", "--eval=setInterval(() => {}, 60000)", str(data_file)],
+        cwd=str(tmp_path),
+    )
+    # 7. External process running with cwd inside fixture_dir (cwd alone is not fixture identity)
+    p_cwd_external = subprocess.Popen(
+        [sleep_bin, "60"],
+        cwd=str(case_dir),
+    )
+    # 8. Imposter process: argv[0] is 'python3' but exe is external binary (sleep)
+    p_imposter = subprocess.Popen(
+        ["python3", "60"],
+        executable=sleep_bin,
+        cwd=str(tmp_path),
+    )
+    # 9. Legitimate Python fixture script process
+    p_case_py = subprocess.Popen(
+        [sys.executable, str(script)],
+        cwd=str(tmp_path),
+    )
+    # 10. Legitimate Node fixture script process
+    p_case_node = subprocess.Popen(
+        ["node", str(node_script)],
+        cwd=str(tmp_path),
+    )
+    # 11. Legitimate native fixture executable
+    p_case_native = subprocess.Popen(
+        [str(native_bin), "60"],
+        cwd=str(tmp_path),
+    )
+
+    all_procs = [
+        p_sibling,
+        p_data,
+        p_attached_c,
+        p_stdin,
+        p_node_eval,
+        p_node_eval_eq,
+        p_cwd_external,
+        p_imposter,
+        p_case_py,
+        p_case_node,
+        p_case_native,
+    ]
+
+    try:
+        found = _find_fixture_processes_for_dir(case_dir)
+        found_pids = [pid for pid, _ in found]
+
+        # Negative checks: must be strictly excluded
+        assert p_sibling.pid not in found_pids, "sibling cwd process must not be matched"
+        assert p_data.pid not in found_pids, "separated -c data argv process must not be matched"
+        assert p_attached_c.pid not in found_pids, "attached -cCODE data argv process must not be matched"
+        assert p_stdin.pid not in found_pids, "python stdin process with data arg must not be matched"
+        assert p_node_eval.pid not in found_pids, "node separated -e with data arg must not be matched"
+        assert p_node_eval_eq.pid not in found_pids, "node attached --eval= with data arg must not be matched"
+        assert p_cwd_external.pid not in found_pids, "external process with fixture cwd must not be matched"
+        assert p_imposter.pid not in found_pids, "imposter argv[0] process must not be matched"
+
+        # Positive checks: must be matched
+        assert p_case_py.pid in found_pids, "python fixture script process must be matched"
+        assert p_case_node.pid in found_pids, "node fixture script process must be matched"
+        assert p_case_native.pid in found_pids, "native fixture binary process must be matched"
+    finally:
+        for p in all_procs:
+            try:
+                if p.stdin:
+                    p.stdin.close()
+                p.terminate()
+                p.wait(timeout=1.0)
+            except Exception:
+                p.kill()
+
+
+def test_is_proc_running_inside_fixture_synthetic_proc(tmp_path: Path) -> None:
+    """Verify _is_proc_running_inside_fixture against synthetic /proc entries:
+    1. Rejects imposter argv[0] when exe is outside
+    2. Rejects attached -cCODE, -m, -e, --eval=
+    3. Rejects cwd inside fixture when exe is outside
+    4. Accepts verified interpreter with regular script inside fixture
+    5. Accepts native executable inside fixture
+    """
+    fixture_dir = tmp_path / "fixture"
+    fixture_dir.mkdir()
+    script = fixture_dir / "app.py"
+    script.write_text("print('hi')", encoding="utf-8")
+    data_file = fixture_dir / "data.json"
+    data_file.write_text("{}", encoding="utf-8")
+    native_exe = fixture_dir / "bin" / "daemon"
+    native_exe.parent.mkdir()
+    native_exe.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    native_exe.chmod(0o755)
+
+    py_exe = os.path.realpath(sys.executable)
+    node_bin = shutil.which("node")
+    node_exe = os.path.realpath(node_bin) if node_bin else "/usr/bin/node"
+    sleep_exe = os.path.realpath(shutil.which("sleep") or "/bin/sleep")
+
+    proc_base = tmp_path / "synthetic_proc"
+    proc_base.mkdir()
+
+    def make_fake_proc(name: str, exe_target: str, cmdline: bytes, cwd_target: str | None = None) -> Path:
+        p = proc_base / name
+        p.mkdir()
+        (p / "exe").symlink_to(exe_target)
+        (p / "cmdline").write_bytes(cmdline)
+        if cwd_target:
+            (p / "cwd").symlink_to(cwd_target)
+        return p
+
+    # 1. Imposter argv[0] -> exe is sleep, cmdline says python3
+    p_imposter = make_fake_proc("1", sleep_exe, b"python3\x00" + str(script).encode() + b"\x00")
+    assert _is_proc_running_inside_fixture(p_imposter, fixture_dir) is False
+
+    # 2. Attached -cCODE with data_file -> False
+    p_att_c = make_fake_proc("2", py_exe, b"python3\x00-cimport time\x00" + str(data_file).encode() + b"\x00")
+    assert _is_proc_running_inside_fixture(p_att_c, fixture_dir) is False
+
+    # 3. Python module mode -m with data_file -> False
+    p_mod = make_fake_proc("3", py_exe, b"python3\x00-mfoo\x00" + str(data_file).encode() + b"\x00")
+    assert _is_proc_running_inside_fixture(p_mod, fixture_dir) is False
+
+    # 4. Node attached --eval= with data_file -> False
+    p_node_eval = make_fake_proc("4", node_exe, b"node\x00--eval=process.exit()\x00" + str(data_file).encode() + b"\x00")
+    assert _is_proc_running_inside_fixture(p_node_eval, fixture_dir) is False
+
+    # 5. External binary with cwd in fixture (cwd alone is not fixture identity) -> False
+    p_cwd = make_fake_proc("5", sleep_exe, b"sleep\x0060\x00", cwd_target=str(fixture_dir))
+    assert _is_proc_running_inside_fixture(p_cwd, fixture_dir) is False
+
+    # 6. Legitimate Python script inside fixture -> True
+    p_py_ok = make_fake_proc("6", py_exe, b"python3\x00" + str(script).encode() + b"\x00")
+    assert _is_proc_running_inside_fixture(p_py_ok, fixture_dir) is True
+
+    # 7. Legitimate Node script inside fixture -> True
+    node_script = fixture_dir / "index.mjs"
+    node_script.write_text("console.log('node');", encoding="utf-8")
+    p_node_ok = make_fake_proc("7", node_exe, b"node\x00" + str(node_script).encode() + b"\x00")
+    assert _is_proc_running_inside_fixture(p_node_ok, fixture_dir) is True
+
+    # 8. Legitimate Native executable inside fixture -> True
+    p_native_ok = make_fake_proc("8", str(native_exe), b"daemon\x00")
+    assert _is_proc_running_inside_fixture(p_native_ok, fixture_dir) is True
+
+
+
+
+def test_terminate_fixture_processes_skips_recycled_pid_with_mismatched_start_time() -> None:
+    """Verify that _terminate_fixture_processes never signals a process if start_time doesn't match."""
+    p = subprocess.Popen(["python3", "-c", "import time; time.sleep(60)"])
+    real_start = _get_proc_start_time(p.pid)
+    assert real_start is not None
+
+    try:
+        # Pass a mismatched start_time simulating a recycled PID
+        recycled_identity = {(p.pid, "999999999")}
+        _terminate_fixture_processes(recycled_identity, timeout=0.1)
+
+        # Process p must still be alive and not signaled!
+        assert p.poll() is None, "Process with mismatched start_time should not have been signaled"
+    finally:
+        p.terminate()
+        p.wait()
+
+
+def test_status_format_session_ready_and_auto_apply_ready_classification(
+    repository_root: Path, tmp_path: Path
+) -> None:
+    """Verify Session ready vs Auto-apply ready separation across:
+    1. Daily budget exhausted (paused_busy) + idle sessions: Session ready yes, Auto-apply ready paused
+    2. Restart cooldown active:
+       2-A. Idle sessions (isIdle: true) + future cooldown: Auto-apply ready yes (no server restart needed)
+       2-B. Managed server running (isIdle: false) + future cooldown: Auto-apply ready waiting
+    3. Auto-update disabled in options (valid) vs configuration options invalid (optionsValid: false)
+    4. No staged candidate update
+    5. Busy session blocker (CLI)
+    """
+    runtime_dir = tmp_path / "runtime"
+    maint_dir = tmp_path / "maint"
+    options_file = tmp_path / "options.json"
+    runtime_dir.mkdir(parents=True)
+    maint_dir.mkdir(parents=True)
+
+    script = f"""
+    process.env.CODEX_TEST_CLOCK = '2026-10-17T12:00:00.000Z';
+    process.env.CODEX_RUNTIME_DIR = '{runtime_dir}';
+    process.env.CODEX_MAINTENANCE_DIR = '{maint_dir}';
+    process.env.CODEX_HA_OPTIONS_FILE = '{options_file}';
+    const fs = await import('node:fs/promises');
+
+    // Case 1: Daily budget exhausted (paused_busy), sessions idle, auto-update enabled
+    await fs.writeFile('{options_file}', JSON.stringify({{ codex_auto_update: true }}));
+    await mgr.updateState(s => {{
+      s.stagedVersion = '0.163.0';
+      s.candidateVersion = '0.163.0';
+      s.status = 'paused_busy';
+      s.reason = 'daily_budget_exhausted';
+      s.idleCheckCount = 12;
+      s.budgetDate = '2026-10-17';
+      s.nextRetryAt = '2026-10-17T18:00:00.000Z';
+    }});
+    const status1 = await mgr.getStatus();
+    const text1 = mgr.formatAutoApplyReady(status1);
+    const sessionText1 = mgr.formatSessionReady(status1);
+
+    // Case 2-A: Future restart cooldown + sessions completely idle (isIdle: true)
+    // Cooldown is NOT a blocker because no running server needs graceful replacement
+    await mgr.updateState(s => {{
+      s.status = 'ready_to_apply';
+      s.reason = null;
+      s.idleCheckCount = 0;
+      s.stagedVersion = '0.163.0';
+      s.nextRestartAllowedAt = '2026-10-18T00:00:00.000Z';
+    }});
+    const status2a = await mgr.getStatus();
+    const text2a = mgr.formatAutoApplyReady(status2a);
+
+    // Case 2-B: Future restart cooldown + idle managed server running (isIdle: false)
+    const status2b = {{
+      ...status2a,
+      isIdle: false,
+      canApply: true,
+      activeSessions: 1,
+      processSummary: {{ cli: 0, managedIdleServers: 1, remoteStdio: 0, unmanagedAppServers: 0, unknown: 0, helpers: 0 }}
+    }};
+    const text2b = mgr.formatAutoApplyReady(status2b);
+
+    // Case 3-A: Configuration options invalid (corrupted json)
+    await fs.writeFile('{options_file}', '{{ corrupted json');
+    const status3a = await mgr.getStatus();
+    const text3a = mgr.formatAutoApplyReady(status3a);
+
+    // Case 3-B: Auto-update explicitly disabled in valid options
+    await fs.writeFile('{options_file}', JSON.stringify({{ codex_auto_update: false }}));
+    const status3b = await mgr.getStatus();
+    const text3b = mgr.formatAutoApplyReady(status3b);
+
+    // Case 4: No staged candidate update
+    await fs.writeFile('{options_file}', JSON.stringify({{ codex_auto_update: true }}));
+    await mgr.updateState(s => {{
+      s.stagedVersion = null;
+      s.status = 'idle';
+      s.reason = null;
+      s.idleCheckCount = 0;
+      s.nextRestartAllowedAt = null;
+    }});
+    const status4 = await mgr.getStatus();
+    const text4 = mgr.formatAutoApplyReady(status4);
+
+    // Case 5: Active session blocker present while update staged and budget available
+    await mgr.updateState(s => {{
+      s.stagedVersion = '0.163.0';
+      s.candidateVersion = '0.163.0';
+      s.status = 'ready_to_apply';
+      s.reason = null;
+      s.idleCheckCount = 1;
+    }});
+    const status5_raw = await mgr.getStatus();
+    const status5 = {{
+      ...status5_raw,
+      canApply: false,
+      isIdle: false,
+      activeSessions: 1,
+      processSummary: {{ cli: 1, managedIdleServers: 0, remoteStdio: 0, unmanagedAppServers: 0, unknown: 0, helpers: 0 }}
+    }};
+    const text5 = mgr.formatAutoApplyReady(status5);
+    const sessionText5 = mgr.formatSessionReady(status5);
+
+    console.log(JSON.stringify({{
+      case1: {{
+        canApply: status1.canApply,
+        autoApplyReady: status1.autoApplyReady,
+        sessionText: sessionText1,
+        autoText: text1
+      }},
+      case2a: {{
+        isIdle: status2a.isIdle,
+        canApply: status2a.canApply,
+        autoApplyReady: status2a.autoApplyReady,
+        autoText: text2a
+      }},
+      case2b: {{
+        isIdle: status2b.isIdle,
+        canApply: status2b.canApply,
+        autoText: text2b
+      }},
+      case3a: {{
+        optionsValid: status3a.optionsValid,
+        autoText: text3a
+      }},
+      case3b: {{
+        optionsValid: status3b.optionsValid,
+        autoApplyReady: status3b.autoApplyReady,
+        autoText: text3b
+      }},
+      case4: {{
+        canApply: status4.canApply,
+        autoApplyReady: status4.autoApplyReady,
+        autoText: text4
+      }},
+      case5: {{
+        canApply: status5.canApply,
+        sessionText: sessionText5,
+        autoText: text5
+      }}
+    }}));
+    """
+    res = run_node_eval(script, repository_root)
+
+    # Case 1: budget exhausted (paused_busy)
+    c1 = res["case1"]
+    assert c1["canApply"] is True
+    assert c1["autoApplyReady"] is False
+    assert "yes" in c1["sessionText"]
+    assert "manual apply can run now" in c1["sessionText"]
+    assert "paused (daily check budget exhausted" in c1["autoText"]
+    assert "manual apply can re-check immediately" in c1["autoText"]
+
+    # Case 2-A: future cooldown + isIdle true -> cooldown does NOT block apply
+    c2a = res["case2a"]
+    assert c2a["isIdle"] is True
+    assert c2a["canApply"] is True
+    assert c2a["autoApplyReady"] is True
+    assert "yes (ready for next automatic apply check)" in c2a["autoText"]
+
+    # Case 2-B: future cooldown + managed server running -> cooldown BLOCKS apply
+    c2b = res["case2b"]
+    assert c2b["isIdle"] is False
+    assert c2b["canApply"] is True
+    assert "waiting (restart cooldown active until" in c2b["autoText"]
+    assert "manual apply also respects cooldown" in c2b["autoText"]
+
+    # Case 3-A: options invalid -> blocked (configuration options invalid)
+    c3a = res["case3a"]
+    assert c3a["optionsValid"] is False
+    assert "blocked (configuration options invalid)" in c3a["autoText"]
+
+    # Case 3-B: auto-update disabled -> disabled (auto-update disabled; manual apply only)
+    c3b = res["case3b"]
+    assert c3b["optionsValid"] is True
+    assert c3b["autoApplyReady"] is False
+    assert "disabled (auto-update disabled; manual apply only)" in c3b["autoText"]
+
+    # Case 4: no staged update
+    c4 = res["case4"]
+    assert c4["autoApplyReady"] is False
+    assert "no (no staged update waiting to apply)" in c4["autoText"]
+
+    # Case 5: busy blocker present
+    c5 = res["case5"]
+    assert c5["canApply"] is False
+    assert "no (waiting for real sessions" in c5["sessionText"]
+    assert "deferred (waiting for active sessions or unverifiable processes to clear)" in c5["autoText"]
+
+
+def test_status_cli_text_output_includes_both_session_ready_and_auto_apply_ready(
+    repository_root: Path, tmp_path: Path
+) -> None:
+    """Run actual CLI 'status' action and verify text banner and labels."""
+    runtime_dir = tmp_path / "runtime"
+    maint_dir = tmp_path / "maint"
+    options_file = tmp_path / "options.json"
+    runtime_dir.mkdir(parents=True)
+    maint_dir.mkdir(parents=True)
+    options_file.write_text(json.dumps({"codex_auto_update": True}), encoding="utf-8")
+
+    # Set up state: budget exhausted
+    state_file = runtime_dir / "state.json"
+    state_file.write_text(json.dumps({
+        "selectedVersion": "0.162.1",
+        "stagedVersion": "0.163.0",
+        "status": "paused_busy",
+        "reason": "daily_budget_exhausted",
+        "idleCheckCount": 12,
+        "budgetDate": "2026-10-17",
+        "nextRetryAt": "2026-10-17T18:00:00.000Z",
+    }), encoding="utf-8")
+
+    manager_script = repository_root / "codex_home_assistant" / "rootfs" / "usr" / "local" / "share" / "codex-ha" / "codex-runtime-manager.mjs"
+    env = {
+        **os.environ,
+        "CODEX_RUNTIME_DIR": str(runtime_dir),
+        "CODEX_MAINTENANCE_DIR": str(maint_dir),
+        "CODEX_HA_OPTIONS_FILE": str(options_file),
+    }
+    proc = subprocess.run(
+        ["node", str(manager_script), "status"],
+        capture_output=True,
+        text=True,
+        env=env,
+        check=True,
+    )
+    stdout = proc.stdout
+    assert "Session ready:     yes (no Codex processes; manual apply can run now)" in stdout
+    assert "Auto-apply ready:  paused (daily check budget exhausted; waiting for scheduled retry at 2026-10-17T18:00:00.000Z; manual apply can re-check immediately)" in stdout
+    assert "Daily idle checks: 12/12 (date: 2026-10-17)" in stdout
+    assert "Status:            paused_busy" in stdout
+
+
+def test_active_network_io_cancellation_and_sigterm_exit(
+    repository_root: Path, tmp_path: Path, request: pytest.FixtureRequest
+) -> None:
+    """Verify F2 requirements:
+    1. fetchJson aborts immediately (< 500ms) on AbortSignal and does not hang on trickling streams
+    2. fetchJson enforces wall-clock total timeout when no signal is given
+    3. downloadAndStagePackage cleans up all partial archive/staging files upon abort
+    4. codex-updater-daemon.mjs exits cleanly (returncode 0, < 1.5s) on SIGTERM during active network I/O
+    """
+    import socketserver
+    import signal
+    daemon_request_ready = threading.Event()
+
+    class TrickleHandler(http.server.BaseHTTPRequestHandler):
+        def do_GET(self):
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            if self.path == "/daemon":
+                daemon_request_ready.set()
+            try:
+                for _ in range(100):
+                    self.wfile.write(b" ")
+                    self.wfile.flush()
+                    time.sleep(0.05)
+                self.wfile.write(b"{}")
+                self.wfile.flush()
+            except Exception:
+                pass
+
+        def log_message(self, format, *args):
+            pass
+
+    server = socketserver.ThreadingTCPServer(("127.0.0.1", 0), TrickleHandler)
+    server.daemon_threads = True
+    port = server.server_address[1]
+    thread = threading.Thread(target=server.serve_forever)
+    thread.daemon = True
+    thread.start()
+    def cleanup_server():
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)
+    request.addfinalizer(cleanup_server)
+
+    manager_script = (
+        repository_root
+        / "codex_home_assistant"
+        / "rootfs"
+        / "usr"
+        / "local"
+        / "share"
+        / "codex-ha"
+        / "codex-runtime-manager.mjs"
+    )
+    daemon_script = (
+        repository_root
+        / "codex_home_assistant"
+        / "rootfs"
+        / "usr"
+        / "local"
+        / "share"
+        / "codex-ha"
+        / "codex-updater-daemon.mjs"
+    )
+
+    # 1. fetchJson abort on signal test
+    script_abort = f"""
+    import {{ fetchJson }} from '{manager_script}';
+    const ac = new AbortController();
+    const start = Date.now();
+    setTimeout(() => ac.abort(), 150);
+    try {{
+      await fetchJson('http://127.0.0.1:{port}/trickle', {{ signal: ac.signal }});
+      process.exit(1);
+    }} catch (err) {{
+      const elapsed = Date.now() - start;
+      console.log(JSON.stringify({{ error: err.message, elapsed }}));
+    }}
+    """
+    res_abort = subprocess.run(
+        ["node", "--input-type=module", "-e", script_abort],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    data_abort = json.loads(res_abort.stdout)
+    assert data_abort["error"] == "Operation aborted"
+    assert data_abort["elapsed"] < 800
+
+    # 2. fetchJson wall-clock total timeout test
+    script_timeout = f"""
+    import {{ fetchJson }} from '{manager_script}';
+    const start = Date.now();
+    try {{
+      await fetchJson('http://127.0.0.1:{port}/trickle', {{ totalTimeoutMs: 350 }});
+      process.exit(1);
+    }} catch (err) {{
+      const elapsed = Date.now() - start;
+      console.log(JSON.stringify({{ error: err.message, elapsed }}));
+    }}
+    """
+    res_timeout = subprocess.run(
+        ["node", "--input-type=module", "-e", script_timeout],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    data_timeout = json.loads(res_timeout.stdout)
+    assert "Total timeout" in data_timeout["error"]
+    assert 300 <= data_timeout["elapsed"] <= 1200
+
+    # 3. downloadAndStagePackage abort & staging cleanup test
+    runtime_dir = tmp_path / "runtime"
+    maint_dir = tmp_path / "maint"
+    baseline_dir = tmp_path / "baseline"
+    staging_dir = runtime_dir / "staging"
+    runtime_dir.mkdir(parents=True)
+    maint_dir.mkdir(parents=True)
+    baseline_dir.mkdir(parents=True)
+
+    script_dl_abort = f"""
+    process.env.CODEX_RUNTIME_DIR = '{runtime_dir}';
+    process.env.CODEX_MAINTENANCE_DIR = '{maint_dir}';
+    import {{ downloadAndStagePackage }} from '{manager_script}';
+    import fs from 'node:fs';
+
+    const ac = new AbortController();
+    const releaseInfo = {{
+      version: '0.163.0',
+      expectedSha256: '0000000000000000000000000000000000000000000000000000000000000000',
+    }};
+    setTimeout(() => ac.abort(), 150);
+    const start = Date.now();
+    try {{
+      await downloadAndStagePackage(releaseInfo, 'http://127.0.0.1:{port}/pkg.tar.gz', {{ signal: ac.signal }});
+      process.exit(1);
+    }} catch (err) {{
+      const elapsed = Date.now() - start;
+      const files = fs.existsSync('{staging_dir}') ? fs.readdirSync('{staging_dir}') : [];
+      console.log(JSON.stringify({{ error: err.message, elapsed, filesLeft: files }}));
+    }}
+    """
+    res_dl = subprocess.run(
+        ["node", "--input-type=module", "-e", script_dl_abort],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    data_dl = json.loads(res_dl.stdout)
+    assert data_dl["error"] == "Operation aborted"
+    assert data_dl["elapsed"] < 800
+    assert data_dl["filesLeft"] == []
+
+    # 4. codex-updater-daemon.mjs SIGTERM exit during active trickle
+    options_file = tmp_path / "options.json"
+    options_file.write_text(json.dumps({"codex_auto_update": True, "codex_auto_update_timezone": "UTC"}), encoding="utf-8")
+    (baseline_dir / "codex-package.json").write_text(
+        json.dumps({"version": "0.162.1", "target": "x86_64-unknown-linux-musl", "entrypoint": "bin/codex"}),
+        encoding="utf-8",
+    )
+    (baseline_dir / "bin").mkdir()
+    (baseline_dir / "bin" / "codex").write_text("#!/bin/sh\nexit 0\n")
+    (baseline_dir / "bin" / "codex").chmod(0o755)
+
+    env = {
+        **os.environ,
+        "CODEX_HA_OPTIONS_FILE": str(options_file),
+        "CODEX_RUNTIME_DIR": str(runtime_dir),
+        "CODEX_BASELINE_DIR": str(baseline_dir),
+        "CODEX_MAINTENANCE_DIR": str(maint_dir),
+    }
+    # Override transport only in this owned test process; the production
+    # daemon retains the fixed official release endpoint.
+    bootstrap = (
+        "import https from 'node:https'; import http from 'node:http';"
+        "import {syncBuiltinESMExports} from 'node:module';"
+        f"https.get=(_url,opts,cb)=>http.get('http://127.0.0.1:{port}/daemon',opts,cb);"
+        "syncBuiltinESMExports();"
+        f"await import({json.dumps(daemon_script.as_uri())});"
+    )
+    p = subprocess.Popen(
+        ["node", "--input-type=module", "-e", bootstrap],
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    def cleanup_daemon():
+        if p.poll() is None:
+            p.terminate()
+            try:
+                p.wait(timeout=2)
+            except subprocess.TimeoutExpired:
+                p.kill()
+                p.wait(timeout=2)
+        p.stdout.close()
+        p.stderr.close()
+    request.addfinalizer(cleanup_daemon)
+    assert daemon_request_ready.wait(5), "daemon never reached the active request"
+    t_term_start = time.perf_counter()
+    p.send_signal(signal.SIGTERM)
+    stdout, stderr = p.communicate(timeout=5)
+    term_elapsed = time.perf_counter() - t_term_start
+    assert p.returncode == 0
+    assert term_elapsed < 1.5
+    assert "updater_stopped" in stdout
+    assert "Operation aborted" in stdout
+
+
+def test_redirect_cleanup_deadline_and_late_archive_open(repository_root: Path, tmp_path: Path):
+    """Every redirect shares one budget; abort must also cover pending file opens."""
+    import socketserver
+
+    class Handler(http.server.BaseHTTPRequestHandler):
+        def log_message(self, *args):
+            pass
+
+        def do_GET(self):
+            if self.path == "/redirect":
+                self.send_response(302)
+                self.send_header("Location", "/json")
+                self.end_headers()
+                try:
+                    for _ in range(100):
+                        self.wfile.write(b" ")
+                        self.wfile.flush()
+                        time.sleep(0.02)
+                except (BrokenPipeError, ConnectionResetError):
+                    pass
+            elif self.path.startswith("/chain/"):
+                hop = int(self.path.rsplit("/", 1)[1])
+                time.sleep(0.08)
+                self.send_response(302 if hop < 5 else 200)
+                if hop < 5:
+                    self.send_header("Location", f"/chain/{hop + 1}")
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+            else:
+                self.send_response(200)
+                self.send_header("Content-Length", "2")
+                self.end_headers()
+                self.wfile.write(b"{}")
+
+    class Server(socketserver.ThreadingTCPServer):
+        daemon_threads = True
+
+    server = Server(("127.0.0.1", 0), Handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    manager = repository_root / "codex_home_assistant/rootfs/usr/local/share/codex-ha/codex-runtime-manager.mjs"
+    url = f"http://127.0.0.1:{server.server_address[1]}"
+    try:
+        script = f"""
+        import {{ fetchJson }} from {json.dumps(manager.as_uri())};
+        const ac = new AbortController();
+        await fetchJson('{url}/redirect', {{ signal: ac.signal, totalTimeoutMs: 300 }});
+        ac.abort();
+        let sharedDeadline = false;
+        try {{ await fetchJson('{url}/chain/0', {{ totalTimeoutMs: 180 }}); }}
+        catch (e) {{ sharedDeadline = e.message.includes('Total timeout'); }}
+        console.log(JSON.stringify({{ sharedDeadline }}));
+        """
+        proc = subprocess.run(["node", "--input-type=module", "-e", script],
+                              capture_output=True, text=True, timeout=4, check=True)
+        assert json.loads(proc.stdout)["sharedDeadline"] is True
+
+        runtime = tmp_path / "runtime"
+        script_open = f"""
+        import fs from 'node:fs/promises';
+        import {{syncBuiltinESMExports}} from 'node:module';
+        const originalOpen = fs.open;
+        fs.open = async function(p, ...args) {{
+          if (String(p).includes('.download-')) await new Promise(r => setTimeout(r, 200));
+          return originalOpen.call(this, p, ...args);
+        }};
+        syncBuiltinESMExports();
+        process.env.CODEX_RUNTIME_DIR = {json.dumps(str(runtime))};
+        const {{downloadAndStagePackage}} = await import({json.dumps(manager.as_uri())});
+        const ac = new AbortController();
+        setTimeout(() => ac.abort(), 50);
+        let aborted = false;
+        try {{ await downloadAndStagePackage({{version:'0.163.0',expectedSha256:'0'.repeat(64)}},
+                                              '{url}/json', {{signal:ac.signal}}); }}
+        catch(e) {{ aborted = e.message === 'Operation aborted'; }}
+        await new Promise(r => setTimeout(r, 250));
+        console.log(JSON.stringify({{aborted,files:await fs.readdir({json.dumps(str(runtime / 'staging'))})}}));
+        """
+        proc = subprocess.run(["node", "--input-type=module", "-e", script_open],
+                              capture_output=True, text=True, timeout=4, check=True)
+        result = json.loads(proc.stdout)
+        assert result == {"aborted": True, "files": []}
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)

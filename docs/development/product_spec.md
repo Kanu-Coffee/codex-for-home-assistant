@@ -288,7 +288,8 @@ SSH 외부 포트는 JSON 옵션이 아니라 Network 설정이다.
 - `codex_auto_update`가 `false`이면 자동 주기 확인을 수행하지 않는다.
 - 공식 tarball은 SHA-256 검증 및 path traversal 방지 검사를 거쳐 `/data/codex-runtime/releases/<version>-<target>`에 안전하게 추출된다.
 - CLI/TUI, SSH, Remote stdio, managed app-server의 활성 세션을 포괄적으로 감지하며, 활성 세션(active turn, approval wait, loaded conversation 등)이 감지되면 적용을 보류(`staged`)하고 5분 간격으로 로컬 상태만 재확인한다.
-- 모든 세션이 유휴 상태일 때 원자적 symlink 전환(`current -> releases/<version>-<target>`)을 수행한다.
+- 세션 감지는 `/proc/<pid>/exe`의 실제 entrypoint(정확한 package 경계와 허용된 companion 상대 경로)와 유효한 등록 record 기준으로 고유 프로세스를 계상한다. argv에 Codex 경로·`app-server` 문자열이 데이터로만 존재하는 무관 프로세스, 그리고 검증된 Codex 프로세스에 귀속되는 helper·companion은 독립 세션으로 계상하지 않는다. package 경계 내부의 미식별 executable과 귀속·신원을 검증할 수 없는 잔여는 `unknown` blocker로 보수적으로 보류한다. subcommand/option 해석의 값 있는 global option은 실제 번들 Codex의 help 기준으로 wrapper·runtime이 공유한다.
+- 식별된 모든 세션 프로세스(미식별 package executable 포함)가 종료되거나 검증된 유휴 상태일 때 원자적 symlink 전환(`current -> releases/<version>-<target>`)을 수행한다. Remote stdio blocker는 사용자가 연결을 정상 종료하면 실제 Codex 서버가 EOF에서 스스로 종료되어 해소되며, 업데이터가 원격 연결을 끊거나 재연결하지는 않는다.
 - `ha-codex-update` CLI(`status`, `check`, `apply`, `update`)와 wrapper `codex update` 라우팅을 지원한다.
 - AppArmor에서 `/data/codex-runtime/**`는 `rix`를 부여하고 write/link를 명시적으로 차단하여 샌드박스 내부 변조를 방지한다.
 
@@ -432,7 +433,7 @@ MVP에서는 다음을 만들지 않는다.
 
 1. 하루 4회 슬롯 계산(03:00, 09:00, 15:00, 21:00)과 유효한 IANA timezone 파싱이 정확해야 하며, 잘못된 timezone은 안전하게 기본값(`Asia/Seoul`)으로 폴백한다.
 2. 공식 release manifest/asset의 SHA-256이 불일치하거나 경로 이탈(`..` 등)이 포함된 아카이브는 추출하지 않고 fail closed한다.
-3. 세션 추적(`/run/codex-ha/codex-maintenance/sessions` 및 `/proc/*/exe`)에서 활성 프로세스가 감지되면 원자적 symlink 전환을 수행하지 않고 `staged` 상태를 유지하며 5분마다 재확인한다.
-4. 모든 세션이 종료되어 유휴 상태가 확인되면 원자적으로 `/data/codex-runtime/current` symlink를 갱신하고, 새 세션은 즉시 갱신된 버전을 사용한다.
+3. 세션 추적(`/run/codex-ha/codex-maintenance/sessions` 및 `/proc/*/exe`)에서 활성 프로세스가 감지되면 원자적 symlink 전환을 수행하지 않고 `staged` 상태를 유지하며 5분마다 재확인한다. 단 active/unknown 프로세스는 exe·record 기준으로 식별된 고유 프로세스만이며, helper 귀속과 argv 문자열 제외 동작은 회귀 fixture로 검증한다.
+4. 식별된 모든 세션 프로세스가 종료되어 유휴 상태가 확인되면 원자적으로 `/data/codex-runtime/current` symlink를 갱신하고, 새 세션은 즉시 갱신된 버전을 사용한다. 검증된 유휴 managed Unix app-server 단독 상태에서는 cooldown 내 허용된 graceful replacement path를 사용한다.
 5. 업데이터 서비스는 `SUPERVISOR_TOKEN`을 상속하지 않으며 로그나 상태 파일에 자격증명/원시 사용자 입력을 남기지 않는다.
 6. baseline 패키지(`0.162.1`)는 `/usr/local/lib/codex-ha/codex-baseline`에 보존되며 `/data` 런타임 손상 시 fallback으로 동작한다.

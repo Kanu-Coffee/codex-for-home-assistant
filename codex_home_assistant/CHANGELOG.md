@@ -2,6 +2,48 @@
 
 All notable changes to this App are documented in this file.
 
+## [0.7.2] - 2026-10-26
+
+### Fixed
+
+- Classify persistent Codex helpers by executable identity and verified ownership; avoid counting them as independent user sessions. Preserve active CLI/Remote sessions and conservative unknown-process blocking.
+- Distinguish unsafe protected-file shapes from inspection/preparation failures while keeping mandatory protected-path checks fail closed.
+- Report bundled, verified selected, and observed running Codex versions separately, retaining partial/unobserved states and bounded read-only collection.
+- Cancel updater network I/O during shutdown, close redirect responses, share the redirect-chain deadline, and drain pending archive opens before cleanup. Allow 30 seconds for App graceful teardown.
+
+### Release
+
+- Promote the user-accepted `0.7.2-dev.2` runtime to the stable channel after the user confirmed real-device validation and approved release. No additional runtime feature changes; bundled recovery Codex remains `0.162.1`.
+- Keep the App slug, data paths, API permissions and fixed protected-path policies unchanged. Existing stable installations use the normal same-repository update path; DEV-to-main source migration is a separate operation.
+
+## [0.7.2-dev.2]
+
+### Fixed
+
+- Distinguish unsafe filesystem shapes (symlinks, hardlink aliases, special files) from traversal or permission restrictions (EACCES/EPERM) in the sensitive path integrity policy, wrapper stderr, and init logs.
+- Separate bundled, selected, and running Codex versions in feedback environment schema and report rendering, preserving legacy report compatibility while supporting multiple running versions, idle states, and unobserved/unverified states.
+- Close redirect responses, share one release-query deadline across redirect hops, and drain pending archive opens before cancellation cleanup. Keep the daemon release feed fixed to the official endpoint.
+- Set candidate `timeout: 30` in App configuration as an allowance request for multi-service graceful teardown evaluation; live Supervisor stop exit code and stop duration on real HAOS remain pending field verification.
+
+### Validation scope
+
+- Tool sandbox nested wrapper execution continues to fail closed as intended due to mandatory deny-read requirements on protected paths; independent Web terminal and SSH shell execution boundaries and live HAOS stop behavior remain subject to explicit field acceptance.
+- DEV candidate build for isolated validation; real-device acceptance is managed separately.
+
+## [0.7.2-dev.1]
+
+### Fixed
+
+- Classify Codex processes by executable identity and verified launch records, exclude owned helpers from independent session counts, and hold unknown package executables conservatively.
+- Count registered CLI processes once and recognize value-taking global options and both Unix listener forms.
+- Persist sanitized update blocker codes and distinguish session readiness from automatic update budget, cooldown, and configuration conditions.
+- Refresh the exact signed Alpine yq-go 4.53.3-r2 review and remove its obsolete stdlib scan waivers; unknown artifacts retain the raw Critical gate. Real Syft CPE fixtures also verify the official CVE aliases against the CI scanner.
+
+### Validation scope
+
+- Remote stdio connections remain protected until normal exit; this build does not force-disconnect or reconnect them. Daily idle-check budgets, restart cooldown, loaded-conversation protection, and managed policy checks remain enforced.
+- This is a DEV candidate; HAOS VM and native CI results are recorded separately in development progress. Real-user HAOS and ARM hardware acceptance are not implied.
+
 ## [0.7.1] - 2026-10-14
 
 ### Added
