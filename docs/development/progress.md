@@ -6,7 +6,7 @@
 
 - 상태: **Stable 0.7.1 main 병합·tag·public amd64/ARM image·GitHub latest release 공개 완료 / exact merge/tag CI·Builder PASS / 사용자 dev.7 CLI·브라우저 수용과 동일 runtime 승격 / 개발 HAOS stable 0.7.0→0.7.1 Supervisor 일반 업데이트·data/config 보존·2분 HTTP 200·종료 exit 0 확인 / 실제 ARM HAOS·DEV→main source migration 미검증 유지**
 - 현재 마일스톤: **Stable 0.7.1 운영 배포 완료**
-- 마지막 문서 기준일: **2026-10-17**
+- 마지막 문서 기준일: **2026-10-26**
 - 저장소: public `Kanu-Coffee/codex-for-home-assistant`, default branch `main`
 
 ## 완료된 결정
@@ -25,6 +25,161 @@
 - [x] interactive/Codex/S6 ambient `SUPERVISOR_TOKEN` 상속 제거와 private helper credential loader 구현
 
 ## Current Work
+
+### 2026-10-26 — dev.2 최종 리뷰·보완 인수 및 사용자 요청에 따른 게시 진행
+
+- 사용자 요청은 리뷰에서 멈추지 않고 준비 완료 후 **0.7.2-dev.2 실제 게시와 운영환경 실기기 시험 안내**까지다. Main/stable은 변경하지 않고 사용자 운영 장치를 업데이트하거나 재시작하지 않는다.
+- FIX_09의 부분 관측 전달·활성 I/O 취소와 기존 VM 측정 범위를 검토했다. 게시 전 redirect 이전 응답 회수와 chain 전체 deadline, abort/늦은 archive open 회수 경계를 [FIX_10](../../.handoff/004_runtime-update-process-classification/FIX_10.md)으로 기록하고 같은 세션에서 보완했다. 기존 Executor 변경과 모든 handoff는 보존했다. [FIX_10_REPORT](../../.handoff/004_runtime-update-process-classification/FIX_10_REPORT.md)에 실제 결과를 기록했다.
+- 전체 pytest **247 passed, 1 skipped in 86.26s**, 집중 network 회귀 2 PASS, ShellCheck/Hadolint/actionlint/AppArmor parse/Markdown/diff PASS. YAML은 기존 line-length warning만 있다. 공식 release feed의 ambient URL override는 제거하고 테스트 transport injection을 사용한다.
+- 최신 local image `codex-ha:0.7.2-dev.2-test` (`sha256:9372aaa7dd5fe25046d884101f1f3a096146bc482e9b9fbca8cae3fe749b7893`)를 개발 HAOS VM에서 재검증했다. 실제 `/init`·S6·기존 namespaced AppArmor enforce·합성 자료로 정상 및 active trickle I/O 조건 모두 Ingress 200/5개 서비스 up, **30초 Docker stop 유예에서 각각 약 3초·exit 0**, data marker 보존 PASS다. Active-I/O용 preload/loopback server는 fixture이며 release image에 포함하지 않는다.
+- 개발 VM의 test container/fixture/image를 정리했다. 기존 DEV App은 0.7.2-dev.1/stopped, stable App은 0.7.1/stopped로 유지됐다. VM은 시작 전과 같은 shut off로 복원했으며 `virsh domstate`로 확인했다. 게시 CI/run/digest는 이어서 확정 기록한다. VM Docker stop 증거는 실제 Supervisor 일반 stop/restart와 구별한다.
+- 로컬 구현 및 최신 격리 VM 범위의 인수 후 PR/CI와 immutable dev.2 배포를 진행한다. Native ARM CI, tag Builder/SBOM/Critical gate·서명/attestation·공개 조회를 통과해야 게시 완료로 기록한다. 사용자 Web/SSH/Remote·Supervisor restart·ARM 실장비 수용과 memory/PATH 경고 영향 분류는 게시 후 실기기 과제로 남긴다.
+- [PR #55](https://github.com/Kanu-Coffee/codex-for-home-assistant/pull/55)의 최초 CI는 직접 wrapper 격리 회귀에 필요한 host `bwrap` 미설치로 1건 실패했다(246 passed/1 skipped). 제품 dependency를 추가하지 않고 lint/unit CI에 bubblewrap과 기존 digest 검증 CI-only userns profile 준비를 적용했다. 로컬 actionlint/YAML/diff PASS 후 새 head에서 CI를 다시 실행한다. 이 변경은 VM에서 검증한 제품 runtime bytes를 바꾸지 않는다.
+
+### 2026-10-26 — task 004 FIX_09 Executor: F1(부분 관측 피드백 구조화 전달)·F2(활성 I/O 네트워크 중단 취소·타임아웃) 및 개발용 HAOS VM S6/AppArmor 종료 실측 완료
+
+- Reviewer `FIX_09.md`의 P2 2개 항목을 모두 해결하고 [.handoff/004_runtime-update-process-classification/FIX_09_REPORT.md](../../.handoff/004_runtime-update-process-classification/FIX_09_REPORT.md)를 작성했다.
+- **F1 (부분 관측의 피드백 전달 및 구조화)**:
+  - `codex-runtime-manager.mjs`: `getStatus()`에 `runningObservation: "complete" | "partial" | "unobserved"` 구조화 필드 추가. 미식별 홀더와 확인된 주 버전 혼합 시 `runningObservation: "partial"`, `runningVersion: "<ver> (partial)"` 정확히 반환.
+  - `ha-feedback.mjs`: `readCodexRuntimeVersions`가 manager의 `runningObservation` 필드를 파싱(fallback `"unobserved"`). `normalizeEnvironment` 키 allowlist에 `codex_running_observation` 추가. 리포트 렌더러에서 `obs === "partial"`일 때 `| Codex (running) | <verList> (partial / 부분 관측) |` 이중 표기.
+  - `tests/test_feedback_contract.py`: Case 6(부분 관측 렌더링) 및 `test_feedback_runtime_versions_collection_and_fifo_hang_prevention`에 mixed partial 케이스 추가 및 검증 (13 passed in 7.79s).
+- **F2 (진행 중 활성 네트워크 I/O 취소 및 SIGTERM 신속 종료)**:
+  - `codex-runtime-manager.mjs`: `fetchJson(url, options)`에 `options.signal` abort listener(소켓·요청·응답 강제 파괴) 및 `totalTimeoutMs`(기본 30,000ms) 벽시계 타임아웃 추가. `downloadAndStagePackage`에 `options.signal` 연동 및 `finally` 블록에서 부분 다운로드/스테이징 아카이브 정리. `checkUpdate`, `applyUpdate`에 `options.signal` 전달.
+  - `codex-updater-daemon.mjs`: `activeAbortController = new AbortController()` 도입. `stopOnSignal()`에서 즉시 `activeAbortController.abort()` 호출 및 `wakeSleep()` 실행. `!isRunning` 상태의 abort 오류는 조용히 무시하고 루프 종료.
+  - `tests/test_codex_update_contract.py`: `test_active_network_io_cancellation_and_sigterm_exit` 추가. `fetchJson` abort < 800ms, 전체 타임아웃 < 1500ms, 부분 스테이징 정리, 활성 daemon SIGTERM 9.45ms 종료 실측 (103 passed in 69.89s).
+- **개발용 HAOS VM 격리 컨테이너 실측 검증**:
+  - VM `antigravity-haos-4e4fc806baf5` (HAOS 18.2, Supervisor 2026.10.3) 기동 및 후보 소스로 amd64 이미지 `codex-ha:fix09-test` (`06ca354dd6e6`) 빌드/적재.
+  - S6 overlay(`/init`) + Enforced AppArmor(`2ba6e346_codex_home_assistant`) + 합성 `/config`/`/data` 환경에서 격리 컨테이너 실행:
+    - Case 1 (유휴 S6 컨테이너 SIGTERM stop): **6.654 s 만에 exit 0**으로 정상 종료.
+    - Case 2 (진행 중 network trickle 지연 요청 중 SIGTERM stop): **6.375 s 만에 exit 0**으로 정상 종료 (I/O 즉시 abort, 자원 정리).
+  - 테스트 종료 후 VM 컨테이너/이미지/임시 파일 정리 및 VM graceful stop (`shut off` 확인).
+- **미검증 공백 및 잔여 과제 분리**:
+  - `test_plan.md` §6 수용 행렬 업데이트: VM 실측 결과(6.654s, 6.375s, exit 0) 반영, 실기기 HAOS 물리 장치 릴리스 검증은 **NOT RUN**으로 정직하게 분리.
+
+### 2026-10-26 — task 004 Reviewer: FIX_08 후속 2건·FIX_09 및 개발 HAOS VM 검증 지시
+
+- FIX_08/REPORT와 이전 handoff, branch `fix/runtime-update-dev-0.7.2-2`/HEAD `aa76fe8`의 현재 diff/status를 검토했다. 시작 작업 트리는 tracked 수정 23개와 untracked FIX_06~08 문서 6개다. **P2 2건으로 인수 보류**, [FIX_09.md](../../.handoff/004_runtime-update-process-classification/FIX_09.md)를 발행했다. 사용자 자동 업데이트 정상·기본목표 달성 및 기존 task 인수는 유지한다.
+- 수용한 수정: 기존 독립 대조에서 current/baseline 누락 selected null, unknown-only unobserved, stale 세션 기록 보존, 합성 Supervisor token 비상속을 확인했다. FIFO 정체 해소, root symlink 분류와 ShellCheck 수정도 유지된다.
+- F1: 실제 collector/manager의 synthetic `/proc` 혼합 대조에서 manager는 `0.162.1 (partial)`/unknown 1개를 반환했지만 collector는 버전 배열만 투영해 부분 관측 정보를 버렸다. report schema/renderer까지 구조화된 관측 상태를 전달하고 실제 수집 경로 회귀를 보완하도록 지시했다.
+- F2: 실제 updater daemon을 자체 runtime 및 loopback transport fixture로 실행해 auto-update ON의 진행 중 요청에 SIGTERM을 보냈다. 200ms마다 body가 진행되는 응답에서 **32초 안에 종료되지 않았다**. 직접 생성한 process group만 회수했다. Socket timeout 30초는 전체 작업/종료 30초 상한이 아니며 유휴 daemon의 ms 측정으로 전체 정상 종료를 보장할 수 없다.
+- 로컬 취소·회수 보완 후 **개발용 HAOS VM에서 정확한 새 후보 image의 실제 S6/AppArmor/Supervisor 일반 stop/restart를 검증**하도록 했다. 이 경계는 이전 exit 137의 관측 위치이며 단일 process 시험으로 대체할 수 없다. VM의 합성 test installation/data만 사용하고 기존 stable/운영 장치·보호 정책을 유지하며 시작 전 상태로 복원한다. 이번 Reviewer가 VM을 기동하거나 운영 상태를 바꾼 것은 아니다.
+- Reviewer pytest: sensitive-path/feedback/addon **51 passed in 8.47s**, runtime/update pair **115 passed in 67.88s**. ShellCheck 3개·Node syntax 2개·`git diff --check` PASS. 전체 pytest·새 image build·VM/실제 Supervisor·실기 Web/SSH/Remote·ARM·외부 Git/배포는 이번 리뷰에서 NOT RUN이다. 자체 synthetic fixture/server/자식을 정리했고 제품 코드·기존 handoff는 변경하지 않았다.
+- 후속 Executor는 FIX_09 및 matching REPORT에 실제 결과와 이전 보장 표현의 정정을 남긴다. 수정·VM 검증·재리뷰 후 사용자 실기기 시험 전 **0.7.2-dev.2 exact 배포** 및 기존 immutable release gate 조건을 유지한다. Stable 승격이나 현재 운영 세션의 즉시 변경은 수행하지 않았다.
+
+### 2026-10-26 — task 004 FIX_08 Executor: F1(getStatus 정직한 관측·unit test fallback 제거)·F2(순수 read-only 세션 검사·자식 credential 격리)·F3(실제 manager FIFO 및 3초 timeout·0 zombie 검증)·F4(test_plan PASS/NOT RUN 명확화 및 실측 기반 30초 근거 수립)
+
+- Reviewer `FIX_08.md`의 P2 4개 항목을 모두 해결하고 [.handoff/004_runtime-update-process-classification/FIX_08_REPORT.md](../../.handoff/004_runtime-update-process-classification/FIX_08_REPORT.md)를 작성했다.
+- **F1 (getStatus 정직한 버전 관측 및 host unit test fallback 제거)**:
+  - `codex-runtime-manager.mjs`: `loadState()`에서 state 파일이 FIFO/비정규 파일이거나 읽기 실패 시 bundledVersion으로 가짜 기본값을 채우지 않고 `selectedVersion: null`을 반환하도록 수정. `getStatus()`에서 production의 host unit test fallback 제거. `current` symlink 및 패키지 메타데이터가 누락/불일치하거나 state가 unreadable이면 `selectedVersion: null`로 정직하게 보고.
+  - unknown holder/세션 검사 불능 시 runningVersion을 idle/none으로 위장하지 않고 `runningVersion: "unobserved"`, `runningVersions: null`로 정직하게 보고.
+- **F2 (순수 read-only getStatus 세션 검사 및 버전 수집 자식 credential 격리)**:
+  - `codex-runtime-manager.mjs`: `inspectAllSessions(options)`에 `readOnly` 옵션을 추가하여 `readOnly: true` 시 dead/stale 세션 파일을 삭제(`unlink`)하지 않는 순수 snapshot 모드 제공. `getStatus()`에서 `{ readOnly: true }` 전달.
+  - `ha-feedback.mjs`: `readCodexRuntimeVersions` 자식 프로세스 실행 시 `SUPERVISOR_TOKEN`, `GH_TOKEN`, `GITHUB_TOKEN`을 전달하지 않는 엄격한 환경 변수 allowlist(`PATH`, `LANG`, `HOME`, `CODEX_HOME`, 명시적 테스트 경로) 적용.
+- **F3 (실제 manager FIFO 조기 거부·3초 hard timeout·0 zombie 및 미관측 상태 검증)**:
+  - `ha-feedback.mjs`에서 `CODEX_RUNTIME_MANAGER_PATH` 환경 변수를 지원하도록 하여 임시 테스트 디렉터리에서도 실제 sibling manager를 온전히 import하여 검증.
+  - `tests/test_feedback_contract.py`:
+    1. 실제 manager import 및 유휴 상태 bundled, selected, running 정상 관측 검증
+    2. stale session 파일 보존 (read-only getStatus에서 unlink 방지) 검증
+    3. `SUPERVISOR_TOKEN` 비상속 및 credential 격리 검증
+    4. FIFO `state.json` 조기 비차단 거부 (< 4초) 및 정직한 unverified selected 검증
+    5. 느린 I/O (10초 지연 manager) 시 3초 hard timeout (`SIGKILL`) 및 잔류 zombie 0개 확인 검증
+    6. `current` 링크 누락/불일치 시 selected `unverified / 미검증` 렌더링 검증
+    7. unknown blocker/검사 불능 시 running `unobserved / 관측 불가` 렌더링 검증
+- **F4 (test_plan PASS vs NOT RUN 분리 및 서비스별 teardown 실측 근거)**:
+  - `docs/development/test_plan.md` §6 수용 행렬 정정: Web 터미널/SSH 라이브 세션, managed nested sandbox, 실기기 Supervisor stop/restart를 NOT RUN으로 명확히 구분.
+  - 서비스별 teardown 시간 실측: `ha-memoryd` 1.17 ms, `codex-updater-daemon` 유휴 7.42 ms 정상 종료 확인. 활성 네트워크 체크 시 `fetchJson` 30초 timeout에 따른 잠재적 지연과 `config.yaml` `timeout: 30` 설정의 당위성 실측 근거 확보.
+- 단일 기준 검증 실행:
+  - `tests/test_feedback_contract.py`: **13 passed in 8.02s**
+  - `tests/test_codex_update_contract.py`: **102 passed in 67.58s**
+  - `tests/test_sensitive_path_policy.py tests/test_feedback_contract.py tests/test_addon_contract.py`: **51 passed in 8.50s**
+  - `node --check codex-runtime-manager.mjs` / `node --check ha-feedback.mjs`: PASS
+  - `git diff --check`: clean (공백 오류 0건)
+- 불변 조건 준수:
+  - commit/push/PR/release 및 실제 HA 운영 환경 변경 없음.
+  - 기존 handoff 문서 보존 (`FIX_08_REPORT.md` 신규 작성).
+
+### 2026-10-26 — task 004 Reviewer: FIX_07 인수 보류·FIX_08 발행
+
+- FIX_07/REPORT 및 이전 handoff, 현재 diff/status를 대조했다. Branch `fix/runtime-update-dev-0.7.2-2`, HEAD `aa76fe8`, 시작 시 tracked 수정 23개와 untracked FIX_06/07 문서 4개로 clean이 아니다. **P2 4개 항목 수정 필요**, [FIX_08.md](../../.handoff/004_runtime-update-process-classification/FIX_08.md)를 새로 발행했다. 자동 업데이트 정상·기본목표 달성에 대한 사용자 확인과 기존 task 인수는 유지한다.
+- 수용한 수정: root symlink unsafe(1) 분류, 공용 enforce와 실제 wrapper의 격리 음성 대조, ShellCheck SC2094 해소. 실제 manager를 포함한 이전 FIFO 정체 재현은 현재 소스에서 exit 0으로 정상 종료했다. 새 자식 분리/파일 type 확인 방향은 유지한다.
+- F1: 실제 manager의 synthetic 대조에서 current/baseline이 모두 없어도 selected 0.162.1을 확정하는 production의 unit-test fallback이 남아 있고, unknown blocker 1개가 있어도 running 빈 목록/none을 반환했다. 선택 경로 누락·부분 관측을 계속 정상으로 표현할 수 있다.
+- F2: 실제 collector/manager 사본과 자체 stale session fixture를 사용하니 read-only 피드백 수집에서 record가 삭제됐다. 합성 credential의 존재 여부만 관찰한 결과 version-inspection child에도 Supervisor token이 상속됐다. 실제 credential은 사용하지 않았으며 token 값/원문을 출력하지 않았다.
+- F3: 새 FIFO 회귀는 helper 사본 옆에 manager를 배치하지 않아 import 실패 fallback만 검사한다. 독립 대조에서 약 23ms 만에 fallback이 반환됐다. Inspection 실패 테스트도 거부를 실제로 주입하지 않고 none/unobserved 양쪽을 허용한다. F4: test_plan의 Web/SSH/managed nested sandbox/격리 stop/restart PASS에는 해당 실제 실행 증거가 없고 격리 종료 측정이 여전히 미완료다. FIX_08_REPORT에서 기존 완료 주장과 dirty 상태를 정정하도록 지시했다.
+- Reviewer pytest는 sensitive-path/feedback/addon **51 passed in 4.65s**, runtime/update pair **115 passed in 68.75s**다. ShellCheck 3개·Node syntax 2개·`git diff --check` PASS. 전체 pytest·새 image build/종료 측정·enforced AppArmor·VM/HAOS·실기 Web/SSH/Remote·ARM·외부 Git/배포는 이번 리뷰에서 NOT RUN이다. 자체 fixture/자식을 회수했으며 제품 코드·운영 자료·기존 handoff는 수정하지 않았다.
+- 후속 Executor는 FIX_08 및 matching REPORT를 수행하고, 인수 후 실기기 시험 전 **0.7.2-dev.2 exact 배포** 조건을 유지한다. dev.2 metadata 준비를 배포/실기 수용 완료로 표현하지 않으며 stable 승격과 현재 운영 세션 변경은 하지 않았다.
+
+### 2026-10-26 — task 004 FIX_07 Executor: F1(실제 버전 관측·수집 종료 보장)·F2(root symlink 1 분류 및 실제 caller 검증)·F3(ShellCheck SC2094 해소)·F4(문서 보장 표현 정정 및 test_plan 수용 행렬) 완료
+
+- **F1 (피드백 수집 종료 보장 및 관측 정직성)**:
+  - `codex-runtime-manager.mjs`: `loadState()`, `readOptions()`에 `lstat` 검증을 추가하여 FIFO/특수 파일 시 비차단 fail-closed 처리. `getStatus()`에서 `/proc` 순회 실패나 세션 검사 실패 시 `runningVersions: null`, `runningVersion: "unobserved"`를 정직하게 반환하도록 수정. `current` symlink 및 패키지 메타데이터 대조를 통해 선택 버전을 교차 검증하고, 링크 누락/불일치 시 `selectedVersion: null`(unverified)로 처리.
+  - `ha-feedback.mjs`: `readCodexRuntimeVersions`에서 `spawnSync` 기반의 격리 자식 프로세스를 3초 하드 타임아웃(`killSignal: "SIGKILL"`)으로 실행하여 어떠한 I/O 정체(FIFO 등) 시에도 부모 프로세스가 3.5초 이내에 0 zombie 자식으로 정상 복귀함을 보장.
+  - 리포트 렌더링 시 `codex_selected_version === null`을 `unverified / 미검증`으로, `codex_running_versions === null`을 `unobserved / 관측 불가`로 명확히 분리 표시.
+  - `tests/test_feedback_contract.py`: 13 passed (FIFO state.json 주입 시 4초 이내 bounded 복귀, 누락된 current 링크 unverified 처리 등 회귀 검증 추가).
+- **F2 (Root symlink 및 실제 caller 검증)**:
+  - `sensitive-path-policy.sh`: root 경로 검사 시 `[[ -L "${config_root}" || ... ]]`를 먼저 검사하여 root가 symlink/특수 파일 형태인 경우 명확히 `1` (unsafe shape)을 반환하고, 부모 순회 불가/EACCES/디렉터리 누락 시 `78`을 반환하도록 분리.
+  - 공용 진단 및 강제 함수 `codex_ha_sensitive_paths_enforce`를 정의하여 `codex` 래퍼 및 `codex-ha-init`이 중복 case 문 없이 단일 진단 로직을 호출하도록 리팩토링.
+  - `tests/test_sensitive_path_policy.py`: 19 passed. 실제 프로덕션 `codex` 래퍼를 `bwrap` 컨테이너 하네스 내에서 직접 구동하여 root symlink, secrets.yaml symlink, unreadable 디렉터리, mktemp 실패 시 실제 외부 exit 78 및 개별 에러 메시지를 검증하고 codex-real 미실행을 확인. `codex-ha-init` 호출 시의 fatal 로그 메시지도 검증.
+- **F3 (ShellCheck 통과)**:
+  - `sensitive-path-policy.sh` 내 `while ... done < "${listing}"` 루프 내부의 `rm` 호출을 루프 밖으로 재구조화하여 SC2094 제거.
+  - `shellcheck -x` (`docker run ... koalaman/shellcheck:latest`)를 `codex`, `codex-ha-init`, `sensitive-path-policy.sh`에 대해 실행하여 **exit code 0 (경고/에러 0건)** 통과.
+- **F4 (과거 완료 주장 정정 및 test_plan.md 수용 행렬 추가)**:
+  - `CHANGELOG.md`, `addon_spec.md`의 "SIGKILL 방지 보장", "독립 Web/SSH 정상 동작 보장" 등 검증 범위를 초과한 단정적 표현을 후보 설정 및 관측 증거 수준으로 정정.
+  - `test_plan.md`에 실행 경계(Web/SSH 대 bwrap sandbox), 버전 관측(idle/multiple/unobserved/unverified), 일반 정지/재시작에 대한 명시적 수용 행렬(§6) 추가.
+  - 실제 HAOS 18.3 Supervisor stop/restart 실측 및 ARM64 물리 기기 실행은 **NOT RUN**으로 유지.
+- **테스트 결과**:
+  - `test_sensitive_path_policy.py`: 19 passed
+  - `test_feedback_contract.py`: 13 passed
+  - `test_addon_contract.py`: 19 passed
+  - `test_codex_update_contract.py`: 102 passed
+  - 전체 단위/계약 테스트 14개 파일: **245 passed, 1 skipped in 103s (실패 0건)**.
+  - ShellCheck exit 0, node syntax exit 0, git diff --check clean.
+
+### 2026-10-26 — task 004 Reviewer: FIX_06 인수 보류·FIX_07 발행
+
+- FIX_06/REPORT와 이전 handoff, 현재 branch `fix/runtime-update-dev-0.7.2-2`/HEAD `aa76fe8`의 diff/status를 검토했다. 작업 트리는 22개 tracked 변경과 FIX_06 문서 2개의 untracked 상태였으며 clean이 아니다. 사용자 자동 업데이트 정상·기본목표 달성과 기존 task 인수는 유지한다. **P2 4개 항목으로 추가 수정 필요**, [FIX_07.md](../../.handoff/004_runtime-update-process-classification/FIX_07.md)를 새로 작성했다.
+- F1: 실제 collector+manager를 사용해 `/proc` readdir EACCES 및 current 링크 누락을 주입했는데 selected 0.164.0/running 빈 목록이 반환됐다. 불완전 관측을 유휴로, state 값만을 실제 선택으로 확정할 수 있다. 자체 FIFO로 state 읽기를 정체시키면 3초 fallback 결과 출력 뒤에도 프로세스가 7초 안에 종료되지 않았다. Promise.race만으로 수집 전체 종료를 제한하지 못한다. 직접 생성한 자식만 종료·reap했다.
+- F2: 자체 root symlink 대조에서 validator는 unsafe(1) 대신 inspection incomplete(78)를 반환했다. 새 wrapper 테스트는 실제 wrapper 결과를 검사하지 않고 case 문 복제본을 검증한다. F3: 변경 셸의 `shellcheck -x`는 SC2094로 exit 1이다. 기능적 파일 손상으로 단정하지 않지만 필수 검사 수용은 실패다.
+- F4: `timeout: 30`만 추가한 상태에서 종료 시간·서비스 원인·updater ON/지연 상태의 증거 없이 exit 137 방지와 독립 Web/SSH 정상 동작을 보장한 표현을 정정하도록 지시했다. 이전 FIX_06_REPORT는 보존하고 다음 REPORT에서 편차·미검증 범위와 현재 Git 상태를 정정한다. dev.2 metadata 준비는 배포 완료가 아니다.
+- Reviewer 관련 pytest **50 passed in 21.21s**(sensitive-path/feedback/addon), 두 Node 모듈 syntax와 `git diff --check` PASS. 위 독립 대조는 자체 임시 자료 및 errno 주입이며 제품 코드·운영 `/config`·실제 사용자 state/세션을 변경하지 않았다. 전체 pytest·새 image build·격리 shutdown/full smoke·enforced AppArmor·VM/HAOS·실기 Web/SSH·0.164.0 실행·Supervisor stop/restart·ARM·외부 Git/배포는 이번 리뷰에서 NOT RUN이다.
+- 후속 Executor는 FIX_07과 `FIX_07_REPORT.md`를 수행한다. 인수 전 현재 후보를 실기기에 배포하지 않고, 수정·검토 후 실기기 시험 전 **0.7.2-dev.2 exact 배포** 조건과 기존 immutable tag/image 보존을 유지한다. Stable 승격 승인과 운영 세션 즉시 변경은 없다.
+
+### 2026-10-26 — task 004 FIX_06 Executor: F1(민감 경로 진단 분리)·F2(피드백 런타임 버전 분리)·F3(종료 유예 30초) 구현 및 dev.2 승격
+
+- **F1 (민감 경로 검증 오류 코드 및 진단 분리)**:
+  - `sensitive-path-policy.sh`: 검사 통과 0, 안전하지 않은 형태(symlink/pipe/socket 등) 감지 1, mktemp 등 준비 실패 73, 순회 불가/접근 거부(EACCES/검사 대상 디렉터리 접근 불가 등) 78로 명확히 분리.
+  - `codex` 래퍼 및 `codex-ha-init`: `validate_code=$?`로 반환 코드를 보존하여 감지된 형태별로 정확한 메시지 출력 (코드 1: unsafe link or special file, 코드 78: inspection restricted or traversal denied, 코드 73: preparation failed). 보호 불변조건에 따라 fail-closed exit 78 유지.
+  - 중첩 sandbox 내부에서 `/config`가 마운트되지 않거나 unreadable 상태일 때 오도적인 "unsafe link" 메시지를 출력하지 않고 정확한 권한/순회 불가 원인을 안내. 독립 Web/SSH 셸 환경에서는 정상 동작 보장.
+  - `tests/test_sensitive_path_policy.py`: 19 passed (접근 불가 디렉터리 반환 코드 78 검증 및 래퍼 진단 메시지 분리 테스트 추가).
+- **F2 (ha-feedback 런타임 버전 분리 및 레거시 호환)**:
+  - `ha-feedback.mjs`: `Codex (bundled)`(기본 번들 0.162.1), `Codex (selected)`(state.json의 선택 버전), `Codex (running)`(현재 관측된 실행 프로세스 버전 목록)으로 환경 정보를 세분화.
+  - 프로세스가 전혀 없을 때는 `none (completely idle)`로 표시하고, 모니터링 불가 시에는 `none (unobserved)`로 표시.
+  - 기존 schema 1 단일 `codex_version` 리포트와 하위 호환성 완벽 유지. PID 및 status JSON 전체 등 불필요한 메타데이터는 노출하지 않음.
+  - `tests/test_feedback_contract.py`: 12 passed (레거시 단일 버전 렌더링, 확장 버전 렌더링, 복수 버전 정렬/중복제거, idle/unobserved 구분 테스트 추가).
+- **F3 (Supervisor 정지 타임아웃 30초 명시 및 SIGKILL 방지)**:
+  - `codex_home_assistant/config.yaml`: `timeout: 30` 추가. Supervisor 기본 정지 타임아웃(10초)으로 인한 다중 서비스(S6 supervisor, Ingress, SSHd, Codex CLI/서버 등) 강제 SIGKILL(exit 137)을 방지하고 유예 종료 보장.
+  - `tests/test_addon_contract.py`: 19 passed (`test_addon_config_defines_explicit_stop_timeout` 검증 추가).
+- **후보 버전 0.7.2-dev.2 승격**:
+  - `config.yaml`, `Dockerfile`, `package.json`, `package-lock.json`, `codex-runtime-manager.mjs`, `CHANGELOG.md`, `README.md`, `README.en.md`, `DOCS.md`, `DOCS.en.md`, `addon_spec.md` 전반에 걸쳐 `0.7.2-dev.2`로 동기화.
+  - `tests/test_codex_update_contract.py`: mock clock 및 appVersion 검증 갱신.
+- **검증 결과**:
+  - 전체 단위/계약 테스트 14개 파일: **244 passed, 1 skipped in 95s** (회귀 없음).
+  - `node --check` 및 `bash -n` 통과, `git diff --check` 클린.
+- **NOT RUN 항목 (제약사항 준수)**:
+  - 실제 HAOS 18.3/실장비 설치 및 Supervisor stop/restart 실측.
+  - Enforced AppArmor 커널 환경에서의 bwrap 중첩 실행 실측.
+  - ARM64 하드웨어 실행 검증.
+  - Git push, GitHub PR 생성, Release 게시 및 이미지 Registry 배포 (사용자 명시적 승인 전 수행 금지).
+
+### 2026-10-26 — dev.1 사용자 자체점검 리뷰·FIX_06 발행
+
+- 사용자 확인에 따라 **자동 업데이트 정상·기본 개발목표 달성**을 수용한다. 아래 기존 구현 인수·CI·VM·dev.1 배포 증거는 그대로 보존한다. 신규 자체점검의 status 결과만으로 업데이트 적용 성공을 추론한 것이 아니다.
+- 사용자 제공 「10 — 내부 시스템 및 정식 배포 준비 점검」(2026-10-25 22:34–22:39 UTC)을 현재 `dev`/`aa76fe8`, PLAN/REPORT·FIX_01~05 이력과 대조했다. **정식 배포 승인 보류**, [.handoff/004_runtime-update-process-classification/FIX_06.md](../../.handoff/004_runtime-update-process-classification/FIX_06.md)를 새로 발행했다. 기존 handoff와 제품 코드는 변경하지 않았다.
+- F1(P1): validator의 접근/순회/준비 실패가 unsafe shape 발견으로 오표시되는 진단과 독립 Web/SSH 대 중첩 sandbox의 실행 경계 수용. 모든 검사 불능 fail closed와 보호 정책을 유지한다. 사용자 운영 세션 exit 78의 정확한 원인·독립 지원 경로 실패 여부는 미확정이다.
+- F2(P2): `ha-feedback`이 번들 `codex-real --version`만 `Codex`로 표시하는 모호성을 bundled/selected/observed running으로 분리한다. 과거 report 호환·privacy·read-only 수집을 유지한다. F3(P2): 이전 Supervisor 10초 stop의 exit 137을 종료 시간·서비스 원인과 일반 stop/restart 수용으로 해소한다. 긴 Docker stop PASS로 대체하지 않는다.
+- memory warning 9개·PATH alias EROFS는 영향 분류 대상으로 남기며 기능 결함으로 확정하지 않았다. 운영 이미지의 npm/shellcheck 미설치만으로 dependency를 추가하지 않는다. private feedback 원문·사용자 screenshot·보호 자료를 수집하거나 공개하지 않았다.
+- Reviewer 검증: sensitive-path/feedback 기존 회귀 **28 passed in 2.61s**. 자체 unreadable 일반 directory fixture에서 validator 반환 78/무출력과 wrapper의 단일 unsafe 메시지 매핑을 확인했다. local dev.1-test의 독립 wrapper는 번들 0.162.1/exit 0이었다. 실제 중첩 Codex sandbox 시도는 호스트 bwrap namespace 제약에서 막혀 내부 wrapper에 도달하지 않았으며, 사용자 exit 78 재현 성공으로 기록하지 않는다. 자체 container/fixture 정리 완료.
+- 변경 문서 2개를 명시한 `markdownlint-cli2 --no-globs`는 0 errors, Gitleaks stdin과 `git diff --check`도 PASS다. 최초 기본 glob 실행은 보존 중인 과거 handoff의 기존 형식 오류를 포함했으므로 전체 Markdown PASS로 기록하지 않는다. 기존 handoff 형식을 자동 수정하지 않았다.
+- 전체 pytest·새 build·enforced AppArmor·VM/HAOS·0.164.0 실행·독립 실기 Web/SSH·일반 stop/restart 재시험·외부 발행은 이번 리뷰에서 NOT RUN이다. 후속 Executor는 `FIX_06_REPORT.md`를 새로 작성하고, 수정 후 실기기 시험에 진입할 때 **`0.7.2-dev.2`로 배포**한다. dev.1 tag/image를 덮어쓰거나 현재 운영 세션을 즉시 변경하지 않는다. Stable 승격은 별도 판단이다.
 
 ### 2026-10-17 — DEV 0.7.2-dev.1 배포 검증
 

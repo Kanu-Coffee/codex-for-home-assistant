@@ -45,7 +45,7 @@ def test_development_candidate_is_visible_in_home_assistant_and_image(
     addon_config: dict, addon_root: Path, repository_root: Path
 ) -> None:
     assert addon_config["name"] == "Codex for Home Assistant (DEV)"
-    assert addon_config["version"] == "0.7.2-dev.1"
+    assert addon_config["version"] == "0.7.2-dev.2"
     assert addon_config["description"].startswith("[DEV] ")
     assert addon_config["panel_title"] == "Codex DEV"
     assert addon_config["slug"] == "codex_home_assistant"
@@ -620,6 +620,16 @@ def test_forbidden_privilege_settings_are_absent(addon_config: dict) -> None:
 
     assert addon_config.get("hassio_role") != "admin"
     assert addon_config.get("apparmor", True) is True
+
+
+def test_addon_config_defines_explicit_stop_timeout(addon_config: dict) -> None:
+    # Official Home Assistant app specification allows 10-300 seconds.
+    # An explicit timeout avoids exit 137 under default 10s stop for multi-service stack.
+    assert "timeout" in addon_config
+    timeout = addon_config["timeout"]
+    assert isinstance(timeout, int)
+    assert 10 <= timeout <= 300
+    assert timeout == 30
 
 
 def test_security_sensitive_defaults(addon_config: dict) -> None:

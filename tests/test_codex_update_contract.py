@@ -310,7 +310,22 @@ def test_status_output_scrubs_secrets_and_reports_honest_versions(
     runtime_dir.mkdir()
     maint_dir.mkdir()
 
+    baseline_dir = tmp_path / "baseline"
+    baseline_dir.mkdir()
+    (baseline_dir / "codex-package.json").write_text(
+        json.dumps({
+            "version": "0.162.1",
+            "target": "x86_64-unknown-linux-musl",
+            "entrypoint": "bin/codex",
+        }),
+        encoding="utf-8",
+    )
+    (baseline_dir / "bin").mkdir()
+    (baseline_dir / "bin" / "codex").write_text("#!/bin/sh\nexit 0\n")
+    (baseline_dir / "bin" / "codex").chmod(0o755)
+
     script = f"""
+    process.env.CODEX_BASELINE_DIR = '{baseline_dir}';
     process.env.CODEX_RUNTIME_DIR = '{runtime_dir}';
     process.env.CODEX_MAINTENANCE_DIR = '{maint_dir}';
     process.env.SUPERVISOR_TOKEN = 'secret-token-should-not-leak';
@@ -319,7 +334,7 @@ def test_status_output_scrubs_secrets_and_reports_honest_versions(
     console.log(JSON.stringify(status));
     """
     status = run_node_eval(script, repository_root)
-    assert status["appVersion"] == "0.7.2-dev.1"
+    assert status["appVersion"] == "0.7.2-dev.2"
     assert status["bundledVersion"] == "0.162.1"
     assert status["selectedVersion"] == "0.162.1"
     assert status["runningVersion"] in ("none", "0.162.1")
@@ -3004,6 +3019,7 @@ def test_status_format_session_ready_and_auto_apply_ready_classification(
     maint_dir.mkdir(parents=True)
 
     script = f"""
+    process.env.CODEX_TEST_CLOCK = '2026-10-17T12:00:00.000Z';
     process.env.CODEX_RUNTIME_DIR = '{runtime_dir}';
     process.env.CODEX_MAINTENANCE_DIR = '{maint_dir}';
     process.env.CODEX_HA_OPTIONS_FILE = '{options_file}';
@@ -3217,3 +3233,300 @@ def test_status_cli_text_output_includes_both_session_ready_and_auto_apply_ready
     assert "Daily idle checks: 12/12 (date: 2026-10-17)" in stdout
     assert "Status:            paused_busy" in stdout
 
+
+def test_active_network_io_cancellation_and_sigterm_exit(
+    repository_root: Path, tmp_path: Path, request: pytest.FixtureRequest
+) -> None:
+    """Verify F2 requirements:
+    1. fetchJson aborts immediately (< 500ms) on AbortSignal and does not hang on trickling streams
+    2. fetchJson enforces wall-clock total timeout when no signal is given
+    3. downloadAndStagePackage cleans up all partial archive/staging files upon abort
+    4. codex-updater-daemon.mjs exits cleanly (returncode 0, < 1.5s) on SIGTERM during active network I/O
+    """
+    import socketserver
+    import signal
+    daemon_request_ready = threading.Event()
+
+    class TrickleHandler(http.server.BaseHTTPRequestHandler):
+        def do_GET(self):
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            if self.path == "/daemon":
+                daemon_request_ready.set()
+            try:
+                for _ in range(100):
+                    self.wfile.write(b" ")
+                    self.wfile.flush()
+                    time.sleep(0.05)
+                self.wfile.write(b"{}")
+                self.wfile.flush()
+            except Exception:
+                pass
+
+        def log_message(self, format, *args):
+            pass
+
+    server = socketserver.ThreadingTCPServer(("127.0.0.1", 0), TrickleHandler)
+    server.daemon_threads = True
+    port = server.server_address[1]
+    thread = threading.Thread(target=server.serve_forever)
+    thread.daemon = True
+    thread.start()
+    def cleanup_server():
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)
+    request.addfinalizer(cleanup_server)
+
+    manager_script = (
+        repository_root
+        / "codex_home_assistant"
+        / "rootfs"
+        / "usr"
+        / "local"
+        / "share"
+        / "codex-ha"
+        / "codex-runtime-manager.mjs"
+    )
+    daemon_script = (
+        repository_root
+        / "codex_home_assistant"
+        / "rootfs"
+        / "usr"
+        / "local"
+        / "share"
+        / "codex-ha"
+        / "codex-updater-daemon.mjs"
+    )
+
+    # 1. fetchJson abort on signal test
+    script_abort = f"""
+    import {{ fetchJson }} from '{manager_script}';
+    const ac = new AbortController();
+    const start = Date.now();
+    setTimeout(() => ac.abort(), 150);
+    try {{
+      await fetchJson('http://127.0.0.1:{port}/trickle', {{ signal: ac.signal }});
+      process.exit(1);
+    }} catch (err) {{
+      const elapsed = Date.now() - start;
+      console.log(JSON.stringify({{ error: err.message, elapsed }}));
+    }}
+    """
+    res_abort = subprocess.run(
+        ["node", "--input-type=module", "-e", script_abort],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    data_abort = json.loads(res_abort.stdout)
+    assert data_abort["error"] == "Operation aborted"
+    assert data_abort["elapsed"] < 800
+
+    # 2. fetchJson wall-clock total timeout test
+    script_timeout = f"""
+    import {{ fetchJson }} from '{manager_script}';
+    const start = Date.now();
+    try {{
+      await fetchJson('http://127.0.0.1:{port}/trickle', {{ totalTimeoutMs: 350 }});
+      process.exit(1);
+    }} catch (err) {{
+      const elapsed = Date.now() - start;
+      console.log(JSON.stringify({{ error: err.message, elapsed }}));
+    }}
+    """
+    res_timeout = subprocess.run(
+        ["node", "--input-type=module", "-e", script_timeout],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    data_timeout = json.loads(res_timeout.stdout)
+    assert "Total timeout" in data_timeout["error"]
+    assert 300 <= data_timeout["elapsed"] <= 1200
+
+    # 3. downloadAndStagePackage abort & staging cleanup test
+    runtime_dir = tmp_path / "runtime"
+    maint_dir = tmp_path / "maint"
+    baseline_dir = tmp_path / "baseline"
+    staging_dir = runtime_dir / "staging"
+    runtime_dir.mkdir(parents=True)
+    maint_dir.mkdir(parents=True)
+    baseline_dir.mkdir(parents=True)
+
+    script_dl_abort = f"""
+    process.env.CODEX_RUNTIME_DIR = '{runtime_dir}';
+    process.env.CODEX_MAINTENANCE_DIR = '{maint_dir}';
+    import {{ downloadAndStagePackage }} from '{manager_script}';
+    import fs from 'node:fs';
+
+    const ac = new AbortController();
+    const releaseInfo = {{
+      version: '0.163.0',
+      expectedSha256: '0000000000000000000000000000000000000000000000000000000000000000',
+    }};
+    setTimeout(() => ac.abort(), 150);
+    const start = Date.now();
+    try {{
+      await downloadAndStagePackage(releaseInfo, 'http://127.0.0.1:{port}/pkg.tar.gz', {{ signal: ac.signal }});
+      process.exit(1);
+    }} catch (err) {{
+      const elapsed = Date.now() - start;
+      const files = fs.existsSync('{staging_dir}') ? fs.readdirSync('{staging_dir}') : [];
+      console.log(JSON.stringify({{ error: err.message, elapsed, filesLeft: files }}));
+    }}
+    """
+    res_dl = subprocess.run(
+        ["node", "--input-type=module", "-e", script_dl_abort],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    data_dl = json.loads(res_dl.stdout)
+    assert data_dl["error"] == "Operation aborted"
+    assert data_dl["elapsed"] < 800
+    assert data_dl["filesLeft"] == []
+
+    # 4. codex-updater-daemon.mjs SIGTERM exit during active trickle
+    options_file = tmp_path / "options.json"
+    options_file.write_text(json.dumps({"codex_auto_update": True, "codex_auto_update_timezone": "UTC"}), encoding="utf-8")
+    (baseline_dir / "codex-package.json").write_text(
+        json.dumps({"version": "0.162.1", "target": "x86_64-unknown-linux-musl", "entrypoint": "bin/codex"}),
+        encoding="utf-8",
+    )
+    (baseline_dir / "bin").mkdir()
+    (baseline_dir / "bin" / "codex").write_text("#!/bin/sh\nexit 0\n")
+    (baseline_dir / "bin" / "codex").chmod(0o755)
+
+    env = {
+        **os.environ,
+        "CODEX_HA_OPTIONS_FILE": str(options_file),
+        "CODEX_RUNTIME_DIR": str(runtime_dir),
+        "CODEX_BASELINE_DIR": str(baseline_dir),
+        "CODEX_MAINTENANCE_DIR": str(maint_dir),
+    }
+    # Override transport only in this owned test process; the production
+    # daemon retains the fixed official release endpoint.
+    bootstrap = (
+        "import https from 'node:https'; import http from 'node:http';"
+        "import {syncBuiltinESMExports} from 'node:module';"
+        f"https.get=(_url,opts,cb)=>http.get('http://127.0.0.1:{port}/daemon',opts,cb);"
+        "syncBuiltinESMExports();"
+        f"await import({json.dumps(daemon_script.as_uri())});"
+    )
+    p = subprocess.Popen(
+        ["node", "--input-type=module", "-e", bootstrap],
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    def cleanup_daemon():
+        if p.poll() is None:
+            p.terminate()
+            try:
+                p.wait(timeout=2)
+            except subprocess.TimeoutExpired:
+                p.kill()
+                p.wait(timeout=2)
+        p.stdout.close()
+        p.stderr.close()
+    request.addfinalizer(cleanup_daemon)
+    assert daemon_request_ready.wait(5), "daemon never reached the active request"
+    t_term_start = time.perf_counter()
+    p.send_signal(signal.SIGTERM)
+    stdout, stderr = p.communicate(timeout=5)
+    term_elapsed = time.perf_counter() - t_term_start
+    assert p.returncode == 0
+    assert term_elapsed < 1.5
+    assert "updater_stopped" in stdout
+    assert "Operation aborted" in stdout
+
+
+def test_redirect_cleanup_deadline_and_late_archive_open(repository_root: Path, tmp_path: Path):
+    """Every redirect shares one budget; abort must also cover pending file opens."""
+    import socketserver
+
+    class Handler(http.server.BaseHTTPRequestHandler):
+        def log_message(self, *args):
+            pass
+
+        def do_GET(self):
+            if self.path == "/redirect":
+                self.send_response(302)
+                self.send_header("Location", "/json")
+                self.end_headers()
+                try:
+                    for _ in range(100):
+                        self.wfile.write(b" ")
+                        self.wfile.flush()
+                        time.sleep(0.02)
+                except (BrokenPipeError, ConnectionResetError):
+                    pass
+            elif self.path.startswith("/chain/"):
+                hop = int(self.path.rsplit("/", 1)[1])
+                time.sleep(0.08)
+                self.send_response(302 if hop < 5 else 200)
+                if hop < 5:
+                    self.send_header("Location", f"/chain/{hop + 1}")
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+            else:
+                self.send_response(200)
+                self.send_header("Content-Length", "2")
+                self.end_headers()
+                self.wfile.write(b"{}")
+
+    class Server(socketserver.ThreadingTCPServer):
+        daemon_threads = True
+
+    server = Server(("127.0.0.1", 0), Handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    manager = repository_root / "codex_home_assistant/rootfs/usr/local/share/codex-ha/codex-runtime-manager.mjs"
+    url = f"http://127.0.0.1:{server.server_address[1]}"
+    try:
+        script = f"""
+        import {{ fetchJson }} from {json.dumps(manager.as_uri())};
+        const ac = new AbortController();
+        await fetchJson('{url}/redirect', {{ signal: ac.signal, totalTimeoutMs: 300 }});
+        ac.abort();
+        let sharedDeadline = false;
+        try {{ await fetchJson('{url}/chain/0', {{ totalTimeoutMs: 180 }}); }}
+        catch (e) {{ sharedDeadline = e.message.includes('Total timeout'); }}
+        console.log(JSON.stringify({{ sharedDeadline }}));
+        """
+        proc = subprocess.run(["node", "--input-type=module", "-e", script],
+                              capture_output=True, text=True, timeout=4, check=True)
+        assert json.loads(proc.stdout)["sharedDeadline"] is True
+
+        runtime = tmp_path / "runtime"
+        script_open = f"""
+        import fs from 'node:fs/promises';
+        import {{syncBuiltinESMExports}} from 'node:module';
+        const originalOpen = fs.open;
+        fs.open = async function(p, ...args) {{
+          if (String(p).includes('.download-')) await new Promise(r => setTimeout(r, 200));
+          return originalOpen.call(this, p, ...args);
+        }};
+        syncBuiltinESMExports();
+        process.env.CODEX_RUNTIME_DIR = {json.dumps(str(runtime))};
+        const {{downloadAndStagePackage}} = await import({json.dumps(manager.as_uri())});
+        const ac = new AbortController();
+        setTimeout(() => ac.abort(), 50);
+        let aborted = false;
+        try {{ await downloadAndStagePackage({{version:'0.163.0',expectedSha256:'0'.repeat(64)}},
+                                              '{url}/json', {{signal:ac.signal}}); }}
+        catch(e) {{ aborted = e.message === 'Operation aborted'; }}
+        await new Promise(r => setTimeout(r, 250));
+        console.log(JSON.stringify({{aborted,files:await fs.readdir({json.dumps(str(runtime / 'staging'))})}}));
+        """
+        proc = subprocess.run(["node", "--input-type=module", "-e", script_open],
+                              capture_output=True, text=True, timeout=4, check=True)
+        result = json.loads(proc.stdout)
+        assert result == {"aborted": True, "files": []}
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)

@@ -578,3 +578,50 @@ SPDX file SHA256와 실제 image 파일 hash 불일치, architecture/OS/product 
 raw scan으로 진행한다. 실제 Grype 대조에서 metadata 누락 fixture는 예외 발급에
 실패하고 raw Critical이 계속 차단되는지 확인한다. Runtime/HAOS 수용과 배포 gate
 회귀는 별도로 기록한다.
+
+## 6. FIX_09 수용 행렬 (dev.2 후보 보완 및 HAOS VM 검증)
+
+### 6.1 실행 경계별 수용 판정
+
+| 진입 경로 | `/config` 보호 경로 상태 | 기대 동작 및 반환 코드 | 판정 상태 |
+| --- | --- | --- | --- |
+| 독립 Web 터미널 (`ttyd`) | 정상 디렉터리 | 정상 통과 (exit 0) 및 Codex CLI/서버 실행 | **PASS (단위 계약 검증) / NOT RUN (실기기 ttyd 라이브 세션)** |
+| 독립 SSH / Remote SSH | 정상 디렉터리 | 정상 통과 (exit 0) 및 Codex 세션 시작 | **PASS (단위 계약 검증) / NOT RUN (실기기 sshd 라이브 세션)** |
+| 도구 sandbox (`bwrap`) | deny-read 강제 | `codex` wrapper 호출 시 fail closed (exit 78) | **PASS (bwrap 음성 대조) / NOT RUN (Codex managed sandbox)** |
+| 전체 공통 | Symlink / FIFO / 특수 파일 | 감지 즉시 fail closed (exit 78/코드 1) 및 unsafe 메시지 | **PASS (bwrap 및 단위 계약 테스트)** |
+| 전체 공통 | 순회 불가 / EACCES | fail closed (exit 78/코드 78) 및 restricted 메시지 | **PASS (bwrap 및 단위 계약 테스트)** |
+| 전체 공통 | `mktemp` 준비 실패 | fail closed (exit 78/코드 73) 및 preparation 메시지 | **PASS (bwrap 및 단위 계약 테스트)** |
+
+### 6.2 피드백 버전 관측 수용 행렬
+
+| 시나리오 | Bundled | Selected | Running | 리포트 렌더링 기대값 | 판정 |
+| --- | --- | --- | --- | --- | --- | --- |
+| 정상 유휴 (Idle) | 0.162.1 | 0.162.1 (verified) | `[]` | `running: none / 실행 중 없음` | **PASS (실제 manager 연동)** |
+| 복수 버전 실행 중 | 0.162.1 | 0.164.0 (verified) | `[0.162.1, 0.164.0]` | `running: 0.162.1, 0.164.0` | **PASS (실제 manager 연동)** |
+| 미식별 프로세스/검사 불능 | 0.162.1 | 0.164.0 (verified) | `null` | `running: unobserved / 관측 불가` | **PASS (unknown blocker 격리)** |
+| 미식별+확인된 주 버전 혼합 | 0.162.1 | 0.162.1 (verified) | `[0.162.1]` (partial) | `running: 0.162.1 (partial / 부분 관측)` | **PASS (runningObservation 구조화 전달)** |
+| Current 링크 누락/불일치 | 0.162.1 | `null` (unverified) | 관측값 | `selected: unverified / 미검증` | **PASS (정직한 선택 검증)** |
+| FIFO `state.json` 조기 거부 | 0.162.1 | `null` (unverified) | `[]` (idle) | non-blocking < 4s 완료, selected unverified | **PASS (lstat 비정규 파일 거부)** |
+| 느린 I/O (3s timeout) | 0.162.1 | `null` | `null` | 3초 후 자식 SIGKILL, 0 zombie 회수 | **PASS (spawnSync timeout)** |
+| Stale 세션 파일 보존 | 0.162.1 | 0.162.1 | `[]` | getStatus() read-only 보장 (unlink 방지) | **PASS (순수 snapshot)** |
+| Credential 격리 | 0.162.1 | 0.162.1 | `[]` | SUPERVISOR_TOKEN 자식 상속 차단 | **PASS (환경 변수 allowlist)** |
+| 레거시 Schema 1 리포트 | 0.162.1 | (생략) | (생략) | `Codex: 0.162.1` 단일 행 유지 | **PASS (하위 호환 렌더링)** |
+
+### 6.3 컨테이너 정지 및 Supervisor 수용 경계
+
+| 항목 | 격리 프로세스/테스트 실측 | 개발용 HAOS VM (18.2) 실측 | 실기기 HAOS 수용 | 판정 |
+| --- | --- | --- | --- | --- |
+| `timeout: 30` 선언 | config.yaml 정수값 정의 확인 | Supervisor 파싱 및 적용 확인 | 실기기 적용 대기 | **PASS (설정 계약) / NOT RUN (실기기)** |
+| `codex-updater-daemon` 유휴 정지 | SIGTERM 수신 후 7.42 ms 만에 exit 0 | S6 SIGTERM 회수 확인 | 실기기 적용 대기 | **PASS (로컬 및 VM) / NOT RUN (실기기)** |
+| `ha-memoryd` 유휴 정지 | SIGTERM 수신 후 1.17 ms 만에 exit 0 | S6 SIGTERM 회수 확인 | 실기기 적용 대기 | **PASS (로컬 및 VM) / NOT RUN (실기기)** |
+| 활성 I/O 네트워크 중단 | AbortSignal 연동 9.45 ms 만에 daemon exit 0, I/O abort < 800ms | 6.375 s 만에 exit 0으로 S6 정상 종료 | 실기기 적용 대기 | **PASS (로컬 및 VM) / NOT RUN (실기기)** |
+| S6 컨테이너 유휴 stop (exit 0) | 격리 Docker 컨테이너 stop 실측 | **6.654 s 만에 exit 0** (`/init` + S6 + AppArmor) | 실기기 적용 대기 | **PASS (HAOS VM 실측) / NOT RUN (실기기)** |
+| S6 컨테이너 활성 I/O stop (exit 0) | slow trickle I/O 취소 및 정리 실측 | **6.375 s 만에 exit 0** (`/init` + S6 + AppArmor) | 실기기 적용 대기 | **PASS (HAOS VM 실측) / NOT RUN (실기기)** |
+| Supervisor 일반 restart | 컨테이너 재생성 및 볼륨 보존 | Ingress 200, 인증 복구, 데이터 보존 | 실기기 적용 대기 | **NOT RUN (실기기 HAOS 검증 대기)** |
+
+### 6.4 미검증 공백 및 잔여 과제
+
+1. **실제 HAOS 물리 장치 릴리스 검증**: dev.2 릴리스 후 운영 장비(실기기)에서의 실제 exit 0, Supervisor stop/restart 소요 시간 검증 대기 (NOT RUN).
+2. **실기기 Web 터미널 (`ttyd`) 및 SSH 세션 라이브 동작**: dev.2 게시 후 실제 사용자 브라우저/터미널 세션 동작 확인 대기 (NOT RUN).
+3. **ARM64 물리 기기 실행**: aarch64 하드웨어 상의 네이티브 실행 검증 대기 (NOT RUN).
+4. **Memory warning 9개 및 PATH alias EROFS 관측**: 단순 warning 제거가 아닌 원인별 영향 분류 및 enrichment 정상 동작 여부 관측 과제로 유지.

@@ -84,7 +84,6 @@ def test_sensitive_path_integrity_check_redacts_traversal_errors(
         result = _validate_sensitive_paths(rootfs, config_root)
     finally:
         unreadable.chmod(0o700)
-
     assert result.returncode == 78
     assert result.stdout == ""
     assert result.stderr == ""
@@ -168,7 +167,10 @@ def test_sensitive_path_integrity_check_is_enforced_at_init_and_codex_launch(
     for executable in ("codex", "codex-ha-init"):
         source = (rootfs / f"usr/local/bin/{executable}").read_text(encoding="utf-8")
         assert ". /usr/local/lib/codex-ha/sensitive-path-policy.sh" in source
-        assert "codex_ha_sensitive_paths_validate /config" in source
+        assert (
+            "codex_ha_sensitive_paths_enforce /config" in source
+            or "codex_ha_sensitive_paths_validate /config" in source
+        )
 
 
 def test_apparmor_profile_enforces_fixed_sensitive_paths(
@@ -290,3 +292,239 @@ def test_apparmor_profile_parses_when_parser_is_available(
         "codex_home_assistant",
         "codex_home_assistant//codex_bwrap",
     }
+
+
+def test_sensitive_path_policy_code_distinction_between_unsafe_shape_and_unverifiable(
+    tmp_path: Path, rootfs: Path
+) -> None:
+    """Verify distinct return codes:
+    0  - clean tree
+    1  - unsafe shape (symlink, broken symlink, hardlink alias, FIFO)
+    78 - unverifiable (unreadable directory, unreadable protected path, missing root)
+    73 - preparation failure (mktemp failure)
+    """
+    config_root = tmp_path / "config"
+    storage = config_root / ".storage"
+    config_root.mkdir(parents=True)
+    storage.mkdir(parents=True)
+    secrets_file = config_root / "secrets.yaml"
+    secrets_file.write_text("secret: 1\n", encoding="utf-8")
+    (storage / "core.config").write_text("{}\n", encoding="utf-8")
+
+    # 1. Clean tree -> 0
+    res = _validate_sensitive_paths(rootfs, config_root)
+    assert res.returncode == 0
+
+    # 2. Unreadable .storage tree -> 78 (permission denied / inspection incomplete, NOT 1)
+    storage.chmod(0)
+    try:
+        res = _validate_sensitive_paths(rootfs, config_root)
+        assert res.returncode == 78
+    finally:
+        storage.chmod(0o700)
+
+    # 3. Unreadable general directory -> 78
+    sub = config_root / "custom_components"
+    sub.mkdir()
+    sub.chmod(0)
+    try:
+        res = _validate_sensitive_paths(rootfs, config_root)
+        assert res.returncode == 78
+    finally:
+        sub.chmod(0o700)
+
+    # 4. Missing root -> 78
+    res = _validate_sensitive_paths(rootfs, tmp_path / "nonexistent")
+    assert res.returncode == 78
+
+    # 4b. Non-absolute root path -> 78
+    policy = rootfs / "usr/local/lib/codex-ha/sensitive-path-policy.sh"
+    res_rel = subprocess.run(
+        ["bash", "-c", f'. "{policy}"; codex_ha_sensitive_paths_validate "relative/path"'],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert res_rel.returncode == 78
+
+    # 4c. Root path is a symlink -> 1 (unsafe shape, not 78)
+    root_symlink = tmp_path / "symlink_root"
+    root_symlink.symlink_to(config_root)
+    res_root_link = _validate_sensitive_paths(rootfs, root_symlink)
+    assert res_root_link.returncode == 1
+
+    # 4d. Root path is a broken symlink -> 1 (unsafe shape)
+    root_broken = tmp_path / "broken_root"
+    root_broken.symlink_to(tmp_path / "does-not-exist")
+    res_root_broken = _validate_sensitive_paths(rootfs, root_broken)
+    assert res_root_broken.returncode == 1
+
+    # 4e. Root path is a regular file or FIFO -> 1 (unsafe shape)
+    root_file = tmp_path / "regular_file_root"
+    root_file.write_text("not a dir\n", encoding="utf-8")
+    res_root_file = _validate_sensitive_paths(rootfs, root_file)
+    assert res_root_file.returncode == 1
+
+    # 5. Broken symlink -> 1 (unsafe shape)
+    broken_link = config_root / "packages"
+    broken_link.mkdir()
+    (broken_link / "secrets.yaml").symlink_to(tmp_path / "does-not-exist")
+    try:
+        res = _validate_sensitive_paths(rootfs, config_root)
+        assert res.returncode == 1
+    finally:
+        shutil.rmtree(broken_link)
+
+    # 6. Preparation failure (mktemp fails) -> 73
+    policy = rootfs / "usr/local/lib/codex-ha/sensitive-path-policy.sh"
+    res_mktemp_fail = subprocess.run(
+        [
+            "bash",
+            "-c",
+            'function /bin/mktemp { return 1; }; export -f /bin/mktemp; . "$1"; codex_ha_sensitive_paths_validate "$2"',
+            "prep-fail-test",
+            str(policy),
+            str(config_root),
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert res_mktemp_fail.returncode == 73
+
+
+def test_codex_wrapper_distinguishes_unsafe_link_vs_restricted_access_messages(
+    tmp_path: Path, rootfs: Path
+) -> None:
+    """Verify that the production codex wrapper and init caller output distinct allowlisted messages:
+    - code 1 (unsafe shape): 'protected Home Assistant paths have an unsafe link or file type'
+    - code 78 (unverifiable): 'cannot verify protected Home Assistant path integrity (access or traversal restricted)'
+    - code 73 (preparation): 'failed to prepare temporary storage for path integrity verification'
+    - does not leak filenames, secrets or paths
+    - exercises actual wrapper in bwrap sandbox and shared enforce helper
+    """
+    config_root = tmp_path / "config"
+    storage = config_root / ".storage"
+    config_root.mkdir(parents=True)
+    storage.mkdir(parents=True)
+    secrets_file = config_root / "secrets.yaml"
+    secrets_file.write_text("super_secret_value_12345\n", encoding="utf-8")
+    (storage / "core.config").write_text("{}\n", encoding="utf-8")
+
+    def run_bwrap_codex(cfg_path: Path, is_symlink: bool = False, extra_mounts: list[str] | None = None) -> subprocess.CompletedProcess:
+        bwrap_args = [
+            "bwrap",
+            "--ro-bind", "/usr", "/usr",
+            "--ro-bind", "/bin", "/bin",
+            "--ro-bind", "/lib", "/lib",
+            "--ro-bind", "/lib64", "/lib64",
+            "--dev", "/dev",
+            "--proc", "/proc",
+            "--tmpfs", "/tmp",
+            "--tmpfs", "/run",
+            "--ro-bind", str(rootfs / "usr/local"), "/usr/local",
+        ]
+        if is_symlink:
+            bwrap_args.extend(["--symlink", str(cfg_path), "/config"])
+        else:
+            bwrap_args.extend(["--dir", "/config", "--ro-bind", str(cfg_path), "/config"])
+        if extra_mounts:
+            bwrap_args.extend(extra_mounts)
+        bwrap_args.extend(["bash", "/usr/local/bin/codex", "--version"])
+        return subprocess.run(
+            bwrap_args,
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+
+    # 1. Actual wrapper with root /config being a symlink -> code 78, unsafe message
+    symlink_target = tmp_path / "somewhere"
+    symlink_target.mkdir(parents=True)
+    res_root_symlink = run_bwrap_codex(symlink_target, is_symlink=True)
+    assert res_root_symlink.returncode == 78
+    assert "codex: protected Home Assistant paths have an unsafe link or file type; Codex will not start" in res_root_symlink.stderr
+    assert "codex-real" not in res_root_symlink.stderr + res_root_symlink.stdout
+
+    # 2. Actual wrapper with /config/secrets.yaml being a symlink -> code 78, unsafe message
+    secrets_file.unlink()
+    secrets_file.symlink_to(symlink_target)
+    res_secrets_symlink = run_bwrap_codex(config_root)
+    assert res_secrets_symlink.returncode == 78
+    assert "codex: protected Home Assistant paths have an unsafe link or file type; Codex will not start" in res_secrets_symlink.stderr
+    assert "super_secret_value_12345" not in res_secrets_symlink.stderr + res_secrets_symlink.stdout
+
+    # 3. Actual wrapper with unreadable directory in /config -> code 78, restricted message
+    secrets_file.unlink()
+    secrets_file.write_text("super_secret_value_12345\n", encoding="utf-8")
+    unreadable = config_root / "unreadable_dir"
+    unreadable.mkdir()
+    unreadable.chmod(0)
+    try:
+        res_restricted = run_bwrap_codex(config_root)
+        assert res_restricted.returncode == 78
+        assert "codex: cannot verify protected Home Assistant path integrity (access or traversal restricted); Codex will not start" in res_restricted.stderr
+        assert "unsafe link or file type" not in res_restricted.stderr
+        assert "super_secret_value_12345" not in res_restricted.stderr + res_restricted.stdout
+    finally:
+        unreadable.chmod(0o700)
+
+    # 4. Verify shared enforcement function for both codex and init callers
+    policy = rootfs / "usr/local/lib/codex-ha/sensitive-path-policy.sh"
+    enforce_test_script = f"""
+    bashio::log.fatal() {{ printf 'FATAL: %s\\n' "$*" >&2; }}
+    . "{policy}"
+    codex_ha_sensitive_paths_enforce "$1" "$2"
+    """
+    # 4a. Init caller on symlink -> exit 1, remove aliases fatal message
+    root_symlink = tmp_path / "init_root_symlink"
+    if not root_symlink.exists():
+        root_symlink.symlink_to(config_root)
+    res_init_symlink = subprocess.run(
+        ["bash", "-c", enforce_test_script, "test", str(root_symlink), "init"],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert res_init_symlink.returncode == 1
+    assert "FATAL: Protected Home Assistant paths have an unsafe link or file type; remove aliases before starting this App" in res_init_symlink.stderr
+
+    # 4b. Init caller on unreadable dir -> exit 1, permission fatal message
+    unreadable.chmod(0)
+    try:
+        res_init_unreadable = subprocess.run(
+            ["bash", "-c", enforce_test_script, "test", str(config_root), "init"],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        assert res_init_unreadable.returncode == 1
+        assert "FATAL: Cannot verify protected Home Assistant path integrity (access or traversal restricted); ensure permissions allow inspection" in res_init_unreadable.stderr
+    finally:
+        unreadable.chmod(0o700)
+
+    # 4c. Preparation failure (mktemp fails) -> code 78 in codex caller, code 1 in init caller
+    prep_fail_script = f"""
+    function /bin/mktemp {{ return 1; }}
+    export -f /bin/mktemp
+    bashio::log.fatal() {{ printf 'FATAL: %s\\n' "$*" >&2; }}
+    . "{policy}"
+    codex_ha_sensitive_paths_enforce "$1" "$2"
+    """
+    res_prep_codex = subprocess.run(
+        ["bash", "-c", prep_fail_script, "test", str(config_root), "codex"],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert res_prep_codex.returncode == 78
+    assert "codex: failed to prepare temporary storage for path integrity verification; Codex will not start" in res_prep_codex.stderr
+
+    res_prep_init = subprocess.run(
+        ["bash", "-c", prep_fail_script, "test", str(config_root), "init"],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert res_prep_init.returncode == 1
+    assert "FATAL: Failed to prepare temporary storage for path integrity verification; Codex will not start" in res_prep_init.stderr
