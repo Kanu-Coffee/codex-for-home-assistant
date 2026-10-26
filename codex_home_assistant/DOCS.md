@@ -1,4 +1,4 @@
-> DEV 후보: `0.7.2-dev.2` — 검사 실패 원인 분리, 런타임 버전 상세 분리, 정상 정지 유예를 개선합니다. 설치 저장소는 `https://github.com/Kanu-Coffee/codex-for-home-assistant#dev`이며 App/패널은 **Codex for Home Assistant (DEV)** / **Codex DEV**입니다. VM·CI 검증과 실제 사용자 장치 수용은 구분합니다.
+> 정식판 `0.7.2` — 실기기 수용을 마친 `0.7.2-dev.2`의 프로세스 분류·진단/버전 표시·종료 처리를 승격합니다. 설치 저장소는 `https://github.com/Kanu-Coffee/codex-for-home-assistant`입니다.
 
 <p align="right">
   <strong>한국어</strong> · <a href="DOCS.en.md">English</a>
@@ -8,7 +8,7 @@
 
 이 문서는 Home Assistant OS 사용자가 앱을 설치하고, Web UI·SSH·모바일 Remote에서 Codex를 사용하며, 안전하게 대시보드·자동화·엔티티와 설정 오류를 다루는 방법을 설명합니다.
 
-현재 안정판 설치 기준은 앱 버전 `0.7.1`입니다. HAOS에서 App은 **Codex for Home Assistant**, 사이드바는 **Codex**로 표시됩니다.
+현재 안정판 설치 기준은 앱 버전 `0.7.2`입니다. HAOS에서 App은 **Codex for Home Assistant**, 사이드바는 **Codex**로 표시됩니다.
 
 > [!WARNING]
 > 이 앱은 보호된 `secrets.yaml`·`.storage`를 제외한 `/config`를 읽고 쓸 수 있고 Home Assistant Core 및 Supervisor `manager` API를 사용할 수 있습니다. API 응답·로그·브라우저 화면에는 민감정보가 포함될 수 있습니다. 신뢰하는 관리자만 사용하고, 변경 전 backup과 diff를 확인하세요. TCP `2223`을 인터넷에 직접 port-forward하지 마세요.
@@ -18,11 +18,11 @@
 ### 지원 환경
 
 - Home Assistant OS 또는 Supervisor가 있는 설치 환경
-- 안정판 `0.7.1`은 **amd64**와 64비트 **aarch64** 장치를 지원합니다. Raspberry Pi는 64비트 HAOS가 필요하며 32비트 `armv7`은 지원하지 않습니다.
+- 안정판 `0.7.2`은 **amd64**와 64비트 **aarch64** 장치를 지원합니다. Raspberry Pi는 64비트 HAOS가 필요하며 32비트 `armv7`은 지원하지 않습니다.
 - 앱 이미지와 Codex 인증에 필요한 인터넷 연결
 - Codex를 사용할 수 있는 OpenAI/ChatGPT 계정
 
-안정판 `0.7.1` manifest는 `stage` 키를 생략해 Supervisor의 기본 stable 채널을 사용하며 `boot: manual`입니다. 후보 payload 계보의 Native ARM CI와 공개 amd64+aarch64 image 발행·익명 조회 검증은 통과했습니다. 실제 Raspberry Pi/aarch64 HAOS 실기는 **NOT RUN**이며, 이 공백은 자동 검증 결과를 근거로 릴리스 승인 과정에서 명시적으로 수용됐습니다. HACS 설치는 지원하지 않습니다.
+안정판 `0.7.2` manifest는 `stage` 키를 생략해 Supervisor의 기본 stable 채널을 사용하며 `boot: manual`입니다. 후보 payload 계보의 Native ARM CI와 공개 amd64+aarch64 image 발행·익명 조회 검증은 통과했습니다. 실제 Raspberry Pi/aarch64 HAOS 실기는 **NOT RUN**이며, 이 공백은 자동 검증 결과를 근거로 릴리스 승인 과정에서 명시적으로 수용됐습니다. HACS 설치는 지원하지 않습니다.
 
 ### 이 앱이 제공하는 것
 
@@ -568,7 +568,7 @@ Core가 준비될 시간을 두고 다시 확인합니다. DB/WAL을 직접 삭�
 
 ## 제한사항과 지원
 
-- 안정판 `0.7.1`은 amd64와 64비트 aarch64를 지원합니다. Native aarch64 CI와 image 검증은 통과했지만 실제 Raspberry Pi/aarch64 HAOS 실기는 **NOT RUN**이며 이 공백은 릴리스 승인 과정에서 수용됐습니다. Armv7은 지원하지 않습니다.
+- 안정판 `0.7.2`은 amd64와 64비트 aarch64를 지원합니다. Native aarch64 CI와 image 검증은 통과했지만 실제 Raspberry Pi/aarch64 HAOS 실기는 **NOT RUN**이며 이 공백은 릴리스 승인 과정에서 수용됐습니다. Armv7은 지원하지 않습니다.
 - `secrets.yaml`과 `.storage` content는 정상적인 Codex 직접 파일 접근에서 명시적으로 차단되어 그 경로로 내용이 Codex에 전달되지 않고, managed requirements는 Codex directory read도 거부합니다. 다만 AppArmor validator allowance 때문에 root shell의 `.storage` entry listing은 남습니다. 원시 API·로그·브라우저 결과의 민감값은 정화하지 않으며 root interactive process가 private runtime credential 파일을 직접 읽을 수 있는 잔여 위험도 있습니다.
 - Bubble Card와 다른 custom card를 포함하거나 자동 설치하지 않습니다.
 - 별도 채팅형 Web UI가 아닌 터미널 UI입니다.

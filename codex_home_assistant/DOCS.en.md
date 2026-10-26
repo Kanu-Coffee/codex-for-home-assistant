@@ -1,4 +1,4 @@
-> DEV candidate: `0.7.2-dev.2` improves diagnostic failure distinction, runtime version reporting, and graceful shutdown. Use `https://github.com/Kanu-Coffee/codex-for-home-assistant#dev`; the app/panel are **Codex for Home Assistant (DEV)** / **Codex DEV**. VM/CI validation is separate from real-device acceptance.
+> Stable `0.7.2` promotes the user-accepted `0.7.2-dev.2` runtime with process classification, diagnostic/version reporting, and graceful shutdown improvements. Install from `https://github.com/Kanu-Coffee/codex-for-home-assistant`.
 
 <p align="right">
   <a href="DOCS.md">한국어</a> · <strong>English</strong>
@@ -8,7 +8,7 @@
 
 This guide explains how Home Assistant OS users can install the app, use Codex through the Web UI, SSH, or mobile Remote, and safely work on dashboards, automations, entities, and configuration errors.
 
-The current stable installation baseline is app version `0.7.1`. HAOS displays the app as **Codex for Home Assistant** and the sidebar as **Codex**.
+The current stable installation baseline is app version `0.7.2`. HAOS displays the app as **Codex for Home Assistant** and the sidebar as **Codex**.
 
 > [!WARNING]
 > This app can read and write `/config` except for protected `secrets.yaml` and `.storage` paths, and it can use the Home Assistant Core and Supervisor `manager` APIs. API responses, logs, and browser views can still contain sensitive information. Allow only trusted administrators to use it, and review a backup and diff before making changes. Never port-forward TCP `2223` directly to the internet.
@@ -18,11 +18,11 @@ The current stable installation baseline is app version `0.7.1`. HAOS displays t
 ### Supported environments
 
 - Home Assistant OS or another installation with Supervisor
-- Stable `0.7.1` supports **amd64** and 64-bit **aarch64** devices. Raspberry Pi requires 64-bit HAOS. 32-bit `armv7` is not supported.
+- Stable `0.7.2` supports **amd64** and 64-bit **aarch64** devices. Raspberry Pi requires 64-bit HAOS. 32-bit `armv7` is not supported.
 - Internet access for the app image and Codex authentication
 - An OpenAI/ChatGPT account with access to Codex
 
-The stable `0.7.1` manifest omits the `stage` key and therefore uses the Supervisor's default stable channel; `boot: manual` remains explicit. The candidate payload lineage passed native ARM CI, public amd64+aarch64 image publication, and anonymous inspection. A real Raspberry Pi/aarch64 HAOS run remains **NOT RUN**; release approval explicitly accepted that gap based on the automated evidence. HACS installation is not supported.
+The stable `0.7.2` manifest omits the `stage` key and therefore uses the Supervisor's default stable channel; `boot: manual` remains explicit. The candidate payload lineage passed native ARM CI, public amd64+aarch64 image publication, and anonymous inspection. A real Raspberry Pi/aarch64 HAOS run remains **NOT RUN**; release approval explicitly accepted that gap based on the automated evidence. HACS installation is not supported.
 
 ### What the app provides
 
@@ -571,7 +571,7 @@ Before uninstalling, decide how to handle any Codex configuration and authentica
 
 ## Limitations and support
 
-- Stable `0.7.1` supports amd64 and 64-bit aarch64. Native aarch64 CI and image validation passed, but a real Raspberry Pi/aarch64 HAOS run remains **NOT RUN** and was accepted as a release validation gap. Armv7 is unsupported.
+- Stable `0.7.2` supports amd64 and 64-bit aarch64. Native aarch64 CI and image validation passed, but a real Raspberry Pi/aarch64 HAOS run remains **NOT RUN** and was accepted as a release validation gap. Armv7 is unsupported.
 - `secrets.yaml` and `.storage` contents are explicitly blocked from normal direct Codex filesystem access, so their contents do not enter Codex through that path; managed requirements also deny Codex directory reads. The AppArmor validator allowance still leaves `.storage` entry listing available to a root shell. Sensitive raw API, log, and browser output is not sanitized, and a root interactive process also retains residual access to the private runtime credential file.
 - It does not bundle or automatically install Bubble Card or other custom cards.
 - The Web UI is a terminal, not a dedicated chat interface.

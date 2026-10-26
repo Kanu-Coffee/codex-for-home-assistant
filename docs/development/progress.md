@@ -5,7 +5,7 @@
 ## Project Status
 
 - 상태: **Stable 0.7.1 main 병합·tag·public amd64/ARM image·GitHub latest release 공개 완료 / exact merge/tag CI·Builder PASS / 사용자 dev.7 CLI·브라우저 수용과 동일 runtime 승격 / 개발 HAOS stable 0.7.0→0.7.1 Supervisor 일반 업데이트·data/config 보존·2분 HTTP 200·종료 exit 0 확인 / 실제 ARM HAOS·DEV→main source migration 미검증 유지**
-- 현재 마일스톤: **Stable 0.7.1 유지 / DEV 0.7.2-dev.2 게시 완료·사용자 실기기 수용 대기**
+- 현재 마일스톤: **사용자 실기기 전체 검증 완료·정식판 승격 승인 / Stable 0.7.2 게시 진행**
 - 마지막 문서 기준일: **2026-10-26**
 - 저장소: public `Kanu-Coffee/codex-for-home-assistant`, default branch `main`
 
@@ -25,6 +25,21 @@
 - [x] interactive/Codex/S6 ambient `SUPERVISOR_TOKEN` 상속 제거와 private helper credential loader 구현
 
 ## Current Work
+
+### 2026-10-26 — 사용자 전체 정상 확인·Stable 0.7.2 승격 승인 및 게시 진행
+
+- 사용자는 이전 잔여 수용 항목을 포함해 모두 검증 완료·정상이라고 확인하고 **정식판 0.7.2 배포 완료까지 명시 승인**했다. 이전 리뷰의 조건부 수용 대기를 사용자 확인으로 해소했다. 이것은 사용자 제공 수용 증거이며 이번 개발 세션에서 실기기를 다시 조작한 결과가 아니다. 개별 ARM 하드웨어/DEV→main migration 시험 기록은 제공되지 않았으므로 과거의 플랫폼·migration 세부 NOT RUN을 임의로 PASS로 바꾸지 않는다.
+- 기존 task 004 PLAN은 종료 상태를 유지한다. dev.2의 제품 동작은 보존하고 stable version·branding·implicit stable stage·한국어/영어 안내·changelog를 정리한다. Main PR/CI·exact merge CI·새 immutable tag·양 architecture security gate/게시·독립 공개/서명/attestation 검증 후 완료 기록을 남긴다. DEV release/tag/image는 덮어쓰지 않는다.
+- 최신 [공식 App configuration](https://contributors.home-assistant.io/apps/reference/configuration/)을 재확인했다. `stage` 기본값 stable, image tag는 version, timeout 범위 10~300초 계약을 유지한다.
+- 검증/배포: 진행 중. 사용자 운영 장치의 자동 업데이트·재시작·source migration은 이번 배포 작업에서 실행하지 않는다.
+
+### 2026-10-26 — task 004 최종 리뷰: 11번 실기기 보고서 인수·개발 PLAN 종료
+
+- 사용자 제공 11번 보고서를 실제 운영 장치 시험 증거로 인수했다. 자동 업데이트 자체는 사용자 기확인 사항이며 이번 읽기 전용 status만으로 재판정하거나 미완료로 되돌리지 않는다. **기존 개발 목표·수정·DEV 게시 범위 완료, PLAN 종료**로 기록한다. [최종 REVIEW](../../.handoff/004_runtime-update-process-classification/REVIEW.md)를 새로 작성하고 기존 handoff는 보존했다.
+- 설치 0.7.2-dev.2 및 주요 4개 source 파일 일치, selected/running 0.164.0 complete, API·memory·browser 기본 연동은 사용자 실기기 근거다. 이번 Reviewer가 운영 장치에 재접속한 결과는 아니다.
+- 중첩 wrapper exit 78은 문서화된 fail-closed 제약이며 독립 Web/SSH의 기동 결함이 확인된 것은 아니다. Unsafe 메시지의 실제 원인은 미확정으로 유지한다. Feedback의 unverified/unobserved는 코드의 bounded child 실패 fallback과 일치하며 원인을 timeout으로 단정하지 않는다. 직접 status와의 차이는 진단 개선 후보로 남기되 허위 버전 확정·업데이트 실패 증거가 없어 **추가 필수 FIX를 발행하지 않는다**.
+- 실기기 Supervisor 일반 stop/restart·인증/데이터 보존·독립 Web/SSH/Remote 재연결은 NOT RUN이다. 직전 셀프점검 프롬프트가 운영 변경을 금지했으므로 이번 보고서의 미실행만으로 새 개발 결함을 만들지 않는다. 이 항목들은 정식판 승격 전 별도 수용 조건으로 보존하며 ARM 하드웨어·장기 안정성·source migration 및 memory/PATH 경고 영향도 미검증을 유지한다.
+- 이번 로컬 검증: sensitive-path/feedback 회귀 **32 passed in 8.66s**. 변경 Markdown·`git diff --check`·추가 리뷰 포함 Gitleaks stdin PASS. 제품 코드·버전·보호 정책 변경, VM/실기기 시험, 외부 push/PR/release는 수행하지 않는다. Stable 0.7.1 및 dev.2 immutable 배포는 유지한다.
 
 ### 2026-10-26 — 0.7.2-dev.2 공개 배포 완료·사용자 실기기 시험 인계
 
