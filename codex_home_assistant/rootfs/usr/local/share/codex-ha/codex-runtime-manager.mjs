@@ -26,7 +26,7 @@ import { get as httpsGet } from "node:https";
 import { get as httpGet } from "node:http";
 
 export const BASELINE_VERSION = "0.162.1";
-export const APP_VERSION = "0.7.2-dev.1";
+export const APP_VERSION = "0.7.2-dev.2";
 export const DEFAULT_TIMEZONE = "Asia/Seoul";
 export const UPDATE_SLOTS = [3, 9, 15, 21];
 export const MAX_IDLE_CHECKS = 12;
@@ -470,11 +470,29 @@ export async function withGateLock(mode = "exclusive", timeoutSec = 15, fn = asy
 
 export async function readOptions() {
   const optionsPath = getOptionsPath();
-  if (!existsSync(optionsPath)) {
+  try {
+    const st = await lstat(optionsPath);
+    if (!st.isFile() || st.isSymbolicLink() || st.size > 1048576) {
+      return {
+        autoUpdate: false,
+        timezone: DEFAULT_TIMEZONE,
+        valid: false,
+        error: "Options file is not a regular file or exceeds size limit",
+      };
+    }
+  } catch (err) {
+    if (err?.code === "ENOENT") {
+      return {
+        autoUpdate: true,
+        timezone: DEFAULT_TIMEZONE,
+        valid: true,
+      };
+    }
     return {
-      autoUpdate: true,
+      autoUpdate: false,
       timezone: DEFAULT_TIMEZONE,
-      valid: true,
+      valid: false,
+      error: `Options file inaccessible: ${err.message}`,
     };
   }
 
@@ -552,13 +570,18 @@ export async function loadState() {
   const appVersion = getAppVersion();
   const bundledVersion = getBundledVersion();
   try {
-    const raw = await readFile(getStateFile(), "utf-8");
+    const stateFile = getStateFile();
+    const st = await lstat(stateFile);
+    if (!st.isFile() || st.isSymbolicLink() || st.size > 1048576) {
+      throw new Error("State file is not a regular file or exceeds size limit");
+    }
+    const raw = await readFile(stateFile, "utf-8");
     const data = JSON.parse(raw);
     return {
       appVersion,
       bundledVersion,
       selectedDigest: data.selectedDigest || null,
-      selectedVersion: data.selectedVersion || bundledVersion,
+      selectedVersion: typeof data.selectedVersion === "string" ? data.selectedVersion : null,
       stagedVersion: data.stagedVersion || null,
       candidateVersion: data.candidateVersion || null,
       candidateDigest: data.candidateDigest || null,
@@ -582,7 +605,7 @@ export async function loadState() {
       appVersion,
       bundledVersion,
       selectedDigest: null,
-      selectedVersion: bundledVersion,
+      selectedVersion: null,
       stagedVersion: null,
       candidateVersion: null,
       candidateDigest: null,
@@ -1147,7 +1170,8 @@ export async function inspectAppServer(socketPath, expectedPid) {
   }
 }
 
-export async function inspectAllSessions() {
+export async function inspectAllSessions(options = {}) {
+  const readOnly = Boolean(options.readOnly);
   const busyReasons = [];
   const blockers = [];
   const restartableServers = [];
@@ -1188,10 +1212,15 @@ export async function inspectAllSessions() {
         const pid = parseInt(file, 10);
         const filePath = join(sessionsDir, file);
         try {
+          const st = await lstat(filePath).catch(() => null);
+          if (!st || !st.isFile() || st.isSymbolicLink() || st.size > 65536) {
+            if (!readOnly) await unlink(filePath).catch(() => {});
+            continue;
+          }
           const content = JSON.parse(await readFile(filePath, "utf-8"));
           const proc = await inspectProcess(pid);
           if (!proc) {
-            await unlink(filePath).catch(() => {});
+            if (!readOnly) await unlink(filePath).catch(() => {});
             continue;
           }
           if (proc.unknown) {
@@ -1199,12 +1228,12 @@ export async function inspectAllSessions() {
             continue;
           }
           if (String(proc.startTime) !== String(content.start)) {
-            await unlink(filePath).catch(() => {});
+            if (!readOnly) await unlink(filePath).catch(() => {});
             continue;
           }
           entries.set(pid, { proc, record: content });
         } catch {
-          await unlink(filePath).catch(() => {});
+          if (!readOnly) await unlink(filePath).catch(() => {});
         }
       }
     } catch (err) {
@@ -1403,47 +1432,84 @@ export async function inspectAllSessions() {
   };
 }
 
-export function fetchJson(url) {
+export function fetchJson(url, options = {}) {
   return new Promise((resolvePromise, rejectPromise) => {
-    const appVersion = getAppVersion();
-    const getter = url.startsWith("http://") ? httpGet : httpsGet;
-    const req = getter(
-      url,
-      {
-        headers: {
-          "User-Agent": `codex-ha-updater/${appVersion} (Home Assistant App)`,
-          Accept: "application/vnd.github.v3+json",
-        },
-      },
-      (res) => {
-        if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
-          fetchJson(res.headers.location).then(resolvePromise, rejectPromise);
-          return;
-        }
-        if (res.statusCode !== 200) {
-          rejectPromise(new Error(`HTTP ${res.statusCode} from ${url}`));
-          return;
-        }
-        let data = "";
-        res.on("data", (chunk) => (data += chunk));
-        res.on("end", () => {
-          try {
-            resolvePromise(JSON.parse(data));
-          } catch (e) {
-            rejectPromise(e);
+    const signal = options.signal;
+    let req = null;
+    let res = null;
+    let timer = null;
+    let settled = false;
+    let hop = 0;
+    const cleanup = () => {
+      clearTimeout(timer);
+      signal?.removeEventListener("abort", onAbort);
+    };
+    const reject = (error) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      res?.destroy();
+      req?.destroy();
+      rejectPromise(error);
+    };
+    const onAbort = () => reject(new Error("Operation aborted"));
+    if (signal?.aborted) { onAbort(); return; }
+    signal?.addEventListener("abort", onAbort, { once: true });
+    // One wall-clock budget covers the entire redirect chain.
+    timer = setTimeout(() => reject(new Error(`Total timeout fetching ${url}`)), options.totalTimeoutMs || 30000);
+    const request = (currentUrl) => {
+      if (settled) return;
+      if (++hop > 10) { reject(new Error("Too many release redirects")); return; }
+      const thisHop = hop;
+      const fail = (error) => { if (thisHop === hop) reject(error); };
+      try {
+        const getter = currentUrl.startsWith("http://") ? httpGet : httpsGet;
+        req = getter(currentUrl, {
+          headers: {
+            "User-Agent": `codex-ha-updater/${getAppVersion()} (Home Assistant App)`,
+            Accept: "application/vnd.github.v3+json",
+          },
+        }, (response) => {
+          if (settled || thisHop !== hop) { response.destroy(); return; }
+          res = response;
+          response.on("error", fail);
+          if (response.statusCode >= 300 && response.statusCode < 400 && response.headers.location) {
+            const nextUrl = new URL(response.headers.location, currentUrl).href;
+            // A redirect body can continue indefinitely; close it before
+            // transferring ownership to the next request and abort listener.
+            response.destroy();
+            req.destroy();
+            req = null;
+            res = null;
+            request(nextUrl);
+            return;
           }
+          if (response.statusCode !== 200) { fail(new Error(`HTTP ${response.statusCode} from ${currentUrl}`)); return; }
+          let data = "";
+          response.on("data", (chunk) => { data += chunk; });
+          response.on("end", () => {
+            if (settled) return;
+            try {
+              const value = JSON.parse(data);
+              settled = true;
+              cleanup();
+              resolvePromise(value);
+            } catch (error) { fail(error); }
+          });
         });
-      }
-    );
-    req.on("error", rejectPromise);
-    req.setTimeout(30000, () => {
-      req.destroy();
-      rejectPromise(new Error(`Timeout fetching ${url}`));
-    });
+        req.on("error", fail);
+        req.setTimeout(options.socketTimeoutMs || 30000, () => fail(new Error(`Timeout fetching ${currentUrl}`)));
+      } catch (error) { fail(error); }
+    };
+    request(url);
   });
 }
 
-export async function downloadAndStagePackage(releaseInfo, customDownloadUrl = null) {
+export async function downloadAndStagePackage(releaseInfo, customDownloadUrl = null, options = {}) {
+  const signal = options.signal;
+  if (signal?.aborted) {
+    throw new Error("Operation aborted");
+  }
   const version = releaseInfo.version;
   const target = resolveTargetArchitecture();
   const packageName = `codex-package-${target}.tar.gz`;
@@ -1469,56 +1535,102 @@ export async function downloadAndStagePackage(releaseInfo, customDownloadUrl = n
   await mkdir(getStagingDir(), { recursive: true, mode: 0o700 });
   const tempArchive = join(getStagingDir(), `.download-${process.pid}-${Date.now()}.tar.gz`);
   const extractDir = join(getStagingDir(), `.extract-${process.pid}-${Date.now()}`);
+  const pendingOpens = [];
 
   try {
     await new Promise((resolvePromise, rejectPromise) => {
       const hasher = createHash("sha256");
       let totalBytes = 0;
+      let activeReq = null;
+      let activeRes = null;
+      let activeInStream = null;
+      let activeOutStream = null;
+      let onAbort = null;
+      let settled = false;
+      let generation = 0;
+
       const timeoutTimer = setTimeout(() => {
-        rejectPromise(new Error("Download exceeded timeout limit"));
+        safeReject(new Error("Download exceeded timeout limit"));
       }, DOWNLOAD_TIMEOUT_MS);
 
+      const cleanup = () => {
+        clearTimeout(timeoutTimer);
+        if (signal && onAbort) {
+          signal.removeEventListener("abort", onAbort);
+          onAbort = null;
+        }
+      };
+
+      const safeReject = (err) => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        if (activeReq) { try { activeReq.destroy(); } catch {} }
+        if (activeRes) { try { activeRes.destroy(); } catch {} }
+        if (activeInStream) { try { activeInStream.destroy(); } catch {} }
+        if (activeOutStream) { try { activeOutStream.destroy(); } catch {} }
+        rejectPromise(err);
+      };
+
+      const safeResolve = () => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        resolvePromise();
+      };
+
+      if (signal) {
+        onAbort = () => {
+          safeReject(new Error("Operation aborted"));
+        };
+        signal.addEventListener("abort", onAbort, { once: true });
+      }
+
       const downloadReq = (url) => {
+        if (settled) return;
+        const thisGeneration = ++generation;
+        if (generation > 10) { safeReject(new Error("Too many package redirects")); return; }
+        const fail = (error) => { if (thisGeneration === generation) safeReject(error); };
+        if (signal?.aborted) {
+          safeReject(new Error("Operation aborted"));
+          return;
+        }
         if (url.startsWith("file://")) {
           const filePath = url.slice(7);
-          open(tempArchive, "w", 0o600).then((fileHandle) => {
-            const outStream = fileHandle.createWriteStream();
-            const inStream = createReadStream(filePath);
-            inStream.on("data", (chunk) => {
+          pendingOpens.push(open(tempArchive, "w", 0o600).then(async (fileHandle) => {
+            if (settled || signal?.aborted) {
+              await fileHandle.close().catch(() => {});
+              safeReject(new Error("Operation aborted"));
+              return;
+            }
+            activeOutStream = fileHandle.createWriteStream();
+            activeInStream = createReadStream(filePath);
+            activeInStream.on("data", (chunk) => {
               totalBytes += chunk.length;
               if (totalBytes > MAX_DOWNLOAD_BYTES) {
-                clearTimeout(timeoutTimer);
-                inStream.destroy();
-                rejectPromise(new Error("Package size exceeded maximum allowed limit"));
+                safeReject(new Error("Package size exceeded maximum allowed limit"));
                 return;
               }
               hasher.update(chunk);
             });
-            inStream.pipe(outStream);
-            outStream.on("finish", () => {
-              clearTimeout(timeoutTimer);
+            activeInStream.pipe(activeOutStream);
+            activeOutStream.on("finish", () => {
               const actualDigest = hasher.digest("hex");
               if (actualDigest !== expectedDigest) {
-                rejectPromise(new Error(`SHA-256 mismatch: expected ${expectedDigest}, got ${actualDigest}`));
+                safeReject(new Error(`SHA-256 mismatch: expected ${expectedDigest}, got ${actualDigest}`));
                 return;
               }
-              resolvePromise();
+              safeResolve();
             });
-            inStream.on("error", (err) => {
-              clearTimeout(timeoutTimer);
-              rejectPromise(err);
-            });
-            outStream.on("error", (err) => {
-              clearTimeout(timeoutTimer);
-              rejectPromise(err);
-            });
-          }).catch(rejectPromise);
+            activeInStream.on("error", safeReject);
+            activeOutStream.on("error", safeReject);
+          }).catch(safeReject));
           return;
         }
 
         const appVersion = getAppVersion();
         const getter = url.startsWith("http://") ? httpGet : httpsGet;
-        getter(
+        activeReq = getter(
           url,
           {
             headers: {
@@ -1526,53 +1638,60 @@ export async function downloadAndStagePackage(releaseInfo, customDownloadUrl = n
             },
           },
           (res) => {
+            if (settled || thisGeneration !== generation) { res.destroy(); return; }
+            activeRes = res;
+            res.on("error", fail);
+            if (signal?.aborted) {
+              safeReject(new Error("Operation aborted"));
+              return;
+            }
             if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
-              downloadReq(res.headers.location);
+              const nextUrl = new URL(res.headers.location, url).href;
+              res.destroy();
+              activeReq.destroy();
+              activeReq = null;
+              activeRes = null;
+              downloadReq(nextUrl);
               return;
             }
             if (res.statusCode !== 200) {
-              clearTimeout(timeoutTimer);
-              rejectPromise(new Error(`HTTP ${res.statusCode} downloading package`));
+              safeReject(new Error(`HTTP ${res.statusCode} downloading package`));
               return;
             }
 
-            open(tempArchive, "w", 0o600).then((fileHandle) => {
-              const stream = fileHandle.createWriteStream();
+            pendingOpens.push(open(tempArchive, "w", 0o600).then(async (fileHandle) => {
+              if (settled || signal?.aborted) {
+                await fileHandle.close().catch(() => {});
+                safeReject(new Error("Operation aborted"));
+                return;
+              }
+              activeOutStream = fileHandle.createWriteStream();
               res.on("data", (chunk) => {
                 totalBytes += chunk.length;
                 if (totalBytes > MAX_DOWNLOAD_BYTES) {
-                  clearTimeout(timeoutTimer);
-                  res.destroy();
-                  rejectPromise(new Error("Package size exceeded maximum allowed limit"));
+                  safeReject(new Error("Package size exceeded maximum allowed limit"));
                   return;
                 }
                 hasher.update(chunk);
               });
 
-              res.pipe(stream);
-              stream.on("finish", () => {
-                clearTimeout(timeoutTimer);
+              res.pipe(activeOutStream);
+              activeOutStream.on("finish", () => {
                 const actualDigest = hasher.digest("hex");
                 if (actualDigest !== expectedDigest) {
-                  rejectPromise(
+                  safeReject(
                     new Error(
                       `SHA-256 mismatch: expected ${expectedDigest}, got ${actualDigest}`
                     )
                   );
                   return;
                 }
-                resolvePromise();
+                safeResolve();
               });
-              stream.on("error", (err) => {
-                clearTimeout(timeoutTimer);
-                rejectPromise(err);
-              });
-            }).catch(rejectPromise);
+              activeOutStream.on("error", safeReject);
+            }).catch(safeReject));
           }
-        ).on("error", (err) => {
-          clearTimeout(timeoutTimer);
-          rejectPromise(err);
-        });
+        ).on("error", fail);
       };
 
       downloadReq(downloadUrl);
@@ -1706,13 +1825,22 @@ export async function downloadAndStagePackage(releaseInfo, customDownloadUrl = n
       path: destDir,
     };
   } finally {
+    // An abort can beat an asynchronous open. Wait for it to close before
+    // unlinking, otherwise it could recreate the archive after cleanup.
+    await Promise.allSettled(pendingOpens);
     await unlink(tempArchive).catch(() => {});
     await rm(extractDir, { recursive: true, force: true }).catch(() => {});
   }
 }
 
 export async function checkUpdate(targetVersion = null, options = {}) {
+  if (options.signal?.aborted) {
+    throw new Error("Operation aborted");
+  }
   return withGateLock("exclusive", 15, async () => {
+    if (options.signal?.aborted) {
+      throw new Error("Operation aborted");
+    }
     const state = await loadState();
     const currentVersion = state.selectedVersion || getBundledVersion();
 
@@ -1739,10 +1867,12 @@ export async function checkUpdate(targetVersion = null, options = {}) {
     if (options.fixtureRelease) {
       releaseData = options.fixtureRelease;
     } else {
-      const url = targetVersion
-        ? `https://api.github.com/repos/openai/codex/releases/tags/rust-v${targetVersion}`
-        : "https://api.github.com/repos/openai/codex/releases/latest";
-      releaseData = await fetchJson(url);
+      const url =
+        options.releaseUrl ||
+        (targetVersion
+          ? `https://api.github.com/repos/openai/codex/releases/tags/rust-v${targetVersion}`
+          : "https://api.github.com/repos/openai/codex/releases/latest");
+      releaseData = await fetchJson(url, options);
     }
 
     if (releaseData.prerelease || releaseData.draft) {
@@ -1821,7 +1951,8 @@ export async function checkUpdate(targetVersion = null, options = {}) {
           assets: releaseData.assets,
           expectedSha256: expectedDigest,
         },
-        options.downloadUrl
+        options.downloadUrl,
+        options
       );
     }
 
@@ -1841,7 +1972,13 @@ export async function checkUpdate(targetVersion = null, options = {}) {
 }
 
 export async function applyUpdate(options = {}) {
+  if (options.signal?.aborted) {
+    throw new Error("Operation aborted");
+  }
   return withGateLock("exclusive", 15, async () => {
+    if (options.signal?.aborted) {
+      throw new Error("Operation aborted");
+    }
     const isManual = options.isManual === true;
     const state = await loadState();
 
@@ -2328,43 +2465,103 @@ export async function cleanupOldReleases(currentVersion, previousTarget) {
 
 export async function getStatus() {
   const state = await loadState();
-  const sessions = await inspectAllSessions();
+  const sessions = await inspectAllSessions({ readOnly: true });
   const options = await readOptions();
   const appVersion = getAppVersion();
   const bundledVersion = getBundledVersion();
 
   let procEntries = [];
+  let procInspectionFailed = false;
   try {
     procEntries = await readdir("/proc");
-  } catch {}
+  } catch {
+    procInspectionFailed = true;
+  }
 
   const activeVersions = new Set();
-  for (const entry of procEntries) {
-    if (!/^\d+$/.test(entry)) continue;
-    const pid = parseInt(entry, 10);
-    if (pid === process.pid) continue;
-    const proc = await inspectProcess(pid);
-    if (!proc || proc.unknown) continue;
-    const identity = await executableEntrypoint(proc);
-    if (!identity || identity.role !== "primary") continue;
-    if (identity.generation === getBaselineDir()) {
-      activeVersions.add(bundledVersion);
-    } else {
-      const match = identity.generation.match(/\/releases\/([^/]+)$/);
-      if (match) activeVersions.add(match[1].split("-")[0]);
+  let hasUnrecognizedOrUnknown =
+    (sessions.counts && sessions.counts.unknown > 0) ||
+    (Array.isArray(sessions.blockers) &&
+      sessions.blockers.some((b) => b.type === "unknown" || b.type === "inspection_failed"));
+
+  if (!procInspectionFailed) {
+    for (const entry of procEntries) {
+      if (!/^\d+$/.test(entry)) continue;
+      const pid = parseInt(entry, 10);
+      if (pid === process.pid) continue;
+      const proc = await inspectProcess(pid);
+      if (!proc) continue;
+      if (proc.unknown) {
+        hasUnrecognizedOrUnknown = true;
+        continue;
+      }
+      const identity = await executableEntrypoint(proc);
+      if (!identity || identity.role !== "primary") continue;
+      if (identity.generation === getBaselineDir()) {
+        activeVersions.add(bundledVersion);
+      } else {
+        const match = identity.generation.match(/\/releases\/([^/]+)$/);
+        if (match) activeVersions.add(match[1].split("-")[0]);
+      }
     }
   }
 
-  const runningVersions = Array.from(activeVersions);
-  const runningVersion = runningVersions.length === 0 ? "none" : runningVersions.join(", ");
+  const sessionInspectionIncomplete =
+    procInspectionFailed ||
+    sessions.sessionCount === -1 ||
+    hasUnrecognizedOrUnknown;
+
+  let runningVersions = null;
+  let runningVersion = "unobserved";
+  let runningObservation = "unobserved";
+
+  if (!sessionInspectionIncomplete) {
+    runningVersions = Array.from(activeVersions).sort();
+    runningVersion = runningVersions.length === 0 ? "none" : runningVersions.join(", ");
+    runningObservation = "complete";
+  } else if (activeVersions.size > 0) {
+    runningVersions = Array.from(activeVersions).sort();
+    runningVersion = runningVersions.join(", ") + " (partial)";
+    runningObservation = "partial";
+  }
+
+  // Cross-reference selectedVersion with actual current symlink and release package metadata
+  let verifiedSelectedVersion = null;
+  try {
+    const currentLink = getCurrentLink();
+    if (existsSync(currentLink)) {
+      const currentCheck = await validateSymlinkContainment(currentLink);
+      if (currentCheck.valid && existsSync(currentCheck.target)) {
+        const resolvedTarget = resolve(currentCheck.target);
+        if (resolvedTarget === resolve(getBaselineDir())) {
+          if (state.selectedVersion && state.selectedVersion === bundledVersion) {
+            verifiedSelectedVersion = bundledVersion;
+          }
+        } else {
+          const pkgPath = join(resolvedTarget, "codex-package.json");
+          const st = await lstat(pkgPath).catch(() => null);
+          if (st && st.isFile()) {
+            const pkgJson = JSON.parse(await readFile(pkgPath, "utf-8"));
+            if (typeof pkgJson.version === "string" && pkgJson.version.trim()) {
+              const ver = pkgJson.version.trim();
+              if (state.selectedVersion === ver) {
+                verifiedSelectedVersion = ver;
+              }
+            }
+          }
+        }
+      }
+    }
+  } catch {}
 
   return {
     appVersion,
     bundledVersion,
-    selectedVersion: state.selectedVersion,
+    selectedVersion: verifiedSelectedVersion,
     stagedVersion: state.stagedVersion,
     runningVersion,
     runningVersions,
+    runningObservation,
     autoUpdate: options.autoUpdate,
     optionsValid: options.valid,
     timezone: options.timezone,

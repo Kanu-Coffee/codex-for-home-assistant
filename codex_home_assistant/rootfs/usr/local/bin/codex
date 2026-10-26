@@ -75,11 +75,7 @@ set -- "${orig_args[@]}"
 # shellcheck source=/dev/null
 . /usr/local/lib/codex-ha/sensitive-path-policy.sh
 
-if ! codex_ha_sensitive_paths_validate /config; then
-  printf '%s\n' \
-    'codex: protected Home Assistant paths have an unsafe link or file type; Codex will not start' >&2
-  exit 78
-fi
+codex_ha_sensitive_paths_enforce /config codex
 
 approval_policy=on-request
 sandbox_mode=workspace-write

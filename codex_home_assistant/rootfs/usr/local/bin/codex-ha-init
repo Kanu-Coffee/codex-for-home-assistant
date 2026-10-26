@@ -91,11 +91,7 @@ if [[ ! -w /config ]]; then
   exit 1
 fi
 
-if ! codex_ha_sensitive_paths_validate /config; then
-  bashio::log.fatal \
-    'Protected Home Assistant paths have an unsafe link or file type; remove aliases before starting this App'
-  exit 1
-fi
+codex_ha_sensitive_paths_enforce /config init
 bashio::log.info 'Verified protected Home Assistant path integrity'
 
 write_probe=$(mktemp /config/.codex-ha-write-test.XXXXXX)

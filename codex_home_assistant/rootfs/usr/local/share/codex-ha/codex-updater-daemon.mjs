@@ -14,6 +14,7 @@ delete process.env.SUPERVISOR_TOKEN;
 let isRunning = true;
 const PENDING_RETRY_INTERVAL_MS = 300 * 1000; // 5 minutes
 let wakeSleep = null;
+let activeAbortController = null;
 
 // Between slot checks the loop can sleep up to an hour. A pending signal must
 // shorten that wait instead of only flipping a flag the sleeping process will
@@ -86,8 +87,12 @@ async function loop() {
             timezone: slotInfo.timezone,
           });
 
+          activeAbortController = new AbortController();
           try {
-            const checkRes = await checkUpdate(null, { slotKey: slotInfo.slotKey });
+            const checkRes = await checkUpdate(null, {
+              slotKey: slotInfo.slotKey,
+              signal: activeAbortController.signal,
+            });
 
             if (!checkRes.upToDate && !checkRes.blocked && !checkRes.paused) {
               log("update_staged", {
@@ -95,7 +100,7 @@ async function loop() {
                 current: checkRes.currentVersion,
               });
 
-              const applyRes = await applyUpdate();
+              const applyRes = await applyUpdate({ signal: activeAbortController.signal });
               if (applyRes.applied) {
                 log("update_applied", { version: applyRes.version });
               } else {
@@ -113,21 +118,32 @@ async function loop() {
             }
           } catch (err) {
             log("check_error", { error: err.message });
-            await updateState((s) => {
-              s.lastError = err.message;
-              s.lastCheckSlot = slotInfo.slotKey; // prevent tight loop failure
-            });
+            if (isRunning) {
+              await updateState((s) => {
+                s.lastError = err.message;
+                s.lastCheckSlot = slotInfo.slotKey; // prevent tight loop failure
+              });
+            }
+          } finally {
+            activeAbortController = null;
           }
         } else if (state.stagedVersion && !state.blockedReason && state.status !== "paused_busy") {
           log("pending_apply_check");
-          const applyRes = await applyUpdate();
-          if (applyRes.applied) {
-            log("update_applied", { version: applyRes.version });
-          } else {
-            log("apply_deferred", {
-              reason: applyRes.reason,
-              busy: applyRes.busyReasons,
-            });
+          activeAbortController = new AbortController();
+          try {
+            const applyRes = await applyUpdate({ signal: activeAbortController.signal });
+            if (applyRes.applied) {
+              log("update_applied", { version: applyRes.version });
+            } else {
+              log("apply_deferred", {
+                reason: applyRes.reason,
+                busy: applyRes.busyReasons,
+              });
+            }
+          } catch (err) {
+            log("apply_error", { error: err.message });
+          } finally {
+            activeAbortController = null;
           }
         }
       }
@@ -159,6 +175,9 @@ async function loop() {
 
 function stopOnSignal() {
   isRunning = false;
+  if (activeAbortController) {
+    activeAbortController.abort();
+  }
   if (wakeSleep) wakeSleep();
 }
 

@@ -2,6 +2,20 @@
 
 All notable changes to this App are documented in this file.
 
+## [0.7.2-dev.2]
+
+### Fixed
+
+- Distinguish unsafe filesystem shapes (symlinks, hardlink aliases, special files) from traversal or permission restrictions (EACCES/EPERM) in the sensitive path integrity policy, wrapper stderr, and init logs.
+- Separate bundled, selected, and running Codex versions in feedback environment schema and report rendering, preserving legacy report compatibility while supporting multiple running versions, idle states, and unobserved/unverified states.
+- Close redirect responses, share one release-query deadline across redirect hops, and drain pending archive opens before cancellation cleanup. Keep the daemon release feed fixed to the official endpoint.
+- Set candidate `timeout: 30` in App configuration as an allowance request for multi-service graceful teardown evaluation; live Supervisor stop exit code and stop duration on real HAOS remain pending field verification.
+
+### Validation scope
+
+- Tool sandbox nested wrapper execution continues to fail closed as intended due to mandatory deny-read requirements on protected paths; independent Web terminal and SSH shell execution boundaries and live HAOS stop behavior remain subject to explicit field acceptance.
+- DEV candidate build for isolated validation; real-device acceptance is managed separately.
+
 ## [0.7.2-dev.1]
 
 ### Fixed

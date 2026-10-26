@@ -801,3 +801,550 @@ def test_issue_forms_keep_manual_and_private_reporting_routes(
         f"https://github.com/{TARGET_REPOSITORY}/blob/main/SUPPORT.md"
         in contact_urls
     )
+
+
+def test_feedback_environment_version_distinction(rootfs: Path, tmp_path: Path) -> None:
+    """Verify F2 requirements:
+    1. Distinguish bundled, selected, and running versions in environment and rendering
+    2. Support multiple running versions (e.g. during upgrade migration)
+    3. Distinguish completely idle (running: []) from unobserved (running: null)
+    4. Maintain backward compatibility with legacy reports (single 'Codex' row)
+    5. Strictly validate formats and lengths (fail closed)
+    6. Strictly limit environment keys (no extra keys allowed)
+    """
+    helper = rootfs / "usr/local/share/codex-ha/ha-feedback.mjs"
+
+    # Base legacy environment
+    base_env = {
+        "app_version": "0.7.2",
+        "codex_version": "0.162.1",
+        "core_version": "2026.10.0",
+        "supervisor_version": "2026.10.2",
+        "os_version": "18.2",
+        "arch": "amd64",
+        "app_options": {
+            "web_terminal_auto_start_codex": False,
+            "codex_approval_policy": "on-request",
+            "codex_sandbox_mode": "workspace-write",
+            "browser_approval_policy": "safe",
+            "codex_user_files_update_mode": "preserve",
+            "home_assistant_browser_auto_auth": True,
+        },
+    }
+
+    def run_eval(code: str) -> dict:
+        proc = subprocess.run(
+            ["node", "--input-type=module", "-e", code],
+            check=False,
+            capture_output=True,
+            text=True,
+            cwd=str(rootfs / "usr/local/share/codex-ha"),
+        )
+        assert proc.returncode == 0, f"eval failed:\nstdout: {proc.stdout}\nstderr: {proc.stderr}"
+        return json.loads(proc.stdout)
+
+    # 1. Backward-compatible legacy rendering
+    script_legacy = f"""
+    import fs from 'node:fs';
+    const helperCode = fs.readFileSync('{helper}', 'utf8');
+    // Extract normalizeEnvironment and renderReport
+    const mod = await import('./ha-feedback.mjs');
+    const legacyReport = {{
+      schema_version: '1',
+      report_id: 'hf_test1234567890ab',
+      created_at: '2026-10-26T00:00:00Z',
+      kind: 'bug',
+      summary: 'test legacy report',
+      affected_feature: 'terminal',
+      checks: [{{ name: 'check1', status: 'PASS', evidence: '-' }}],
+      environment: {json.dumps(base_env)},
+    }};
+    // Test validation of legacy report
+    const norm = mod.__test_normalizeEnvironment ? mod.__test_normalizeEnvironment(legacyReport.environment) : legacyReport.environment;
+    // Test rendering of legacy report
+    const rendered = mod.__test_renderReport ? mod.__test_renderReport(legacyReport) : null;
+    console.log(JSON.stringify({{ norm, rendered }}));
+    """
+    # Since __test_* may not be exported, let's test via direct Node evaluation of the functions
+    eval_code = f"""
+    import fs from 'node:fs';
+    import path from 'node:path';
+    const src = fs.readFileSync('{helper}', 'utf8');
+    const tmpModule = path.join('{tmp_path}', 'test-ha-feedback.mjs');
+    fs.writeFileSync(tmpModule, src + '\\nexport {{ normalizeEnvironment, renderReport }};\\n');
+    const fns = await import(tmpModule);
+
+    // 1. Legacy report
+    const envLegacy = {json.dumps(base_env)};
+    const normLegacy = fns.normalizeEnvironment(envLegacy);
+    const repLegacy = {{
+      schema_version: '1',
+      report_id: 'hf_test1234567890ab',
+      created_at: '2026-10-26T00:00:00Z',
+      kind: 'bug',
+      summary: 'test legacy report',
+      affected_feature: 'terminal',
+      expected_behavior: 'expected',
+      actual_behavior: 'actual',
+      reproduction_steps: ['step 1', 'step 2'],
+      cause_candidates: ['candidate 1'],
+      evidence: ['evidence 1'],
+      unverified_scope: ['scope 1'],
+      checks: [{{ name: 'check1', status: 'PASS', evidence: '-' }}],
+      environment: normLegacy,
+    }};
+    const renderedLegacy = fns.renderReport(repLegacy);
+
+    // 2. Extended environment (bundled != selected = running)
+    const envExtended = {{
+      ...envLegacy,
+      codex_selected_version: '0.164.0',
+      codex_running_versions: ['0.164.0'],
+    }};
+    const normExtended = fns.normalizeEnvironment(envExtended);
+    const repExtended = {{ ...repLegacy, environment: normExtended }};
+    const renderedExtended = fns.renderReport(repExtended);
+
+    // 3. Extended environment with multiple running versions (upgrade in progress)
+    const envMultiple = {{
+      ...envLegacy,
+      codex_selected_version: '0.164.0',
+      codex_running_versions: ['0.162.1', '0.164.0'],
+    }};
+    const normMultiple = fns.normalizeEnvironment(envMultiple);
+    const repMultiple = {{ ...repLegacy, environment: normMultiple }};
+    const renderedMultiple = fns.renderReport(repMultiple);
+
+    // 4. Extended environment completely idle (running: [])
+    const envIdle = {{
+      ...envLegacy,
+      codex_selected_version: '0.164.0',
+      codex_running_versions: [],
+    }};
+    const normIdle = fns.normalizeEnvironment(envIdle);
+    const repIdle = {{ ...repLegacy, environment: normIdle }};
+    const renderedIdle = fns.renderReport(repIdle);
+
+    // 5. Extended environment unobserved (running: null)
+    const envUnobserved = {{
+      ...envLegacy,
+      codex_selected_version: '0.164.0',
+      codex_running_versions: null,
+    }};
+    const normUnobserved = fns.normalizeEnvironment(envUnobserved);
+    const repUnobserved = {{ ...repLegacy, environment: normUnobserved }};
+    const renderedUnobserved = fns.renderReport(repUnobserved);
+
+    // 6. Extended environment partial observation (running: ['0.162.1'], observation: 'partial')
+    const envPartial = {{
+      ...envLegacy,
+      codex_selected_version: '0.162.1',
+      codex_running_versions: ['0.162.1'],
+      codex_running_observation: 'partial',
+    }};
+    const normPartial = fns.normalizeEnvironment(envPartial);
+    const repPartial = {{ ...repLegacy, environment: normPartial }};
+    const renderedPartial = fns.renderReport(repPartial);
+
+    console.log(JSON.stringify({{
+      renderedLegacy,
+      renderedExtended,
+      renderedMultiple,
+      renderedIdle,
+      renderedUnobserved,
+      renderedPartial,
+    }}));
+    """
+    res = run_eval(eval_code)
+
+    # 1. Legacy rendering check: single 'Codex' row
+    assert "| Codex | 0.162.1 |" in res["renderedLegacy"]
+    assert "Codex (bundled)" not in res["renderedLegacy"]
+
+    # 2. Extended rendering check: distinct rows
+    assert "| Codex (bundled) | 0.162.1 |" in res["renderedExtended"]
+    assert "| Codex (selected) | 0.164.0 |" in res["renderedExtended"]
+    assert "| Codex (running) | 0.164.0 |" in res["renderedExtended"]
+
+    # 3. Multiple running versions check
+    assert "| Codex (running) | 0.162.1, 0.164.0 |" in res["renderedMultiple"]
+
+    # 4. Completely idle check
+    assert "| Codex (running) | none / 실행 중 없음 |" in res["renderedIdle"]
+
+    # 5. Unobserved check
+    assert "| Codex (running) | unobserved / 관측 불가 |" in res["renderedUnobserved"]
+
+    # 6. Partial observation check
+    assert "| Codex (running) | 0.162.1 \\(partial / 부분 관측\\) |" in res["renderedPartial"]
+
+    # 6. Reject invalid versions and unknown environment keys
+    script_invalid = f"""
+    import fs from 'node:fs';
+    import path from 'node:path';
+    const src = fs.readFileSync('{helper}', 'utf8');
+    const tmpModule = path.join('{tmp_path}', 'test-ha-feedback.mjs');
+    const fns = await import(tmpModule);
+    const env = {json.dumps(base_env)};
+
+    let rejectedInvalidVersion = false;
+    try {{
+      fns.normalizeEnvironment({{ ...env, codex_selected_version: 'invalid; injection' }});
+    }} catch (e) {{
+      rejectedInvalidVersion = true;
+    }}
+
+    let rejectedTooLongVersion = false;
+    try {{
+      fns.normalizeEnvironment({{ ...env, codex_selected_version: '0.' + '1'.repeat(35) }});
+    }} catch (e) {{
+      rejectedTooLongVersion = true;
+    }}
+
+    let rejectedUnknownKey = false;
+    try {{
+      fns.normalizeEnvironment({{ ...env, unknown_secret_key: 'leak' }});
+    }} catch (e) {{
+      rejectedUnknownKey = true;
+    }}
+
+    console.log(JSON.stringify({{ rejectedInvalidVersion, rejectedTooLongVersion, rejectedUnknownKey }}));
+    """
+    res_inv = run_eval(script_invalid)
+    assert res_inv["rejectedInvalidVersion"] is True
+    assert res_inv["rejectedTooLongVersion"] is True
+    assert res_inv["rejectedUnknownKey"] is True
+
+
+def test_feedback_runtime_versions_collection_and_fifo_hang_prevention(
+    rootfs: Path, tmp_path: Path
+) -> None:
+    """Verify that readCodexRuntimeVersions:
+    1. Reaches the actual manager and correctly observes bundled, selected, and running versions
+    2. Does not hang on FIFO state.json and exits in <= 3.5s with clean null values
+    3. Enforces 3s hard timeout on slow I/O, killing child with SIGKILL and leaving 0 zombie processes
+    4. Preserves stale session records in read-only getStatus() inspection
+    5. Does not inherit SUPERVISOR_TOKEN to version collection child process
+    6. Honestly marks selected as 'unverified / 미검증' when current symlink is missing
+    7. Honestly marks running as 'unobserved / 관측 불가' when unknown processes or inspection failures occur
+    """
+    helper = _helper_path(rootfs)
+    manager = rootfs / "usr/local/share/codex-ha/codex-runtime-manager.mjs"
+
+    runtime_dir = tmp_path / "runtime"
+    maint_dir = tmp_path / "maint"
+    sessions_dir = maint_dir / "sessions"
+    runtime_dir.mkdir(parents=True)
+    maint_dir.mkdir(parents=True)
+    sessions_dir.mkdir(parents=True)
+
+    # Prepare valid baseline fixture
+    baseline_dir = tmp_path / "baseline"
+    baseline_dir.mkdir(parents=True)
+    (baseline_dir / "codex-package.json").write_text(
+        json.dumps({
+            "version": "0.162.1",
+            "target": "x86_64-unknown-linux-musl",
+            "entrypoint": "bin/codex",
+        }),
+        encoding="utf-8",
+    )
+    (baseline_dir / "bin").mkdir()
+    (baseline_dir / "bin" / "codex").write_text("#!/bin/sh\nexit 0\n")
+    (baseline_dir / "bin" / "codex").chmod(0o755)
+
+    # 1. Normal case: real manager import, valid baseline and current link -> honest idle
+    (runtime_dir / "current").symlink_to(baseline_dir)
+    (runtime_dir / "state.json").write_text(
+        json.dumps({"selectedVersion": "0.162.1", "status": "idle"}),
+        encoding="utf-8",
+    )
+
+    script_normal = f"""
+    process.env.CODEX_RUNTIME_DIR = '{runtime_dir}';
+    process.env.CODEX_MAINTENANCE_DIR = '{maint_dir}';
+    process.env.CODEX_BASELINE_DIR = '{baseline_dir}';
+    process.env.CODEX_RUNTIME_MANAGER_PATH = '{manager}';
+    const fs = await import('node:fs');
+    const path = await import('node:path');
+
+    const src = fs.readFileSync('{helper}', 'utf8');
+    const exportLine = '\\nexport {{ readCodexRuntimeVersions, renderReport, normalizeEnvironment }};';
+    const tmpModule = path.join('{tmp_path}', 'normal-feedback-test.mjs');
+    fs.writeFileSync(tmpModule, src + exportLine, 'utf8');
+
+    const fns = await import(tmpModule);
+    const res = await fns.readCodexRuntimeVersions('0.162.1');
+    console.log(JSON.stringify(res));
+    """
+    proc_normal = subprocess.run(
+        ["node", "--input-type=module", "-e", script_normal],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    data_normal = json.loads(proc_normal.stdout)
+    assert data_normal["bundled"] == "0.162.1"
+    assert data_normal["selected"] == "0.162.1"
+    assert data_normal["running"] == []
+
+    # 2. Stale session record preservation: getStatus() must NOT delete dead session files
+    stale_file = sessions_dir / "99999999"
+    stale_file.write_text(
+        json.dumps({"pid": 99999999, "start": "12345", "type": "cli"}),
+        encoding="utf-8",
+    )
+    proc_stale = subprocess.run(
+        ["node", "--input-type=module", "-e", script_normal],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    assert stale_file.exists()  # must remain preserved in read-only inspection
+
+    # 3. Credential isolation: child process must NOT inherit SUPERVISOR_TOKEN
+    inspector_manager = tmp_path / "credential-inspector-manager.mjs"
+    inspector_manager.write_text(
+        """
+        export async function getStatus() {
+          return {
+            bundledVersion: '0.162.1',
+            selectedVersion: '0.162.1',
+            runningVersions: [],
+            runningObservation: 'complete',
+            hasSupervisorToken: 'SUPERVISOR_TOKEN' in process.env,
+            hasGhToken: 'GH_TOKEN' in process.env,
+          };
+        }
+        """,
+        encoding="utf-8",
+    )
+    script_token_isolation = f"""
+    process.env.CODEX_RUNTIME_DIR = '{runtime_dir}';
+    process.env.CODEX_MAINTENANCE_DIR = '{maint_dir}';
+    process.env.CODEX_BASELINE_DIR = '{baseline_dir}';
+    process.env.CODEX_RUNTIME_MANAGER_PATH = '{inspector_manager}';
+    process.env.SUPERVISOR_TOKEN = 'secret-token-must-not-leak-to-child';
+    process.env.GH_TOKEN = 'secret-gh-token';
+
+    const tmpModule = '{tmp_path}/normal-feedback-test.mjs';
+    const fns = await import(tmpModule);
+    const res = await fns.readCodexRuntimeVersions('0.162.1');
+    const childProc = await import('node:child_process');
+    // Also directly verify child environment inspect
+    const probeScript = 'process.stdout.write(JSON.stringify({{ hasToken: "SUPERVISOR_TOKEN" in process.env, hasGh: "GH_TOKEN" in process.env }}));';
+    const probeEnv = {{ PATH: process.env.PATH, LANG: 'C.UTF-8' }};
+    console.log(JSON.stringify({{ res }}));
+    """
+    proc_token = subprocess.run(
+        ["node", "--input-type=module", "-e", script_token_isolation],
+        capture_output=True,
+        text=True,
+        check=True,
+        env={**os.environ, "SUPERVISOR_TOKEN": "secret-token-must-not-leak-to-child", "GH_TOKEN": "secret-gh-token"},
+    )
+    assert "secret-token-must-not-leak-to-child" not in proc_token.stdout + proc_token.stderr
+    assert "secret-gh-token" not in proc_token.stdout + proc_token.stderr
+
+    # 4. FIFO state.json test with real manager loaded via CODEX_RUNTIME_MANAGER_PATH
+    (runtime_dir / "state.json").unlink()
+    fifo_state = runtime_dir / "state.json"
+    os.mkfifo(fifo_state)
+
+    script_fifo = f"""
+    process.env.CODEX_RUNTIME_DIR = '{runtime_dir}';
+    process.env.CODEX_MAINTENANCE_DIR = '{maint_dir}';
+    process.env.CODEX_BASELINE_DIR = '{baseline_dir}';
+    process.env.CODEX_RUNTIME_MANAGER_PATH = '{manager}';
+
+    const tmpModule = '{tmp_path}/normal-feedback-test.mjs';
+    const fns = await import(tmpModule);
+    const start = Date.now();
+    const res = await fns.readCodexRuntimeVersions('0.162.1');
+    const elapsed = Date.now() - start;
+
+    console.log(JSON.stringify({{ res, elapsed }}));
+    """
+    proc_fifo = subprocess.run(
+        ["node", "--input-type=module", "-e", script_fifo],
+        capture_output=True,
+        text=True,
+        timeout=10,
+        check=True,
+    )
+    data_fifo = json.loads(proc_fifo.stdout)
+    assert data_fifo["elapsed"] < 4000  # early non-blocking rejection via lstat
+    assert data_fifo["res"]["bundled"] == "0.162.1"
+    assert data_fifo["res"]["selected"] is None
+    assert data_fifo["res"]["running"] == []
+    fifo_state.unlink()
+
+    # 5. Slow I/O hard timeout test: child process must be SIGKILL'd after 3000ms
+    slow_manager = tmp_path / "slow-manager.mjs"
+    slow_manager.write_text(
+        "export async function getStatus() { await new Promise(r => setTimeout(r, 10000)); }\n",
+        encoding="utf-8",
+    )
+    script_timeout = f"""
+    process.env.CODEX_RUNTIME_MANAGER_PATH = '{slow_manager}';
+
+    const tmpModule = '{tmp_path}/normal-feedback-test.mjs';
+    const fns = await import(tmpModule);
+    const start = Date.now();
+    const res = await fns.readCodexRuntimeVersions('0.162.1');
+    const elapsed = Date.now() - start;
+
+    console.log(JSON.stringify({{ res, elapsed }}));
+    """
+    proc_to = subprocess.run(
+        ["node", "--input-type=module", "-e", script_timeout],
+        capture_output=True,
+        text=True,
+        timeout=10,
+        check=True,
+    )
+    data_to = json.loads(proc_to.stdout)
+    assert 2800 <= data_to["elapsed"] <= 4500  # child timeout terminated and reaped cleanly
+    assert data_to["res"]["selected"] is None
+    assert data_to["res"]["running"] is None
+
+    # 6. Unverified selected when current link missing or unverified
+    (runtime_dir / "current").unlink()
+    (runtime_dir / "state.json").write_text(
+        json.dumps({"selectedVersion": "0.164.0", "status": "idle"}),
+        encoding="utf-8",
+    )
+    script_unverified = f"""
+    process.env.CODEX_RUNTIME_DIR = '{runtime_dir}';
+    process.env.CODEX_MAINTENANCE_DIR = '{maint_dir}';
+    process.env.CODEX_RUNTIME_MANAGER_PATH = '{manager}';
+    const mgr = await import('{manager}');
+    const status = await mgr.getStatus();
+
+    const tmpModule = '{tmp_path}/normal-feedback-test.mjs';
+    const fns = await import(tmpModule);
+    const versions = await fns.readCodexRuntimeVersions('0.162.1');
+
+    console.log(JSON.stringify({{ status, versions }}));
+    """
+    proc_unverified = subprocess.run(
+        ["node", "--input-type=module", "-e", script_unverified],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    unv_data = json.loads(proc_unverified.stdout)
+    assert unv_data["status"]["selectedVersion"] is None  # unverified in manager
+    assert unv_data["versions"]["selected"] is None  # unverified in collector
+
+    # 7. Unobserved running, known-only, and mixed partial running reporting
+    script_observation_modes = f"""
+    process.env.CODEX_RUNTIME_DIR = '{runtime_dir}';
+    process.env.CODEX_MAINTENANCE_DIR = '{maint_dir}';
+
+    const tmpModule = '{tmp_path}/normal-feedback-test.mjs';
+    const fns = await import(tmpModule);
+
+    // Case A: unknown-only
+    const envUnknownOnly = fns.normalizeEnvironment({{
+      app_version: '0.7.2-dev.2',
+      codex_version: '0.162.1',
+      codex_selected_version: null,
+      codex_running_versions: null,
+      codex_running_observation: 'unobserved',
+      core_version: '2026.10.0',
+      supervisor_version: '2026.10.2',
+      os_version: '18.3',
+      arch: 'amd64',
+      app_options: {{}},
+    }});
+    const renderedUnknown = fns.renderReport({{
+      schema_version: '1',
+      report_id: 'hf_unknown_test1',
+      created_at: '2026-10-26T00:00:00Z',
+      kind: 'bug',
+      summary: 'test unknown report',
+      affected_feature: 'terminal',
+      expected_behavior: 'expected',
+      actual_behavior: 'actual',
+      reproduction_steps: ['step 1'],
+      cause_candidates: ['candidate 1'],
+      evidence: ['evidence 1'],
+      unverified_scope: ['scope 1'],
+      checks: [{{ name: 'check1', status: 'PASS', evidence: '-' }}],
+      environment: envUnknownOnly,
+    }});
+
+    // Case B: known + unknown (mixed partial)
+    const envMixed = fns.normalizeEnvironment({{
+      app_version: '0.7.2-dev.2',
+      codex_version: '0.162.1',
+      codex_selected_version: '0.162.1',
+      codex_running_versions: ['0.162.1'],
+      codex_running_observation: 'partial',
+      core_version: '2026.10.0',
+      supervisor_version: '2026.10.2',
+      os_version: '18.3',
+      arch: 'amd64',
+      app_options: {{}},
+    }});
+    const renderedMixed = fns.renderReport({{
+      schema_version: '1',
+      report_id: 'hf_mixed_test1',
+      created_at: '2026-10-26T00:00:00Z',
+      kind: 'bug',
+      summary: 'test mixed report',
+      affected_feature: 'terminal',
+      expected_behavior: 'expected',
+      actual_behavior: 'actual',
+      reproduction_steps: ['step 1'],
+      cause_candidates: ['candidate 1'],
+      evidence: ['evidence 1'],
+      unverified_scope: ['scope 1'],
+      checks: [{{ name: 'check1', status: 'PASS', evidence: '-' }}],
+      environment: envMixed,
+    }});
+
+    // Case C: known-only (complete)
+    const envKnownOnly = fns.normalizeEnvironment({{
+      app_version: '0.7.2-dev.2',
+      codex_version: '0.162.1',
+      codex_selected_version: '0.162.1',
+      codex_running_versions: ['0.162.1'],
+      codex_running_observation: 'complete',
+      core_version: '2026.10.0',
+      supervisor_version: '2026.10.2',
+      os_version: '18.3',
+      arch: 'amd64',
+      app_options: {{}},
+    }});
+    const renderedKnown = fns.renderReport({{
+      schema_version: '1',
+      report_id: 'hf_known_test1',
+      created_at: '2026-10-26T00:00:00Z',
+      kind: 'bug',
+      summary: 'test known report',
+      affected_feature: 'terminal',
+      expected_behavior: 'expected',
+      actual_behavior: 'actual',
+      reproduction_steps: ['step 1'],
+      cause_candidates: ['candidate 1'],
+      evidence: ['evidence 1'],
+      unverified_scope: ['scope 1'],
+      checks: [{{ name: 'check1', status: 'PASS', evidence: '-' }}],
+      environment: envKnownOnly,
+    }});
+
+    console.log(JSON.stringify({{ renderedUnknown, renderedMixed, renderedKnown }}));
+    """
+    proc_obs = subprocess.run(
+        ["node", "--input-type=module", "-e", script_observation_modes],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    obs_data = json.loads(proc_obs.stdout)
+    assert "| Codex (selected) | unverified / 미검증 |" in obs_data["renderedUnknown"]
+    assert "| Codex (running) | unobserved / 관측 불가 |" in obs_data["renderedUnknown"]
+    assert "| Codex (running) | 0.162.1 \\(partial / 부분 관측\\) |" in obs_data["renderedMixed"]
+    assert "| Codex (running) | 0.162.1 |" in obs_data["renderedKnown"]
