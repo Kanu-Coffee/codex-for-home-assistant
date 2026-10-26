@@ -5,7 +5,7 @@
 ## Project Status
 
 - 상태: **Stable 0.7.1 main 병합·tag·public amd64/ARM image·GitHub latest release 공개 완료 / exact merge/tag CI·Builder PASS / 사용자 dev.7 CLI·브라우저 수용과 동일 runtime 승격 / 개발 HAOS stable 0.7.0→0.7.1 Supervisor 일반 업데이트·data/config 보존·2분 HTTP 200·종료 exit 0 확인 / 실제 ARM HAOS·DEV→main source migration 미검증 유지**
-- 현재 마일스톤: **Stable 0.7.1 운영 배포 완료**
+- 현재 마일스톤: **Stable 0.7.1 유지 / DEV 0.7.2-dev.2 게시 완료·사용자 실기기 수용 대기**
 - 마지막 문서 기준일: **2026-10-26**
 - 저장소: public `Kanu-Coffee/codex-for-home-assistant`, default branch `main`
 
@@ -25,6 +25,19 @@
 - [x] interactive/Codex/S6 ambient `SUPERVISOR_TOKEN` 상속 제거와 private helper credential loader 구현
 
 ## Current Work
+
+### 2026-10-26 — 0.7.2-dev.2 공개 배포 완료·사용자 실기기 시험 인계
+
+- [PR #55](https://github.com/Kanu-Coffee/codex-for-home-assistant/pull/55)를 `dev`에 병합했다. 최종 source `1068b2cce0802f9aa9cb92bf461811edd19d400e`의 [merge CI 40255853192](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/40255853192), [PR CI 40255271016](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/40255271016), [non-publishing Builder 40255271082](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/40255271082) PASS. Native amd64/aarch64 build·runtime smoke를 포함한다. 최초 host bubblewrap 미설치와 후속 profile-step 수 계약 실패를 수정했고 최종 head에서 모두 통과했다. 제품 권한은 바꾸지 않았다.
+- Annotated tag `0.7.2-dev.2` object `3bf705b91a24eda2c2da43f3ef87748af6ba3377`은 위 merge source를 가리킨다. [publishing Builder 40256263826](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/40256263826)의 양 architecture SBOM/Critical gate·image/signature/attestation·manifest promotion PASS. [GitHub DEV prerelease](https://github.com/Kanu-Coffee/codex-for-home-assistant/releases/tag/0.7.2-dev.2)를 공개했다.
+- 게시 후 독립 검증: GHCR generic/architecture tag와 manifest/config digest 일치, 모든 layer HEAD의 익명 접근, linux amd64/arm64 및 DEV/version label PASS. 세 image subject의 Cosign signature와 provenance, 양 architecture SPDX attestation을 exact workflow identity·tag/source SHA로 검증해 모두 PASS했다. Public `dev`의 repository/config metadata도 익명 GET PASS다.
+- 공개 digest:
+  - generic: `sha256:3c64d2fe7545ea3fa67c22c31b36137b1211f7ef094bd4114c9b5cd84bd7f74b`
+  - amd64: `sha256:9aa083d21e84f9266cb1336bce8bafc82c61d8ca3a273af9fcc1e4de9772929f`
+  - aarch64: `sha256:4ad70b5d283e67462f926d743cdd2453461f3b499005810784e0336e70de9f20`
+- 로컬 전체 247 PASS/기존 skip 1개와 최신 image의 개발 HAOS VM 정상·active-I/O 약 3초/exit 0·합성 data 보존 증거는 아래 FIX_10 기록을 따른다. VM은 shut off로 복원됐고 재확인했다. VM Docker stop 결과를 사용자 Supervisor 일반 stop/restart PASS로 대체하지 않는다.
+- 사용자 인계: `https://github.com/Kanu-Coffee/codex-for-home-assistant#dev` 저장소를 새로고침해 **0.7.2-dev.2**로 일반 업데이트 후 관리 CLI/내부 sandbox 진단, feedback 버전/부분 관측, Supervisor stop/restart·인증/데이터 보존, Web/SSH/Remote 재연결을 실기기에서 검증한다. 사용자 운영 장치는 이번 작업에서 변경하지 않았다. ARM 실장비·장기 안정성과 memory/PATH 경고 영향은 NOT RUN이다.
+- Main `11b883996b9bc1694640b25fcc7f24b192973b71` 및 GitHub latest stable **0.7.1**을 유지했다. Runtime/release tag는 변경하지 않으며 이 이후 배포 증거 문서 commit은 별도로 기록한다.
 
 ### 2026-10-26 — dev.2 최종 리뷰·보완 인수 및 사용자 요청에 따른 게시 진행
 
