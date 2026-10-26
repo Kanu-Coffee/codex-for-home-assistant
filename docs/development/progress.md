@@ -31,7 +31,9 @@
 - 사용자는 이전 잔여 수용 항목을 포함해 모두 검증 완료·정상이라고 확인하고 **정식판 0.7.2 배포 완료까지 명시 승인**했다. 이전 리뷰의 조건부 수용 대기를 사용자 확인으로 해소했다. 이것은 사용자 제공 수용 증거이며 이번 개발 세션에서 실기기를 다시 조작한 결과가 아니다. 개별 ARM 하드웨어/DEV→main migration 시험 기록은 제공되지 않았으므로 과거의 플랫폼·migration 세부 NOT RUN을 임의로 PASS로 바꾸지 않는다.
 - 기존 task 004 PLAN은 종료 상태를 유지한다. dev.2의 제품 동작은 보존하고 stable version·branding·implicit stable stage·한국어/영어 안내·changelog를 정리한다. Main PR/CI·exact merge CI·새 immutable tag·양 architecture security gate/게시·독립 공개/서명/attestation 검증 후 완료 기록을 남긴다. DEV release/tag/image는 덮어쓰지 않는다.
 - 최신 [공식 App configuration](https://contributors.home-assistant.io/apps/reference/configuration/)을 재확인했다. `stage` 기본값 stable, image tag는 version, timeout 범위 10~300초 계약을 유지한다.
-- 검증/배포: 진행 중. 사용자 운영 장치의 자동 업데이트·재시작·source migration은 이번 배포 작업에서 실행하지 않는다.
+- 로컬 전체 pytest **247 passed, 1 skipped in 85.23s**, stable 채널 계약 19 PASS, Markdown/YAML/Hadolint/Node syntax/diff/secret scan PASS, stable amd64 build PASS. 최초 테스트는 DEV 고정 기대값 2건과 이전 VM 합성 키 파일의 secret scan 1건 실패였고 채널 기대값 갱신·자체 fixture 키 정리 후 전체 재실행에서 해소했다.
+- 로컬 Docker full smoke는 App 기동 뒤 model-visible 지침 확인에서 host nested bwrap loopback `RTM_NEWADDR: Operation not permitted`로 FAIL했다. 제품 권한을 완화하지 않고 기존 native CI의 전체 smoke로 exact stable 환경 검증을 진행한다. 로컬 build를 full smoke PASS로 표기하지 않는다.
+- 검증/배포: PR/CI 진행 중. 사용자 운영 장치의 자동 업데이트·재시작·source migration은 이번 배포 작업에서 실행하지 않는다.
 
 ### 2026-10-26 — task 004 최종 리뷰: 11번 실기기 보고서 인수·개발 PLAN 종료
 
