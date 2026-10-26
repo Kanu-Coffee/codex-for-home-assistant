@@ -146,10 +146,12 @@ def test_ci_loads_checksum_pinned_bubblewrap_userns_profile(
     profile_sha256 = (
         "a964037f6cf0df1099f14226b037eaedde6237c86e715188e93eb460b30be859"
     )
-    assert workflow.count("Load CI-only bubblewrap user namespace profile") == 2
-    assert workflow.count(profile_commit) == 2
-    assert workflow.count(profile_sha256) == 2
-    assert workflow.count("sha256sum --check --strict") == 2
-    assert workflow.count('apparmor_parser --replace "${profile_path}"') == 2
+    # Direct host wrapper tests plus both native container smoke jobs.
+    assert "apparmor-utils bubblewrap jq shellcheck" in workflow
+    assert workflow.count("Load CI-only bubblewrap user namespace profile") == 3
+    assert workflow.count(profile_commit) == 3
+    assert workflow.count(profile_sha256) == 3
+    assert workflow.count("sha256sum --check --strict") == 3
+    assert workflow.count('apparmor_parser --replace "${profile_path}"') == 3
     assert "--cap-add SYS_ADMIN" not in workflow
     assert "--privileged" not in workflow
