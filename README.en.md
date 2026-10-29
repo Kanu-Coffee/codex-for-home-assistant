@@ -1,4 +1,4 @@
-**Rollback candidate `0.7.3-dev.3` restores the 0.7.2 runtime on the DEV channel.**
+**Local development candidate `0.7.3-dev.4` implements idle worker handover. Publication and HAOS acceptance are pending.**
 
 > Stable `0.7.2` promotes the user-accepted `0.7.2-dev.2` runtime with process classification, diagnostic/version reporting, and graceful shutdown improvements. Install from `https://github.com/Kanu-Coffee/codex-for-home-assistant`.
 
@@ -253,3 +253,9 @@ Direct GitHub submission through `$ha-feedback` requires a ten-minute single-use
 ## License
 
 Project source is distributed under the [Apache License 2.0](LICENSE). See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for runtime dependency notices.
+
+### Development runtime handover
+
+Managed CLI/TUI and Remote stdio do not defer updates merely because a window, connection, process, or conversation remains open. In-flight and queued requests, tools, approval waits, and background work are protected. When idle, the worker is replaced under the existing schedule, retry budget, and cooldown; the connection and persistent conversation are restored before processing the next request. The TUI frontend itself updates on its next launch. Legacy directly launched sessions and external `--remote` servers are outside automatic handover. Nonempty ephemeral conversations, unsupported activity observation, and incomplete recovery defer transition with a specific reason.
+
+Local official 0.162.1 → 0.165.0 integration is verified; HAOS/mobile and native ARM acceptance remain pending.

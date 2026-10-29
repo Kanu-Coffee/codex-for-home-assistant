@@ -625,3 +625,7 @@ raw scan으로 진행한다. 실제 Grype 대조에서 metadata 누락 fixture�
 2. **실기기 Web 터미널 (`ttyd`) 및 SSH 세션 라이브 동작**: dev.2 게시 후 실제 사용자 브라우저/터미널 세션 동작 확인 대기 (NOT RUN).
 3. **ARM64 물리 기기 실행**: aarch64 하드웨어 상의 네이티브 실행 검증 대기 (NOT RUN).
 4. **Memory warning 9개 및 PATH alias EROFS 관측**: 단순 warning 제거가 아닌 원인별 영향 분류 및 enrichment 정상 동작 여부 관측 과제로 유지.
+
+## 관리형 worker 전환 회귀
+
+`tests/test_codex_live_handover.py`는 `CODEX_HANDOVER_BASELINE`과 `CODEX_HANDOVER_CANDIDATE`의 공식 binary pair를 사용한다. disposable home과 local Responses fixture로 stdio/WebSocket/PTY TUI의 첫 응답, busy 중 적용 보류, idle 후 실제 applyUpdate, 변경된 worker exe/PID, 같은 대화의 두 번째 응답과 이전 문맥 포함을 검사한다. image policy probe는 이 host 시험에서 주입한 stub이며 실제 AppArmor/requirements 검증을 대체하지 않는다. `tests/codex-update-smoke.sh`와 HAOS 시험에서 실제 policy gate를 별도로 검증한다.

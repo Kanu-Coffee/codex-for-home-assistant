@@ -178,7 +178,7 @@ target별 version 1회 기록을 만든 뒤 허용된 파일을 기본본으로 
 
 ### R-403 Codex 버전은 검증된 이미지 기본본과 안전한 런타임 업데이트로 관리한다
 
-이미지는 checksum으로 고정된 공식 stable 기본본(`0.162.1`)을 복구용으로 포함한다. 런타임에서는 일 4회(설정된 시간대 기준 03:00, 09:00, 15:00, 21:00, 기본값 `Asia/Seoul`) 공식 stable 업데이트를 확인·staging하며, `/proc` exe와 검증된 등록 record로 식별한 대화형 TUI/CLI, SSH, Remote stdio, app-server 프로세스가 모두 종료되거나 유휴(idle)로 확인될 때만 원자적으로 적용한다. argv 문자열만 근거한 분류, helper/companion의 독립 세션 계상, 신원 불명 프로세스의 조용한 무시는 금지한다. 활성 세션이 있으면 적용을 보류(`pending_busy`)하고 5분 간격으로 재확인한다. 수동 `ha-codex-update` 및 `codex update` 명령을 제공하며, 검증 실패 시 이전 버전 또는 이미지 기본본으로 안전하게 복구한다.
+이미지는 checksum으로 고정된 공식 stable 기본본(`0.162.1`)을 복구용으로 포함한다. 런타임에서는 일 4회(설정된 시간대 기준 03:00, 09:00, 15:00, 21:00, 기본값 `Asia/Seoul`) 공식 stable 업데이트를 확인·staging하며, `/proc` exe와 검증된 등록 record로 식별한 대화형 TUI/CLI, SSH, Remote stdio, app-server 프로세스가 실제 작업이 없고 안전한 복원이 검증된 유휴(idle) 상태일 때만 원자적으로 적용한다. argv 문자열만 근거한 분류, helper/companion의 독립 세션 계상, 신원 불명 프로세스의 조용한 무시는 금지한다. 활성 세션이 있으면 적용을 보류(`pending_busy`)하고 5분 간격으로 재확인한다. 수동 `ha-codex-update` 및 `codex update` 명령을 제공하며, 검증 실패 시 이전 버전 또는 이미지 기본본으로 안전하게 복구한다.
 
 ### R-404 권한 정책
 

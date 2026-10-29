@@ -20,7 +20,8 @@ def test_all_yaml_files_parse(repository_root: Path) -> None:
     yaml_files = [
         path
         for path in repository_root.rglob("*.yaml")
-        if ".git" not in path.parts and ".pytest_cache" not in path.parts
+        if not {".git", ".pytest_cache", ".test-tmp", ".venv", ".tools", "node_modules"}.intersection(path.parts)
+        and path.is_file()
     ]
     assert yaml_files
 
@@ -45,7 +46,7 @@ def test_development_candidate_is_visible_in_home_assistant_and_image(
     addon_config: dict, addon_root: Path, repository_root: Path
 ) -> None:
     assert addon_config["name"] == "Codex for Home Assistant (DEV)"
-    assert addon_config["version"] == "0.7.3-dev.3"
+    assert addon_config["version"] == "0.7.3-dev.4"
     assert addon_config["description"].startswith("[DEV] ")
     assert addon_config["panel_title"] == "Codex DEV"
     assert addon_config["slug"] == "codex_home_assistant"
