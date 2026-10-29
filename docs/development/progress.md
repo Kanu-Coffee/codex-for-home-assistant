@@ -26,6 +26,32 @@
 
 ## Current Work
 
+### 2026-10-29 — task 006 FIX_16 Executor: DEV 0.7.3-dev.1 실제 공개 배포 완료 및 사용자 실기 시험 인계
+
+- Reviewer의 FIX_16 지침에 따라 DEV `0.7.3-dev.1` 실제 공개 게시 절차를 완결했다:
+  1. **PR 및 브랜치 워크플로우:**
+     - 기능 브랜치 `codex/release-0.7.3-dev.1` (commit `a22de8d`)를 통해 [PR #59](https://github.com/Kanu-Coffee/codex-for-home-assistant/pull/59) 생성.
+     - PR 대상 CI 및 non-publishing Builder 전수 통과: Home Assistant App compatibility, Lint & unit tests, Validate release candidate, aarch64 native build/smoke, amd64 build/smoke, SBOM & vulnerability gates 8개 체크 100% PASS.
+     - PR #59를 `dev` 브랜치에 머지 (머지 커밋 `8e0cab7`).
+     - Dev 브랜치 머지 [CI Run 40826178307](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/40826178307) 전수 통과 (aarch64 native build/smoke, App linter, amd64 build/smoke, Lint & unit tests 100% PASS).
+  2. **Publishing Builder 및 멀티아키 공급망 검증:**
+     - 머지 커밋에 annotated version tag `0.7.3-dev.1` 생성 및 푸시.
+     - Publishing [Builder Run 40826859164](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/40826859164) 전수 통과:
+       - Validate release metadata: PASS
+       - Build and publish aarch64 image: PASS (SBOM 생성, Critical 게이트 통과, Cosign 서명, Provenance/SBOM attestation)
+       - Build and publish amd64 image: PASS (SBOM 생성, Critical 게이트 통과, Cosign 서명, Provenance/SBOM attestation)
+       - Publish multi-arch manifest: PASS (Cosign 서명, multi-arch provenance attestation, 0.7.3-dev.1 태그 승격)
+  3. **공개 이미지 및 릴리스 배포 확인:**
+     - [GitHub Release 0.7.3-dev.1](https://github.com/Kanu-Coffee/codex-for-home-assistant/releases/tag/0.7.3-dev.1) Prerelease 공개 완료.
+     - GHCR 멀티아키 이미지 공개 확인 (`ghcr.io/kanu-coffee/codex-for-home-assistant:0.7.3-dev.1`):
+       - Generic multiarch manifest digest: `sha256:27920e6e31711c8613c5984fca71fe79ce59584f4a48dbb693131915e5920503`
+       - linux/amd64 digest: `sha256:cd60976448b508cdcfa27dd9435f964d3e7a6dfc14303e4495e9e5bca0f57523`
+       - linux/arm64 digest: `sha256:0267d327a33544e13d623a9196a57112b0c360105a68ee4304c12c501868bdb4`
+  4. **산출물 및 사용자 인계:**
+     - [FIX_16_REPORT.md](../../.handoff/006_idle-gated-runtime-server-update/FIX_16_REPORT.md) 작성 완료.
+     - 사용자 Home Assistant 운영시험 안내: `https://github.com/Kanu-Coffee/codex-for-home-assistant#dev` 저장소 새로고침 후 `0.7.3-dev.1` 설치, 대화형 CLI/Remote stdio 유휴 전환, 문맥 보존, 작업 중 보류 시험 인계.
+     - `main` 브랜치는 건드리지 않고 원본 stable 0.7.2 유지. 실제 HAOS 운영 장치는 변경하지 않음.
+
 ### 2026-10-29 — task 006 FIX_15 Reviewer: 코드·메타데이터 인수 / 실제 DEV 게시 미이행
 
 - FIX_15 상태표시와 DEV `0.7.3-dev.1` 메타데이터를 인수했다. 추가 제품 코드 차단 결함은 발견하지 않았다. 신규 formatter 회귀와 별개로 실제 managed app-server/owned companion fixture subprocess 및 등록 record에서 `getStatus()`를 직접 조회해 서버 생존 상태의 자동 검사 자격 true, future cooldown 상태의 자격 false·waiting을 확인했다.
