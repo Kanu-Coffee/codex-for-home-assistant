@@ -178,7 +178,9 @@ target별 version 1회 기록을 만든 뒤 허용된 파일을 기본본으로 
 
 ### R-403 Codex 버전은 검증된 이미지 기본본과 안전한 런타임 업데이트로 관리한다
 
-이미지는 checksum으로 고정된 공식 stable 기본본(`0.162.1`)을 복구용으로 포함한다. 런타임에서는 일 4회(설정된 시간대 기준 03:00, 09:00, 15:00, 21:00, 기본값 `Asia/Seoul`) 공식 stable 업데이트를 확인·staging하며, `/proc` exe와 검증된 등록 record로 식별한 대화형 TUI/CLI, SSH, Remote stdio, app-server 프로세스가 모두 종료되거나 유휴(idle)로 확인될 때만 원자적으로 적용한다. argv 문자열만 근거한 분류, helper/companion의 독립 세션 계상, 신원 불명 프로세스의 조용한 무시는 금지한다. 활성 세션이 있으면 적용을 보류(`pending_busy`)하고 5분 간격으로 재확인한다. 수동 `ha-codex-update` 및 `codex update` 명령을 제공하며, 검증 실패 시 이전 버전 또는 이미지 기본본으로 안전하게 복구한다.
+이미지는 checksum으로 고정된 공식 stable 기본본(`0.162.1`)을 복구용으로 포함한다. 런타임에서는 일 4회(설정된 시간대 기준 03:00, 09:00, 15:00, 21:00, 기본값 `Asia/Seoul`) 공식 stable 업데이트를 확인·staging하며, `/proc` exe와 검증된 등록 record로 식별한 대화형 TUI/CLI, SSH, Remote stdio, app-server 프로세스가 모두 종료되거나 실제 작업 유휴(idle)로 확인될 때만 원자적으로 적용한다. 프로세스 존재나 loaded conversation 자체만으로 차단하지 않고, 진행 중인 turn·queued RPC·승인 대기·백그라운드 작업이 없는 실제 유휴 상태일 때 연결과 대화를 보존하며 기존 실행 서버를 전환한다. argv 문자열만 근거한 분류, helper/companion의 독립 세션 계상, 신원 불명 프로세스의 조용한 무시는 금지한다. 실제 활성 작업이 있으면 적용을 보류(`pending_busy`)하고 5분 간격으로 재확인한다. 수동 `ha-codex-update` 및 `codex update` 명령을 제공하며, 검증 실패 시 이전 버전 또는 이미지 기본본으로 안전하게 복구한다.
+
+위 live 전환은 제품 목표다. 관리형 세션(Remote stdio 및 관리형 CLI/TUI)은 세션 릴레이를 통해 유휴 시 백엔드 worker 전환(`switch_worker`)과 빈 대화/저장 대화 문맥 보존을 수행하며, DEV 릴리스에서 운영시험을 진행한다. 관리되지 않는 레거시 프로세스나 귀속 불명 프로세스는 안전을 위해 정상 종료를 대기한다. 검증되지 않은 전환을 목표 달성으로 기록하지 않는다.
 
 ### R-404 권한 정책
 

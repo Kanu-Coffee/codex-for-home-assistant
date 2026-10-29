@@ -1,5 +1,5 @@
 import { verifyManagedPolicy } from './codex-policy-probe.mjs';
-import { restartServers } from './codex-server-transaction.mjs';
+import { restartServers, verifyRelayIdentity } from './codex-server-transaction.mjs';
 import { packageInventory, recordPackage, verifyPackage, durableJson } from './codex-package-integrity.mjs';
 import { createHash, randomBytes } from "node:crypto";
 import { constants as fsConstants, existsSync, readFileSync, createReadStream } from "node:fs";
@@ -42,8 +42,23 @@ export function getCurrentLink() { return join(getBaseRuntimeDir(), "current"); 
 export function getPreviousLink() { return join(getBaseRuntimeDir(), "previous"); }
 export function getStagedLink() { return join(getBaseRuntimeDir(), "staged"); }
 export function getStateFile() { return join(getBaseRuntimeDir(), "state.json"); }
+export function getTransactionFile() { return join(getBaseRuntimeDir(), "transaction.json"); }
 export function getGateLockFile() { return join(getMaintenanceDir(), "gate.lock"); }
 export function getSessionsDir() { return join(getMaintenanceDir(), "sessions"); }
+
+async function hasPendingTransaction() {
+  try { await lstat(getTransactionFile()); return true; }
+  catch (err) { return err.code !== "ENOENT"; }
+}
+
+export async function recoverPendingTransaction() {
+  // No phase-aware recovery is implemented yet. Preserve the journal and
+  // every worker until ownership, generation and held input can be verified.
+  if (await hasPendingTransaction()) {
+    return { recovered: false, error: "transaction_recovery_unverified" };
+  }
+  return { recovered: true, noop: true };
+}
 
 export function getAppVersion() {
   const bakedPath = process.env.CODEX_HA_APP_VERSION_FILE || "/usr/local/share/codex-ha/app-version";
@@ -559,7 +574,7 @@ export async function readOptions() {
 export const LAST_BLOCKER_CODES = Object.freeze([
   "cli", "remote_stdio", "unmanaged_server", "bad_socket", "socket_inaccessible",
   "server_busy", "unknown", "inspection_failed", "daily_budget_exhausted",
-  "restart_cooldown",
+  "restart_cooldown", "compatibility_unverified",
 ]);
 
 function sanitizeLastBlocker(value) {
@@ -677,6 +692,18 @@ export async function initRuntime() {
     await mkdir(getStagingDir(), { recursive: true, mode: 0o700 });
     await mkdir(getMaintenanceDir(), { recursive: true, mode: 0o700 });
     await mkdir(getSessionsDir(), { recursive: true, mode: 0o700 });
+
+    // An interrupted handover may still own live workers or held requests.
+    // Preserve every generation and require explicit investigation; do not
+    // silently rewrite links or claim that it was rolled back.
+    if (await hasPendingTransaction()) {
+      const state = await loadState();
+      state.status = "failed";
+      state.blockedReason = "blocked_restart";
+      state.reason = "Interrupted runtime transition requires recovery";
+      await saveState(state);
+      return state;
+    }
 
     const currentCheck = await validateSymlinkContainment(getCurrentLink());
     if (!currentCheck.valid || !existsSync(currentCheck.target)) {
@@ -1158,16 +1185,103 @@ export async function inspectAppServer(socketPath, expectedPid) {
       return { busy: true, reason: "Malformed thread/loaded/list response" };
     }
 
-    if (threadsRes.data.length > 0) {
-      return { busy: true, reason: `${threadsRes.data.length} conversation(s) loaded` };
+    const loadedThreads = [];
+    for (const t of threadsRes.data) {
+      if (typeof t === "string") {
+        loadedThreads.push(t);
+      } else if (t && typeof t === "object") {
+        const id = t.id || t.threadId;
+        if (id) loadedThreads.push(id);
+        const statusType = typeof t.status === "string" ? t.status : t.status?.type;
+        if (statusType === "active") {
+          return { busy: true, reason: `Active thread ${id}` };
+        }
+      }
     }
 
-    return { busy: false, pid: diagPid };
+    return { busy: false, pid: diagPid, loadedThreads };
   } catch (err) {
     return { busy: true, reason: `App-server inspection failed: ${err.message}` };
   } finally {
     if (client) client.close();
   }
+}
+
+export async function inspectSessionHost(controlSocketPath) {
+  try {
+    const st = await lstat(controlSocketPath).catch(() => null);
+    if (!st || !st.isSocket() || st.uid !== process.getuid() || (st.mode & 0o077) !== 0) {
+      return { busy: true, error: "Control socket missing or has unsafe ownership or permissions" };
+    }
+  } catch (e) {
+    return { busy: true, error: `Control socket stat failed: ${e.message}` };
+  }
+
+  return new Promise((resolvePromise) => {
+    let settled = false;
+    let client = null;
+    const finish = (result) => {
+      if (settled) return;
+      settled = true;
+      try { client?.destroy(); } catch {}
+      resolvePromise(result);
+    };
+
+    try {
+      client = createConnection(controlSocketPath);
+    } catch (err) {
+      return finish({ busy: true, error: err.message });
+    }
+
+    let buf = "";
+    const timer = setTimeout(() => {
+      finish({ busy: true, error: "Control socket inspection timed out" });
+    }, 5000);
+
+    client.on("connect", () => {
+      client.write(JSON.stringify({ cmd: "inspect" }) + "\n");
+    });
+
+    client.on("data", (chunk) => {
+      buf += chunk.toString("utf-8");
+      const idx = buf.indexOf("\n");
+      if (idx !== -1) {
+        clearTimeout(timer);
+        try {
+          const res = JSON.parse(buf.slice(0, idx).trim());
+          if (
+            !res ||
+            typeof res !== "object" ||
+            typeof res.busy !== "boolean" ||
+            !Number.isSafeInteger(res.inFlight) || res.inFlight < 0 ||
+            !Number.isSafeInteger(res.pending) || res.pending < 0 ||
+            !Number.isSafeInteger(res.activeTurns) || res.activeTurns < 0 ||
+            !Array.isArray(res.loadedThreads) ||
+            typeof res.version !== "string"
+          ) {
+            return finish({ busy: true, unknown: true, error: "invalid_control_response_schema" });
+          }
+          if (res.unknown === true) {
+            return finish({ busy: true, unknown: true, error: res.reason || "unknown_session_host_state" });
+          }
+          if (!res.busy && (res.inFlight > 0 || res.pending > 0 || res.activeTurns > 0)) {
+            return finish({ busy: true, unknown: true, error: "inconsistent_inspect_state_active_while_not_busy" });
+          }
+          if (!res.workerPid || typeof res.workerPid !== "number" || !existsSync(`/proc/${res.workerPid}`)) {
+            return finish({ busy: true, unknown: true, error: "session_host_worker_process_missing" });
+          }
+          finish(res);
+        } catch (err) {
+          finish({ busy: true, error: err.message });
+        }
+      }
+    });
+
+    client.on("error", (err) => {
+      clearTimeout(timer);
+      finish({ busy: true, error: err.message });
+    });
+  });
 }
 
 export async function inspectAllSessions(options = {}) {
@@ -1279,11 +1393,12 @@ export async function inspectAllSessions(options = {}) {
     const invocation = parseCodexInvocation(e.proc.cmdline || [], identity ? identity.argvIndex + 1 : 1);
     if (identity) e.identity = identity;
     const serverByArgv = identity && identity.role === "primary" && invocation.subcommand === "app-server";
-    const serverByRecord = record && record.type === "app-server" &&
-      (!invocation.subcommand || invocation.subcommand === "app-server");
+    const serverByRecord = record &&
+      ((record.type === "app-server" && (!invocation.subcommand || invocation.subcommand === "app-server")) ||
+       (record.type === "remote-stdio" && record.managed === true));
     if (serverByArgv || serverByRecord) {
       e.kind = "app-server";
-      e.socketPath = invocation.listenSocket;
+      e.socketPath = record?.socketPath || invocation.listenSocket;
     } else if (!record && identity && identity.role === "companion") {
       e.kind = "companion";
     } else if (!record && identity && identity.role !== "primary" && identity.role !== "companion") {
@@ -1294,14 +1409,40 @@ export async function inspectAllSessions(options = {}) {
     }
   }
 
-  // Pass 4: companions and helpers attach to a verified live owner. An
-  // orphaned companion that cannot be attributed is held as unknown; it is
-  // never counted as an independent Codex conversation.
+  // Pass 4: companions, helpers, and relay child workers attach to a verified live owner.
   const ownerPids = new Set();
+  const relayPids = new Set();
+  const relayWorkerPids = new Set();
+
   for (const [pid, e] of entries) {
     if (e.kind === "cli" || e.kind === "app-server") ownerPids.add(pid);
+    if (e.record && e.record.managed === true && (e.record.type === "remote-stdio" || e.record.controlSocket)) {
+      relayPids.add(pid);
+      if (e.record.workerPid) relayWorkerPids.add(e.record.workerPid);
+    }
   }
+
   for (const [pid, e] of entries) {
+    if (relayPids.has(pid)) continue;
+
+    // Check if this entry is a managed child worker or client of a verified relay
+    let isRelayWorker = false;
+    for (const [rPid, rEntry] of entries) {
+      if (relayPids.has(rPid) && rEntry.record && (rEntry.record.workerPid === pid || rEntry.record.clientPid === pid)) {
+        const chain = await ancestorPids(pid);
+        if (chain.includes(rPid)) {
+          isRelayWorker = true;
+          e.owner = rPid;
+          break;
+        }
+      }
+    }
+    if (isRelayWorker) {
+      e.kind = "helper";
+      e.isRelayChild = true;
+      continue;
+    }
+
     if (e.kind !== "companion") continue;
     const chain = await ancestorPids(pid);
     const owner = chain.find((a) => ownerPids.has(a));
@@ -1336,6 +1477,31 @@ export async function inspectAllSessions(options = {}) {
       continue;
     }
     if (e.kind === "cli") {
+      if (e.record && e.record.managed === true && e.record.controlSocket) {
+        const hostRes = await inspectSessionHost(e.record.controlSocket);
+        if (hostRes.error) {
+          counts.unknown++;
+          addBusy("inspection_failed", pid, `managed cli inspection failed: ${hostRes.error}`);
+        } else if (hostRes.busy) {
+          counts.cli++;
+          addBusy("cli", pid, `active CLI tasks in flight (${hostRes.inFlight || 0} reqs, ${hostRes.activeTurns || 0} turns)`);
+        } else if (!await verifyRelayIdentity({pid, start: e.proc.startTime, controlSocket: e.record.controlSocket, managedRecord: e.record}, hostRes, inspectProcess)) {
+          counts.unknown++;
+          addBusy("inspection_failed", pid, "managed cli identity unverified");
+        } else {
+          counts.managedIdleServers++;
+          restartableServers.push({
+            pid,
+            type: e.record.type || "cli",
+            start: e.proc.start,
+            controlSocket: e.record.controlSocket,
+            proc: e.proc,
+            managedRecord: e.record,
+            loadedThreads: hostRes.loadedThreads || [],
+          });
+        }
+        continue;
+      }
       counts.cli++;
       if (e.registered) {
         addBusy("cli", pid, "active registered session");
@@ -1348,6 +1514,52 @@ export async function inspectAllSessions(options = {}) {
     // kind === app-server
     const socketPath = e.socketPath || null;
     if (!socketPath) {
+      if (e.record && e.record.managed === true && e.record.controlSocket) {
+        const hostRes1 = await inspectSessionHost(e.record.controlSocket);
+        if (hostRes1.error || (hostRes1.relayPid && hostRes1.relayPid !== pid)) {
+          counts.unknown++;
+          addBusy("inspection_failed", pid, `managed remote stdio inspection failed: ${hostRes1.error || "PID mismatch"}`);
+          continue;
+        }
+        if (hostRes1.busy) {
+          counts.remoteStdio++;
+          addBusy("remote_stdio", pid, `active remote stdio tasks in flight (${hostRes1.inFlight || 0} reqs, ${hostRes1.activeTurns || 0} turns)`);
+          continue;
+        }
+
+        // 1-second confirmation interval for stability
+        await new Promise((r) => setTimeout(r, 1000));
+        const hostRes2 = await inspectSessionHost(e.record.controlSocket);
+        if (hostRes2.error || (hostRes2.relayPid && hostRes2.relayPid !== pid)) {
+          counts.unknown++;
+          addBusy("inspection_failed", pid, `managed remote stdio second inspection failed: ${hostRes2.error || "PID mismatch"}`);
+          continue;
+        }
+        if (hostRes2.busy) {
+          counts.remoteStdio++;
+          addBusy("remote_stdio", pid, `active remote stdio tasks in flight (${hostRes2.inFlight || 0} reqs, ${hostRes2.activeTurns || 0} turns)`);
+          continue;
+        }
+
+        const server = { pid, start: e.proc.startTime, controlSocket: e.record.controlSocket, managedRecord: e.record };
+        if (!await verifyRelayIdentity(server, hostRes2, inspectProcess)) {
+          counts.unknown++;
+          addBusy("inspection_failed", pid, "managed remote stdio identity unverified");
+          continue;
+        }
+
+        counts.managedIdleServers++;
+        restartableServers.push({
+          pid,
+          type: "remote-stdio",
+          start: e.proc.start,
+          controlSocket: e.record.controlSocket,
+          proc: e.proc,
+          managedRecord: e.record,
+          loadedThreads: hostRes2.loadedThreads || [],
+        });
+        continue;
+      }
       counts.remoteStdio++;
       addBusy("remote_stdio", pid,
         "active remote stdio app-server; restart unsupported, deferred until session exits");
@@ -1410,10 +1622,12 @@ export async function inspectAllSessions(options = {}) {
     counts.managedIdleServers++;
     restartableServers.push({
       pid,
+      type: "app-server",
       start: e.proc.start,
       socketPath,
       proc: e.proc,
       managedRecord,
+      loadedThreads: check2.loadedThreads || [],
     });
   }
 
@@ -1843,6 +2057,9 @@ export async function checkUpdate(targetVersion = null, options = {}) {
     }
     const state = await loadState();
     const currentVersion = state.selectedVersion || getBundledVersion();
+    if (await hasPendingTransaction()) {
+      return { upToDate: false, blocked: true, blockedReason: "blocked_restart", state };
+    }
 
     const optionsObj = await readOptions();
     const tz = optionsObj.timezone || DEFAULT_TIMEZONE;
@@ -1981,6 +2198,14 @@ export async function applyUpdate(options = {}) {
     }
     const isManual = options.isManual === true;
     const state = await loadState();
+
+    if (await hasPendingTransaction()) {
+      state.status = "failed";
+      state.blockedReason = "blocked_restart";
+      state.reason = "Interrupted runtime transition requires recovery";
+      await saveState(state);
+      return { applied: false, reason: "rollback_incomplete", state };
+    }
 
     const opts = await readOptions();
     const tz = opts.timezone || DEFAULT_TIMEZONE;
@@ -2175,6 +2400,8 @@ export async function applyUpdate(options = {}) {
         await symlink(target, temp);
         await rename(temp, getCurrentLink());
       };
+      const previousSelectedVersion = state.selectedVersion;
+      const previousSelectedDigest = state.selectedDigest;
       const transaction = await restartServers({
         servers: sessions.restartableServers,
         binary: join(stagedTarget, "bin/codex"), version: newVersion,
@@ -2183,10 +2410,46 @@ export async function applyUpdate(options = {}) {
         switchToOld: () => replaceLink(previousTarget),
         writeRecord: (pid, record) => durableJson(join(getSessionsDir(), String(pid)), record),
         removeRecord: pid => rm(join(getSessionsDir(), String(pid)), { force: true }),
+        writeJournal: entry => durableJson(getTransactionFile(), {
+          schemaVersion: 1, ...entry, previousTarget, stagedTarget,
+          candidateDigest: integrity.digest,
+        }),
+        clearJournal: () => rm(getTransactionFile(), { force: true }),
         commitAttempt: async () => {
           state.lastRestartAt = getNow().toISOString();
           state.nextRestartAllowedAt = new Date(now + 24 * 3600 * 1000).toISOString();
           state.restartAttemptCount = (state.restartAttemptCount || 0) + 1;
+          await saveState(state);
+        },
+        commitSelection: async () => {
+          state.selectedVersion = newVersion;
+          state.selectedDigest = integrity.digest;
+          state.status = "applying";
+          state.reason = "Selected runtime; completing session transition";
+          await saveState(state);
+        },
+        rollbackSelection: async () => {
+          state.selectedVersion = previousSelectedVersion;
+          state.selectedDigest = previousSelectedDigest;
+          await saveState(state);
+        },
+        finishSelection: async () => {
+          if (previousTarget) {
+            const tempPrev = join(getBaseRuntimeDir(), `.prev-${process.pid}-${Date.now()}`);
+            await symlink(previousTarget, tempPrev);
+            await rename(tempPrev, getPreviousLink());
+          }
+          if (existsSync(getStagedLink())) await rm(getStagedLink(), { force: true });
+          state.selectedVersion = newVersion;
+          state.selectedDigest = integrity.digest;
+          state.stagedVersion = null;
+          state.candidateVersion = null;
+          state.candidateDigest = null;
+          state.lastApplyAt = getNow().toISOString();
+          state.lastBlocker = null;
+          state.status = "applied";
+          state.reason = `Successfully applied ${newVersion} with graceful server restart`;
+          state.nextRetryAt = null;
           await saveState(state);
         },
       });
@@ -2198,28 +2461,6 @@ export async function applyUpdate(options = {}) {
         return { applied: false, reason: transaction.recovery === "rollback_incomplete" ? "rollback_incomplete" : transaction.reason, state };
       }
 
-      // Success
-      if (previousTarget) {
-        const tempPrev = join(getBaseRuntimeDir(), `.prev-${process.pid}-${Date.now()}`);
-        await symlink(previousTarget, tempPrev);
-        await rename(tempPrev, getPreviousLink());
-      }
-      if (existsSync(getStagedLink())) {
-        await rm(getStagedLink(), { force: true });
-      }
-
-      state.currentVersion = newVersion;
-      state.selectedVersion = newVersion;
-      state.selectedDigest = integrity.digest;
-      state.stagedVersion = null;
-      state.candidateVersion = null;
-      state.candidateDigest = null;
-      state.lastApplyAt = getNow().toISOString();
-      state.lastBlocker = null;
-      state.status = "applied";
-      state.reason = `Successfully applied ${newVersion} with graceful server restart`;
-      state.nextRetryAt = null;
-      await saveState(state);
       await cleanupOldReleases(newVersion, previousTarget);
       return { applied: true, version: newVersion, state };
     }
@@ -2467,6 +2708,7 @@ export async function getStatus() {
   const state = await loadState();
   const sessions = await inspectAllSessions({ readOnly: true });
   const options = await readOptions();
+  const pendingRecovery = await hasPendingTransaction();
   const appVersion = getAppVersion();
   const bundledVersion = getBundledVersion();
 
@@ -2570,7 +2812,8 @@ export async function getStatus() {
     maxIdleChecks: MAX_IDLE_CHECKS,
     restartAttemptCount: state.restartAttemptCount || 0,
     maxRestartAttempts: MAX_RESTART_ATTEMPTS,
-    blockedReason: state.blockedReason || null,
+    blockedReason: state.blockedReason || (pendingRecovery ? "blocked_restart" : null),
+    pendingRecovery,
     nextRetryAt: state.nextRetryAt || null,
     nextRestartAllowedAt: state.nextRestartAllowedAt || null,
     lastCheckAt: state.lastCheckAt,
@@ -2584,6 +2827,10 @@ export async function getStatus() {
     // count, not a conversation count; owned helper companions are excluded.
     activeSessions: sessions.sessionCount,
     isIdle: sessions.isIdle,
+    // Compatibility field: previously flagged whether live session handover was
+    // unconditionally blocked. With verified managed server switch_worker in place,
+    // restartable idle managed servers are eligible for live handover.
+    liveHandoverBlocked: false,
     // Compatibility field: session-level predicate indicating whether live
     // task/session blockers are absent (sessions.canApply).
     // Note: This evaluates only live process blockers; it does not check
@@ -2594,6 +2841,7 @@ export async function getStatus() {
       options.valid &&
       options.autoUpdate &&
       state.stagedVersion &&
+      !pendingRecovery &&
       !state.blockedReason &&
       state.status !== "paused_busy" &&
       (state.idleCheckCount || 0) < MAX_IDLE_CHECKS &&
@@ -2606,6 +2854,12 @@ export async function getStatus() {
 }
 
 export function formatSessionReady(status) {
+  if (status.pendingRecovery) {
+    return "no (interrupted transition requires recovery)";
+  }
+  if (status.liveHandoverBlocked) {
+    return "no (idle observed; live session migration is unverified)";
+  }
   if (!status.canApply) {
     return "no (waiting for real sessions or unverifiable processes to exit)";
   }
@@ -2627,6 +2881,9 @@ export function formatAutoApplyReady(status) {
   }
   if (status.blockedReason) {
     return `blocked (${status.blockedReason})`;
+  }
+  if (status.liveHandoverBlocked) {
+    return "no (live session migration is unverified)";
   }
   if (status.status === "paused_busy" || (status.idleCheckCount || 0) >= status.maxIdleChecks) {
     return `paused (daily check budget exhausted; waiting for scheduled retry at ${status.nextRetryAt || "next window"}; manual apply can re-check immediately)`;

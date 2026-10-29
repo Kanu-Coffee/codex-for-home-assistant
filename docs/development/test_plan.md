@@ -119,6 +119,8 @@ Supervisor가 없어도 검증 가능한 항목:
 
 ## 2. 자동 테스트 케이스
 
+Task 006 FIX_03의 미배포 검증은 `tests/test_codex_update_fix03.py`에서 rollback drain 실패·상태 전이·미저장 대화·release 오류·journal 보류·relay identity를 검사한다. 실제 공식 0.162.1→0.164.0의 제한된 격리 실험은 Executor 보고서에 별도로 기록하며 CLI/TUI live 전환과 HAOS 수용은 아직 미완료다.
+
 | ID | 테스트 | 기대 결과 |
 |---|---|---|
 | AT-001 | `config.yaml` parse | 오류 없음 |

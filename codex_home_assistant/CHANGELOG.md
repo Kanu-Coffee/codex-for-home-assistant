@@ -2,6 +2,22 @@
 
 All notable changes to this App are documented in this file.
 
+## [0.7.3-dev.1] - 2026-10-29
+
+### Added
+
+- Add managed session host relay (`codex-session-host.mjs`) for non-disruptive runtime updates during idle states.
+- Support live backend worker handover (`switch_worker`) for managed Remote stdio and interactive CLI/TUI sessions while preserving open connections and active terminal state.
+- Implement pure Node.js RFC 6455 WebSocket adapter over Unix domain sockets for managed interactive CLI/TUI frontend communication.
+- Recreate unpersisted empty threads transparently on the new worker with bidirectional ID mapping.
+- Bounded unsubscribe and cleanup for temporary title threads during conversation lifecycle.
+
+### Fixed
+
+- Align status reporting with real execution paths: managed idle server presence no longer unconditionally marks migration blocked when cooldown, budget, and validation criteria are satisfied.
+- Fix CLI frontend connection stall by handling HTTP Upgrade 101 Switching Protocols and WebSocket frames over Unix socket.
+- Preserve persisted conversation rollouts across worker transitions.
+
 ## [0.7.2] - 2026-10-26
 
 ### Fixed
