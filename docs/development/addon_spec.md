@@ -555,6 +555,8 @@ SUPERVISOR_URL=http://supervisor
 PATH=/usr/local/bin:...
 ```
 
+미배포 runtime handover 개발 구현은 `/data/codex-runtime/transaction.json`을 private journal로 사용한다. 전환이 중단되어 journal이 남으면 기존 generation을 보존하고 자동 적용과 새 Codex launch를 차단한다. 현재 journal의 자동 복구는 구현되지 않았으며, live-session 전환 호환성도 확인되지 않아 실행 중인 관리형 서버는 보류한다.
+
 Direct API helper는 runtime file의 owner, regular-file, single-link와 mode `0600`을 검사한 뒤 credential을 non-exported shell variable로 읽고 private header file을 통해 고정 `/usr/bin/curl`에 전달한다. API raw response는 필터링하지 않는다. Interactive process가 root이므로 runtime file 직접 읽기를 완전히 막지 못하는 잔여 위험은 별도로 문서화한다.
 
 Playwright MCP child는 Supervisor token을 받지 않는다. 검증된 dedicated browser token만 exact Home Assistant loopback origin의 init page 환경에 사용하며 runtime 파일은 App 재시작 때 다시 만들고 browser profile로 영속화하지 않는다.
