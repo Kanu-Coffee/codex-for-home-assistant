@@ -26,6 +26,10 @@
 
 ## Current Work
 
+### 2026-10-29 — 사용자 요청: 0.7.2 런타임 롤백 후보
+
+- DEV `0.7.3-dev.1` 및 `0.7.3-dev.2`의 task 006 런타임 변경을 취소하고 `0.7.2`의 rootfs 실행 코드를 복원한다. HAOS가 새 업데이트를 인식하도록 DEV 후보 버전은 `0.7.3-dev.3`으로 올린다. `/data`에 남은 런타임·대화 데이터와 실제 HAOS에서의 적용은 아직 검증하지 않았다.
+
 ### 2026-10-29 — task 006 FIX_17 Executor: 대형 JSONL relay crash 및 단발 CLI 우회 완료, DEV 0.7.3-dev.2 공개 배포
 
 - Reviewer의 [FIX_17](../../.handoff/006_idle-gated-runtime-server-update/FIX_17.md) 지침에 따라 P1 relay buffer overflow crash 및 P2 단발 명령 불필요 백엔드 기동 문제를 해결하고 [FIX_17_REPORT](../../.handoff/006_idle-gated-runtime-server-update/FIX_17_REPORT.md)를 작성 및 공개 배포를 완료했다.

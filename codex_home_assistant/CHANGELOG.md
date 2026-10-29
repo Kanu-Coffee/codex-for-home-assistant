@@ -2,29 +2,11 @@
 
 All notable changes to this App are documented in this file.
 
-## [0.7.3-dev.2] - 2026-10-29
+## [0.7.3-dev.3] - 2026-10-29
 
-### Fixed
+### Rollback
 
-- Fix relay buffer overflow crash (`server_buffer_overflow: frame exceeded MAX_BUFFER_BYTES` and client overflow) in `codex-session-host.mjs`. Support large JSONL payloads up to 32 MiB per frame, multi-chunk and multibyte UTF-8 boundaries, and multi-frame bursts without uncaught exceptions or relay crashes.
-- Implement bounded fatal transport error handling and cleanup policy that terminates the relay and its child processes cleanly with exit code 1 without leaking payload data or tokens to logs.
-- Bypass managed session host relay and app-server backend startup for one-shot CLI invocations (`--version`, `-V`, `--help`, `-h`, `help`, and `resume --help`), executing binary directly while keeping safety gates, credential unsetting, and sandbox settings intact.
-
-## [0.7.3-dev.1] - 2026-10-29
-
-### Added
-
-- Add managed session host relay (`codex-session-host.mjs`) for non-disruptive runtime updates during idle states.
-- Support live backend worker handover (`switch_worker`) for managed Remote stdio and interactive CLI/TUI sessions while preserving open connections and active terminal state.
-- Implement pure Node.js RFC 6455 WebSocket adapter over Unix domain sockets for managed interactive CLI/TUI frontend communication.
-- Recreate unpersisted empty threads transparently on the new worker with bidirectional ID mapping.
-- Bounded unsubscribe and cleanup for temporary title threads during conversation lifecycle.
-
-### Fixed
-
-- Align status reporting with real execution paths: managed idle server presence no longer unconditionally marks migration blocked when cooldown, budget, and validation criteria are satisfied.
-- Fix CLI frontend connection stall by handling HTTP Upgrade 101 Switching Protocols and WebSocket frames over Unix socket.
-- Preserve persisted conversation rollouts across worker transitions.
+- Restore the 0.7.2 runtime to address the reported DEV session failure.
 
 ## [0.7.2] - 2026-10-26
 

@@ -284,14 +284,12 @@ SSH 외부 포트는 JSON 옵션이 아니라 Network 설정이다.
 
 ### FR-021 Codex 런타임 자동 업데이트 및 유휴(idle) 세션 적용
 
-진행 중인 작업(in-flight request, active turn, approval/input wait, background task)이 없는 유휴(idle) 상태일 때 기존 backend를 연결·대화 보존과 함께 신버전으로 전환한다. 단순 열린 채팅창이나 미저장 빈 대화는 업데이트를 보류하지 않는다. 관리형 세션(Remote stdio 및 대화형 CLI/TUI)은 세션 릴레이를 통해 유휴 상태에서 백엔드를 무중단 전환하며, 관리되지 않는 레거시 세션은 정상 종료 시 적용된다.
-
 - 하루 4회(03:00, 09:00, 15:00, 21:00) 지정된 IANA timezone(기본 `Asia/Seoul`)으로 공식 GitHub releases의 latest stable release를 조회한다.
 - `codex_auto_update`가 `false`이면 자동 주기 확인을 수행하지 않는다.
 - 공식 tarball은 SHA-256 검증 및 path traversal 방지 검사를 거쳐 `/data/codex-runtime/releases/<version>-<target>`에 안전하게 추출된다.
-- CLI/TUI, SSH, Remote stdio, managed app-server의 실제 작업 상태를 포괄적으로 감지하며, 실제 활성 작업(active turn, in-flight request, approval/input wait, background terminal/task)이 감지되면 적용을 보류(`staged`)하고 5분 간격으로 로컬 상태만 재확인한다. 프로세스 존재나 loaded conversation 자체만으로 차단하지 않고, 활성 작업이 없는 유휴 상태에서는 연결을 유지한 채 기존 실행 backend를 신버전으로 전환하고 동일 대화를 복원한다.
+- CLI/TUI, SSH, Remote stdio, managed app-server의 활성 세션을 포괄적으로 감지하며, 활성 세션(active turn, approval wait, loaded conversation 등)이 감지되면 적용을 보류(`staged`)하고 5분 간격으로 로컬 상태만 재확인한다.
 - 세션 감지는 `/proc/<pid>/exe`의 실제 entrypoint(정확한 package 경계와 허용된 companion 상대 경로)와 유효한 등록 record 기준으로 고유 프로세스를 계상한다. argv에 Codex 경로·`app-server` 문자열이 데이터로만 존재하는 무관 프로세스, 그리고 검증된 Codex 프로세스에 귀속되는 helper·companion은 독립 세션으로 계상하지 않는다. package 경계 내부의 미식별 executable과 귀속·신원을 검증할 수 없는 잔여는 `unknown` blocker로 보수적으로 보류한다. subcommand/option 해석의 값 있는 global option은 실제 번들 Codex의 help 기준으로 wrapper·runtime이 공유한다.
-- 식별된 모든 세션 프로세스(미식별 package executable 포함)가 종료되거나 검증된 실제 작업 유휴 상태일 때 원자적 symlink 전환(`current -> releases/<version>-<target>`) 및 기존 서버 교체를 수행한다. 관리형 Remote stdio 세션은 relay를 통해 클라이언트 연결을 끊지 않고 worker를 교체하며 대화 상태를 복원한다. 관리되지 않는 레거시 세션은 안전하게 종료를 대기한다.
+- 식별된 모든 세션 프로세스(미식별 package executable 포함)가 종료되거나 검증된 유휴 상태일 때 원자적 symlink 전환(`current -> releases/<version>-<target>`)을 수행한다. Remote stdio blocker는 사용자가 연결을 정상 종료하면 실제 Codex 서버가 EOF에서 스스로 종료되어 해소되며, 업데이터가 원격 연결을 끊거나 재연결하지는 않는다.
 - `ha-codex-update` CLI(`status`, `check`, `apply`, `update`)와 wrapper `codex update` 라우팅을 지원한다.
 - AppArmor에서 `/data/codex-runtime/**`는 `rix`를 부여하고 write/link를 명시적으로 차단하여 샌드박스 내부 변조를 방지한다.
 
