@@ -15,7 +15,7 @@ TEXT_SUFFIXES = {
     ".yaml",
     ".yml",
 }
-IGNORED_PARTS = {".git", ".pytest_cache", "__pycache__"}
+IGNORED_PARTS = {".git", ".pytest_cache", "__pycache__", ".test-tmp", ".venv", ".tools", "node_modules"}
 
 
 def repository_text_files(repository_root: Path):
@@ -33,12 +33,12 @@ def test_no_runtime_secret_files_are_present(repository_root: Path) -> None:
         for path in repository_root.rglob("*")
         if path.is_file()
         and path.name in forbidden_names
-        and ".git" not in path.parts
+        and not IGNORED_PARTS.intersection(path.parts)
     ]
     private_host_keys = [
         str(path.relative_to(repository_root))
         for path in repository_root.rglob("ssh_host_*_key")
-        if path.is_file() and ".git" not in path.parts
+        if path.is_file() and not IGNORED_PARTS.intersection(path.parts)
     ]
 
     assert forbidden_files == []

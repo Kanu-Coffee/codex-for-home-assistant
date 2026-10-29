@@ -365,7 +365,7 @@ AppArmor와 managed requirements가 고정한 `secrets.yaml`·`.storage` 밖의 
 - S6 `codex-updater` 서비스는 `SUPERVISOR_TOKEN` 및 민감 환경 변수를 제거한 상태로 데몬을 실행
 - 런타임 아카이브 추출 시 path traversal 방지 및 SHA-256 해시 검증 강제
 - `/data/codex-runtime/state.json` 및 업데이터 로그에 토큰이나 민감 사용자 입력을 남기지 않음
-- 활성 세션(CLI, TUI, SSH, remote stdio, app-server) 감지 시 유휴 상태가 될 때까지 symlink 전환을 안전하게 보류
+- 실제 작업 또는 관측 불가 상태(CLI, TUI, SSH, remote stdio, app-server) 감지 시 유휴 상태가 될 때까지 symlink 전환을 안전하게 보류
 
 ## 7. 사고 대응
 

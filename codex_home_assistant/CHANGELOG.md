@@ -2,6 +2,15 @@
 
 All notable changes to this App are documented in this file.
 
+## [0.7.3-dev.4] - 2026-10-30
+
+### Changed
+
+- Manage interactive CLI and JSONL Remote stdio through a persistent lifecycle host. Idle loaded conversations no longer block worker handover; unfinished requests, approvals and background work remain protected.
+- Use the existing pinned `ws` runtime for the TUI Unix WebSocket transport, preserving connection framing and backpressure for large messages.
+- Hold admission during worker replacement, restore persistent conversations, verify the new worker identity, and retain a journal when recovery is incomplete.
+- Verify official 0.162.1 to 0.165.0 worker replacement and subsequent conversation continuity through stdio, WebSocket and a real PTY TUI with a local mock provider. HAOS/mobile and native ARM acceptance are pending.
+
 ## [0.7.3-dev.3] - 2026-10-29
 
 ### Rollback

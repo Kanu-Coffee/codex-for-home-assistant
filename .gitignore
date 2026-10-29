@@ -27,3 +27,6 @@ home-assistant_v2.db*
 
 # Runtime feedback reports (private, never commit)
 /feedback/
+
+# Dependencies installed from the existing lockfile
+node_modules/

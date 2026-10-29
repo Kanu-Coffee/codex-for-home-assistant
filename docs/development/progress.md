@@ -6,7 +6,7 @@
 
 - 상태: **Stable 0.7.2 main·tag·public amd64/aarch64 image·GitHub latest 정식 릴리스 게시 완료 / 사용자 dev.2 실기기 전체 정상 확인·승격 승인 / exact PR/main CI·Builder·독립 공개/서명/provenance/SPDX 검증 PASS / task 004 개발 PLAN 종료**
 - 현재 마일스톤: **Stable 0.7.2 정식 배포 완료**
-- 마지막 문서 기준일: **2026-10-29**
+- 마지막 문서 기준일: **2026-10-30**
 - 저장소: public `Kanu-Coffee/codex-for-home-assistant`, default branch `main`
 
 ## 완료된 결정
@@ -25,6 +25,59 @@
 - [x] interactive/Codex/S6 ambient `SUPERVISOR_TOKEN` 상속 제거와 private helper credential loader 구현
 
 ## Current Work
+
+### 2026-10-30 — task 007 구축: 관리형 CLI·Remote worker 전환 로컬 검증
+
+- 로컬 후보 `0.7.3-dev.4`를 구현했다. lifecycle host·pinned ws frontend·작업 ledger/authoritative 관측·입력 barrier·worker 교체·영속 대화 복원을 기존 applyUpdate에 연결했다. 단발 명령은 직접 실행하며 기존 스케줄·예산·cooldown·정책은 유지한다.
+- 공식 0.162.1→0.165.0의 stdio/WebSocket/실제 PTY TUI에서 적용 후 같은 대화의 다음 응답과 문맥 보존을 검증했다(3 passed). 전체 pytest 286 passed, 5 skipped. amd64 이미지 build, Node/ShellCheck/actionlint/Hadolint/Markdown/diff 검사 PASS.
+- 이미지 actual wrapper 통합은 진단용 컨테이너 추가 권한에서 PASS. 기본 Docker sandbox는 호스트 namespace 제한으로 실패했고 AppArmor profile 기반 smoke는 시작 불가였다. 제품 manifest의 권한은 완화하지 않았다. 실제 HAOS/mobile/native ARM 및 실제 policy gate를 통과하는 전체 슬롯 E2E는 NOT RUN이다.
+- [구축 결과와 지원 경계](runtime-handover.md)에 재현 방법, fixture 문제 해결, ephemeral/legacy/불완전 journal 한계와 수용 공백을 기록했다. 기존 handoff의 미완료 기록은 이력으로 보존한다. 공개 배포·운영 HA 변경·외부 Git 작업은 수행하지 않았다.
+
+### 2026-10-30 — task 007 FIX_01 Executor: activity 관측 모듈 추가
+
+- `codex-activity.mjs`와 runtime manager의 `inspectAppServerWork()`를 추가했다. 실제 작업 판정은 loaded 수와 분리하고 request/queue/server-request/turn gauge, thread runtime status, 모든 페이지의 background terminal을 관측한다. malformed/누락/중복 gauge·PID/thread identity 불일치·pagination 반복·RPC 실패는 unknown이다. 내부 RPC 오류 원문은 노출하지 않는다.
+- 검증: activity와 기존 updater pytest 합계 130 passed (73.12초), 두 JS의 Node syntax 및 `git diff --check` PASS. 실제 worker 교체·대화 복원·TUI/mobile·HAOS는 NOT RUN.
+- 합성 client 회귀 14종을 추가했다. 이 관측 API는 기존 재시작 허가에 아직 연결하지 않았다. 연결·대화 복원과 admission 구현 전 loaded blocker를 제거하지 않는다. 원래 CLI/stdio 업데이트 문제는 여전히 미해결이다. 기존 FIX_01_REPORT는 이력 보존을 위해 수정하지 않았다.
+
+### 2026-10-30 — task 007 FIX_01 Executor: wire probe 부분 진행
+
+- 공식 Unix WebSocket proxy 초기화 재현 테스트 `tests/test_codex_wire_probe.py`를 추가했다. GitHub official archive SHA-256을 검증한 baseline 0.162.1 및 로컬 0.165.0에서 각각 1 passed다. 임시 HOME을 사용했고 운영 인증은 읽지 않았다.
+- [FIX_01_REPORT](../../.handoff/007_work-aware-runtime-update/FIX_01_REPORT.md)에 결과와 미완료를 기록했다. 제품 CLI/stdio 작업 기반 업데이트·대화 복원 구현은 아직 완료하지 않았고 HAOS 검증도 NOT RUN이다.
+
+### 2026-10-30 — task 007 실패 Reviewer: 전송 규약 오류 확인 및 FIX_01
+
+- [FIX_01](../../.handoff/007_work-aware-runtime-update/FIX_01.md)을 신규 발행했다. 공식 0.165.0 소스에서 app-server proxy는 raw byte bridge이고 Unix listener는 WebSocket임을 확인했다. 앞선 JSONL 직접 주입 실험은 전송 규약이 잘못됐다. 같은 binary에서 HTTP Upgrade→masked WebSocket initialize를 보내 101과 result를 확인했고 시험 서버 SIGHUP exit 0도 확인했다. 인증/HAOS를 실패 원인으로 확정할 근거는 없다.
+- 현재 변경은 pending gauge 보강뿐이며 핵심 구현은 미완료다. FIX에 adapter/ledger/admission/복원/rollback/scheduler의 구현 순서와 실제 client 후속 요청 수용시험, 운영상 제약 및 요건 조정 선택지를 명시했다. 이번 원인은 host protocol에서 확인되어 HAOS VM은 설치하지 않았다. VM은 구현 통합 뒤 AppArmor·Ingress·SSH 검증 단계에서 사용한다.
+- Reviewer 검증: pending gauge 관련 pytest 24 passed, 92 deselected; FIX/progress Markdown lint와 `git diff --check` PASS. 실제 backend 교체·동일 대화 후속 모델 응답·baseline pair·TUI/mobile·HAOS는 NOT RUN이다. 제품 코드는 이번 리뷰에서 변경하지 않았다.
+
+### 2026-10-30 — task 007 재시도: 공식 proxy 진단
+
+- 사용자의 구현 계속 지시 후 공식 0.165.0 binary와 격리된 테스트 home에서 Unix app-server/proxy 연결을 다시 시도했다. app-server socket 생성은 확인했으나 initialize 응답을 받지 못해 서버 교체 후 대화·입력 복원 가능성은 여전히 미검증이다. 테스트 전용 프로세스는 종료했다.
+- 진단 로그에 원격 제어 인증 대기 메시지가 관측됐으며, 격리 테스트에서 내부 remote control 비활성화 환경과 가짜 API credential을 각각 시도해도 initialize 응답을 얻지 못했다. 인증 대기가 원인이라고 확정하지 않는다.
+- 제품 코드 추가 변경은 없다. task 007의 CLI/stdio 작업 관측·admission·교체·복원 구현과 전체 수용시험은 미완료다. 작업 보류 정책은 기존대로 남는다.
+
+### 2026-10-30 — task 007 Executor 부분 진행
+
+- 관리형 Unix app-server 진단에서 제공된 `app.server_requests.pending` 양수를 작업 보류 사유로 추가하고 회귀 fixture를 확장했다. 이는 추가 보호만 제공하며 CLI·Remote stdio가 프로세스 생존만으로 보류되는 원래 문제는 해결되지 않았다.
+- 관련 updater pytest 116개, Node syntax와 `git diff --check` 통과. 격리된 공식 0.165.0 Unix app-server/proxy 실험은 서버 시작을 확인했으나 initialize 응답을 확인하지 못해 reconnect 가능성을 판정할 수 없었다. 나머지 구현과 실제 CLI/stdio 전환·HAOS 시험은 NOT RUN이다. 상세와 후속 작업은 [REPORT](../../.handoff/007_work-aware-runtime-update/REPORT.md)에 기록한다.
+
+### 2026-10-30 — 작업 기준 런타임 업데이트 Planner
+
+- 사용자 요구: 열린 채팅·연결·프로세스·loaded conversation만으로 보류하지 않고, 진행/대기 요청·tool·승인 대기 등 실제 작업이 있을 때만 보류한다. 운영 호스트의 자동 업데이트 판정과 현재 HA 구현을 비교해 [task 007 PLAN](../../.handoff/007_work-aware-runtime-update/PLAN.md)을 작성했다.
+- 기준: `dev` HEAD `fb15cd3`, task 006 실행 코드가 0.7.2로 롤백된 `0.7.3-dev.3`. 기존 미커밋 진행 기록은 보존한다. 구현·배포·운영 서비스 변경은 이번 범위에 포함하지 않는다.
+- 확인: 운영 `codex_stable_maintenance.py`는 loaded 수 대신 request/queue/server-request/turn gauge, thread runtime status, background terminal을 검사한다. 정제 state/journal에서 10월 29일 `0.165.0` 설치·재시작 완료를 확인했다. host는 Unix 서버 2개를 관리하므로 HA 직접 CLI/stdio에 단순 복사할 수 없다.
+- 계획: 공통 activity 판정 → baseline/후보의 공식 daemon/Unix/TUI/stdio proxy 기능 실험 → 최소 lifecycle·admission·복원 구현 → 기존 HA scheduler 통합. task 006 전체 relay 복원은 기본 해법으로 삼지 않는다. 실제 backend 버전 교체와 동일 대화 후속 요청을 CLI·stdio 모두에서 수용 기준으로 둔다.
+- 검증: 운영 판정 함수만 AST 추출한 합성 RPC 6사례 PASS; 기존 updater 관련 pytest 15 passed, 89 deselected (`-k 'session_inspection_and_admission_safety or registered_cli_counted_once_with_cli_reason or app_server_inspection_fails_closed_on_malformed_and_missing_gauges or timezone_and_slot_calculations'`). 로컬 공식 `0.165.0` help와 최신 공식 App Server 문서를 확인했다. 두 변경 문서의 Markdown lint·비밀값 패턴, 신규 PLAN/링크·공백 및 `git diff --check` PASS. 기존 progress 이력에는 롤백으로 사라진 `codex-session-host.mjs`를 가리키는 링크가 남아 있어 전체 과거 링크 검사는 PASS로 기록하지 않는다.
+- 미검증: 새 개선 구현·실제 backend 교체·자동 reconnect/resume·inference·Docker/native ARM·HAOS/mobile 시험은 NOT RUN. 기존 pytest 통과와 운영 완료 기록을 새 HA 개선의 성공으로 간주하지 않는다. 운영 서비스·설치·인증·HA 변경과 commit/push/PR/release는 수행하지 않았다.
+
+### 2026-10-29 — 개발 잔여물 정리
+
+- 사용자 요청에 따라 사용 종료된 HAOS 시험 VM `antigravity-haos-4e4fc806baf5`와 전용 가상 디스크·캐시, 유효하지 않은 시험 storage pool을 제거했다. 프로젝트 시험용 orphan 프로세스 2개를 종료하고 재생성 가능한 시험 바이너리·archive, 미사용 로컬 시험 이미지 2개 및 이 프로젝트로 식별된 Docker build cache를 정리했다.
+- `/` 가용 공간은 표시 기준 90 GiB에서 112 GiB로 증가했다. 시험 로그·handoff와 다른 프로젝트의 컨테이너·이미지·볼륨은 유지했다. `.test-tmp`에는 로그와 소규모 시험 데이터 약 287 MiB가 남는다.
+
+### 2026-10-29 — 0.7.2 런타임 DEV 롤백 게시
+
+- 사용자 요청으로 task 006 런타임 변경을 취소하고 `0.7.2` rootfs 실행 코드를 복원했다. HAOS 업데이트 인식을 위한 DEV 버전은 `0.7.3-dev.3`이다. [PR #61](https://github.com/Kanu-Coffee/codex-for-home-assistant/pull/61), dev CI `40890102149`, publishing Builder `40891368344` 통과. [DEV 릴리스](https://github.com/Kanu-Coffee/codex-for-home-assistant/releases/tag/0.7.3-dev.3)와 amd64/arm64 공개 manifest `sha256:84f0c56a4ecb72a6f9698969c337576ccc081ab7736532968bd716e2f394ed0d` 확인. 로컬 pytest 247 passed, 1 skipped. 사용자 HAOS 설치 및 기존 `/data` 호환성은 미검증이다.
 
 ### 2026-10-29 — 사용자 요청: 0.7.2 런타임 롤백 후보
 

@@ -583,6 +583,12 @@ ChatGPT mobile Remote (선택)
 1. **세션 등록**: 래퍼 `/usr/local/bin/codex`는 실행 시 `/run/codex-ha/codex-maintenance/gate.lock`에 공유 락(`flock -s`)을 획득하여 심볼릭 링크 원자적 교체 중 새 세션 진입을 직렬화한다. 세션 레지스트리 `/run/codex-ha/codex-maintenance/sessions/<pid>.json`에 PID, start-time, 바이너리 경로를 기록한다.
 2. **프로세스 탐색**: `/run` 레지스트리와 `/proc` 인벤토리를 PID+start-time 기준으로 합쳐 중복 계상 없이 고유 프로세스만 세는 단일 판별 함수를 사용한다. 식별 근거는 `/proc/<pid>/exe`의 실제 entrypoint(정확한 release/baseline 경계와 허용 companion 상대 경로, `(deleted)` 처리)이며, shebang으로 실행되는 검증 fixture는 interpreter argv의 정확한 entrypoint 위치로 확인한다. argv에 Codex 경로·`app-server` 문자열이 데이터로만 포함된 프로세스는 세션으로 계상하지 않고, 검증된 Codex 소유자에 종속된 helper·companion은 독립 blocker가 되지 않으며, baseline/release 경계 내부의 미식별 executable과 귀속을 증명할 수 없는 잔여는 조용히 무시하지 않고 `unknown`으로 보류한다(향후 패키지의 새 companion 포함). 등록 record는 wrapper와 동일한 positional subcommand/`--listen` 구문 해석을 공유하고, 값 있는 global option(`-p`, `-a`, `--enable`, `--disable`, `--remote`, `--remote-auth-token-env`, `--local-provider`, `-i` 등)은 실제 번들 버전 바이너리의 help를 근거로 양쪽에 함께 반영한다.
 3. **App-Server 진단**: 로컬 유닉스 소켓을 통해 RFC 6455 WebSocket 클라이언트로 app-server 상태를 조회한다.
-4. **보수적 유휴 판정**: 활성 요청·turn뿐만 아니라, 승인 대기, 백그라운드 터미널, 대화가 로드된 idle 세션까지 busy로 판정하여 안전하게 적용을 보류(`staged`)한다.
+4. **보수적 유휴 판정**: 활성 요청·turn, 승인 대기와 백그라운드 터미널을 busy로 판정하되 loaded idle 대화 자체는 제외하여 안전하게 적용을 보류(`staged`)한다.
 5. **백그라운드 데몬 및 재시도**: S6 서비스 `codex-updater`(`codex-updater-daemon.mjs`)가 실행된다. 설정된 시간대 기준 하루 4회(03, 09, 15, 21시) 네트워크 조회를 수행하며, pending 업데이트가 존재할 때는 네트워크 요청 없이 5분마다 로컬 세션 유휴 여부만 재검사하여 모두 유휴 상태일 때 원자적 교체를 완료한다.
 6. **샌드박스 경계 강화**: AppArmor 프로필에서 `/data/codex-runtime/**` 경로에 실행(`rix`) 권한을 부여하고 쓰기/링크(`deny wkl`)를 명시적으로 차단하여 샌드박스 내부에서의 변조를 방지한다.
+
+### 관리형 연결의 worker 교체
+
+`codex-session-host.mjs`는 JSONL stdio 또는 pinned ws 기반 Unix WebSocket frontend를 유지하고 공식 stdio worker를 교체한다. 요청 ledger와 `codex-activity.mjs`의 authoritative diagnostics/thread/background 관측을 조합한다. updater는 모든 host의 barrier를 확보한 뒤 재검사하고 worker 종료·기동·동일 영속 thread 복원을 수행한다. selected/running identity 검증과 durable journal commit 후 입력을 재개한다. 직접 Unix server의 loaded 대화는 이 host 없이 안전 복원을 증명할 수 없어 보류한다.
+
+내용 있는 ephemeral, 일부 command/process 수명 관측, 비가역 schema migration과 crash 이후 불완전 journal의 자동 복구는 제한으로 남는다. journal이 남으면 자동 중복 실행 대신 명시적 recovery 상태로 닫는다. 실제 HAOS/mobile 수용은 로컬 시험과 별도다.

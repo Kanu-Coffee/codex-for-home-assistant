@@ -63,8 +63,14 @@ jobs:
             'bwrap (enforce)' /sys/kernel/security/apparmor/profiles
 
 
+      - name: Install locked runtime transport for local tests
+        run: npm ci --prefix codex_home_assistant/playwright --ignore-scripts --no-audit --no-fund
+
       - name: Run Python policy and helper tests
         run: python -m pytest -ra
+
+      - name: Remove installed runtime test dependencies before repository lint
+        run: rm -rf codex_home_assistant/playwright/node_modules
 
       - name: Run YAML lint
         run: yamllint -c .yamllint .
