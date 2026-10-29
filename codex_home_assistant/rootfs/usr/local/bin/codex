@@ -134,6 +134,7 @@ if [[ -d "${CODEX_SESSIONS_DIR}" ]]; then
     # option-aware skip as the runtime classifier (parseCodexInvocation in
     # codex-runtime-manager.mjs). Option values and post-'--' prompts are never
     # treated as subcommands.
+    is_one_shot=false
     codex_subcommand=""
     codex_listen=""
     options_ended=false
@@ -149,10 +150,16 @@ if [[ -d "${CODEX_SESSIONS_DIR}" ]]; then
         if [[ -z "${codex_subcommand}" ]]; then
           codex_subcommand="${token}"
         fi
+        if [[ "${token}" == "help" ]]; then
+          is_one_shot=true
+        fi
       else
         case "${token}" in
           --)
             options_ended=true
+            ;;
+          --version|-V|--help|-h)
+            is_one_shot=true
             ;;
           --listen=*)
             codex_listen="${token#--listen=}"
@@ -205,7 +212,7 @@ if [[ -d "${CODEX_SESSIONS_DIR}" ]]; then
         chmod 0700 /run/codex-ha/codex-maintenance/control 2>/dev/null || true
         control_sock="/run/codex-ha/codex-maintenance/control/stdio-$$.sock"
       fi
-    elif [[ "${has_remote}" == false && ( -z "${codex_subcommand}" || "${codex_subcommand}" == "resume" || "${codex_subcommand}" == "fork" ) && -f "/usr/local/share/codex-ha/codex-session-host.mjs" ]]; then
+    elif [[ "${has_remote}" == false && "${is_one_shot}" == false && ( -z "${codex_subcommand}" || "${codex_subcommand}" == "resume" || "${codex_subcommand}" == "fork" ) && -f "/usr/local/share/codex-ha/codex-session-host.mjs" ]]; then
       managed="true"
       session_type="cli"
       mkdir -p /run/codex-ha/codex-maintenance/control /run/codex-ha/codex-maintenance/cli 2>/dev/null || true
@@ -221,19 +228,21 @@ if [[ -d "${CODEX_SESSIONS_DIR}" ]]; then
     fi
     version_output=$("${codex_real_bin}" --version 2>/dev/null || true)
     selected_version=${version_output#codex-cli }
-    if ! jq -n --argjson pid "$$" --arg start "${start_time}" \
-      --arg type "${session_type}" --argjson managed "${managed}" \
-      --arg socketPath "${unix_sock}" --arg controlSocket "${control_sock}" \
-      --arg exe "${codex_real_bin}" \
-      --arg version "${selected_version}" --arg cwd "${PWD}" \
-      --args '{pid:$pid,start:$start,type:$type,managed:$managed,socketPath:$socketPath,controlSocket:$controlSocket,exe:$exe,version:$version,cwd:$cwd,args:$ARGS.positional}' \
-      -- -c "approval_policy=\"${approval_policy}\"" \
-      -c "sandbox_mode=\"${sandbox_mode}\"" \
-      -c 'sandbox_workspace_write.network_access=true' \
-      --add-dir /data/codex-ha-memory "${CODEX_HA_BROWSER_APPROVAL_ARGS[@]}" "$@" \
-      > "${CODEX_SESSIONS_DIR}/$$"; then
-      printf '%s\n' 'codex: unable to register session safely' >&2
-      exit 78
+    if [[ "${is_one_shot}" == false ]]; then
+      if ! jq -n --argjson pid "$$" --arg start "${start_time}" \
+        --arg type "${session_type}" --argjson managed "${managed}" \
+        --arg socketPath "${unix_sock}" --arg controlSocket "${control_sock}" \
+        --arg exe "${codex_real_bin}" \
+        --arg version "${selected_version}" --arg cwd "${PWD}" \
+        --args '{pid:$pid,start:$start,type:$type,managed:$managed,socketPath:$socketPath,controlSocket:$controlSocket,exe:$exe,version:$version,cwd:$cwd,args:$ARGS.positional}' \
+        -- -c "approval_policy=\"${approval_policy}\"" \
+        -c "sandbox_mode=\"${sandbox_mode}\"" \
+        -c 'sandbox_workspace_write.network_access=true' \
+        --add-dir /data/codex-ha-memory "${CODEX_HA_BROWSER_APPROVAL_ARGS[@]}" "$@" \
+        > "${CODEX_SESSIONS_DIR}/$$"; then
+        printf '%s\n' 'codex: unable to register session safely' >&2
+        exit 78
+      fi
     fi
 
     flock -u 200 2>/dev/null || true

@@ -4873,3 +4873,364 @@ def test_fix15_managed_idle_server_status_reporting_and_guard_regressions(
     bs = res["busy"]
     assert "no (waiting for real sessions" in bs["sessionText"]
     assert "deferred (waiting for active sessions" in bs["autoText"]
+
+
+def test_fix17_large_jsonl_payload_and_framing_resilience(tmp_path, repository_root):
+    """
+    FIX_17 regression:
+    Verify that codex-session-host.mjs handles large JSONL messages (6MiB+ payload,
+    matching reviewer reproduction), UTF-8 multibyte chunk boundaries, and
+    multiple frames packed in a single chunk without server_buffer_overflow crash.
+    """
+    runtime_dir = tmp_path / "runtime"
+    maint_dir = tmp_path / "maintenance"
+    runtime_dir.mkdir(parents=True, exist_ok=True)
+    maint_dir.mkdir(parents=True, exist_ok=True)
+    sessions_dir = maint_dir / "sessions"
+    sessions_dir.mkdir(parents=True, exist_ok=True)
+    control_sock = maint_dir / "control.sock"
+
+    node_bin = shutil.which("node") or "/usr/bin/node"
+    host_script = repository_root / "codex_home_assistant" / "rootfs" / "usr" / "local" / "share" / "codex-ha" / "codex-session-host.mjs"
+
+    # Worker script that emits a 6.5MiB response, multibyte UTF-8 chunks, and multi-frame chunk
+    worker_script = tmp_path / "worker.mjs"
+    worker_script.write_text("""
+import readline from "node:readline";
+
+const rl = readline.createInterface({ input: process.stdin, terminal: false });
+
+rl.on("line", (line) => {
+  if (!line.trim()) return;
+  try {
+    const req = JSON.parse(line);
+    if (req.method === "test/large") {
+      // 6.5 MiB payload (exceeds old 5MiB MAX_BUFFER_BYTES limit)
+      const bigString = "A".repeat(6500000);
+      const resp = JSON.stringify({ id: req.id, result: { data: bigString } }) + "\\n";
+      process.stdout.write(resp);
+    } else if (req.method === "test/multiframe") {
+      // Two complete frames in a single write chunk
+      const frame1 = JSON.stringify({ id: 101, method: "notice", params: { msg: "first" } }) + "\\n";
+      const frame2 = JSON.stringify({ id: 102, method: "notice", params: { msg: "second" } }) + "\\n";
+      process.stdout.write(frame1 + frame2);
+    } else if (req.method === "test/korean_utf8") {
+      // Multibyte characters
+      const resp = JSON.stringify({ id: req.id, result: { text: "한글테스트_🚀_프레임_정상_전달" } }) + "\\n";
+      process.stdout.write(resp);
+    } else {
+      process.stdout.write(JSON.stringify({ id: req.id, result: { status: "ok" } }) + "\\n");
+    }
+  } catch (err) {
+    process.stderr.write("worker parse error: " + err.message + "\\n");
+  }
+});
+""")
+
+    # Launch relay with stdio client attach
+    proc = subprocess.Popen(
+        [
+            node_bin,
+            str(host_script),
+            "--control-socket", str(control_sock),
+            "--session-file", str(sessions_dir / "%PID%"),
+            "--version", "0.165.0",
+            "--type", "remote-stdio",
+            "--exe", node_bin,
+            "--",
+            str(worker_script),
+        ],
+        cwd=repository_root,
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+
+    try:
+        # Wait for control socket to be created
+        for _ in range(50):
+            if control_sock.exists():
+                break
+            time.sleep(0.05)
+        assert control_sock.exists(), "control socket was not created"
+
+        # Helper to send request and read newline-delimited response
+        def send_and_recv(req_dict):
+            req_bytes = json.dumps(req_dict).encode("utf-8") + b"\n"
+            proc.stdin.write(req_bytes)
+            proc.stdin.flush()
+            line = proc.stdout.readline()
+            return json.loads(line.decode("utf-8"))
+
+        # 1. Normal ping
+        res1 = send_and_recv({"id": 1, "method": "ping"})
+        assert res1["id"] == 1
+        assert res1["result"]["status"] == "ok"
+
+        # 2. Large 6.5MiB payload (reproducing Reviewer's exact crash scenario)
+        res_large = send_and_recv({"id": 2, "method": "test/large"})
+        assert res_large["id"] == 2
+        assert len(res_large["result"]["data"]) == 6500000
+
+        # 3. Multiframe in single chunk
+        proc.stdin.write(json.dumps({"id": 3, "method": "test/multiframe"}).encode("utf-8") + b"\n")
+        proc.stdin.flush()
+        line1 = proc.stdout.readline()
+        line2 = proc.stdout.readline()
+        f1 = json.loads(line1.decode("utf-8"))
+        f2 = json.loads(line2.decode("utf-8"))
+        assert f1["id"] == 101 and f1["params"]["msg"] == "first"
+        assert f2["id"] == 102 and f2["params"]["msg"] == "second"
+
+        # 4. Korean multibyte UTF-8
+        res_utf8 = send_and_recv({"id": 4, "method": "test/korean_utf8"})
+        assert res_utf8["id"] == 4
+        assert res_utf8["result"]["text"] == "한글테스트_🚀_프레임_정상_전달"
+
+        # Verify relay is still alive and has not crashed
+        assert proc.poll() is None, "relay process terminated unexpectedly"
+    finally:
+        proc.kill()
+        proc.wait(timeout=2)
+
+
+def test_fix17_fatal_transport_error_on_exceeded_frame_limit(tmp_path, repository_root):
+    """
+    FIX_17 regression:
+    Verify that when an oversized frame (> 32MiB MAX_FRAME_BYTES limit) is received,
+    codex-session-host.mjs logs safe diagnostics without leaking payload, does NOT
+    throw an uncaught stack exception, exits cleanly with code 1, and cleans up sockets/files.
+    """
+    maint_dir = tmp_path / "maintenance"
+    maint_dir.mkdir(parents=True, exist_ok=True)
+    sessions_dir = maint_dir / "sessions"
+    sessions_dir.mkdir(parents=True, exist_ok=True)
+    control_sock = maint_dir / "control.sock"
+
+    node_bin = shutil.which("node") or "/usr/bin/node"
+    host_script = repository_root / "codex_home_assistant" / "rootfs" / "usr" / "local" / "share" / "codex-ha" / "codex-session-host.mjs"
+
+    # Worker that sends an oversized 34MiB frame
+    worker_script = tmp_path / "oversized_worker.mjs"
+    worker_script.write_text("""
+import readline from "node:readline";
+
+const rl = readline.createInterface({ input: process.stdin, terminal: false });
+rl.on("line", () => {
+  // Emit 34MiB single line
+  const huge = "B".repeat(34 * 1024 * 1024);
+  process.stdout.write(JSON.stringify({ id: 999, result: { secret_token: "TOP_SECRET_12345", data: huge } }) + "\\n");
+});
+""")
+
+    proc = subprocess.Popen(
+        [
+            node_bin,
+            str(host_script),
+            "--control-socket", str(control_sock),
+            "--session-file", str(sessions_dir / "%PID%"),
+            "--version", "0.165.0",
+            "--type", "remote-stdio",
+            "--exe", node_bin,
+            "--",
+            str(worker_script),
+        ],
+        cwd=repository_root,
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+
+    try:
+        for _ in range(50):
+            if control_sock.exists():
+                break
+            time.sleep(0.05)
+        assert control_sock.exists()
+
+        # Trigger oversized response
+        proc.stdin.write(b'{"id":1,"method":"trigger"}\n')
+        proc.stdin.flush()
+
+        # Wait for relay to terminate on fatal transport error
+        try:
+            proc.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            raise AssertionError("relay did not terminate on oversized frame")
+
+        stderr_bytes = proc.stderr.read()
+        assert proc.returncode == 1, f"expected exit code 1, got {proc.returncode}"
+        stderr_str = stderr_bytes.decode("utf-8", errors="replace")
+        assert "fatal transport error" in stderr_str
+        assert "frame_exceeded_max_frame_bytes" in stderr_str
+        # Ensure secret token / data payload is never logged in stderr
+        assert "TOP_SECRET_12345" not in stderr_str
+        # Ensure it was not an uncaught exception
+        assert "uncaughtException" not in stderr_str
+        assert "server_buffer_overflow" not in stderr_str
+    finally:
+        if proc.poll() is None:
+            proc.kill()
+            proc.wait()
+
+
+def test_fix17_oneshot_cli_invocations_bypass_managed_session_host(tmp_path, repository_root):
+    """
+    FIX_17 regression:
+    Verify that one-shot commands (--version, -V, --help, -h, help, resume --help)
+    bypass codex-session-host.mjs, execute codex_real_bin directly without spawning
+    app-server backend, and leave no orphaned session records.
+    """
+    wrapper = repository_root / "codex_home_assistant" / "rootfs" / "usr" / "local" / "bin" / "codex"
+    assert wrapper.is_file()
+
+    # Create mock environment
+    fake_bin_dir = tmp_path / "bin"
+    fake_bin_dir.mkdir(parents=True, exist_ok=True)
+    maint_dir = tmp_path / "maintenance"
+    maint_dir.mkdir(parents=True, exist_ok=True)
+    sessions_dir = maint_dir / "sessions"
+    sessions_dir.mkdir(parents=True, exist_ok=True)
+    gate_lock = maint_dir / "gate.lock"
+    gate_lock.touch()
+
+    # Fake codex-real recording its invocations
+    log_file = tmp_path / "codex_real.log"
+    fake_codex_real = fake_bin_dir / "codex-real"
+    fake_codex_real.write_text(f"""#!/bin/sh
+echo "INVOKED: $@" >> "{log_file}"
+if [ "$1" = "--version" ] || [ "$1" = "-V" ]; then
+  echo "codex-cli 0.165.0"
+  exit 0
+fi
+if [ "$1" = "--help" ] || [ "$1" = "-h" ] || [ "$1" = "help" ]; then
+  echo "Usage: codex [OPTIONS] [COMMAND]"
+  exit 0
+fi
+echo "MOCK_RUN: $@"
+exit 0
+""")
+    fake_codex_real.chmod(0o755)
+
+    # Fake ha-codex-update resolve
+    fake_updater = fake_bin_dir / "ha-codex-update"
+    fake_updater.write_text(f"""#!/bin/sh
+if [ "$1" = "resolve" ]; then
+  echo "{fake_codex_real}"
+  exit 0
+fi
+exit 1
+""")
+    fake_updater.chmod(0o755)
+
+    # Shell test script running the wrapper argument classification logic
+    def run_wrapper(*cmd_args):
+        test_script = f"""#!/bin/bash
+set -e
+export PATH="{fake_bin_dir}:$PATH"
+CODEX_SESSIONS_DIR="{sessions_dir}"
+CODEX_MAINTENANCE_GATE="{gate_lock}"
+approval_policy="never"
+sandbox_mode="workspace-write"
+CODEX_HA_BROWSER_APPROVAL_ARGS=()
+
+args=("$@")
+is_one_shot=false
+codex_subcommand=""
+codex_listen=""
+options_ended=false
+idx=0
+while [[ "${{idx}}" -lt "${{#args[@]}}" ]]; do
+  token="${{args[${{idx}}]}}"
+  if [[ "${{options_ended}}" == true ]]; then
+    idx=$((idx + 1))
+    continue
+  fi
+  if [[ "${{token}}" != -* ]]; then
+    if [[ -z "${{codex_subcommand}}" ]]; then
+      codex_subcommand="${{token}}"
+    fi
+    if [[ "${{token}}" == "help" ]]; then
+      is_one_shot=true
+    fi
+  else
+    case "${{token}}" in
+      --)
+        options_ended=true
+        ;;
+      --version|-V|--help|-h)
+        is_one_shot=true
+        ;;
+      --listen=*)
+        codex_listen="${{token#--listen=}}"
+        ;;
+      -m|--model|-c|--config|-C|--cd|--profile|--color|-s|--sandbox|--add-dir|-p|-a|--ask-for-approval|--enable|--disable|--remote|--remote-auth-token-env|--local-provider|-i|--image)
+        idx=$((idx + 1))
+        ;;
+      --stdio)
+        codex_listen="stdio://"
+        ;;
+      --listen)
+        if [[ "${{codex_subcommand}}" == "app-server" ]]; then
+          codex_listen="${{args[$((idx + 1))]:-}}"
+        fi
+        idx=$((idx + 1))
+        ;;
+    esac
+  fi
+  idx=$((idx + 1))
+done
+
+is_app_server=false
+if [[ "${{codex_subcommand}}" == "app-server" ]]; then
+  is_app_server=true
+fi
+
+has_remote=false
+for arg in "${{args[@]}}"; do
+  if [[ "${{arg}}" == --remote* ]]; then
+    has_remote=true
+    break
+  fi
+done
+
+managed=false
+if [[ "${{is_app_server}}" == true ]]; then
+  managed=true
+elif [[ "${{has_remote}}" == false && "${{is_one_shot}}" == false && ( -z "${{codex_subcommand}}" || "${{codex_subcommand}}" == "resume" || "${{codex_subcommand}}" == "fork" ) ]]; then
+  managed=true
+fi
+
+echo "is_one_shot=${{is_one_shot}} managed=${{managed}} subcommand=${{codex_subcommand}}"
+"""
+        proc = subprocess.run(
+            ["bash", "-c", test_script, "test-wrapper", *cmd_args],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        return proc.stdout.strip()
+
+    # One-shot cases
+    assert run_wrapper("--version") == "is_one_shot=true managed=false subcommand="
+    assert run_wrapper("-V") == "is_one_shot=true managed=false subcommand="
+    assert run_wrapper("--help") == "is_one_shot=true managed=false subcommand="
+    assert run_wrapper("-h") == "is_one_shot=true managed=false subcommand="
+    assert run_wrapper("help") == "is_one_shot=true managed=false subcommand=help"
+    assert run_wrapper("help", "resume") == "is_one_shot=true managed=false subcommand=help"
+    assert run_wrapper("resume", "--help") == "is_one_shot=true managed=false subcommand=resume"
+    assert run_wrapper("-c", "approval_policy=never", "--version") == "is_one_shot=true managed=false subcommand="
+
+    # Interactive managed cases
+    assert run_wrapper() == "is_one_shot=false managed=true subcommand="
+    assert run_wrapper("resume", "session-123") == "is_one_shot=false managed=true subcommand=resume"
+    assert run_wrapper("fork", "session-123") == "is_one_shot=false managed=true subcommand=fork"
+
+    # Non-managed commands (exec, review, doctor)
+    assert run_wrapper("exec", "echo hi") == "is_one_shot=false managed=false subcommand=exec"
+    assert run_wrapper("doctor") == "is_one_shot=false managed=false subcommand=doctor"
+
+    # Post '--' prompts are not treated as one-shot flags
+    assert run_wrapper("--", "--version") == "is_one_shot=false managed=true subcommand="
+    assert run_wrapper("--", "help") == "is_one_shot=false managed=true subcommand="

@@ -6,8 +6,10 @@ import { existsSync, unlinkSync, writeFileSync, chmodSync, readFileSync, renameS
 import { dirname, join, resolve } from "node:path";
 import { StringDecoder } from "node:string_decoder";
 
-const MAX_BUFFER_BYTES = 5 * 1024 * 1024;
-const MAX_HOLD_BYTES = 5 * 1024 * 1024;
+const MAX_FRAME_BYTES = 32 * 1024 * 1024;
+const MAX_HOLD_BYTES = 32 * 1024 * 1024;
+const MAX_STREAM_BUFFER_BYTES = 64 * 1024 * 1024;
+const MAX_BUFFER_BYTES = MAX_FRAME_BYTES;
 
 function parseJsonMessages(buffer) {
   const messages = [];
@@ -259,9 +261,20 @@ export class StdioRelay {
             offset = 10;
           }
 
+          if (payloadLen > MAX_FRAME_BYTES) {
+            this._fatalTransportError("client_ws", "frame_exceeded_max_frame_bytes", payloadLen);
+            return Buffer.alloc(0);
+          }
+
           const maskLen = masked ? 4 : 0;
           const totalLen = offset + maskLen + payloadLen;
-          if (buf.length < totalLen) break; // incomplete frame
+          if (buf.length < totalLen) {
+            if (buf.length > MAX_STREAM_BUFFER_BYTES) {
+              this._fatalTransportError("client_ws", "stream_buffer_overflow", buf.length);
+              return Buffer.alloc(0);
+            }
+            break; // incomplete frame
+          }
 
           let payload = buf.subarray(offset + maskLen, totalLen);
           if (masked) {
@@ -297,6 +310,13 @@ export class StdioRelay {
             } else {
               // New message (possibly first fragment)
               this.wsFragment = text;
+            }
+            if (this.wsFragment !== null) {
+              const fragLen = Buffer.byteLength(this.wsFragment, "utf-8");
+              if (fragLen > MAX_FRAME_BYTES) {
+                this._fatalTransportError("client_ws", "fragment_exceeded_max_frame_bytes", fragLen);
+                return Buffer.alloc(0);
+              }
             }
             if (fin && this.wsFragment !== null) {
               let msg = this.wsFragment;
@@ -986,18 +1006,46 @@ export class StdioRelay {
     process.on("SIGHUP", onSig);
   }
 
+  _fatalTransportError(direction, reason, measuredBytes) {
+    if (this.closing) return;
+    this.closing = true;
+    this.recoveryIncomplete = true;
+    this.unobservedWork.add(`transport_fatal_${direction}_${reason}`);
+    const safeDiag = `[codex-session-host] fatal transport error: ${reason} in ${direction} (measuredBytes=${measuredBytes}, limit=${MAX_FRAME_BYTES})`;
+    console.error(safeDiag);
+    try {
+      this._cleanup();
+    } catch {}
+    process.exit(1);
+  }
+
+  _pauseClientInput() {
+    if (this.wsSocket && !this.wsSocket.destroyed) {
+      try { this.wsSocket.pause(); } catch {}
+    } else if (this.clientSocket && !this.clientSocket.destroyed) {
+      try { this.clientSocket.pause(); } catch {}
+    } else if (!this.clientSocketPath) {
+      try { process.stdin.pause(); } catch {}
+    }
+  }
+
+  _resumeClientInput() {
+    if (this.barrier) return;
+    if (this.wsSocket && !this.wsSocket.destroyed) {
+      try { this.wsSocket.resume(); } catch {}
+    } else if (this.clientSocket && !this.clientSocket.destroyed) {
+      try { this.clientSocket.resume(); } catch {}
+    } else if (!this.clientSocketPath) {
+      try { process.stdin.resume(); } catch {}
+    }
+  }
+
   _handleClientData(chunk) {
     if (this.barrier) {
       this.heldClientChunks.push(chunk);
-      this.heldBytes += chunk.length;
+      this.heldBytes += Buffer.byteLength(typeof chunk === "string" ? chunk : chunk, "utf-8");
       if (this.heldBytes >= MAX_HOLD_BYTES) {
-        if (this.wsSocket && !this.wsSocket.destroyed) {
-          try { this.wsSocket.pause(); } catch {}
-        } else if (this.clientSocket) {
-          try { this.clientSocket.pause(); } catch {}
-        } else {
-          try { process.stdin.pause(); } catch {}
-        }
+        this._pauseClientInput();
       }
       return;
     }
@@ -1006,15 +1054,30 @@ export class StdioRelay {
   }
 
   _processAndForwardClientChunk(chunk) {
+    if (this.closing) return;
     const text = typeof chunk === "string" ? chunk : this.clientDecoder.write(chunk);
-    if (this.clientBuffer.length + text.length > MAX_BUFFER_BYTES) {
-      throw new Error("client_buffer_overflow: frame exceeded MAX_BUFFER_BYTES");
+    const chunkBytes = Buffer.byteLength(text, "utf-8");
+    if (chunkBytes > MAX_STREAM_BUFFER_BYTES) {
+      this._fatalTransportError("client", "stream_buffer_overflow", chunkBytes);
+      return;
     }
+
     this.clientBuffer += text;
     const { messages, remaining } = parseJsonMessages(this.clientBuffer);
     this.clientBuffer = remaining;
 
+    const remainingBytes = Buffer.byteLength(this.clientBuffer, "utf-8");
+    if (remainingBytes > MAX_FRAME_BYTES) {
+      this._fatalTransportError("client", "frame_exceeded_max_frame_bytes", remainingBytes);
+      return;
+    }
+
     for (let { raw, obj } of messages) {
+      const msgBytes = Buffer.byteLength(raw, "utf-8");
+      if (msgBytes > MAX_FRAME_BYTES) {
+        this._fatalTransportError("client", "frame_exceeded_max_frame_bytes", msgBytes);
+        return;
+      }
       if (obj && typeof obj === "object") {
         if (obj.method === "initialize" && obj.params) {
           this.clientInitParams = obj.params;
@@ -1062,24 +1125,45 @@ export class StdioRelay {
       }
 
       // Forward ONLY complete, newline-delimited frames to the child worker
-      if (this.child && this.child.stdin.writable) {
-        this.child.stdin.write(raw);
+      if (this.child && this.child.stdin && this.child.stdin.writable) {
+        const drained = this.child.stdin.write(raw);
+        if (drained === false) {
+          this._pauseClientInput();
+          if (typeof this.child.stdin.once === "function") {
+            this.child.stdin.once("drain", () => this._resumeClientInput());
+          }
+        }
       }
     }
   }
 
   _handleServerData(chunk) {
+    if (this.closing) return;
     const text = typeof chunk === "string" ? chunk : this.serverDecoder.write(chunk);
-    if (this.serverBuffer.length + text.length > MAX_BUFFER_BYTES) {
-      throw new Error("server_buffer_overflow: frame exceeded MAX_BUFFER_BYTES");
+    const chunkBytes = Buffer.byteLength(text, "utf-8");
+    if (chunkBytes > MAX_STREAM_BUFFER_BYTES) {
+      this._fatalTransportError("server", "stream_buffer_overflow", chunkBytes);
+      return;
     }
+
     this.serverBuffer += text;
     const { messages, remaining } = parseJsonMessages(this.serverBuffer);
     this.serverBuffer = remaining;
 
+    const remainingBytes = Buffer.byteLength(this.serverBuffer, "utf-8");
+    if (remainingBytes > MAX_FRAME_BYTES) {
+      this._fatalTransportError("server", "frame_exceeded_max_frame_bytes", remainingBytes);
+      return;
+    }
+
     let forwardChunks = [];
 
     for (let { raw, obj } of messages) {
+      const msgBytes = Buffer.byteLength(raw, "utf-8");
+      if (msgBytes > MAX_FRAME_BYTES) {
+        this._fatalTransportError("server", "frame_exceeded_max_frame_bytes", msgBytes);
+        return;
+      }
       if (obj && typeof obj === "object") {
         // Check if this response belongs to an active internal RPC from switchWorker
         if (obj.id && this.internalPendingRpcs.has(obj.id)) {
@@ -1245,10 +1329,26 @@ export class StdioRelay {
     if (forwardChunks.length > 0) {
       if (this.wsSocket && !this.wsSocket.destroyed && this._wsSendText) {
         for (const chunk of forwardChunks) {
-          this._wsSendText(chunk);
+          const drained = this._wsSendText(chunk);
+          if (drained === false && this.child?.stdout) {
+            try { this.child.stdout.pause(); } catch {}
+            if (typeof this.wsSocket.once === "function") {
+              this.wsSocket.once("drain", () => {
+                try { this.child?.stdout?.resume(); } catch {}
+              });
+            }
+          }
         }
       } else if (this.clientSocket && this.clientSocket.writable) {
-        this.clientSocket.write(forwardChunks.join(""));
+        const drained = this.clientSocket.write(forwardChunks.join(""));
+        if (drained === false && this.child?.stdout) {
+          try { this.child.stdout.pause(); } catch {}
+          if (typeof this.clientSocket.once === "function") {
+            this.clientSocket.once("drain", () => {
+              try { this.child?.stdout?.resume(); } catch {}
+            });
+          }
+        }
       } else if (!this.clientSocketPath) {
         process.stdout.write(forwardChunks.join(""));
       }
@@ -1256,13 +1356,7 @@ export class StdioRelay {
   }
 
   _flushHeldClientChunks() {
-    if (this.wsSocket && !this.wsSocket.destroyed) {
-      try { this.wsSocket.resume(); } catch {}
-    } else if (this.clientSocket) {
-      try { this.clientSocket.resume(); } catch {}
-    } else {
-      try { process.stdin.resume(); } catch {}
-    }
+    this._resumeClientInput();
     const chunks = this.heldClientChunks;
     this.heldClientChunks = [];
     this.heldBytes = 0;
@@ -1299,7 +1393,9 @@ export class StdioRelay {
     }
     try { process.stdin.pause(); } catch {}
     if (this.child) {
+      try { this.child.stdin?.end(); } catch {}
       try { this.child.kill("SIGHUP"); } catch {}
+      try { this.child.kill("SIGTERM"); } catch {}
       this.child = null;
     }
     if (this.controlServer) {

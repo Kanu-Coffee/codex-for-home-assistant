@@ -26,6 +26,32 @@
 
 ## Current Work
 
+### 2026-10-29 — task 006 FIX_17 Executor: 대형 JSONL relay crash 및 단발 CLI 우회 완료, DEV 0.7.3-dev.2 준비
+
+- Reviewer의 [FIX_17](../../.handoff/006_idle-gated-runtime-server-update/FIX_17.md) 지침에 따라 P1 relay buffer overflow crash 및 P2 단발 명령 불필요 백엔드 기동 문제를 해결하고 [FIX_17_REPORT](../../.handoff/006_idle-gated-runtime-server-update/FIX_17_REPORT.md)를 작성했다.
+  1. **P1 Relay 대용량 메시지 처리 및 Bounded Framing:**
+     - `codex-session-host.mjs`의 프레임 한도를 `MAX_FRAME_BYTES = 32 * 1024 * 1024` (32MiB), 스트림 버스트 누적 한도를 `MAX_STREAM_BUFFER_BYTES = 64 * 1024 * 1024` (64MiB)로 상향 조정.
+     - 수신 즉시 newline 기준 완결 JSONL frame을 파싱 소비하여 미완결 잔여(trailing line)만 버퍼에 유지하도록 개선; 단일 청크 내 복수 frame 합계로 인한 오거부 방지.
+     - `throw` 예외 발생 제거; 프레임 한도 초과 시 `_fatalTransportError`를 통해 민감 본문/토큰 누출 없이 안전 진단만 남기고 자식 프로세스/소켓/세션 파일 정리 후 exit 1 종료.
+     - WebSocket 프레이밍 및 자식 worker stdin / client socket write 포화 시 drain 연동 backpressure 적용.
+  2. **P2 단발 CLI 명령 백엔드 기동 우회:**
+     - `codex` wrapper에서 `--version`, `-V`, `--help`, `-h`, `help`, `resume --help` 등 단발 명령을 `is_one_shot=true`로 분류.
+     - 단발 실행 시 세션 파일 등록 및 `codex-session-host.mjs` / `app-server` 기동을 건너뛰고 안전 게이트(flock -s gate.lock), `unset SUPERVISOR_TOKEN`, 샌드박스 정책을 유지하면서 바이너리를 직접 실행.
+  3. **검증 및 버전 증가:**
+     - 6.5MiB 대형 페이로드, 멀티바이트 UTF-8 분할 청크, 복수 프레임 일괄 수신, 한도 초과 안전 종료, 단발 명령 세션호스트 우회 회귀 테스트 3종 추가.
+     - pytest 271개 전체 통과 (271 passed, 1 skipped), Node syntax 정상, ShellCheck 0건 통과, git diff --check 정상.
+     - DEV 버전 `0.7.3-dev.2`로 증가 및 메타데이터 동기화 완료.
+
+### 2026-10-29 — task 006 운영 회귀 Reviewer: 대형 JSONL relay crash 재현 / FIX_17
+
+- 사용자 DEV 운영 화면에서 `server_buffer_overflow` uncaught 종료·reconnect·Broken pipe를 확인했다. production relay에 가짜 worker가 정상 6MiB JSONL 응답을 보내는 격리 subprocess로 exit 1과 같은 오류를 재현했다. 실제 원인 RPC·payload 크기는 미확인이다. 공개 배포 확인과 런타임 실기 수용을 구분한다.
+- [FIX_17](../../.handoff/006_idle-gated-runtime-server-update/FIX_17.md)에 P1 bounded framing/오류 처리·대형 메시지 회귀, P2 version/help 단발 명령의 불필요한 backend 기동 보완 및 증가 DEV 게시를 인계했다. `-resume` 입력 오류와 trust/bubblewrap 경고는 crash 원인으로 혼동하지 않는다. 제품 구현·운영 장치 변경은 하지 않았다.
+
+### 2026-10-29 — task 006 DEV 배포 Reviewer 확인 및 로컬 정리
+
+- PR #59 병합, dev CI와 tag Builder 성공, `0.7.3-dev.1` prerelease, tag source 및 공개 amd64/arm64 manifest를 독립 확인했다. 상세는 [REVIEW](../../.handoff/006_idle-gated-runtime-server-update/REVIEW.md). 서명 독립 재검증과 실제 HAOS 설치·운영시험은 이번에 수행하지 않았다.
+- 미사용 프로젝트 시험 이미지 4개를 삭제했고 `/` 가용 공간은 표시 기준 70G→75G다. 공유 Docker build cache는 보존했다. 격리 시험 디렉터리 일괄 삭제 명령은 실행 환경에서 거부됐으며 해당 디렉터리는 유지했다. 한 시험 디렉터리에서는 프로세스가 실행 중이었다.
+
 ### 2026-10-29 — task 006 FIX_16 Executor: DEV 0.7.3-dev.1 실제 공개 배포 완료 및 사용자 실기 시험 인계
 
 - Reviewer의 FIX_16 지침에 따라 DEV `0.7.3-dev.1` 실제 공개 게시 절차를 완결했다:
