@@ -2,6 +2,14 @@
 
 All notable changes to this App are documented in this file.
 
+## [0.7.3-dev.2] - 2026-10-29
+
+### Fixed
+
+- Fix relay buffer overflow crash (`server_buffer_overflow: frame exceeded MAX_BUFFER_BYTES` and client overflow) in `codex-session-host.mjs`. Support large JSONL payloads up to 32 MiB per frame, multi-chunk and multibyte UTF-8 boundaries, and multi-frame bursts without uncaught exceptions or relay crashes.
+- Implement bounded fatal transport error handling and cleanup policy that terminates the relay and its child processes cleanly with exit code 1 without leaking payload data or tokens to logs.
+- Bypass managed session host relay and app-server backend startup for one-shot CLI invocations (`--version`, `-V`, `--help`, `-h`, `help`, and `resume --help`), executing binary directly while keeping safety gates, credential unsetting, and sandbox settings intact.
+
 ## [0.7.3-dev.1] - 2026-10-29
 
 ### Added
