@@ -1,4 +1,4 @@
-> 롤백 후보 `0.7.3-dev.3`은 DEV 채널에서 0.7.2 런타임을 복원합니다.
+**롤백 후보 `0.7.3-dev.3`은 DEV 채널에서 0.7.2 런타임을 복원합니다.**
 
 > DEV 후보: `0.7.2-dev.2` — 검사 실패 원인 분리, 런타임 버전 상세 분리, 정상 정지 유예를 개선합니다. 설치 저장소는 `https://github.com/Kanu-Coffee/codex-for-home-assistant#dev`이며 App/패널은 **Codex for Home Assistant (DEV)** / **Codex DEV**입니다. VM·CI 검증과 실제 사용자 장치 수용은 구분합니다.
 

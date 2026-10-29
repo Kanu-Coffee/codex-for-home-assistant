@@ -1,4 +1,4 @@
-> Rollback candidate `0.7.3-dev.3` restores the 0.7.2 runtime on the DEV channel.
+**Rollback candidate `0.7.3-dev.3` restores the 0.7.2 runtime on the DEV channel.**
 
 > Stable `0.7.2` promotes the user-accepted `0.7.2-dev.2` runtime with process classification, diagnostic/version reporting, and graceful shutdown improvements. Install from `https://github.com/Kanu-Coffee/codex-for-home-assistant`.
 
