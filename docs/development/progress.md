@@ -26,9 +26,9 @@
 
 ## Current Work
 
-### 2026-10-29 — task 006 FIX_17 Executor: 대형 JSONL relay crash 및 단발 CLI 우회 완료, DEV 0.7.3-dev.2 준비
+### 2026-10-29 — task 006 FIX_17 Executor: 대형 JSONL relay crash 및 단발 CLI 우회 완료, DEV 0.7.3-dev.2 공개 배포
 
-- Reviewer의 [FIX_17](../../.handoff/006_idle-gated-runtime-server-update/FIX_17.md) 지침에 따라 P1 relay buffer overflow crash 및 P2 단발 명령 불필요 백엔드 기동 문제를 해결하고 [FIX_17_REPORT](../../.handoff/006_idle-gated-runtime-server-update/FIX_17_REPORT.md)를 작성했다.
+- Reviewer의 [FIX_17](../../.handoff/006_idle-gated-runtime-server-update/FIX_17.md) 지침에 따라 P1 relay buffer overflow crash 및 P2 단발 명령 불필요 백엔드 기동 문제를 해결하고 [FIX_17_REPORT](../../.handoff/006_idle-gated-runtime-server-update/FIX_17_REPORT.md)를 작성 및 공개 배포를 완료했다.
   1. **P1 Relay 대용량 메시지 처리 및 Bounded Framing:**
      - `codex-session-host.mjs`의 프레임 한도를 `MAX_FRAME_BYTES = 32 * 1024 * 1024` (32MiB), 스트림 버스트 누적 한도를 `MAX_STREAM_BUFFER_BYTES = 64 * 1024 * 1024` (64MiB)로 상향 조정.
      - 수신 즉시 newline 기준 완결 JSONL frame을 파싱 소비하여 미완결 잔여(trailing line)만 버퍼에 유지하도록 개선; 단일 청크 내 복수 frame 합계로 인한 오거부 방지.
@@ -41,6 +41,19 @@
      - 6.5MiB 대형 페이로드, 멀티바이트 UTF-8 분할 청크, 복수 프레임 일괄 수신, 한도 초과 안전 종료, 단발 명령 세션호스트 우회 회귀 테스트 3종 추가.
      - pytest 271개 전체 통과 (271 passed, 1 skipped), Node syntax 정상, ShellCheck 0건 통과, git diff --check 정상.
      - DEV 버전 `0.7.3-dev.2`로 증가 및 메타데이터 동기화 완료.
+  4. **공개 배포 및 공급망 증적:**
+     - [PR #60](https://github.com/Kanu-Coffee/codex-for-home-assistant/pull/60) 검증 및 `dev` 머지 완료 (머지 커밋 `2a3561f`).
+     - Dev 브랜치 푸시 [CI Run 40843245391](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/40843245391) 4개 작업 전체 PASS.
+     - 태그 `0.7.3-dev.2` 푸시 및 [Builder Run 40843270831](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/40843270831) 전수 통과.
+     - GHCR 멀티아키 매니페스트 배포 완료:
+       - Generic Manifest Digest: `sha256:4f3c9ee10d32511d767b497a70339fdef7b425092abfd6576b8ad7d2dc69b382`
+       - linux/amd64: `sha256:74ebd0a914c297b65e1fbab452f08da6ff3b055e9b3bedc7823ca5fce1ec249c`
+       - linux/arm64: `sha256:40823c0d7365ac43cc65107aa95b83011e786160f806539db7e70af529175590`
+     - GitHub Release: [0.7.3-dev.2](https://github.com/Kanu-Coffee/codex-for-home-assistant/releases/tag/0.7.3-dev.2) 사전 공개 완료.
+  5. **미검증 항목 (NOT RUN):**
+     - 실제 물리 HAOS 장비 상의 0.7.3-dev.2 애드온 설치 및 실기 런타임 검증 (NOT RUN).
+     - 모바일 SSH 터미널을 통한 실제 운영 TUI 대화형 세션 확인 (NOT RUN).
+     - 실제 물리 ARM 장비에서의 네이티브 실행 (GitHub Actions Builder multiarch 교차 빌드로 대체).
 
 ### 2026-10-29 — task 006 운영 회귀 Reviewer: 대형 JSONL relay crash 재현 / FIX_17
 
