@@ -1,3 +1,5 @@
+**Rollback candidate `0.7.3-dev.3` restores the 0.7.2 runtime on the DEV channel.**
+
 > DEV candidate: `0.7.2-dev.2` improves diagnostic failure distinction, runtime version reporting, and graceful shutdown. Use `https://github.com/Kanu-Coffee/codex-for-home-assistant#dev`; the app/panel are **Codex for Home Assistant (DEV)** / **Codex DEV**. VM/CI validation is separate from real-device acceptance.
 
 <p align="right">
@@ -24,7 +26,7 @@ Use Codex inside Home Assistant to inspect your setup and improve dashboards, au
 - Headless Chromium checks for desktop/mobile dashboard layouts and console/network errors
 - Project-local verified memory for HA structure and user-stated aliases, purposes, and preferences
 - `$ha-feedback` for read-only app bug validation and structured feature proposals
-- Four daily official Codex release checks and verified staging; application waits for live sessions to exit when migration compatibility is unverified
+- 4-times-daily automated official Codex release check with zero-downtime atomic apply when sessions are idle
 
 > [!WARNING]
 > This app is a powerful administrative tool that can change Home Assistant configuration and consume raw Core/Supervisor API responses. Unprotected `/config` paths, APIs, logs, and browser output may contain sensitive information. Back up important data and review the plan and diff before changes. Never expose the SSH port directly to the internet.

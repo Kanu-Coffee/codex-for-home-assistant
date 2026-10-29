@@ -1,3 +1,5 @@
+**롤백 후보 `0.7.3-dev.3`은 DEV 채널에서 0.7.2 런타임을 복원합니다.**
+
 > DEV 후보: `0.7.2-dev.2` — 검사 실패 원인 분리, 런타임 버전 상세 분리, 정상 정지 유예를 개선합니다. 설치 저장소는 `https://github.com/Kanu-Coffee/codex-for-home-assistant#dev`이며 App/패널은 **Codex for Home Assistant (DEV)** / **Codex DEV**입니다. VM·CI 검증과 실제 사용자 장치 수용은 구분합니다.
 
 <p align="right">
@@ -24,7 +26,7 @@ Home Assistant 안에서 Codex와 대화하며 설정을 살펴보고 대시보�
 - 대시보드의 데스크톱·모바일 화면과 console/network 오류를 확인하는 Headless Chromium
 - HA 구조와 사용자가 명시한 별칭·용도·선호를 보존하는 프로젝트 자체 검증형 로컬 메모리
 - 앱 버그와 기능 제안을 읽기 전용으로 검증하고 정제된 보고서로 만드는 `$ha-feedback`
-- 하루 4회 공식 Codex 릴리스 자동 확인 및 검증된 후보 준비. 실행 중인 세션의 전환 호환성이 확인되지 않으면 종료 후 적용
+- 하루 4회 최신 공식 Codex 릴리스 자동 확인 및 활성 세션 유휴(idle) 무중단 원자적 적용
 
 > [!WARNING]
 > 이 앱은 Home Assistant 설정과 원시 Core/Supervisor API 응답을 다루는 강한 관리자 도구입니다. 보호 경로 외 `/config`와 API·로그·브라우저 결과에는 민감정보가 있을 수 있습니다. 중요한 변경 전에는 backup을 만들고 계획과 diff를 확인하세요. SSH 포트를 인터넷에 직접 공개하지 마세요.
