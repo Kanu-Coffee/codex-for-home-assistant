@@ -1,6 +1,6 @@
 # 작업 기준 런타임 전환 — 로컬 구현 및 검증
 
-기준일: 2026-10-30. 로컬 후보: `0.7.3-dev.4`. 공개 배포·HAOS 실기 수용은 하지 않았다.
+기준일: 2026-10-30. DEV `0.7.3-dev.4`는 공개 배포됐다. HAOS 실기 수용은 하지 않았다.
 
 ## 현재 구현
 
@@ -43,7 +43,7 @@ baseline archive는 GitHub release의 SHA-256 `a676f5722aae0d86cbe3764332f08eab1
 
 현재 호스트에서는 기본 Docker sandbox 실행이 namespace 권한 및 `RTM_NEWADDR` 제한에 걸렸다. 실제 wrapper 컨테이너 통합은 **진단용** `NET_ADMIN`/`SYS_ADMIN`, seccomp/AppArmor unconfined 조건에서 수행했다. 이는 제품 권한 변경이나 HAOS 보안 수용 증거가 아니다. App manifest에는 이 권한이나 금지 옵션을 추가하지 않았다. 호스트 정책에 필요한 profile이 없어 `tests/codex-update-smoke.sh`도 시작에 실패했으며 PASS로 기록하지 않는다.
 
-호스트 pair 시험과 이미지 fixture는 handover를 분리하기 위해 기존 `policyProbe` 주입 지점에 성공 stub을 사용한다. 제품 실행의 실제 AppArmor/requirements policy probe는 그대로 유지한다. 따라서 실제 정책 gate를 통과한 scheduler 전체 슬롯 E2E, HAOS/Supervisor, 물리 mobile Remote와 native ARM 수용은 **NOT RUN**이다. HAOS VM은 이번에 설치하지 않았다. 이 후보는 공개 배포 완료나 실기 지원 완료로 표시하지 않는다.
+호스트 pair 시험과 이미지 fixture는 handover를 분리하기 위해 기존 `policyProbe` 주입 지점에 성공 stub을 사용한다. 제품 실행의 실제 AppArmor/requirements policy probe는 그대로 유지한다. 따라서 실제 정책 gate를 통과한 scheduler 전체 슬롯 E2E, HAOS/Supervisor, 물리 mobile Remote와 native ARM 수용은 **NOT RUN**이다. HAOS VM은 이번에 설치하지 않았다. 공개 DEV 배포와 실기 수용은 구분한다.
 
 - 구형 wrapper로 직접 실행한 세션과 외부 `--remote`는 자동 교체 대상이 아니다. 새 관리형 세션으로 옮길 때 한 번 정상 종료해야 한다.
 - 내용 있는 비영속 ephemeral은 임의 빈 대화로 바꾸지 않고 복원 미지원 이유로 전환을 보류한다. 일반 영속 대화와 검증된 빈 ephemeral은 복원한다.
@@ -53,4 +53,4 @@ baseline archive는 GitHub release의 SHA-256 `a676f5722aae0d86cbe3764332f08eab1
 
 ## 다음 운영 수용
 
-격리 HAOS에 후보를 설치한 뒤 AppArmor·requirements 유지 상태에서 실제 CLI/Remote 유휴 연결의 교체, tool/approval/queue 중 보류, 다음 동일 대화 요청, App restart 후 인증·SSH key·browser·memory 보존을 검사한다. 실제 운영 HA 변경, commit/push/PR/tag/release는 이번에 수행하지 않았다.
+격리 HAOS에 후보를 설치한 뒤 AppArmor·requirements 유지 상태에서 실제 CLI/Remote 유휴 연결의 교체, tool/approval/queue 중 보류, 다음 동일 대화 요청, App restart 후 인증·SSH key·browser·memory 보존을 검사한다. 실제 운영 HA는 변경하지 않았다.
