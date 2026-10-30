@@ -1,4 +1,4 @@
-**Local development candidate `0.7.3-dev.4` implements idle worker handover. Publication and HAOS acceptance are pending.**
+**DEV `0.7.3-dev.4` is published with idle worker handover. HAOS acceptance remains pending.**
 
 > Stable `0.7.2` promotes the user-accepted `0.7.2-dev.2` runtime with process classification, diagnostic/version reporting, and graceful shutdown improvements. Install from `https://github.com/Kanu-Coffee/codex-for-home-assistant`.
 

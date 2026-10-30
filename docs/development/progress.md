@@ -26,6 +26,12 @@
 
 ## Current Work
 
+### 2026-10-30 — DEV 0.7.3-dev.4 공개 배포
+
+- [PR #62](https://github.com/Kanu-Coffee/codex-for-home-assistant/pull/62)를 DEV에 병합한 `c420d93f7d3d5a83785afcad5e2966369f1eb099`을 tag `0.7.3-dev.4`로 고정하고 [GitHub 사전 릴리스](https://github.com/Kanu-Coffee/codex-for-home-assistant/releases/tag/0.7.3-dev.4)를 게시했다. Stable main과 운영 HA는 변경하지 않았다.
+- [DEV CI](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/40973209352)와 [게시 Builder](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/40973245256)가 성공했다. 공개 이미지 manifest digest는 `sha256:8550d4e6cd65c967836968546b3c4fdfcbf356c49c3babbb9a21a04a87033e16`이며 익명 조회로 amd64와 arm64를 확인했다.
+- 실제 HAOS/Supervisor·모바일 Remote·물리 ARM 및 실제 policy gate를 통과하는 전체 scheduler E2E 수용은 NOT RUN이다. 자세한 지원 경계는 [구축 결과](runtime-handover.md)를 따른다.
+
 ### 2026-10-30 — task 007 구축: 관리형 CLI·Remote worker 전환 로컬 검증
 
 - 로컬 후보 `0.7.3-dev.4`를 구현했다. lifecycle host·pinned ws frontend·작업 ledger/authoritative 관측·입력 barrier·worker 교체·영속 대화 복원을 기존 applyUpdate에 연결했다. 단발 명령은 직접 실행하며 기존 스케줄·예산·cooldown·정책은 유지한다.
