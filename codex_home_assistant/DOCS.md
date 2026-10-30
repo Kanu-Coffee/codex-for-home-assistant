@@ -101,7 +101,7 @@ ha-codex
 
 | 설정 | 기본값 | 허용값·의미 | 주의 |
 | --- | --- | --- | --- |
-| `authorized_keys` | `[]` | SSH를 허용할 OpenSSH 공개키 목록 | 비어 있으면 SSH만 비활성화되고 Web UI는 유지됩니다. 개인키를 넣지 마세요. |
+| `authorized_keys` | `[]` | SSH를 허용할 OpenSSH 공개키 목록 | 구성 키와 간편 설정 키가 모두 없으면 SSH만 비활성화되고 Web UI는 유지됩니다. 개인키를 넣지 마세요. |
 | `web_terminal_auto_start_codex` | `false` | 새 `tmux` 세션에서 Codex를 한 번 자동 시작 | 기존 세션에는 소급되지 않습니다. Codex 종료 후 Bash로 돌아옵니다. |
 | `tmux_session_name` | `codex-ha` | 영문, 숫자, `.`, `_`, `-`로 된 1~64자 세션 이름 | 바꾼 뒤 새 세션을 사용합니다. |
 | `codex_approval_policy` | `on-request` | `untrusted`, `on-request`, `never` | `never`는 광범위한 자동 승인을 뜻하므로 신뢰하는 작업에서만 사용하세요. |
@@ -220,6 +220,28 @@ ChatGPT 모바일 Remote
   → HA 앱의 내장 Codex app-server
   → /config 원격 프로젝트
 ```
+
+### 모바일 SSH 간편 설정
+
+Web UI에서 Codex를 종료해 shell로 돌아온 뒤 직접 실행합니다.
+
+```bash
+ha-codex-remote setup
+```
+
+ECDSA P-256 전용 키를 생성하고 공개키를 자동 등록합니다. 화면의 **BEGIN부터 END까지 개인키 블록만** 휴대폰 Remote의 개인키 칸에 붙여넣으세요. 서버는 공개키를 이미 등록했으므로 구성 탭에 복사할 필요가 없습니다. Host는 휴대폰에서 도달 가능한 HA 주소, Port는 App Network의 SSH host port(기본 2223), User는 `root`, 프로젝트는 `/config`입니다. Ingress 주소는 SSH 주소가 아닙니다. Network에서 SSH 포트를 비활성화했다면 먼저 활성화하세요.
+
+기본 PKCS#8이 거절되면 **같은 키**를 SEC1으로 표시합니다.
+
+```bash
+ha-codex-remote show --format sec1
+```
+
+`show --format pkcs8`으로 돌아갈 수 있고 `setup` 재실행도 기존 키를 유지합니다. `ha-codex-remote status`는 비밀값 없이 fingerprint·접속 안내를 보여줍니다. `ha-codex-remote revoke`는 모바일 키를 해제합니다. 해제 후 `setup`은 새 키를 만들므로 휴대폰 키도 교체해야 합니다. 이미 연결된 SSH 세션은 해제 후에도 계속될 수 있습니다. 한 앱당 하나의 간편 설정 키를 제공하며 일반 `authorized_keys` 목록은 별도로 유지합니다.
+
+모바일 키는 `/data/ssh/mobile`에 디렉터리 0700·파일 0600으로 보존되며 App 재시작과 구성 저장 후에도 유지됩니다. SSH가 키 미설정으로 비활성화됐던 경우 시작을 요청하며 실패하면 App 재시작을 안내합니다. 개인키는 사용자가 직접 실행한 대화형 터미널에만 표시하며 리다이렉션은 거부합니다. 표시된 키는 터미널 scrollback과 `/data` 백업에 남을 수 있으므로 화면·출력을 채팅이나 이슈에 공유하지 마세요. Codex에게 키 출력을 대신 요청하지 마세요.
+
+유효한 SEC1·PKCS#8도 iOS 앱이 거부한다는 [동일 오류 제보](https://github.com/openai/codex/issues/52417)가 있습니다. 형식을 바꿔도 입력 단계에서 거절되면 모바일 앱을 업데이트하고 앱 버전·오류 문구만 기록하세요. 이 도우미는 클라이언트 파서 오류를 수정하지 않습니다. 키를 수락한 뒤 접속이 실패한다면 포트·VPN·접근 가능성과 SSH 로그를 점검합니다. [호스트 인증서 협상 실패 사례](https://github.com/openai/codex/issues/38264)는 입력 단계의 형식 오류와 별개입니다. 실제 ChatGPT 모바일 수용은 아직 미검증입니다.
 
 1. Web UI에서 `ha-codex-login`을 완료하고 `codex login status`가 로그인 상태를 표시하는지 확인합니다.
 2. 모바일 Remote가 사용할 키의 **공개키만** `authorized_keys`에 추가한 뒤 앱을 재시작합니다.
@@ -580,3 +602,7 @@ Core가 준비될 시간을 두고 다시 확인합니다. DB/WAL을 직접 삭�
 지원 요청 전 [SUPPORT.md](../SUPPORT.md)에 따라 token, 내부 URL, entity·사용자 정보를 제거하세요. 일반 문제는 [GitHub Issues](https://github.com/Kanu-Coffee/codex-for-home-assistant/issues), 보안 취약점은 [SECURITY.md](../.github/SECURITY.md)의 비공개 경로를 사용하세요.
 
 프로젝트는 비공식 커뮤니티 프로젝트이며 OpenAI 또는 Home Assistant/Nabu Casa와 제휴하거나 보증받은 제품이 아닙니다. 소스는 [Apache License 2.0](../LICENSE)으로 배포됩니다.
+
+### DEV 0.7.3-dev.4의 resume 종료 문제 및 0.7.3-dev.5 수정
+
+0.7.3-dev.4에서 `codex resume` 목록에서 Enter를 누른 뒤 `Resuming session…`에서 shell로 돌아가는 문제가 확인됐습니다. 관리형 CLI host가 선택 화면의 연결 종료를 전체 종료로 처리한 것이 원인입니다. 0.7.3-dev.5에서는 화면 전환 시 host를 유지하고 호환되는 재연결 초기화를 처리하여 이 문제를 해결했습니다. 화면에 남은 내부 `--remote unix://…` 주소는 host 종료 뒤 재사용할 수 없습니다.

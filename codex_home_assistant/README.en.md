@@ -1,4 +1,4 @@
-**DEV `0.7.3-dev.4` is published with idle worker handover. HAOS acceptance remains pending.**
+**Development candidate `0.7.3-dev.5` implements resume restoration fixes and mobile SSH quick setup. Publication and HAOS acceptance remain pending.**
 
 > Previous DEV candidate: `0.7.2-dev.2` improves diagnostic failure distinction, runtime version reporting, and graceful shutdown. Use `https://github.com/Kanu-Coffee/codex-for-home-assistant#dev`; the app/panel are **Codex for Home Assistant (DEV)** / **Codex DEV**. VM/CI validation is separate from real-device acceptance.
 
@@ -72,3 +72,5 @@ This is an unofficial community project. It is not affiliated with or endorsed b
 Managed CLI/TUI and Remote stdio do not defer updates merely because a window, connection, process, or conversation remains open. In-flight and queued requests, tools, approval waits, and background work are protected. When idle, the worker is replaced under the existing schedule, retry budget, and cooldown; the connection and persistent conversation are restored before processing the next request. The TUI frontend itself updates on its next launch. Legacy directly launched sessions and external `--remote` servers are outside automatic handover. Nonempty ephemeral conversations, unsupported activity observation, and incomplete recovery defer transition with a specific reason.
 
 Local official 0.162.1 → 0.165.0 integration is verified; HAOS/mobile and native ARM acceptance remain pending.
+
+Mobile SSH quick setup is available via `ha-codex-remote setup` in the Web UI shell to generate a key, register the public key, and display the phone PEM; `ha-codex-remote show --format sec1` displays the alternate format. Actual mobile client acceptance remains unverified.

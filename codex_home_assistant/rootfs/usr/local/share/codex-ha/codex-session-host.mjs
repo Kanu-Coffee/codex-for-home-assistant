@@ -1,4 +1,5 @@
 import { observeActivity } from './codex-activity.mjs';
+import { isDeepStrictEqual } from "node:util";
 import { spawn, spawnSync } from "node:child_process";
 import { createServer } from "node:net";
 import { createServer as createHttpServer } from "node:http";
@@ -204,6 +205,8 @@ export class StdioRelay {
         return;
       }
       webSockets.handleUpgrade(req, socket, head, peer => {
+        this.replacementHandshake = Boolean(this.initializeResult);
+        this.replacementInitializeAccepted = false;
         this.wsSocket = socket;
         this.clientSocket = socket;
         this._wsSendText = text => {
@@ -219,7 +222,21 @@ export class StdioRelay {
           this._handleClientData(data.toString('utf8') + '\n');
         });
         peer.on('error', () => this._fatalTransportError('client_ws', 'protocol_error', 0));
-        peer.on('close', () => { this.closing = true; this._cleanup(); process.exit(0); });
+        peer.on('close', () => {
+          if (this.spawnClient) {
+            // The owned TUI can replace its picker connection while resuming.
+            // Its process exit, rather than a connection close, owns lifetime.
+            if (this.wsSocket === socket) {
+              this.wsSocket = null;
+              this.clientSocket = null;
+              this._wsSendText = null;
+              this.clientBuffer = "";
+              this.clientDecoder = new StringDecoder("utf-8");
+            }
+            return;
+          }
+          this.closing = true; this._cleanup(); process.exit(0);
+        });
       });
     });
     await new Promise((resolve, reject) => {
@@ -929,6 +946,27 @@ export class StdioRelay {
         return;
       }
       if (obj && typeof obj === "object") {
+        if (this.spawnClient && this.replacementHandshake && obj.method === "initialize") {
+          // Picker and conversation connections share one owned backend. Its
+          // initialize RPC is process-scoped; replay only a compatible handshake.
+          const compatible = isDeepStrictEqual(obj.params?.capabilities, this.clientInitParams?.capabilities);
+          const drained = this.inFlightClientRequests.size === 0 && this.pendingTurnStarts.size === 0 &&
+            this.pendingServerRequests.size === 0;
+          this.replacementInitializeAccepted = compatible && drained;
+          this._wsSendText(JSON.stringify(this.replacementInitializeAccepted
+            ? { id: obj.id, result: this.initializeResult }
+            : { id: obj.id, error: { code: -32600, message: "Managed client reconnect is incompatible or requests are still pending" } }));
+          continue;
+        }
+        if (this.spawnClient && this.replacementHandshake && obj.method === "initialized") {
+          if (this.replacementInitializeAccepted) this.replacementHandshake = false;
+          continue;
+        }
+        if (this.spawnClient && this.replacementHandshake) {
+          if (obj.id !== undefined) this._wsSendText(JSON.stringify({ id: obj.id,
+            error: { code: -32600, message: "Managed client reconnect requires initialization" } }));
+          continue;
+        }
         if (obj.method === "initialize" && obj.params) {
           this.clientInitParams = structuredClone(obj.params);
           obj.params.capabilities = { ...obj.params.capabilities, experimentalApi: true };
@@ -1064,6 +1102,9 @@ export class StdioRelay {
           if (this.inFlightClientRequests.has(obj.id)) {
             const req = this.inFlightClientRequests.get(obj.id);
             this.inFlightClientRequests.delete(obj.id);
+            if (req.method === "initialize" && obj.result && this.spawnClient) {
+              this.initializeResult = structuredClone(obj.result);
+            }
 
             // Codex TUI's temporary title task explicitly unsubscribes after
             // completion. Only retire a thread created by our own managed

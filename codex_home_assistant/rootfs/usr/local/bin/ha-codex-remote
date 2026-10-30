@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+unset SUPERVISOR_TOKEN
+umask 077
+if [[ $# -eq 0 || "${1}" == "--help" || "${1}" == "help" ]]; then
+  exec node /usr/local/share/codex-ha/codex-remote-setup.mjs help
+fi
+# Serialize boot synchronization, generation, export and revocation.
+exec flock -x /data/ssh/.mobile-key.lock node /usr/local/share/codex-ha/codex-remote-setup.mjs "$@"

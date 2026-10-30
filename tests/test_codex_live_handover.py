@@ -20,16 +20,17 @@ import pytest
 
 @pytest.mark.skipif(not os.environ.get('CODEX_HANDOVER_BASELINE') or not os.environ.get('CODEX_HANDOVER_CANDIDATE'),
                     reason='official package pair not provided')
-@pytest.mark.parametrize('transport', ['stdio', 'websocket', 'tui'])
+@pytest.mark.parametrize('transport', ['stdio', 'websocket', 'tui', 'tui_resume'])
 def test_real_worker_handover(repository_root: Path, tmp_path: Path, transport: str):
     baseline = Path(os.environ['CODEX_HANDOVER_BASELINE']).resolve(strict=True)
     candidate = Path(os.environ['CODEX_HANDOVER_CANDIDATE']).resolve(strict=True)
+    candidate_version = subprocess.check_output([str(candidate), '--version'], text=True).strip().removeprefix('codex-cli ')
     # Real immutable packages in the same layout used by the production updater.
     old_package = tmp_path/'baseline'
     shutil.copytree(baseline.parent.parent, old_package)
     runtime = tmp_path/'runtime'; maintenance = tmp_path/'maintenance'
     (maintenance/'sessions').mkdir(parents=True)
-    new_package = runtime/'releases'/'0.165.0-x86_64-unknown-linux-musl'
+    new_package = runtime/'releases'/f'{candidate_version}-x86_64-unknown-linux-musl'
     shutil.copytree(candidate.parent.parent, new_package)
     baseline = old_package/'bin/codex'; candidate = new_package/'bin/codex'
     options = tmp_path/'options.json'
@@ -45,7 +46,7 @@ def test_real_worker_handover(repository_root: Path, tmp_path: Path, transport: 
     (runtime/'staged').symlink_to(new_package)
     manager(f"""const ledger = await import('./codex_home_assistant/rootfs/usr/local/share/codex-ha/codex-package-integrity.mjs');
       await ledger.recordPackage({json.dumps(str(new_package))},mgr.getBaseRuntimeDir(),'b'.repeat(64),await ledger.packageInventory({json.dumps(str(new_package))}));
-      await mgr.updateState(s=>{{s.stagedVersion='0.165.0';s.candidateVersion='0.165.0';s.candidateDigest='b'.repeat(64);}});
+      await mgr.updateState(s=>{{s.stagedVersion='{candidate_version}';s.candidateVersion='{candidate_version}';s.candidateDigest='b'.repeat(64);}});
       console.log('{{}}');""")
     requests = []
     allow_response = threading.Event()
@@ -82,13 +83,13 @@ stream_max_retries=0
     host = repository_root/'codex_home_assistant/rootfs/usr/local/share/codex-ha/codex-session-host.mjs'
     command = ['node',str(host),'--control-socket',str(control_path),'--exe',str(baseline),'--version','0.162.1','--session-file',str(maintenance/'sessions'/'%PID%')]
     if transport == 'websocket':command += ['--client-socket',str(client_path),'--type','cli']
-    if transport == 'tui':command += ['--client-socket',str(client_path),'--type','cli','--spawn-client','--client-args','[]']
+    if transport in ('tui', 'tui_resume'):command += ['--client-socket',str(client_path),'--type','cli','--spawn-client','--client-args','[]']
     command += ['--','app-server']
     env = {'HOME':str(home),'CODEX_HOME':str(codex_home),'PATH':os.environ['PATH'],
            'LANG':'C.UTF-8','TERM':'xterm-256color','NO_PROXY':'127.0.0.1,localhost','HTTP_PROXY':'http://127.0.0.1:9','HTTPS_PROXY':'http://127.0.0.1:9'}
     log = (tmp_path/'worker.log').open('wb')
     master = slave = None
-    if transport == 'tui':
+    if transport in ('tui', 'tui_resume'):
         master,slave=pty.openpty()
         fcntl.ioctl(slave,termios.TIOCSWINSZ,struct.pack('HHHH',28,100,0,0))
         relay = subprocess.Popen(command,stdin=slave,stdout=slave,stderr=slave,env=env,cwd=tmp_path,start_new_session=True)
@@ -152,7 +153,7 @@ stream_max_retries=0
         while time.monotonic()<deadline:
             if control_path.exists() and (transport=='stdio' or client_path.exists()):break
             assert relay.poll() is None;time.sleep(.05)
-        if transport=='tui':
+        if transport in ('tui', 'tui_resume'):
             allow_response.set()
             screen=bytearray()
             def read_screen(seconds):
@@ -175,10 +176,34 @@ stream_max_retries=0
             applied=manager("const r=await mgr.applyUpdate({isManual:false,policyProbe:async()=>({valid:true})});console.log(JSON.stringify({applied:r.applied,reason:r.reason,stateReason:r.state?.reason}));")
             assert applied['applied'],(applied,control({'cmd':'inspect'}))
             after=control({'cmd':'inspect'})
-            assert after['workerPid']!=before['workerPid'] and after['version']=='0.165.0'
+            assert after['workerPid']!=before['workerPid'] and after['version']==candidate_version
             read_screen(.5);os.write(master,b'second-marker');read_screen(.2);os.write(master,b'\r')
             wait_answer('second-marker')
             assert any('first-marker' in json.dumps(r) and 'second-marker' in json.dumps(r) for r in requests)
+            if transport == 'tui_resume':
+                relay.terminate(); relay.wait(timeout=10)
+                # Reopen the persisted conversation through the real picker.
+                resume_command = command.copy()
+                resume_command[resume_command.index('--exe') + 1] = str(candidate)
+                resume_command[resume_command.index('--version') + 1] = candidate_version
+                resume_command[resume_command.index('--client-args') + 1] = '["resume"]'
+                os.close(master)
+                master, slave = pty.openpty()
+                fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack('HHHH',28,100,0,0))
+                relay = subprocess.Popen(resume_command,stdin=slave,stdout=slave,stderr=slave,env=env,cwd=tmp_path,start_new_session=True)
+                os.close(slave)
+                screen.clear()
+                for _ in range(100):
+                    read_screen(.1)
+                    assert relay.poll() is None, bytes(screen[-3000:])
+                    if b'Resume a previous session' in screen: break
+                assert b'Resume a previous session' in screen, bytes(screen[-3000:])
+                os.write(master,b'\r')
+                read_screen(2)
+                assert relay.poll() is None, bytes(screen[-3000:])
+                os.write(master,b'resumed-marker');read_screen(.2);os.write(master,b'\r')
+                wait_answer('resumed-marker')
+                assert any('first-marker' in json.dumps(r) and 'resumed-marker' in json.dumps(r) for r in requests)
             return
         if transport=='websocket':
             peer=socket.socket(socket.AF_UNIX);peer.connect(str(client_path))
@@ -195,7 +220,7 @@ stream_max_retries=0
         applied=manager("const r=await mgr.applyUpdate({isManual:false,policyProbe:async()=>({valid:true})});console.log(JSON.stringify({applied:r.applied,reason:r.reason,stateReason:r.state?.reason}));")
         assert applied.get('applied'),(applied,control({'cmd':'inspect'}))
         switched=control({'cmd':'inspect'})
-        assert switched.get('version')=='0.165.0',switched
+        assert switched.get('version')==candidate_version,switched
         assert switched['workerPid']!=before['workerPid']
         assert os.stat(f"/proc/{switched['workerPid']}/exe").st_ino==candidate.stat().st_ino
         turn(4,thread,'second-marker')

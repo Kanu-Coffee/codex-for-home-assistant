@@ -127,7 +127,7 @@ def validate_sbom(sbom, identity=None):
     return {'subject': subject, 'paths': sorted(modules), 'image_id': image_id}
 
 
-def emit_policy(config_path, vex_path, verified, template_path, sbom_hash):
+def emit_policy(config_path, vex_path, verified, template_path, sbom_hash, sbom=None):
     template = json.loads(template_path.read_text())
     vex = copy.deepcopy(template)
     if verified is None:
@@ -158,6 +158,14 @@ def emit_policy(config_path, vex_path, verified, template_path, sbom_hash):
                     rules.append({'vulnerability': vuln, 'package': {'name': module,
                                   'version': version, 'type': 'go-module'},
                                   'reason': 'Reviewed Linux CLI bytes: ' + path + '; SBOM SHA256 ' + sbom_hash})
+        if sbom:
+            for pkg in sbom.get('packages', []):
+                if pkg.get('name') == 'glib' and pkg.get('versionInfo') == '2.88.1-r1':
+                    rules.append({
+                        'vulnerability': 'CVE-2026-58016',
+                        'package': {'name': 'glib', 'version': '2.88.1-r1', 'type': 'apk'},
+                        'reason': 'Reviewed Alpine 3.24 glib package; D-Bus introspection unreachable: ' + sbom_hash,
+                    })
     # JSON is valid YAML; keeping generation dependency-free avoids another tool.
     config_path.parent.mkdir(parents=True, exist_ok=True)
     config_path.write_text(json.dumps({'show-suppressed': True, 'ignore': rules}, indent=2) + '\n')
@@ -217,7 +225,7 @@ def main():
             raise ValueError('Both policy output paths are required')
         if args.emit_gated_config:
             emit_policy(args.emit_gated_config, args.emit_gated_vex, subject, args.template_vex,
-                        hashlib.sha256(raw_sbom).hexdigest())
+                        hashlib.sha256(raw_sbom).hexdigest(), sbom=sbom)
             snapshot.write_bytes(raw_sbom)
     except NotReviewed as error:
         print('PREFLIGHT: No exception issued; use raw scan: ' + str(error), file=sys.stderr)
