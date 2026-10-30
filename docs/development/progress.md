@@ -26,11 +26,13 @@
 
 ## Current Work
 
-### 2026-10-30 — Executor: FIX_02에 따라 DEV 0.7.3-dev.5 배포 작업 진행
+### 2026-10-30 — DEV 0.7.3-dev.5 공개 배포 완료
 
-- 사용자의 DEV 버전 배포 지시에 따라 [FIX_02](../../.handoff/007_work-aware-runtime-update/FIX_02.md) 절차를 수행한다.
-- App version 0.7.3-dev.5 확정: `codex_home_assistant/config.yaml`, `Dockerfile`, `playwright/package.json`, `package-lock.json`, `tests/test_addon_contract.py`, `CHANGELOG.md` 0.7.3-dev.5 항목 정리, README/DOCS 반영.
-- 단위/통합 테스트, Node syntax, ShellCheck, actionlint, Hadolint, Markdown lint, Gitleaks 비밀값 검사를 수행하고 DEV PR 생성 및 CI/Builder 완료 후 merge/tag/release를 진행한다.
+- [FIX_02](../../.handoff/007_work-aware-runtime-update/FIX_02.md) 지침에 따라 DEV 0.7.3-dev.5 배포를 완료했다.
+- [PR #64](https://github.com/Kanu-Coffee/codex-for-home-assistant/pull/64)를 DEV에 병합한 merge SHA `52fa74b5f83db3c42502ca5a98c94cc700de412a`에 tag `0.7.3-dev.5`를 생성·push하고 [GitHub 사전 릴리스](https://github.com/Kanu-Coffee/codex-for-home-assistant/releases/tag/0.7.3-dev.5)를 게시했다. Stable main과 운영 HA는 변경하지 않았다.
+- [DEV merge CI](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/41036439226)와 [게시 Builder](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/41037202760)가 성공했다. multiarch OCI manifest digest는 `sha256:25f6f6238bfc06f83f54815b6edd0c2fb36838987d8ad95c2747a40b70d36d12` (amd64 `sha256:9a75349dd28640e17db581229da804fd8d8ff43bfdf764da678509b37d5c8a7f`, arm64 `sha256:1735ab112ff1065f115f02a20c7b0dbd6ca619e284b92b0ad10562cfcc323fcb`)이며 익명 registry 조회를 마쳤다.
+- glib 2.88.1-r1 CVE-2026-58016 영향성 검토(`docs/development/glib-cve-2026-58016-review.md`)를 거쳐 targeted gate policy를 통과했다.
+- 실제 HAOS 하드웨어 장치, 물리 모바일 클라이언트 수용, 물리 ARM 기기 수용은 NOT RUN이다. 자세한 내용은 [.handoff/007_work-aware-runtime-update/FIX_02_REPORT.md](../../.handoff/007_work-aware-runtime-update/FIX_02_REPORT.md)에 기록했다.
 
 ### 2026-10-30 — Reviewer: 새 DEV 배포용 FIX_02 발행, 실행은 별도 Executor
 

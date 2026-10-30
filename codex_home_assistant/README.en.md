@@ -1,4 +1,4 @@
-**Development candidate `0.7.3-dev.5` implements resume restoration fixes and mobile SSH quick setup. Publication and HAOS acceptance remain pending.**
+**DEV `0.7.3-dev.5` is published with resume restoration fixes and mobile SSH quick setup. HAOS acceptance remains pending.**
 
 > Previous DEV candidate: `0.7.2-dev.2` improves diagnostic failure distinction, runtime version reporting, and graceful shutdown. Use `https://github.com/Kanu-Coffee/codex-for-home-assistant#dev`; the app/panel are **Codex for Home Assistant (DEV)** / **Codex DEV**. VM/CI validation is separate from real-device acceptance.
 
