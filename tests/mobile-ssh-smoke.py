@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Isolated image SSH/PEM acceptance; never prints generated private-key output."""
 import os
 import pty

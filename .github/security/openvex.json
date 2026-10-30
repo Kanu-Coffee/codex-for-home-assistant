@@ -68,6 +68,19 @@
       "status": "not_affected",
       "justification": "vulnerable_code_not_in_execute_path",
       "impact_statement": "Official CVE alias of GO-2026-6604. The Windows-specific os.Root directory junction path cannot execute in these Linux images. This rule remains bound to exact reviewed gh stdlib go1.26.5 bytes and validated image/SBOM identity; patched yq stdlib and unknown binaries get no rule."
+    },
+    {
+      "vulnerability": {
+        "name": "CVE-2026-58016"
+      },
+      "products": [
+        {
+          "@id": "pkg:apk/alpine/glib@2.88.1-r1"
+        }
+      ],
+      "status": "not_affected",
+      "justification": "vulnerable_code_not_in_execute_path",
+      "impact_statement": "CVE-2026-58016 affects g_dbus_node_info_new_for_xml in GNOME GLib when parsing malformed D-Bus introspection XML. This container image runs headless Chromium, OpenSSH, and Node.js without a D-Bus daemon or any untrusted D-Bus XML introspection parsing. The vulnerable function is demonstrably unreachable in this container."
     }
   ]
 }
