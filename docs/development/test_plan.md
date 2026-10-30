@@ -629,3 +629,9 @@ raw scan으로 진행한다. 실제 Grype 대조에서 metadata 누락 fixture�
 ## 관리형 worker 전환 회귀
 
 `tests/test_codex_live_handover.py`는 `CODEX_HANDOVER_BASELINE`과 `CODEX_HANDOVER_CANDIDATE`의 공식 binary pair를 사용한다. disposable home과 local Responses fixture로 stdio/WebSocket/PTY TUI의 첫 응답, busy 중 적용 보류, idle 후 실제 applyUpdate, 변경된 worker exe/PID, 같은 대화의 두 번째 응답과 이전 문맥 포함을 검사한다. image policy probe는 이 host 시험에서 주입한 stub이며 실제 AppArmor/requirements 검증을 대체하지 않는다. `tests/codex-update-smoke.sh`와 HAOS 시험에서 실제 policy gate를 별도로 검증한다.
+
+## 모바일 SSH 간편 설정
+
+모바일 간편 설정: setup→PKCS#8/SEC1 동일 공개키 검증→두 형식 실제 SSH 인증→App 재시작/구성 저장 후 보존→revoke 후 신규 인증 거부를 검사한다. 실제 ChatGPT 앱에서 두 PEM 입력·SSH 연결·app-server 후속 요청 수용은 HAOS/mobile 환경에서 별도 검증한다. 개인키를 로그나 증거에 포함하지 않는다.
+
+로컬 amd64 `codex-ha:remote-setup`의 `python3 tests/mobile-ssh-smoke.py codex-ha:remote-setup`는 실제 PTY setup, 두 PEM SSH 인증, revoke 거부, S6 활성화·재시작 후 SSH 로그인 PASS다. 실제 HAOS/ChatGPT 모바일 및 custom AppArmor/native ARM 수용은 NOT RUN이다.

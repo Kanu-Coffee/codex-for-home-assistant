@@ -336,3 +336,36 @@ console.log(JSON.stringify({activePreserved,title:r.loadedThreadIds.has('title')
     assert result['activePreserved'] is True
     assert result['title'] is False
     assert result['user'] is True
+
+
+@pytest.mark.parametrize('blocked', [None, 'capabilities', 'pending'])
+def test_owned_tui_reconnect_reuses_only_compatible_drained_handshake(repository_root: Path, blocked: str | None) -> None:
+    result = node_json(repository_root, """
+import {StdioRelay} from './codex_home_assistant/rootfs/usr/local/share/codex-ha/codex-session-host.mjs';
+const relay = new StdioRelay({childExe:'/synthetic/worker',spawnClient:true});
+const writes=[], replies=[];
+relay.child = {stdin:{writable:true,write:data=>{writes.push(JSON.parse(data));return true;}}};
+relay.clientSocketPath='/synthetic/socket';
+relay._wsSendText = text=>{replies.push(JSON.parse(text));return true;};
+const request = obj=>relay._processAndForwardClientChunk(JSON.stringify(obj)+'\\n');
+request({id:1,method:'initialize',params:{clientInfo:{name:'tui',version:'1'},capabilities:{experimentalApi:true}}});
+relay._handleServerData(JSON.stringify({id:1,result:{userAgent:'synthetic'}})+'\\n');
+request({method:'initialized'});
+relay.replacementHandshake=true;
+const blocked=""" + json.dumps(blocked) + """;
+if(blocked==='pending') relay.inFlightClientRequests.set(9,{method:'thread/list'});
+request({id:2,method:'initialize',params:{clientInfo:{name:'tui',version:'1'},capabilities:{experimentalApi:blocked!=='capabilities'}}});
+request({method:'initialized'});
+if(blocked) request({id:3,method:'thread/list',params:{}});
+console.log(JSON.stringify({writes,replies,handshake:relay.replacementHandshake}));
+""")
+    assert [msg.get('method') for msg in result['writes']] == ['initialize', 'initialized']
+    reply = next(msg for msg in result['replies'] if msg.get('id') == 2)
+    if blocked:
+        assert reply['error']['code'] == -32600
+        assert result['replies'][-1]['id'] == 3
+        assert result['replies'][-1]['error']['code'] == -32600
+        assert result['handshake'] is True
+    else:
+        assert reply['result']['userAgent'] == 'synthetic'
+        assert result['handshake'] is False

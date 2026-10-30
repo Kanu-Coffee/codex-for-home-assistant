@@ -5,7 +5,7 @@ HostKey /data/ssh/ssh_host_ed25519_key
 HostKey /data/ssh/ssh_host_rsa_key
 PidFile /run/sshd.pid
 
-AuthorizedKeysFile /data/ssh/authorized_keys
+AuthorizedKeysFile /data/ssh/authorized_keys /data/ssh/mobile/authorized_keys
 PubkeyAuthentication yes
 AuthenticationMethods publickey
 PasswordAuthentication no

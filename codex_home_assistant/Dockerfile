@@ -3,7 +3,7 @@ ARG BUILD_FROM=ghcr.io/home-assistant/base:3.24@sha256:94ff231402a5e7ad2a82e261a
 FROM ${BUILD_FROM}
 
 ARG BUILD_ARCH=amd64
-ARG BUILD_VERSION=0.7.3-dev.4
+ARG BUILD_VERSION=0.7.3-dev.5
 ARG TARGETARCH
 ARG CODEX_VERSION=0.162.1
 ARG CODEX_SHA256_AMD64=a676f5722aae0d86cbe3764332f08eab1fdd89dc0a300b3ad4ffbf48611fa3e3
@@ -161,6 +161,8 @@ RUN install -d -m 0700 /data/home /data/codex /data/github-cli /run/codex-ha /da
     && node --check /usr/local/share/codex-ha/ha-feedback.mjs \
     && node --check /usr/local/share/codex-ha/codex-runtime-manager.mjs \
     && node --check /usr/local/share/codex-ha/codex-updater-daemon.mjs \
+    && node --check /usr/local/share/codex-ha/codex-remote-setup.mjs \
+    && ha-codex-remote --help | grep -Fq 'ha-codex-remote setup' \
     && ha-feedback --help | grep -Fq 'ha-feedback github submit' \
     && ha-codex-update --help | grep -Fq 'ha-codex-update'
 

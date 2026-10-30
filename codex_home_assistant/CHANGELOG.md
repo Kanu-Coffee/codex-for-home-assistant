@@ -2,6 +2,16 @@
 
 All notable changes to this App are documented in this file.
 
+## [0.7.3-dev.5] - 2026-10-30
+
+### Added
+
+- Add interactive `ha-codex-remote setup/show/status/revoke` for a persistent ECDSA P-256 mobile SSH key, automatic public-key registration, and PKCS#8/SEC1 PEM export. The key survives configuration rewrites independently of configured authorized keys. Mobile client PEM parser failures remain an upstream limitation; actual mobile acceptance is not yet verified.
+
+### Fixed
+
+- Keep the managed CLI host alive when the resume picker replaces its WebSocket connection. Reuse the backend initialization result for compatible, drained reconnects so selecting a conversation can continue without exiting to the shell.
+
 ## [0.7.3-dev.4] - 2026-10-30
 
 ### Changed

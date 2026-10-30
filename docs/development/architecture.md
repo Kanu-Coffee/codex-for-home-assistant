@@ -592,3 +592,7 @@ ChatGPT mobile Remote (선택)
 `codex-session-host.mjs`는 JSONL stdio 또는 pinned ws 기반 Unix WebSocket frontend를 유지하고 공식 stdio worker를 교체한다. 요청 ledger와 `codex-activity.mjs`의 authoritative diagnostics/thread/background 관측을 조합한다. updater는 모든 host의 barrier를 확보한 뒤 재검사하고 worker 종료·기동·동일 영속 thread 복원을 수행한다. selected/running identity 검증과 durable journal commit 후 입력을 재개한다. 직접 Unix server의 loaded 대화는 이 host 없이 안전 복원을 증명할 수 없어 보류한다.
 
 내용 있는 ephemeral, 일부 command/process 수명 관측, 비가역 schema migration과 crash 이후 불완전 journal의 자동 복구는 제한으로 남는다. journal이 남으면 자동 중복 실행 대신 명시적 recovery 상태로 닫는다. 실제 HAOS/mobile 수용은 로컬 시험과 별도다.
+
+## 모바일 SSH 간편 설정
+
+간편 설정 `ha-codex-remote`는 `/data/ssh/mobile`의 단일 P-256 키를 관리하고 sshd의 두 번째 AuthorizedKeysFile로 공개키를 제공한다. 초기화 sync는 구성 키와 합산해 SSH 활성화를 판정한다. Wrapper flock으로 생성·표시·sync·해제를 직렬화한다.

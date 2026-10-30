@@ -398,6 +398,14 @@ if (( invalid_key_count > 0 )); then
   bashio::log.warning "Ignored ${invalid_key_count} invalid SSH public key(s)"
 fi
 
+# A dedicated mobile key survives App option rewrites and restarts.
+mobile_key_count=$(/usr/local/bin/ha-codex-remote sync)
+if [[ ! "${mobile_key_count}" =~ ^[01]$ ]]; then
+  bashio::log.fatal 'Mobile SSH key synchronization failed'
+  exit 1
+fi
+valid_key_count=$((valid_key_count + mobile_key_count))
+
 if (( valid_key_count == 0 )); then
   : > "${RUNTIME_DIR}/ssh-disabled"
   chmod 0600 "${RUNTIME_DIR}/ssh-disabled"

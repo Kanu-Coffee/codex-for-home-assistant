@@ -585,3 +585,7 @@ Playwright renderer는 `0.2.0`, 최소권한 browser 경로는 `0.2.1`, 관리�
 ### 개발 후보의 관리형 runtime
 
 새 대화형 CLI와 JSONL Remote stdio는 private Unix control socket을 가진 lifecycle host로 실행한다. 자동/수동 업데이트는 실제 작업 관측과 admission barrier를 공유한다. TUI frontend와 실행 worker 버전을 구분하며 새 외부 포트·App 권한을 추가하지 않는다. 기존 직접실행 세션은 새 관리형 실행으로 옮길 때 한 번 정상 종료가 필요하다.
+
+## 모바일 SSH 간편 설정
+
+구성 `authorized_keys`와 별개인 `/data/ssh/mobile/authorized_keys`도 SSH 공개키로 허용한다. 둘 다 없을 때만 SSH를 비활성화한다. 외부 포트는 기존 Network 설정으로만 관리한다.

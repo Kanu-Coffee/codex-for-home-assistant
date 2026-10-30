@@ -26,6 +26,38 @@
 
 ## Current Work
 
+### 2026-10-30 — Executor: FIX_02에 따라 DEV 0.7.3-dev.5 배포 작업 진행
+
+- 사용자의 DEV 버전 배포 지시에 따라 [FIX_02](../../.handoff/007_work-aware-runtime-update/FIX_02.md) 절차를 수행한다.
+- App version 0.7.3-dev.5 확정: `codex_home_assistant/config.yaml`, `Dockerfile`, `playwright/package.json`, `package-lock.json`, `tests/test_addon_contract.py`, `CHANGELOG.md` 0.7.3-dev.5 항목 정리, README/DOCS 반영.
+- 단위/통합 테스트, Node syntax, ShellCheck, actionlint, Hadolint, Markdown lint, Gitleaks 비밀값 검사를 수행하고 DEV PR 생성 및 CI/Builder 완료 후 merge/tag/release를 진행한다.
+
+### 2026-10-30 — Reviewer: 새 DEV 배포용 FIX_02 발행, 실행은 별도 Executor
+
+- 사용자의 “직접 배포하지 말고 FIX 절차만 발행” 지시에 따라 [FIX_02](../../.handoff/007_work-aware-runtime-update/FIX_02.md)를 새로 작성했다. 예정 버전은 0.7.3-dev.5이며 실제 원격 충돌 확인·확정은 Executor가 수행한다.
+- 현재 미커밋 resume/모바일 SSH 개선과 신규 파일, 메타데이터 정리, 최종 검증, DEV PR/CI/merge, exact tag/Builder/익명 multiarch·DEV source 검증, prerelease, 실패 대응과 FIX_02_REPORT 완료 기준을 기재했다. 과거 handoff는 보존한다.
+- 이번 세션은 문서 발행만 수행했다. 제품 버전 변경·commit/push/PR/merge/tag/release·운영 HAOS 작업은 하지 않았다. 기존 299 passed/6 skipped와 이미지/S6 증거는 기존 실행 기록을 열어 확인했으며 이번에 제품 시험을 재실행한 것은 아니다.
+
+### 2026-10-30 — 모바일 Remote PEM 입력 문제 조사·간편 설정 로컬 구현 완료
+
+- 사용자 오류 문구의 지원 범위(PKCS#8 Ed25519/EC, SEC1 EC)와 upstream [#52417](https://github.com/openai/codex/issues/52417)의 유효 PEM 거부 제보를 확인했다. [#38264](https://github.com/openai/codex/issues/38264)는 PEM 입력 후 호스트 인증서 협상 단계의 별개 실패다. 클라이언트 파서 문제를 서버 키 변환으로 완전히 해결한다고 단정하지 않는다.
+- `ha-codex-remote setup/show/status/revoke`로 P-256 키 생성·서버 공개키 자동 등록·동일 키 PKCS#8/SEC1 출력 전환·폐기를 구현했다. 대화형 표시만 허용하고 권한·link 검증 및 flock 직렬화를 적용한다. 구성 keys와 분리해 재시작 시 sync하며, 기존 SSH 비활성 상태에는 S6 서비스 시작을 요청한다. 기존 resume 로컬 수정은 보존한다.
+- 검증: 전체 pytest 299 passed, 6 skipped (110.04초). 새 helper 회귀 10 passed. amd64 이미지 `codex-ha:remote-setup` build PASS. 해당 이미지에서 실제 PTY setup, PKCS#8/SEC1 각각의 OpenSSH 인증, data volume 보존·sync, revoke 후 신규 인증 거부, 실제 S6 `/init`의 SSH 비활성→setup 활성화→재시작 후 동일 키 SSH 로그인 PASS다. 비밀키 출력은 시험 내부에서만 수신하고 로그에 남기지 않았다. 첫 S6 시험은 프로세스명 정확 일치 가정 때문에 오판했고 listener process명을 허용해 재검증했다.
+- ShellCheck·Hadolint·actionlint·변경 Markdown lint·Gitleaks(변경/신규 source)·diff 검사 PASS. 실제 HAOS/mobile·custom AppArmor profile의 새 helper 수용·native ARM 실행과 공개 배포는 NOT RUN이다. 새 CI smoke는 amd64/aarch64 native job 양쪽에 연결했다. 기존 미배포 resume 수정도 유지하며 현재 공개 dev.4 이미지에는 두 수정이 모두 포함되지 않았다.
+
+### 2026-10-30 — resume 선택 후 shell 복귀 원인 재현·로컬 수정
+
+- 사용자 추가 화면으로 `codex resume` 목록 선택 → `Resuming session…` → shell 복귀를 확인했다. 실제 0.165.0 PTY 시험에서도 수정 전 동일 경로가 exit 0으로 종료됐다. 원인은 picker가 WebSocket을 교체할 때 relay가 전체 host를 종료한 것이다. 종료만 막으면 backend의 두 번째 initialize가 `Already initialized`로 거절되는 것도 재현했다.
+- 관리형 TUI는 socket 대신 소유한 frontend process 종료에 수명을 연결한다. 호환되는 capabilities와 pending RPC가 없는 재연결에서만 초기화 응답을 재사용하고 initialized 중복 전송을 차단한다. 초기화 실패 뒤 요청 우회, 이전 socket close가 새 연결 상태를 지우는 경우도 막았다. 외부 WebSocket의 기존 종료 동작은 유지한다.
+- 공식 checksum 검증 0.166.0으로 0.162.1→0.166.0 stdio/WebSocket/PTY handover와 종료 후 resume picker→같은 대화 후속 응답을 검증했다(4 passed). Mock provider와 임시 HOME을 사용했다. 초기 시험은 fixture package 권한과 Unix socket 경로 길이 때문에 실패했고, 시험 디렉터리 권한·경로를 고쳐 재실행했다. 제품 정책은 완화하지 않았다.
+- 전체 pytest 289 passed, 6 skipped (114.40초), 최종 handshake 회귀 12 passed. JS syntax와 diff 검사 PASS. HAOS/Ingress/실제 SSH에서 수정본 수용 및 수정본 이미지 build·배포는 NOT RUN이다. 게시된 dev.4에는 아직 포함되지 않았다. SSH 간편 설정 기능은 이번 resume 수정 범위에 포함하지 않았다.
+
+### 2026-10-30 — 사용자 DEV 운영 업데이트 정상 확인·resume/SSH 후속 제보
+
+- 사용자는 HAOS DEV 적용 후 전체 업데이트 처리가 정상이라고 확인했다. 제공 화면은 bundled 0.162.1 / selected 0.166.0, up_to_date, staged 없음, 실행 세션 0을 표시한다. 이는 사용자 제공 증거이며 개발 세션에서 재실행한 결과는 아니다.
+- `codex`의 내부 Unix socket 재연결 안내 이후 새 실행이 shell로 돌아가는 현상과 resume 의심을 제보했다. managed TUI는 일시적인 host socket을 사용하므로 host 종료 뒤 출력된 `--remote unix://...` 안내를 그대로 재사용하는 경로를 점검해야 한다. 화면에는 실제 resume 명령 실패 원문이 없어 원인은 미확정이다.
+- SSH 구성에는 이미 공개키 `authorized_keys` 입력이 있으나 모바일 개인키 가져오기 경험이 어렵다는 제보다. 공식 모바일 문서는 현재 직접 SSH 개인키의 허용 규격을 명시하지 않아 특정 형식을 지원한다고 단정하지 않는다. 개선 후보는 공개키 입력 정규화·명확한 검증과 Ingress 기반 키 생성/1회 다운로드 안내다. 제품 구현·추가 배포는 아직 하지 않았다.
+
 ### 2026-10-30 — DEV 0.7.3-dev.4 공개 배포
 
 - [PR #62](https://github.com/Kanu-Coffee/codex-for-home-assistant/pull/62)를 DEV에 병합한 `c420d93f7d3d5a83785afcad5e2966369f1eb099`을 tag `0.7.3-dev.4`로 고정하고 [GitHub 사전 릴리스](https://github.com/Kanu-Coffee/codex-for-home-assistant/releases/tag/0.7.3-dev.4)를 게시했다. Stable main과 운영 HA는 변경하지 않았다.

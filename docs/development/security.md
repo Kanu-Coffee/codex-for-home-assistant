@@ -456,3 +456,7 @@ hash를 담는 감사 자료이며 scanner에 전달하지 않는다. 단일 gat
 Go module checksum을 executable checksum으로 취급하지 않으며, 새 Go 바이너리나
 hash에 이전 비적용 판단을 자동 승계하지 않는다. 실제 exploitability 검증과
 module 단위 scanner 결과, raw findings와 suppressed findings는 구분해 기록한다.
+
+## 모바일 SSH 간편 설정
+
+모바일 간편 설정 키는 개인키 0600·디렉터리 0700으로 `/data/ssh/mobile`에 영속화한다. 사용자의 명시적인 대화형 setup/show만 PEM을 표시하며 agent/log/redirection 출력을 허용하지 않는다. 터미널 scrollback·백업에 개인키가 남는 위험은 유지된다. revoke는 신규 인증을 차단하며 이미 연결된 세션을 강제 종료하지 않는다.

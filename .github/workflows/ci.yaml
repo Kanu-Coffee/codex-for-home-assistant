@@ -170,6 +170,9 @@ jobs:
       - name: Run container smoke tests
         run: bash tests/docker-smoke.sh codex-for-home-assistant:test
 
+      - name: Verify mobile PEM SSH setup and revocation
+        run: python3 tests/mobile-ssh-smoke.py codex-for-home-assistant:test
+
       - name: Run headless browser approval policy smoke tests
         run: bash tests/browser-approval-smoke.sh codex-for-home-assistant:test
 
@@ -278,6 +281,9 @@ jobs:
 
       - name: Run container smoke tests
         run: bash tests/docker-smoke.sh codex-for-home-assistant:aarch64-test
+
+      - name: Verify mobile PEM SSH setup and revocation
+        run: python3 tests/mobile-ssh-smoke.py codex-for-home-assistant:aarch64-test
 
       - name: Run headless browser approval policy smoke tests
         run: bash tests/browser-approval-smoke.sh codex-for-home-assistant:aarch64-test

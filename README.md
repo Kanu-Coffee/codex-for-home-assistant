@@ -1,4 +1,4 @@
-**DEV `0.7.3-dev.4`가 공개되었습니다. 유휴 worker 전환을 구현하며 HAOS 실기 수용은 아직 수행하지 않았습니다.**
+**로컬 개발 후보 `0.7.3-dev.5`는 resume 복원 정상화와 모바일 SSH 간편 설정을 구현합니다. 공개 게시·HAOS 수용은 아직 수행하지 않았습니다.**
 
 > 정식판 `0.7.2` — 실기기 수용을 마친 `0.7.2-dev.2`의 프로세스 분류·진단/버전 표시·종료 처리를 승격합니다. 설치 저장소는 `https://github.com/Kanu-Coffee/codex-for-home-assistant`입니다.
 
@@ -195,7 +195,7 @@ $ha-feedback feature 이 앱에서 개선하고 싶은 요청이 있어. 현재 
 
 | 설정 | 기본값 | 용도 |
 | --- | --- | --- |
-| `authorized_keys` | `[]` | SSH 공개키. 비어 있으면 SSH만 비활성화됩니다. |
+| `authorized_keys` | `[]` | SSH 공개키. 구성 키·간편 설정 키가 모두 없으면 SSH만 비활성화됩니다. |
 | `web_terminal_auto_start_codex` | `false` | 새 Web 터미널 세션에서 Codex를 자동 시작합니다. |
 | `codex_approval_policy` | `on-request` | 명령 실행 승인 정책입니다. |
 | `codex_sandbox_mode` | `workspace-write` | network를 허용하는 관리형 Codex sandbox입니다. 기존 `danger-full-access` 입력은 호환용으로만 받아 실제 실행에서는 `workspace-write`로 강제됩니다. |
@@ -257,3 +257,5 @@ Custom AppArmor와 Codex 관리자 요구사항이 루트·중첩 `secrets.yaml`
 관리형 CLI/TUI와 Remote stdio는 창·연결·로드된 대화만으로 업데이트를 보류하지 않습니다. 진행·대기 요청, tool/승인 대기와 백그라운드 작업을 보호하고, 유휴 시 기존 스케줄·재시도 예산·cooldown에 따라 실행 worker를 교체합니다. 연결과 영속 대화를 복원한 뒤 다음 요청을 처리합니다. TUI frontend 자체는 종료 후 다음 실행부터 갱신됩니다. 이전 버전에서 직접 실행한 세션과 외부 `--remote` 서버는 자동 이관 대상이 아니며, 내용 있는 비영속 대화·미지원 작업 관측·복구 불완전 상태는 구체적인 이유와 함께 보류합니다.
 
 공식 0.162.1 → 0.165.0 로컬 통합을 검증했으며, HAOS/mobile 및 native ARM 수용은 아직 미검증입니다.
+
+모바일 SSH 간편 설정은 Web UI shell의 `ha-codex-remote setup`으로 키 생성·공개키 등록·휴대폰용 PEM 표시를 한 번에 진행하며, `ha-codex-remote show --format sec1`으로 대체 형식을 표시합니다. 실제 모바일 클라이언트 수용은 아직 미검증입니다.

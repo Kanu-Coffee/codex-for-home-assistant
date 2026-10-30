@@ -437,3 +437,7 @@ MVP에서는 다음을 만들지 않는다.
 4. 식별된 모든 세션의 실제 유휴 상태와 안전한 복원 가능성이 확인되면 원자적으로 `/data/codex-runtime/current` symlink를 갱신하고, 새 세션은 즉시 갱신된 버전을 사용한다. 검증된 유휴 managed Unix app-server 단독 상태에서는 cooldown 내 허용된 graceful replacement path를 사용한다.
 5. 업데이터 서비스는 `SUPERVISOR_TOKEN`을 상속하지 않으며 로그나 상태 파일에 자격증명/원시 사용자 입력을 남기지 않는다.
 6. baseline 패키지(`0.162.1`)는 `/usr/local/lib/codex-ha/codex-baseline`에 보존되며 `/data` 런타임 손상 시 fallback으로 동작한다.
+
+## 모바일 SSH 간편 설정
+
+모바일 Remote용 키 생성과 공개키 등록을 Web UI shell의 `ha-codex-remote setup` 한 번으로 제공한다. 호환 P-256의 PKCS#8/SEC1 표시 전환·fingerprint 상태·키 해제를 제공하며 모바일 클라이언트 자체 파서 오류까지 해결한다고 주장하지 않는다.

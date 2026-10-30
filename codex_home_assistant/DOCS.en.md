@@ -102,7 +102,7 @@ Keep the defaults when getting started. After changing settings, restart the app
 
 | Setting | Default | Accepted values and meaning | Caution |
 | --- | --- | --- | --- |
-| `authorized_keys` | `[]` | OpenSSH public keys allowed to connect | When empty, only SSH is disabled; the Web UI remains available. Never enter a private key. |
+| `authorized_keys` | `[]` | OpenSSH public keys allowed to connect | When both configured and quick-setup keys are absent, only SSH is disabled; the Web UI remains available. Never enter a private key. |
 | `web_terminal_auto_start_codex` | `false` | Start Codex once in each new `tmux` session | Does not affect an existing session. Exiting Codex returns to Bash. |
 | `tmux_session_name` | `codex-ha` | A 1–64 character session name using letters, numbers, `.`, `_`, or `-` | A change takes effect in a new session. |
 | `codex_approval_policy` | `on-request` | `untrusted`, `on-request`, or `never` | `never` grants broad automatic approval. Use it only for trusted work. |
@@ -221,6 +221,28 @@ ChatGPT mobile Remote
   → Codex app server bundled in the HA app
   → /config remote project
 ```
+
+### Mobile SSH quick setup
+
+Exit Codex to the shell in the Web UI and run this command yourself:
+
+```bash
+ha-codex-remote setup
+```
+
+It creates a dedicated ECDSA P-256 key and registers its public key automatically. Copy **only the entire private-key block, including BEGIN/END lines**, into the phone Remote private-key field. No configuration-tab key entry is needed. Use your reachable HA address, the SSH host port from App Network (default 2223), user `root`, and project `/config`. The Ingress URL is not the SSH address. Enable the SSH port in Network if it is disabled.
+
+If the default PKCS#8 is rejected, display the **same key** as SEC1:
+
+```bash
+ha-codex-remote show --format sec1
+```
+
+Use `show --format pkcs8` to switch back. Repeating `setup` preserves the key. `ha-codex-remote status` shows a non-secret fingerprint and connection guidance. `ha-codex-remote revoke` removes mobile-key access; the next setup creates a new key that must also replace the phone's key. Existing SSH connections may continue after revocation. There is one quick-setup key per App, separate from the normal `authorized_keys` list.
+
+Keys persist under `/data/ssh/mobile` with directory mode 0700 and file mode 0600 across App restarts and configuration saves. Setup requests SSH startup if missing keys had disabled it, or tells you to restart the App if that request fails. Private-key display requires a human interactive terminal and refuses output redirection. The key can remain in terminal scrollback and `/data` backups: never share its screen/output in chat or issues, and do not ask Codex to print it on your behalf.
+
+An [upstream iOS report](https://github.com/openai/codex/issues/52417) describes the same rejection with valid SEC1 and PKCS#8 PEM. If both formats fail at input, update the mobile app and record only its version and error text. This helper cannot fix a client parser bug. If the key is accepted but connection fails, check the port, VPN/reachability and SSH logs. [Host-certificate negotiation failures](https://github.com/openai/codex/issues/38264) are a separate failure stage. Actual ChatGPT mobile acceptance remains unverified.
 
 1. In the Web UI, complete `ha-codex-login` and confirm that `codex login status` reports a signed-in session.
 2. Add only the **public key** paired with the key used by mobile Remote to `authorized_keys`, then restart the app.
@@ -583,3 +605,7 @@ Before uninstalling, decide how to handle any Codex configuration and authentica
 Before requesting support, follow [SUPPORT.md](../SUPPORT.md) to remove tokens, internal URLs, entities, and user information. Use [GitHub Issues](https://github.com/Kanu-Coffee/codex-for-home-assistant/issues) for general problems and the private process in [SECURITY.md](../.github/SECURITY.md) for vulnerabilities.
 
 This is an unofficial community project. It is not affiliated with or endorsed by OpenAI, Home Assistant, or Nabu Casa. Source is distributed under the [Apache License 2.0](../LICENSE).
+
+### Resume exit in DEV 0.7.3-dev.4 and 0.7.3-dev.5 fix
+
+In 0.7.3-dev.4, selecting a conversation with Enter in `codex resume` could return to the shell at `Resuming session…`. The managed CLI host incorrectly treated the picker connection closing as a full exit. In 0.7.3-dev.5, the host is kept alive across this transition and handles compatible reconnect initialization. An internal `--remote unix://…` address cannot be reused after its host exits.

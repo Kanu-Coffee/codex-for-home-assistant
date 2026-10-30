@@ -1,4 +1,4 @@
-**DEV `0.7.3-dev.4`가 공개되었습니다. 유휴 worker 전환을 구현하며 HAOS 실기 수용은 아직 수행하지 않았습니다.**
+**로컬 개발 후보 `0.7.3-dev.5`는 resume 복원 정상화와 모바일 SSH 간편 설정을 구현합니다. 공개 게시·HAOS 수용은 아직 수행하지 않았습니다.**
 
 > 이전 DEV 후보: `0.7.2-dev.2` — 검사 실패 원인 분리, 런타임 버전 상세 분리, 정상 정지 유예를 개선합니다. 설치 저장소는 `https://github.com/Kanu-Coffee/codex-for-home-assistant#dev`이며 App/패널은 **Codex for Home Assistant (DEV)** / **Codex DEV**입니다. VM·CI 검증과 실제 사용자 장치 수용은 구분합니다.
 
@@ -72,3 +72,5 @@ GitHub 직접 제출은 후보 검색이 가능한 경우의 10분 만료·1회�
 관리형 CLI/TUI와 Remote stdio는 창·연결·로드된 대화만으로 업데이트를 보류하지 않습니다. 진행·대기 요청, tool/승인 대기와 백그라운드 작업을 보호하고, 유휴 시 기존 스케줄·재시도 예산·cooldown에 따라 실행 worker를 교체합니다. 연결과 영속 대화를 복원한 뒤 다음 요청을 처리합니다. TUI frontend 자체는 종료 후 다음 실행부터 갱신됩니다. 이전 버전에서 직접 실행한 세션과 외부 `--remote` 서버는 자동 이관 대상이 아니며, 내용 있는 비영속 대화·미지원 작업 관측·복구 불완전 상태는 구체적인 이유와 함께 보류합니다.
 
 공식 0.162.1 → 0.165.0 로컬 통합을 검증했으며, HAOS/mobile 및 native ARM 수용은 아직 미검증입니다.
+
+모바일 SSH 간편 설정은 Web UI shell의 `ha-codex-remote setup`으로 키 생성·공개키 등록·휴대폰용 PEM 표시를 한 번에 진행하며, `ha-codex-remote show --format sec1`으로 대체 형식을 표시합니다. 실제 모바일 클라이언트 수용은 아직 미검증입니다.
