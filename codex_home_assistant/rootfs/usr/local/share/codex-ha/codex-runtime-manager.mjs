@@ -846,10 +846,14 @@ export function parseCodexInvocation(cmdline, startIndex = 1) {
     "-m", "--model", "-c", "--config", "-C", "--cd", "--profile", "-p", "--color",
     "-s", "--sandbox", "-a", "--ask-for-approval", "--enable", "--disable",
     "--remote", "--remote-auth-token-env", "--local-provider", "-i", "--image",
-    "--add-dir", "--listen",
+    "--add-dir", "--listen", "--sock",
+    "--code-mode-host", "--ws-auth", "--ws-token-file", "--ws-token-sha256",
+    "--ws-shared-secret-file", "--ws-issuer", "--ws-audience", "--ws-max-clock-skew-seconds",
   ]);
   let subcommand = null;
+  let appServerCommand = null;
   let listenSocket = null;
+  let proxySocket = null;
   let optionsEnded = false;
   for (let i = startIndex; i < cmdline.length; i++) {
     const token = cmdline[i];
@@ -860,23 +864,39 @@ export function parseCodexInvocation(cmdline, startIndex = 1) {
         if (token.startsWith("--listen=")) {
           const value = token.slice("--listen=".length);
           if (value.startsWith("unix://")) listenSocket = value.slice(7);
+          else listenSocket = value;
+        } else if (token.startsWith("--sock=")) {
+          const value = token.slice("--sock=".length);
+          if (value.startsWith("unix://")) proxySocket = value.slice(7);
+          else proxySocket = value;
         }
         continue;
       }
       if (token.startsWith("-") && token !== "-") {
         if (OPTION_WITH_VALUE.has(token)) {
           const value = cmdline[i + 1];
-          if (token === "--listen" && typeof value === "string" && value.startsWith("unix://")) {
-            listenSocket = value.slice(7);
+          if (token === "--listen" && typeof value === "string") {
+            if (value.startsWith("unix://")) listenSocket = value.slice(7);
+            else listenSocket = value;
+          } else if (token === "--sock" && typeof value === "string") {
+            if (value.startsWith("unix://")) proxySocket = value.slice(7);
+            else proxySocket = value;
           }
           i++;
         }
         continue;
       }
-      if (subcommand === null) subcommand = token;
+      if (subcommand === null) {
+        subcommand = token;
+      } else if (subcommand === "app-server" && appServerCommand === null) {
+        appServerCommand = token;
+      }
     }
   }
-  return { subcommand, listenSocket };
+  const result = { subcommand, listenSocket };
+  if (appServerCommand !== null) result.appServerCommand = appServerCommand;
+  if (proxySocket !== null) result.proxySocket = proxySocket;
+  return result;
 }
 
 async function ancestorPids(pid, maxDepth = 32) {
@@ -1393,11 +1413,18 @@ export async function inspectAllSessions(options = {}) {
     const identity = e.identity || await executableEntrypoint(e.proc);
     const invocation = parseCodexInvocation(e.proc.cmdline || [], identity ? identity.argvIndex + 1 : 1);
     if (identity) e.identity = identity;
-    const serverByArgv = identity && identity.role === "primary" && invocation.subcommand === "app-server";
+    const isProxyInvocation = identity && identity.role === "primary" &&
+      invocation.subcommand === "app-server" && invocation.appServerCommand === "proxy";
+    const isProxyRecord = record && record.type === "app-server-proxy";
+    const serverByArgv = identity && identity.role === "primary" &&
+      invocation.subcommand === "app-server" && !invocation.appServerCommand;
     const serverByRecord = record &&
-      ((record.type === "app-server" && (!invocation.subcommand || invocation.subcommand === "app-server")) ||
+      ((record.type === "app-server" && (!invocation.subcommand || (invocation.subcommand === "app-server" && !invocation.appServerCommand))) ||
        (record.type === "remote-stdio" && record.managed === true));
-    if (serverByArgv || serverByRecord) {
+    if (isProxyInvocation || isProxyRecord) {
+      e.kind = "proxy";
+      e.targetSocket = record?.socketPath || record?.targetSocket || invocation.proxySocket || null;
+    } else if (serverByArgv || serverByRecord) {
       e.kind = "app-server";
       e.socketPath = record?.socketPath || invocation.listenSocket;
     } else if (!record && identity && identity.role === "companion") {
@@ -1444,6 +1471,53 @@ export async function inspectAllSessions(options = {}) {
       continue;
     }
 
+    if (e.kind === "proxy") {
+      const targetSock = e.targetSocket || e.record?.socketPath || null;
+      if (!e.record || e.record.type !== "app-server-proxy" || !targetSock) {
+        e.kind = "unknown";
+        e.unverifiedProxy = true;
+        continue;
+      }
+      let isSocket = false;
+      let realTarget = null;
+      try {
+        const st = await stat(targetSock);
+        isSocket = st.isSocket();
+        realTarget = await realpath(targetSock).catch(() => resolve(targetSock));
+      } catch {}
+
+      if (!isSocket || !realTarget) {
+        e.kind = "unknown";
+        e.missingTargetSocket = true;
+        continue;
+      }
+
+      let ownerPid = null;
+      for (const [sPid, sEntry] of entries) {
+        if (sPid === pid) continue;
+        const candidateSock = sEntry.socketPath || sEntry.record?.clientSocket || null;
+        if (candidateSock) {
+          const realCandidate = await realpath(candidateSock).catch(() => resolve(candidateSock));
+          if (realCandidate === realTarget || resolve(candidateSock) === resolve(targetSock)) {
+            if (sEntry.kind === "app-server" || sEntry.kind === "cli") {
+              ownerPid = sPid;
+              break;
+            }
+          }
+        }
+      }
+
+      if (ownerPid) {
+        e.kind = "helper";
+        e.owner = ownerPid;
+        e.isProxy = true;
+      } else {
+        e.kind = "unknown";
+        e.orphanProxy = true;
+      }
+      continue;
+    }
+
     if (e.kind !== "companion") continue;
     const chain = await ancestorPids(pid);
     const owner = chain.find((a) => ownerPids.has(a));
@@ -1466,6 +1540,12 @@ export async function inspectAllSessions(options = {}) {
         addBusy("inspection_failed", pid, `process state unknown: ${e.proc.error}`);
       } else if (e.orphanCompanion) {
         addBusy("unknown", pid, "codex package companion without verifiable owner; held for manual review");
+      } else if (e.unverifiedProxy) {
+        addBusy("unknown", pid, "codex proxy process without verified launch record; held until identity is verified");
+      } else if (e.missingTargetSocket) {
+        addBusy("unknown", pid, `codex proxy target socket is missing or not a socket: ${e.targetSocket || "unknown"}; held until verified`);
+      } else if (e.orphanProxy) {
+        addBusy("unknown", pid, `codex proxy without verified target server for socket ${e.targetSocket || "unknown"}; held until owner is verified`);
       } else if (e.unrecognized) {
         addBusy("unknown", pid, "unrecognized executable inside managed codex package; held until identity is verified");
       } else {

@@ -7,7 +7,7 @@ import sys
 import time
 import uuid
 
-image = sys.argv[1] if len(sys.argv) > 1 else 'codex-ha:remote-setup'
+image = sys.argv[1] if len(sys.argv) > 1 else os.environ.get('IMAGE_NAME', 'codex-ha:remote-setup')
 name = 'codex-mobile-smoke-' + uuid.uuid4().hex[:12]
 volume = name + '-data'
 
@@ -128,7 +128,75 @@ try:
     result = execute('ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/tmp/known_hosts '
                      '-o IdentitiesOnly=yes -p 22 -i /tmp/sec1.pem root@127.0.0.1 "printf S6_OK"')
     assert result.stdout == b'S6_OK'
-    print('PASS: interactive setup, both PEM SSH auth, revoke rejection, S6 activation/restart and SSH login')
+
+    # Product wrapper + SSH bootstrap verification:
+    # 1. Start background app-server listener inside container
+    execute('/usr/local/bin/codex app-server --listen unix:///tmp/bootstrap.sock >/dev/null 2>&1 &')
+    for _ in range(50):
+        if execute('test -S /tmp/bootstrap.sock', False).returncode == 0:
+            break
+        time.sleep(0.1)
+    else:
+        raise RuntimeError('App-server listener failed to create socket')
+
+    # 2. Connect via SSH executing product wrapper codex app-server proxy
+    ssh_cmd = [
+        'docker', 'exec', '-i', name,
+        'ssh', '-o', 'BatchMode=yes', '-o', 'StrictHostKeyChecking=accept-new',
+        '-o', 'UserKnownHostsFile=/tmp/known_hosts', '-o', 'IdentitiesOnly=yes',
+        '-p', '22', '-i', '/tmp/sec1.pem', 'root@127.0.0.1',
+        '/usr/local/bin/codex app-server proxy --sock /tmp/bootstrap.sock'
+    ]
+    proc = subprocess.Popen(
+        ssh_cmd,
+        stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE
+    )
+
+    def read_exact(n):
+        buf = bytearray()
+        while len(buf) < n:
+            chunk = proc.stdout.read(n - len(buf))
+            if not chunk:
+                err = proc.stderr.read().decode('utf-8', errors='replace')
+                raise EOFError(f'unexpected EOF from SSH proxy: rc={proc.poll()} stderr={err!r}')
+            buf.extend(chunk)
+        return bytes(buf)
+
+    import base64, json, struct
+    key = base64.b64encode(os.urandom(16))
+    upgrade_req = (
+        b'GET / HTTP/1.1\r\nHost: localhost\r\nUpgrade: websocket\r\n'
+        b'Connection: Upgrade\r\nSec-WebSocket-Key: ' + key + b'\r\nSec-WebSocket-Version: 13\r\n\r\n'
+    )
+    proc.stdin.write(upgrade_req)
+    proc.stdin.flush()
+
+    header = bytearray()
+    while not header.endswith(b'\r\n\r\n'):
+        header.extend(read_exact(1))
+    assert b'HTTP/1.1 101 ' in header, f'Expected HTTP 101, got {header!r}'
+
+    init_req = json.dumps({'id': 1, 'method': 'initialize', 'params': {'clientInfo': {'name': 'smoke', 'version': '1'}}}).encode()
+    mask = os.urandom(4)
+    masked = bytes(b ^ mask[i % 4] for i, b in enumerate(init_req))
+    proc.stdin.write(bytes([0x81, 0xFE]) + struct.pack('!H', len(masked)) + mask + masked)
+    proc.stdin.flush()
+
+    b1, b2 = read_exact(2)
+    assert b1 == 0x81
+    length = b2 & 0x7F
+    if length == 126:
+        length = struct.unpack('!H', read_exact(2))[0]
+    elif length == 127:
+        length = struct.unpack('!Q', read_exact(8))[0]
+    init_res = json.loads(read_exact(length).decode())
+    assert init_res.get('id') == 1 and 'result' in init_res, f'Invalid init response: {init_res}'
+
+    proc.stdin.close()
+    proc.wait(timeout=5)
+    assert proc.returncode == 0
+
+    print('PASS: interactive setup, both PEM SSH auth, revoke rejection, S6 activation/restart and SSH wrapper proxy bootstrap')
 finally:
     command(['docker', 'rm', '-f', name], check=False)
     command(['docker', 'volume', 'rm', '-f', volume], check=False)

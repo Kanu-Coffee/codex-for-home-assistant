@@ -1970,6 +1970,149 @@ def test_parse_codex_invocation_subcommand_and_listen_forms(repository_root: Pat
     assert cases[5] == {"subcommand": None, "listenSocket": None}
 
 
+def test_parse_codex_invocation_app_server_proxy_and_subcommands(repository_root: Path) -> None:
+    script = """
+    const bin = '/data/codex-runtime/releases/0.163.0-x86_64-unknown-linux-musl/bin/codex';
+    const cases = [
+      mgr.parseCodexInvocation([bin, 'app-server', 'proxy', '--sock', '/tmp/x.sock']),
+      mgr.parseCodexInvocation([bin, 'app-server', 'proxy', '--sock=/tmp/y.sock']),
+      mgr.parseCodexInvocation([bin, '-c', 'cd="proxy"', 'app-server', 'proxy', '--sock', 'unix:///tmp/z.sock']),
+      mgr.parseCodexInvocation([bin, 'app-server', 'daemon', 'bootstrap']),
+      mgr.parseCodexInvocation([bin, 'app-server', 'generate-ts']),
+      mgr.parseCodexInvocation([bin, 'app-server', 'generate-json-schema']),
+    ];
+    console.log(JSON.stringify(cases));
+    """
+    cases = run_node_eval(script, repository_root)
+    assert cases[0] == {"subcommand": "app-server", "listenSocket": None, "appServerCommand": "proxy", "proxySocket": "/tmp/x.sock"}
+    assert cases[1] == {"subcommand": "app-server", "listenSocket": None, "appServerCommand": "proxy", "proxySocket": "/tmp/y.sock"}
+    assert cases[2] == {"subcommand": "app-server", "listenSocket": None, "appServerCommand": "proxy", "proxySocket": "/tmp/z.sock"}
+    assert cases[3] == {"subcommand": "app-server", "listenSocket": None, "appServerCommand": "daemon"}
+    assert cases[4] == {"subcommand": "app-server", "listenSocket": None, "appServerCommand": "generate-ts"}
+    assert cases[5] == {"subcommand": "app-server", "listenSocket": None, "appServerCommand": "generate-json-schema"}
+
+
+def test_wrapper_app_server_proxy_subcommand_parsing(repository_root: Path) -> None:
+    wrapper = (repository_root / "codex_home_assistant/rootfs/usr/local/bin/codex").read_text(encoding="utf-8")
+    start = wrapper.index('codex_subcommand=""')
+    end = wrapper.index('socket_path="${codex_listen}"')
+    end = wrapper.index("fi", end) + 2
+    block = wrapper[start:end]
+
+    harness = f"""
+    run_case() {{
+      local codex_subcommand="" codex_app_server_subcommand="" codex_listen="" codex_proxy_sock=""
+      local options_ended=false idx=0
+      local args=("$@") token
+      {block}
+      echo "sub=${{codex_subcommand}};app_sub=${{codex_app_server_subcommand}};proxy_sock=${{codex_proxy_sock}};app=${{is_app_server}};proxy=${{is_app_server_proxy}}"
+    }}
+    run_case app-server proxy --sock /run/codex.sock
+    run_case app-server proxy --sock=/run/codex2.sock
+    run_case -c cd="proxy" app-server proxy --sock /run/codex3.sock
+    run_case app-server daemon bootstrap
+    run_case app-server generate-ts
+    """
+    proc = subprocess.run(["bash", "-c", harness], capture_output=True, text=True)
+    assert proc.returncode == 0, proc.stderr
+    lines = proc.stdout.strip().splitlines()
+    assert lines[0] == "sub=app-server;app_sub=proxy;proxy_sock=/run/codex.sock;app=false;proxy=true"
+    assert lines[1] == "sub=app-server;app_sub=proxy;proxy_sock=/run/codex2.sock;app=false;proxy=true"
+    assert lines[2] == "sub=app-server;app_sub=proxy;proxy_sock=/run/codex3.sock;app=false;proxy=true"
+    assert lines[3] == "sub=app-server;app_sub=daemon;proxy_sock=;app=false;proxy=false"
+    assert lines[4] == "sub=app-server;app_sub=generate-ts;proxy_sock=;app=false;proxy=false"
+
+
+def test_managed_idle_server_with_owned_proxy_is_restartable(repository_root: Path, tmp_path: Path) -> None:
+    runtime_dir = tmp_path / "runtime"
+    maint_dir = tmp_path / "maint"
+    runtime_dir.mkdir()
+    maint_dir.mkdir()
+    release = runtime_dir / "releases" / "0.162.1-x86_64-unknown-linux-musl"
+    socket_path = tmp_path / "managed.sock"
+    launcher = release / "bin" / "codex"
+    launcher.parent.mkdir(parents=True, exist_ok=True)
+    body = MOCK_APP_SERVER_JS.split("import fs from 'node:fs';\n")[1].replace("{socket!r}", repr(str(socket_path)))
+    launcher.write_text(
+        "#!/usr/bin/env node\n"
+        "import net from 'node:net';\n"
+        "import crypto from 'node:crypto';\n"
+        "import fs from 'node:fs';\n"
+        "if (process.argv.includes('proxy')) {\n"
+        "  setInterval(() => {}, 10000);\n"
+        "} else {\n"
+        + body
+        + "\n}\n",
+        encoding="utf-8",
+    )
+    launcher.chmod(0o755)
+    server_proc = subprocess.Popen([str(launcher), "app-server", "--listen", f"unix://{socket_path}"],
+                                   stdout=subprocess.PIPE, text=True)
+    proxy_proc = None
+    try:
+        assert "READY" in server_proc.stdout.readline()
+        time.sleep(0.2)
+        _register_session(maint_dir, server_proc.pid, {
+            "type": "app-server", "managed": True, "socketPath": str(socket_path),
+            "exe": str(launcher), "version": "0.162.1", "cwd": str(tmp_path),
+            "args": ["app-server", "--listen", f"unix://{socket_path}"],
+        })
+        proxy_proc = subprocess.Popen([str(launcher), "app-server", "proxy", "--sock", str(socket_path)],
+                                      stdout=subprocess.DEVNULL, stdin=subprocess.PIPE)
+        time.sleep(0.2)
+        _register_session(maint_dir, proxy_proc.pid, {
+            "type": "app-server-proxy", "managed": False, "socketPath": str(socket_path),
+            "exe": str(launcher), "version": "0.162.1", "cwd": str(tmp_path),
+            "args": ["app-server", "proxy", "--sock", str(socket_path)],
+        })
+        res = _inspect(repository_root, runtime_dir, maint_dir)
+        assert res["busyReasons"] == [], res["busyReasons"]
+        assert res["canApply"] is True
+        assert len(res["restartableServers"]) == 1
+        assert res["restartableServers"][0]["pid"] == server_proc.pid
+        assert res["counts"]["helpers"] == 1
+        assert res["counts"]["unknown"] == 0
+    finally:
+        for p in (proxy_proc, server_proc):
+            if p is not None:
+                p.terminate()
+                p.wait()
+
+
+def test_proxy_with_missing_target_server_is_held_unknown(repository_root: Path, tmp_path: Path) -> None:
+    runtime_dir = tmp_path / "runtime"
+    maint_dir = tmp_path / "maint"
+    runtime_dir.mkdir()
+    maint_dir.mkdir()
+    release = runtime_dir / "releases" / "0.162.1-x86_64-unknown-linux-musl"
+    socket_path = tmp_path / "orphan.sock"
+    import socket as py_socket
+    s = py_socket.socket(py_socket.AF_UNIX, py_socket.SOCK_STREAM)
+    s.bind(str(socket_path))
+    s.listen(1)
+    launcher = release / "bin" / "codex"
+    launcher.parent.mkdir(parents=True, exist_ok=True)
+    launcher.write_text("#!/usr/bin/env node\nsetInterval(()=>{}, 10000);\n", encoding="utf-8")
+    launcher.chmod(0o755)
+    proxy_proc = subprocess.Popen([str(launcher), "app-server", "proxy", "--sock", str(socket_path)],
+                                  stdout=subprocess.DEVNULL, stdin=subprocess.PIPE)
+    try:
+        time.sleep(0.2)
+        _register_session(maint_dir, proxy_proc.pid, {
+            "type": "app-server-proxy", "managed": False, "socketPath": str(socket_path),
+            "exe": str(launcher), "version": "0.162.1", "cwd": str(tmp_path),
+            "args": ["app-server", "proxy", "--sock", str(socket_path)],
+        })
+        res = _inspect(repository_root, runtime_dir, maint_dir)
+        assert res["canApply"] is False
+        assert res["counts"]["unknown"] == 1
+        assert any("codex proxy without verified target server" in r for r in res["busyReasons"]), res["busyReasons"]
+    finally:
+        s.close()
+        proxy_proc.terminate()
+        proxy_proc.wait()
+
+
 def test_managed_idle_server_with_owned_companion_is_restartable(repository_root: Path, tmp_path: Path) -> None:
     runtime_dir = tmp_path / "runtime"
     maint_dir = tmp_path / "maint"

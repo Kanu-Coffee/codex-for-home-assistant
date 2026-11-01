@@ -26,6 +26,35 @@
 
 ## Current Work
 
+### 2026-11-02 — Executor: 모바일 bootstrap FIX_03 구현 및 검증 완료
+
+- [FIX_03](../../.handoff/007_work-aware-runtime-update/FIX_03.md) 지침에 따라 모바일 Codex bootstrap 및 raw `app-server proxy` 전송 결함 해결을 구현하고 검증을 완료했다.
+- **P1: wrapper 및 runtime manager proxy 전송/분류 수정**:
+  - `codex` wrapper (`codex_home_assistant/rootfs/usr/local/bin/codex`): `codex_app_server_subcommand` 및 `--sock`/`--sock=` 옵션을 인식하도록 파서를 확장했다. `app-server proxy` 호출 시 `session_type="app-server-proxy"`, `managed="false"`, `unix_sock="${socket_path}"`로 세션 레코드를 안전 등록하고 `codex-session-host.mjs`를 우회하여 공식 바이너리 raw byte-bridge로 직접 `exec`하도록 수정했다.
+  - runtime manager (`codex-runtime-manager.mjs`): `parseCodexInvocation`에 `appServerCommand`와 `--sock` 파싱을 추가하고, `classifyProcesses`에서 `app-server proxy`를 `kind: "proxy"`로 분류했다. 대상 Unix 소켓의 symlink를 안전하게 추적(`realpath`)하여 검증된 활성 소유자 서버(app-server/cli)에 매핑되는 경우 `kind: "helper"`로 회계하여 유휴 업데이터를 불필요하게 차단하지 않도록 했으며, 소유자 서버가 없거나 소켓이 누락된 고아/미검증 proxy는 `kind: "unknown"`으로 실패 닫힘 보존되도록 했다.
+- **P2: ha-codex-remote 진단 항목 확장**:
+  - `ha-codex-remote status` (`codex-remote-setup.mjs`): 비밀값 노출 없이 private.pem 존재 및 권한(0600), authorized_keys 동기화 상태, sshd 서비스 구동 여부, 그리고 `Codex bootstrap: not_checked (verified when client connects)` 명시 라인을 추가했다.
+- **테스트 및 검증**:
+  - `tests/test_codex_wrapper_proxy.py`: JSONL 세션 호스트의 defect reproduction(Upgrade 전달 시 `malformed_frame in jsonl` 즉시 실패), 공식 바이너리 HTTP Upgrade 및 WebSocket `initialize` 프레이밍/split frame/ping 제어 프레임/정상 종료 검증 (3/3 PASS).
+  - `tests/test_codex_update_contract.py`: proxy 파서, wrapper 슬라이스, 소유자 매핑 helper 유휴 갱신, 고아 proxy unknown 보존 등 4개 신규 테스트 추가 (123/123 PASS).
+  - `tests/test_remote_setup.py`: 신규 status 진단 필드 포함 회귀 검증 (10/10 PASS).
+  - 전체 pytest: 307 passed, 6 skipped.
+  - 컨테이너 검증: `tests/mobile-ssh-smoke.py`를 신규 빌드된 격리 컨테이너 `codex-ha:test-fix03`에서 실행하여 실제 S6 환경 하의 SSH 연결, `/usr/local/bin/codex app-server proxy` 구동, HTTP Upgrade 101 및 WebSocket initialize 성공 검증 완료.
+- FIX_03 지침에 따라 버전 번프, git tag push, DEV 릴리스 배포는 수행하지 않고 대기한다 (사용자의 명시적 배포 지시 시 진행).
+
+### 2026-11-02 — Reviewer: 모바일 bootstrap 트러블슈팅 FIX_03 발행
+
+- 사용자 요청으로 [FIX_03](../../.handoff/007_work-aware-runtime-update/FIX_03.md)을 신규 발행했다. dev.5까지의 handoff와 보고서를 검토하고 현재 wrapper/parser·runtime inventory·기존 재현 로그를 대조했다.
+- 실제 확인된 SSH 키 인증 성공과 로컬 제품 wrapper의 raw proxy→JSONL 오분류를 구분했다. 다음 Executor에 하위 명령/전송 분리, proxy 소유관계와 updater 유휴·작업 보호, 실제 wrapper+SSH의 Upgrade/initialize/후속 요청 회귀, 안전한 진단과 FIX_03_REPORT 기준을 지시했다.
+- 이번은 FIX 문서 발행이다. 제품 수정·추가 배포·운영 HA 변경은 하지 않았으며, 기존 프로토콜 재현 결과는 로그 재확인이고 제품 시험을 재실행한 것은 아니다. 다음 Executor는 FIX_03을 수행한다.
+
+### 2026-11-02 — 모바일 SSH 인증 성공 확인·DEV proxy 전송 결함 재현
+
+- 사용자가 제공한 실제 DEV 로그에서 간편 설정 ECDSA fingerprint의 `Accepted publickey`와 원격 command session 시작을 확인했다. 앞선 localhost 시험도 동일 private.pem으로 SSH_OK/exit 0이었다. 공개키 저장·sshd 설정과 SSH 인증은 확인됐으나 모바일 Codex bootstrap 완료는 아니다.
+- 로컬 `codex-ha:0.7.3-dev.5-test`의 격리 `/init` 컨테이너와 공식 Unix app-server로 `app-server proxy --sock`를 비교했다. raw `/usr/local/libexec/codex-real`은 HTTP 101 Switching Protocols, 제품 `/usr/local/bin/codex`는 exit 1 및 `fatal transport error: malformed_frame in jsonl`을 반환했다. 증거: Git 제외 `.test-tmp/proxyprobe.py`, `.test-tmp/proxyprobe.log`. 운영 인증·사용자 데이터는 사용하지 않았고 시험 컨테이너는 제거했다.
+- wrapper는 app-server 하위 proxy를 stdio JSONL server로 분류해 lifecycle host에 전달한다. 공식 proxy의 HTTP Upgrade/WebSocket raw bytes를 JSONL로 파싱하는 경로가 결함이다. 실제 모바일이 보낸 정확한 argv·stderr는 현재 SSH 로그에 없어 이번 사용자 실패의 직접 원인 확정은 보류하지만, 제품 경로의 실제 실패는 재현했다.
+- 다음 수정은 app-server 서버/하위 proxy의 구분과 raw transport 보존, updater의 proxy 소유관계·작업 관측 영향 확인, 실제 wrapper를 통한 HTTP Upgrade/initialize 회귀를 포함해야 한다. 기존 raw official binary 시험과 PEM 인증 smoke만으로 이 제품 bootstrap 경로를 검증했다고 판단하지 않는다. 이번에는 진단·기록만 수행했고 제품 수정·배포·운영 HA 변경은 하지 않았다.
+
 ### 2026-10-30 — DEV 0.7.3-dev.5 공개 배포 완료
 
 - [FIX_02](../../.handoff/007_work-aware-runtime-update/FIX_02.md) 지침에 따라 DEV 0.7.3-dev.5 배포를 완료했다.

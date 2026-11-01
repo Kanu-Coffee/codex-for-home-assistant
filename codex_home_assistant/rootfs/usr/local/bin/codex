@@ -130,13 +130,15 @@ selected_version="0.162.1"
 if [[ -d "${CODEX_SESSIONS_DIR}" ]]; then
   if { exec 200>"${CODEX_MAINTENANCE_GATE}"; } 2>/dev/null && timeout 120 flock -s 200 2>/dev/null; then
     start_time=$(awk '{print $22}' "/proc/$$/stat" 2>/dev/null || echo "0")
-    # Determine the positional subcommand and its --listen value using the same
-    # option-aware skip as the runtime classifier (parseCodexInvocation in
+    # Determine the positional subcommand, nested subcommand and option values
+    # using the same option-aware skip as the runtime classifier (parseCodexInvocation in
     # codex-runtime-manager.mjs). Option values and post-'--' prompts are never
     # treated as subcommands.
     is_one_shot=false
     codex_subcommand=""
+    codex_app_server_subcommand=""
     codex_listen=""
+    codex_proxy_sock=""
     options_ended=false
     idx=0
     args=("$@")
@@ -149,9 +151,14 @@ if [[ -d "${CODEX_SESSIONS_DIR}" ]]; then
       if [[ "${token}" != -* ]]; then
         if [[ -z "${codex_subcommand}" ]]; then
           codex_subcommand="${token}"
-        fi
-        if [[ "${token}" == "help" ]]; then
-          is_one_shot=true
+          if [[ "${token}" == "help" ]]; then
+            is_one_shot=true
+          fi
+        elif [[ "${codex_subcommand}" == "app-server" && -z "${codex_app_server_subcommand}" ]]; then
+          codex_app_server_subcommand="${token}"
+          if [[ "${token}" == "help" || "${token}" == "daemon" || "${token}" == "generate-ts" || "${token}" == "generate-json-schema" ]]; then
+            is_one_shot=true
+          fi
         fi
       else
         case "${token}" in
@@ -164,7 +171,10 @@ if [[ -d "${CODEX_SESSIONS_DIR}" ]]; then
           --listen=*)
             codex_listen="${token#--listen=}"
             ;;
-          -m|--model|-c|--config|-C|--cd|--profile|--color|-s|--sandbox|--add-dir|-p|-a|--ask-for-approval|--enable|--disable|--remote|--remote-auth-token-env|--local-provider|-i|--image)
+          --sock=*)
+            codex_proxy_sock="${token#--sock=}"
+            ;;
+          -m|--model|-c|--config|-C|--cd|--profile|--color|-s|--sandbox|--add-dir|-p|-a|--ask-for-approval|--enable|--disable|--remote|--remote-auth-token-env|--local-provider|-i|--image|--code-mode-host|--ws-auth|--ws-token-file|--ws-token-sha256|--ws-shared-secret-file|--ws-issuer|--ws-audience|--ws-max-clock-skew-seconds)
             idx=$((idx + 1))
             ;;
           --stdio)
@@ -176,13 +186,23 @@ if [[ -d "${CODEX_SESSIONS_DIR}" ]]; then
             fi
             idx=$((idx + 1))
             ;;
+          --sock)
+            if [[ "${codex_subcommand}" == "app-server" ]]; then
+              codex_proxy_sock="${args[$((idx + 1))]:-}"
+            fi
+            idx=$((idx + 1))
+            ;;
         esac
       fi
       idx=$((idx + 1))
     done
     is_app_server=false
+    is_app_server_proxy=false
     socket_path=""
-    if [[ "${codex_subcommand}" == "app-server" ]]; then
+    if [[ "${codex_subcommand}" == "app-server" && "${codex_app_server_subcommand}" == "proxy" ]]; then
+      is_app_server_proxy=true
+      socket_path="${codex_proxy_sock}"
+    elif [[ "${codex_subcommand}" == "app-server" && -z "${codex_app_server_subcommand}" ]]; then
       is_app_server=true
       socket_path="${codex_listen}"
     fi
@@ -200,7 +220,12 @@ if [[ -d "${CODEX_SESSIONS_DIR}" ]]; then
     unix_sock=""
     control_sock=""
     client_sock=""
-    if [[ "${is_app_server}" == true ]]; then
+    if [[ "${is_app_server_proxy}" == true ]]; then
+      session_type="app-server-proxy"
+      managed="false"
+      unix_sock="${socket_path}"
+      control_sock=""
+    elif [[ "${is_app_server}" == true ]]; then
       session_type="app-server"
       if [[ "${socket_path}" == unix://* ]]; then
         managed="true"

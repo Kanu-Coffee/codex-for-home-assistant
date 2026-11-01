@@ -130,7 +130,39 @@ export function main(args = process.argv.slice(2)) {
     } else console.log('Public key registered. App restart is not normally required.');
   }
   const info = storage.status();
-  console.log(`Mobile key: ${info ? info.fingerprint : 'not configured'}\nHost: your HA address reachable from the phone\nPort: App Network host port (default 2223; Ingress URL is not the SSH address)\nUser: root\nProject: /config`);
+  const dir = join('/data/ssh', 'mobile');
+  const privPath = join(dir, 'private.pem');
+  const authPath = join(dir, 'authorized_keys');
+  const privExists = existsSync(privPath);
+  const authExists = existsSync(authPath);
+  const sshDisabled = existsSync('/run/codex-ha/ssh-disabled');
+
+  let privStatus = 'absent';
+  if (privExists) {
+    try {
+      const st = lstatSync(privPath);
+      privStatus = (st.mode & 0o077) === 0 ? 'present (0600)' : 'insecure permissions';
+    } catch { privStatus = 'inaccessible'; }
+  }
+  let authStatus = 'absent';
+  if (authExists) {
+    try {
+      const content = readFileSync(authPath, 'utf-8');
+      authStatus = (info && content.includes(info.line)) ? 'synchronized' : 'configured';
+    } catch { authStatus = 'inaccessible'; }
+  }
+  const sshStatus = sshDisabled ? 'disabled (no keys registered at startup)' : 'active / listening';
+
+  console.log(`Mobile key: ${info ? info.fingerprint : 'not configured'}
+Private material: ${privStatus}
+Authorized keys: ${authStatus}
+SSH service: ${sshStatus}
+SSH auth: verified on client connection (check App SSH logs for Accepted publickey)
+Codex bootstrap: not_checked (verified when client connects)
+Host: your HA address reachable from the phone
+Port: App Network host port (default 2223; Ingress URL is not the SSH address)
+User: root
+Project: /config`);
   console.log('Enable the SSH host port in App Network settings. This helper does not change the host port.');
   console.log('If PEM is rejected before connecting: try the other format and update the mobile app. Valid PEM can still be rejected by an app bug.\nIf connection fails after accepting PEM: check Network port, VPN/reachability and App SSH logs.');
   if (['setup', 'show'].includes(command)) {
