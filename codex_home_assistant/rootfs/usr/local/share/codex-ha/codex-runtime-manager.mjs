@@ -20,10 +20,13 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { basename, dirname, join, resolve } from "node:path";
-import { spawn, spawnSync } from "node:child_process";
+import { execFile, spawn, spawnSync } from "node:child_process";
+import { promisify } from "node:util";
 import { createConnection } from "node:net";
 import { get as httpsGet } from "node:https";
 import { get as httpGet } from "node:http";
+
+const execFileAsync = promisify(execFile);
 
 export const BASELINE_VERSION = "0.162.1";
 export const APP_VERSION = "0.7.2";
@@ -31,6 +34,56 @@ export const DEFAULT_TIMEZONE = "Asia/Seoul";
 export const UPDATE_SLOTS = [3, 9, 15, 21];
 export const MAX_IDLE_CHECKS = 12;
 export const MAX_RESTART_ATTEMPTS = 1;
+
+export async function getUnixPeerMap() {
+  const pythonBin = process.env.PYTHON || (existsSync("/usr/bin/python3") ? "/usr/bin/python3" : "python3");
+  const pyCode = `
+import socket, struct, json, sys
+try:
+    nl = socket.socket(socket.AF_NETLINK, socket.SOCK_RAW, 4)
+    nl.bind((0, 0))
+    req = struct.pack("=IHHIIBBHIIIII", 40, 20, 0x301, 1, 0, 1, 0, 0, 0xffffffff, 0, 0x04, 0, 0)
+    nl.send(req)
+    peers = {}
+    while True:
+        data = nl.recv(65536)
+        offset = 0
+        done = False
+        while offset < len(data):
+            nl_len, nl_type, nl_flags, nl_seq, nl_pid = struct.unpack_from("=IHHII", data, offset)
+            if nl_type == 3:
+                done = True
+                break
+            if nl_type == 20:
+                msg = data[offset+16:offset+nl_len]
+                family, typ, state, ino, c1, c2 = struct.unpack_from("=BBBxIII", msg, 0)
+                attr_offset = 16
+                peer_ino = None
+                while attr_offset < len(msg):
+                    nla_len, nla_type = struct.unpack_from("=HH", msg, attr_offset)
+                    if nla_len < 4:
+                        break
+                    if nla_type == 2:
+                        peer_ino = struct.unpack_from("=I", msg, attr_offset + 4)[0]
+                    attr_offset += (nla_len + 3) & ~3
+                if peer_ino:
+                    peers[str(ino)] = peer_ino
+            offset += (nl_len + 3) & ~3
+        if done:
+            break
+    nl.close()
+    sys.stdout.write(json.dumps(peers))
+except Exception:
+    sys.stdout.write("{}")
+`;
+  try {
+    const { stdout } = await execFileAsync(pythonBin, ["-c", pyCode], { timeout: 3000 });
+    const parsed = JSON.parse(stdout || "{}");
+    return parsed;
+  } catch {
+    return null;
+  }
+}
 
 export function getBaseRuntimeDir() { return process.env.CODEX_RUNTIME_DIR || "/data/codex-runtime"; }
 export function getBaselineDir() { return process.env.CODEX_BASELINE_DIR || "/usr/local/lib/codex-ha/codex-baseline"; }
@@ -846,10 +899,14 @@ export function parseCodexInvocation(cmdline, startIndex = 1) {
     "-m", "--model", "-c", "--config", "-C", "--cd", "--profile", "-p", "--color",
     "-s", "--sandbox", "-a", "--ask-for-approval", "--enable", "--disable",
     "--remote", "--remote-auth-token-env", "--local-provider", "-i", "--image",
-    "--add-dir", "--listen",
+    "--add-dir", "--listen", "--sock",
+    "--code-mode-host", "--ws-auth", "--ws-token-file", "--ws-token-sha256",
+    "--ws-shared-secret-file", "--ws-issuer", "--ws-audience", "--ws-max-clock-skew-seconds",
   ]);
   let subcommand = null;
+  let appServerCommand = null;
   let listenSocket = null;
+  let proxySocket = null;
   let optionsEnded = false;
   for (let i = startIndex; i < cmdline.length; i++) {
     const token = cmdline[i];
@@ -860,23 +917,39 @@ export function parseCodexInvocation(cmdline, startIndex = 1) {
         if (token.startsWith("--listen=")) {
           const value = token.slice("--listen=".length);
           if (value.startsWith("unix://")) listenSocket = value.slice(7);
+          else listenSocket = value;
+        } else if (token.startsWith("--sock=")) {
+          const value = token.slice("--sock=".length);
+          if (value.startsWith("unix://")) proxySocket = value.slice(7);
+          else proxySocket = value;
         }
         continue;
       }
       if (token.startsWith("-") && token !== "-") {
         if (OPTION_WITH_VALUE.has(token)) {
           const value = cmdline[i + 1];
-          if (token === "--listen" && typeof value === "string" && value.startsWith("unix://")) {
-            listenSocket = value.slice(7);
+          if (token === "--listen" && typeof value === "string") {
+            if (value.startsWith("unix://")) listenSocket = value.slice(7);
+            else listenSocket = value;
+          } else if (token === "--sock" && typeof value === "string") {
+            if (value.startsWith("unix://")) proxySocket = value.slice(7);
+            else proxySocket = value;
           }
           i++;
         }
         continue;
       }
-      if (subcommand === null) subcommand = token;
+      if (subcommand === null) {
+        subcommand = token;
+      } else if (subcommand === "app-server" && appServerCommand === null) {
+        appServerCommand = token;
+      }
     }
   }
-  return { subcommand, listenSocket };
+  const result = { subcommand, listenSocket };
+  if (appServerCommand !== null) result.appServerCommand = appServerCommand;
+  if (proxySocket !== null) result.proxySocket = proxySocket;
+  return result;
 }
 
 async function ancestorPids(pid, maxDepth = 32) {
@@ -1138,7 +1211,34 @@ export class MinimalWebSocketClient {
   }
 }
 
-export async function inspectAppServer(socketPath, expectedPid) {
+export async function restoreAppServerThreads(socketPath, threadIds) {
+  if (!Array.isArray(threadIds) || threadIds.length === 0) {
+    return { success: true, restored: [] };
+  }
+  let client = null;
+  const restored = [];
+  try {
+    client = new MinimalWebSocketClient(socketPath);
+    await client.connect();
+    for (const threadId of threadIds) {
+      if (!threadId || typeof threadId !== "string") continue;
+      const res = await client.call("thread/resume", { threadId });
+      if (!res || !res.thread || res.thread.id !== threadId) {
+        throw new Error(`thread/resume failed or returned invalid thread for ${threadId}`);
+      }
+      restored.push(threadId);
+    }
+    return { success: true, restored };
+  } finally {
+    if (client) client.close();
+  }
+}
+
+export async function inspectAppServer(socketPath, expectedPid, options = {}) {
+  const opts = typeof options === "string"
+    ? { expectedVersion: options }
+    : (typeof options === "object" && options !== null ? options : {});
+  const restoreCapability = Boolean(opts.restoreCapability);
   let client = null;
   try {
     client = new MinimalWebSocketClient(socketPath);
@@ -1185,22 +1285,93 @@ export async function inspectAppServer(socketPath, expectedPid) {
       return { busy: true, reason: "Malformed thread/loaded/list response" };
     }
 
-    const loadedThreads = [];
+    const loadedThreadIds = [];
     for (const t of threadsRes.data) {
+      let id = null;
+      let statusType = null;
       if (typeof t === "string") {
-        loadedThreads.push(t);
+        id = t;
       } else if (t && typeof t === "object") {
-        const id = t.id || t.threadId;
-        if (id) loadedThreads.push(id);
-        const statusType = typeof t.status === "string" ? t.status : t.status?.type;
-        if (statusType === "active") {
-          return { busy: true, reason: `Active thread ${id}` };
-        }
+        id = t.id || t.threadId;
+        statusType = typeof t.status === "string" ? t.status : t.status?.type;
       }
+      if (!id) {
+        return { busy: true, reason: "Malformed thread entry in loaded list" };
+      }
+      if (statusType === "active") {
+        return { busy: true, reason: `Active thread ${id}` };
+      }
+      loadedThreadIds.push(id);
     }
 
-    if (loadedThreads.length) return { busy: true, reason: "Loaded server requires a managed lifecycle host" };
-    return { busy: false, pid: diagPid, loadedThreads };
+    if (loadedThreadIds.length === 0) {
+      return { busy: false, pid: diagPid, loadedThreads: [] };
+    }
+
+    // Server has loaded threads. If caller does not possess safe restore capability,
+    // loaded conversations cannot be safely restored across server termination.
+    if (!restoreCapability) {
+      return { busy: true, reason: "Loaded server requires a managed lifecycle host with restore capability" };
+    }
+
+    // Inspect each loaded thread's persistence, restorability, and status
+    const verifiedLoadedThreads = [];
+    for (const id of loadedThreadIds) {
+      let readRes;
+      try {
+        readRes = await client.call("thread/read", { threadId: id });
+      } catch (err) {
+        return { busy: true, reason: `Failed to inspect loaded thread ${id}: ${err.message}` };
+      }
+
+      const thread = readRes?.thread;
+      if (!thread || typeof thread !== "object" || thread.id !== id) {
+        return { busy: true, reason: `Malformed thread detail or ID mismatch for loaded thread ${id}` };
+      }
+
+      const currentStatus = typeof thread.status === "string" ? thread.status : thread.status?.type;
+      if (currentStatus === "active") {
+        return { busy: true, reason: `Active thread in progress: ${id}` };
+      }
+
+      // Check ephemeral vs persistent
+      if (thread.ephemeral === true) {
+        const turns = Array.isArray(thread.turns) ? thread.turns : [];
+        if (turns.length > 0) {
+          return {
+            busy: true,
+            reason: `Unrestorable ephemeral conversation with ${turns.length} turn(s): ${id}; held until session exits`,
+          };
+        }
+        if (!opts.allowEmptyEphemeral && !opts.lifecycleHost) {
+          return {
+            busy: true,
+            reason: `Unrestorable ephemeral conversation: ${id}; held until session exits`,
+          };
+        }
+      } else {
+        // Persistent conversation: verify rollout file on disk
+        if (typeof thread.path !== "string" || !thread.path.trim()) {
+          return { busy: true, reason: `Persistent thread ${id} missing rollout file path` };
+        }
+        try {
+          const filePath = resolve(thread.path);
+          const st = await stat(filePath);
+          if (!st.isFile()) {
+            return { busy: true, reason: `Persistent thread ${id} rollout path is not a regular file: ${filePath}` };
+          }
+          if (st.size === 0) {
+            return { busy: true, reason: `Persistent thread ${id} has empty rollout file: ${filePath}` };
+          }
+        } catch (fsErr) {
+          return { busy: true, reason: `Persistent thread ${id} rollout file inaccessible: ${fsErr.message}` };
+        }
+      }
+
+      verifiedLoadedThreads.push(id);
+    }
+
+    return { busy: false, pid: diagPid, loadedThreads: verifiedLoadedThreads };
   } catch (err) {
     return { busy: true, reason: `App-server inspection failed: ${err.message}` };
   } finally {
@@ -1393,11 +1564,39 @@ export async function inspectAllSessions(options = {}) {
     const identity = e.identity || await executableEntrypoint(e.proc);
     const invocation = parseCodexInvocation(e.proc.cmdline || [], identity ? identity.argvIndex + 1 : 1);
     if (identity) e.identity = identity;
-    const serverByArgv = identity && identity.role === "primary" && invocation.subcommand === "app-server";
+    const isProxyInvocation = identity && identity.role === "primary" &&
+      invocation.subcommand === "app-server" && invocation.appServerCommand === "proxy";
+    const isProxyRecord = record && record.type === "app-server-proxy";
+    const serverByArgv = identity && identity.role === "primary" &&
+      invocation.subcommand === "app-server" && !invocation.appServerCommand;
     const serverByRecord = record &&
-      ((record.type === "app-server" && (!invocation.subcommand || invocation.subcommand === "app-server")) ||
+      ((record.type === "app-server" && (!invocation.subcommand || (invocation.subcommand === "app-server" && !invocation.appServerCommand))) ||
        (record.type === "remote-stdio" && record.managed === true));
-    if (serverByArgv || serverByRecord) {
+    if (isProxyInvocation || isProxyRecord) {
+      if (!isProxyInvocation) {
+        // Record claims app-server-proxy, but actual process argv/command is not a proxy.
+        // Record alone must never convert an arbitrary or non-proxy process into a proxy.
+        e.kind = "unknown";
+        e.proxyCommandMismatch = true;
+      } else if (!isProxyRecord) {
+        // Actual process is running app-server proxy, but valid matching launch record is missing.
+        e.kind = "unknown";
+        e.unverifiedProxy = true;
+      } else {
+        // Both invocation and record agree this is a proxy.
+        // Verify that the argv target socket and record target socket match!
+        const argvSock = invocation.proxySocket || null;
+        const recSock = record.socketPath || record.targetSocket || null;
+        if (!argvSock || !recSock || resolve(argvSock) !== resolve(recSock)) {
+          e.kind = "unknown";
+          e.proxyTargetMismatch = true;
+        } else {
+          e.kind = "proxy";
+          e.targetSocket = argvSock;
+          e.proxyRecord = record;
+        }
+      }
+    } else if (serverByArgv || serverByRecord) {
       e.kind = "app-server";
       e.socketPath = record?.socketPath || invocation.listenSocket;
     } else if (!record && identity && identity.role === "companion") {
@@ -1444,6 +1643,113 @@ export async function inspectAllSessions(options = {}) {
       continue;
     }
 
+    if (e.kind === "proxy") {
+      const targetSock = e.targetSocket || e.record?.socketPath || null;
+      if (!e.record || e.record.type !== "app-server-proxy" || !targetSock) {
+        e.kind = "unknown";
+        e.unverifiedProxy = true;
+        continue;
+      }
+      let isSocket = false;
+      let realTarget = null;
+      let targetStat = null;
+      let targetLstat = null;
+      try {
+        targetLstat = await lstat(targetSock);
+        targetStat = await stat(targetSock);
+        isSocket = targetStat.isSocket();
+        realTarget = await realpath(targetSock).catch(() => resolve(targetSock));
+      } catch {}
+
+      if (!isSocket || !realTarget || !targetStat || !targetLstat) {
+        e.kind = "unknown";
+        e.missingTargetSocket = true;
+        continue;
+      }
+
+      // Check open socket file descriptors of the proxy process
+      const proxySocketInodes = new Set();
+      try {
+        const proxyFds = await readdir(`/proc/${pid}/fd`);
+        for (const fd of proxyFds) {
+          const link = await readlink(`/proc/${pid}/fd/${fd}`).catch(() => "");
+          const m = link.match(/^socket:\[(\d+)\]$/);
+          if (m) proxySocketInodes.add(parseInt(m[1], 10));
+        }
+      } catch {
+        e.kind = "unknown";
+        e.orphanProxy = true;
+        continue;
+      }
+
+      if (proxySocketInodes.size === 0) {
+        e.kind = "unknown";
+        e.orphanProxy = true;
+        continue;
+      }
+
+      const peerMap = await getUnixPeerMap();
+      if (!peerMap) {
+        e.kind = "unknown";
+        e.orphanProxy = true;
+        continue;
+      }
+
+      const proxyStartTicks = BigInt(e.proc.startTime || 0);
+      let ownerPid = null;
+      for (const [sPid, sEntry] of entries) {
+        if (sPid === pid) continue;
+        const candidateSock = sEntry.socketPath || sEntry.record?.clientSocket || null;
+        if (candidateSock) {
+          const realCandidate = await realpath(candidateSock).catch(() => resolve(candidateSock));
+          if (realCandidate === realTarget || resolve(candidateSock) === resolve(targetSock)) {
+            if (sEntry.kind === "app-server" || sEntry.kind === "cli") {
+              const ownerStartTicks = BigInt(sEntry.proc.startTime || 0);
+              if (proxyStartTicks > 0n && ownerStartTicks > 0n && ownerStartTicks > proxyStartTicks) {
+                continue;
+              }
+
+              // Kernel peer verification: candidate owner must own the exact peer socket connected to proxy
+              let isDirectPeer = false;
+              try {
+                const oFds = await readdir(`/proc/${sPid}/fd`);
+                const oSockInodes = new Set();
+                for (const fd of oFds) {
+                  const lk = await readlink(`/proc/${sPid}/fd/${fd}`).catch(() => "");
+                  const m = lk.match(/^socket:\[(\d+)\]$/);
+                  if (m) oSockInodes.add(parseInt(m[1], 10));
+                }
+                for (const pIno of proxySocketInodes) {
+                  const peerIno = peerMap[String(pIno)];
+                  if (peerIno && oSockInodes.has(peerIno)) {
+                    isDirectPeer = true;
+                    break;
+                  }
+                }
+              } catch {}
+
+              if (!isDirectPeer) {
+                continue;
+              }
+
+              ownerPid = sPid;
+              break;
+            }
+          }
+        }
+      }
+
+      if (ownerPid) {
+        e.kind = "helper";
+        e.owner = ownerPid;
+        e.isProxy = true;
+      } else {
+        e.kind = "unknown";
+        e.orphanProxy = true;
+      }
+      continue;
+    }
+
     if (e.kind !== "companion") continue;
     const chain = await ancestorPids(pid);
     const owner = chain.find((a) => ownerPids.has(a));
@@ -1466,6 +1772,16 @@ export async function inspectAllSessions(options = {}) {
         addBusy("inspection_failed", pid, `process state unknown: ${e.proc.error}`);
       } else if (e.orphanCompanion) {
         addBusy("unknown", pid, "codex package companion without verifiable owner; held for manual review");
+      } else if (e.proxyTargetMismatch) {
+        addBusy("unknown", pid, "codex proxy argv target socket does not match launch record; held for review");
+      } else if (e.proxyCommandMismatch) {
+        addBusy("unknown", pid, "codex process command does not match proxy launch record; held for review");
+      } else if (e.unverifiedProxy) {
+        addBusy("unknown", pid, "codex proxy process without verified launch record; held until identity is verified");
+      } else if (e.missingTargetSocket) {
+        addBusy("unknown", pid, `codex proxy target socket is missing or not a socket: ${e.targetSocket || "unknown"}; held until verified`);
+      } else if (e.orphanProxy) {
+        addBusy("unknown", pid, `codex proxy without verified target server for socket ${e.targetSocket || "unknown"}; held until owner is verified`);
       } else if (e.unrecognized) {
         addBusy("unknown", pid, "unrecognized executable inside managed codex package; held until identity is verified");
       } else {
@@ -1605,7 +1921,7 @@ export async function inspectAllSessions(options = {}) {
       continue;
     }
 
-    const check1 = await inspectAppServer(socketPath, pid);
+    const check1 = await inspectAppServer(socketPath, pid, { restoreCapability: true });
     if (check1.busy) {
       counts.unmanagedAppServers++;
       addBusy("server_busy", pid, `app-server busy: ${check1.reason}`);
@@ -1613,7 +1929,7 @@ export async function inspectAllSessions(options = {}) {
     }
 
     await new Promise((r) => setTimeout(r, 1000));
-    const check2 = await inspectAppServer(socketPath, pid);
+    const check2 = await inspectAppServer(socketPath, pid, { restoreCapability: true });
     if (check2.busy) {
       counts.unmanagedAppServers++;
       addBusy("server_busy", pid, `app-server busy: ${check2.reason}`);
@@ -2407,6 +2723,7 @@ export async function applyUpdate(options = {}) {
         servers: sessions.restartableServers,
         binary: join(stagedTarget, "bin/codex"), version: newVersion,
         inspectProcess, inspectServer: inspectAppServer,
+        restoreThreads: restoreAppServerThreads,
         switchToNew: () => replaceLink(stagedTarget),
         switchToOld: () => replaceLink(previousTarget),
         writeRecord: (pid, record) => durableJson(join(getSessionsDir(), String(pid)), record),

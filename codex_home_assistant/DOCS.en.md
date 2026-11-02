@@ -609,3 +609,12 @@ This is an unofficial community project. It is not affiliated with or endorsed b
 ### Resume exit in DEV 0.7.3-dev.4 and 0.7.3-dev.5 fix
 
 In 0.7.3-dev.4, selecting a conversation with Enter in `codex resume` could return to the shell at `Resuming session…`. The managed CLI host incorrectly treated the picker connection closing as a full exit. In 0.7.3-dev.5, the host is kept alive across this transition and handles compatible reconnect initialization. An internal `--remote unix://…` address cannot be reused after its host exits.
+
+### DEV 0.7.3-dev.6: Mobile SSH proxy separation, kernel Netlink peer identification, and thread restoration
+
+0.7.3-dev.6 strengthens safety for mobile SSH connections and runtime updates:
+
+- **SSH wrapper proxy separation**: Decouples `codex app-server proxy` from the JSONL lifecycle host so mobile SSH bootstrap commands stream transparently to background listeners without framing errors.
+- **Kernel Netlink peer identification**: Directly queries Linux Netlink socket diagnostics to map proxy connections to authorized helper sessions, safely holding unverified or mismatched sockets as `unknown`.
+- **Persistent thread restoration & ephemeral thread protection**: Servers with active turns hold updater signals. Persistent conversations are resumed (`thread/resume`) across server generations, while non-empty ephemeral conversations lacking rollout files are held busy until session termination to avoid irreversible conversation loss.
+- **Preserved mobile SSH credentials**: Existing mobile SSH keys survive updates without requiring re-registration or key regeneration.

@@ -92,3 +92,138 @@ def test_boot_and_sshd_use_separate_persistent_mobile_keys(rootfs):
     init = (rootfs / 'usr/local/bin/codex-ha-init').read_text()
     assert 'mobile_key_count=$(/usr/local/bin/ha-codex-remote sync)' in init
     assert 'valid_key_count=$((valid_key_count + mobile_key_count))' in init
+
+
+def test_status_diagnostics_states(repository_root, tmp_path):
+    os.chmod(tmp_path, 0o700)
+    run_dir = tmp_path / "run"
+    run_dir.mkdir(parents=True)
+    result = node(repository_root, f"""
+import {{main, mobileStorage}} from './{MODULE}';
+import {{writeFileSync, chmodSync, mkdirSync, unlinkSync}} from 'node:fs';
+
+process.env.CODEX_SSH_DIR = {json.dumps(str(tmp_path))};
+process.env.CODEX_RUN_DIR = {json.dumps(str(run_dir))};
+
+function runStatus() {{
+  let output = '';
+  const originalLog = console.log;
+  try {{
+    console.log = (...args) => {{ output += args.join(' ') + '\\n'; }};
+    main(['status'], {json.dumps(str(tmp_path))});
+  }} finally {{
+    console.log = originalLog;
+  }}
+  return output;
+}}
+
+// 1. Initial state: absent files
+const out1 = runStatus();
+
+// 2. Configured and synced key (simulate setup)
+const store = mobileStorage({json.dumps(str(tmp_path))});
+store.setup();
+const out2 = runStatus();
+
+// 3. Private key chmod 0400: present (0400)
+const privFile = {json.dumps(str(tmp_path / 'mobile' / 'private.pem'))};
+chmodSync(privFile, 0o400);
+const out3 = runStatus();
+
+// 4. Insecure private key chmod 0777: insecure permissions
+chmodSync(privFile, 0o777);
+const out4 = runStatus();
+chmodSync(privFile, 0o600);
+
+// 5. Disabled marker in runDir: disabled (no keys registered at startup)
+const markerDir = {json.dumps(str(run_dir / 'codex-ha'))};
+mkdirSync(markerDir, {{recursive: true}});
+const markerFile = {json.dumps(str(run_dir / 'codex-ha' / 'ssh-disabled'))};
+writeFileSync(markerFile, '');
+const out5 = runStatus();
+unlinkSync(markerFile);
+
+// 6. Fake non-sshd PID in sshd.pid (e.g. current process pid): pid_mismatch
+const pidFile = {json.dumps(str(run_dir / 'sshd.pid'))};
+writeFileSync(pidFile, String(process.pid));
+const out6 = runStatus();
+
+// 7. Stale PID in sshd.pid (e.g. pid 999999): stale_pid
+writeFileSync(pidFile, '999999');
+const out7 = runStatus();
+
+console.log(JSON.stringify({{
+  out1_not_running: out1.includes('SSH service: not_disabled / listener not_running'),
+  out1_unverified_auth: out1.includes('SSH auth: not_checked (confirm Accepted publickey in App logs)'),
+  out1_bootstrap: out1.includes('Codex bootstrap: not_checked (verified when client connects)'),
+  out1_absent_priv: out1.includes('Private material: absent'),
+  out1_absent_auth: out1.includes('Authorized keys: absent'),
+
+  out2_synced_auth: out2.includes('Authorized keys: synchronized (1 key)'),
+  out2_priv_0600: out2.includes('Private material: present (0600)'),
+
+  out3_priv_0400: out3.includes('Private material: present (0400)'),
+  out4_priv_insecure: out4.includes('Private material: insecure permissions (0777)'),
+
+  out5_ssh_disabled: out5.includes('SSH service: disabled (no keys registered at startup)'),
+  out6_pid_mismatch: out6.includes('SSH service: not_disabled / pid_mismatch'),
+  out7_stale_pid: out7.includes('SSH service: not_disabled / stale_pid (process not_running)'),
+}}));
+""")
+    data = json.loads(result.stdout)
+    for k, v in data.items():
+        assert v is True, f"Condition {k} failed"
+
+
+def test_status_authorized_keys_comment_and_mismatch(repository_root, tmp_path):
+    os.chmod(tmp_path, 0o700)
+    result = node(repository_root, f"""
+import {{main, mobileStorage}} from './{MODULE}';
+import {{writeFileSync}} from 'node:fs';
+
+process.env.CODEX_SSH_DIR = {json.dumps(str(tmp_path))};
+
+const store = mobileStorage({json.dumps(str(tmp_path))});
+const pub = store.setup();
+const authFile = {json.dumps(str(tmp_path / 'mobile' / 'authorized_keys'))};
+
+function runStatus() {{
+  let output = '';
+  const originalLog = console.log;
+  try {{
+    console.log = (...args) => {{ output += args.join(' ') + String.fromCharCode(10); }};
+    main(['status'], {json.dumps(str(tmp_path))});
+  }} finally {{
+    console.log = originalLog;
+  }}
+  return output;
+}}
+
+// 1. Comment out the key
+writeFileSync(authFile, '# ' + pub.line + String.fromCharCode(10));
+const outComment = runStatus();
+
+// 2. Unrelated/mismatched key
+writeFileSync(authFile, 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIG... other' + String.fromCharCode(10));
+const outMismatch = runStatus();
+
+// 3. Empty authorized_keys file
+writeFileSync(authFile, '   ' + String.fromCharCode(10));
+const outEmpty = runStatus();
+
+// 4. Normal synchronized key
+writeFileSync(authFile, pub.line + String.fromCharCode(10));
+const outSync = runStatus();
+
+console.log(JSON.stringify({{
+  comment_has_commented: outComment.includes('Authorized keys: commented / inactive'),
+  mismatch_has_out_of_sync: outMismatch.includes('Authorized keys: out of sync'),
+  empty_has_empty: outEmpty.includes('Authorized keys: empty'),
+  sync_has_synced: outSync.includes('Authorized keys: synchronized (1 key)'),
+}}));
+""")
+    data = json.loads(result.stdout)
+    assert data["comment_has_commented"] is True
+    assert data["mismatch_has_out_of_sync"] is True
+    assert data["empty_has_empty"] is True
+    assert data["sync_has_synced"] is True

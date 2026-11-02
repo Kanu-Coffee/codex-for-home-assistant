@@ -2,6 +2,23 @@
 
 All notable changes to this App are documented in this file.
 
+## [0.7.3-dev.6] - 2026-11-02
+
+### Added
+
+- Native Linux Netlink kernel peer socket verification (`/proc/net/tcp` fallback) to accurately map connected proxies to authorized helper sessions while treating unverified or mismatched connections as unknown.
+- Cross-generation turn continuity and active turn protection: active in-flight turns hold updater signals, and persistent conversations are resumed (`thread/resume`) on the newly launched server generation.
+- Real reproducible CI fixture provisioning for official Codex 0.162.1 and 0.166.0 binaries with SHA-256 integrity verification.
+- End-to-end container image peer observation smoke test verifying helper recognition (`helpers >= 1`, `unknown == 0`, `canApply: true`) during live SSH proxy connections.
+
+### Fixed
+
+- Separate `app-server proxy` raw WebSocket streaming from JSONL lifecycle host; correctly route SSH bootstrap commands to background listeners without framing errors.
+- Protect ephemeral conversations: non-empty ephemeral threads lacking persistent rollout files are held busy pre-signal (`canApply: false`) to prevent irreversible thread loss during updates.
+- Honest SSH diagnostics and listener status reporting: avoid reporting unobserved authentications as active and fix PID matching for sshd listeners.
+- Separate runtime manager options contract (`restoreCapability`) from version strings, preventing update transactions from failing when managing compatible servers.
+- Preserve existing mobile SSH credentials across updates; existing SSH keys remain valid without re-running setup or revocation.
+
 ## [0.7.3-dev.5] - 2026-10-30
 
 ### Added

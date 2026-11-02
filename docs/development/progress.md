@@ -26,6 +26,193 @@
 
 ## Current Work
 
+### 2026-11-02 — Executor: FIX_08 DEV 0.7.3-dev.6 배포 및 CI fixture·image peer gate 구축
+
+- Reviewer Codex의 [FIX_08](../../.handoff/007_work-aware-runtime-update/FIX_08.md) 지침에 따라 확정 버전 `0.7.3-dev.6` 배포를 위한 CI fixture 자동 프로비저닝, 이미지 피어 관측 게이트, 버전 및 문서 동기화를 진행 중이다.
+- 원격 태그/릴리스/GHCR 확인: `0.7.3-dev.6` 미할당 확인 완료.
+- 재현 가능한 공식 바이너리 프로비저닝 스크립트 `tests/prepare-test-binaries.sh` 신설: 공식 0.162.1 및 0.166.0의 아키텍처별 tar.gz 다운로드, SHA-256 검증, 안전한 권한 설정, 아카이브 격리 처리.
+- `tests/test_codex_wrapper_proxy.py` 아키텍처 독립화: 동적 아키텍처 접미사 및 환경 변수 우선 검색 연동.
+- CI 워크플로(`.github/workflows/ci.yaml`): pytest 전 `tests/prepare-test-binaries.sh` 실행 및 `CODEX_WIRE_PROBE_BINARY` 연결. Actionlint 통과.
+- `tests/mobile-ssh-smoke.py` 확장: 실제 컨테이너 내 SSH 프록시 연결 중 `inspectAllSessions()` 호출로 `helpers >= 1, unknown == 0, canApply: true` 게이트 검증.
+- 메타데이터 및 문서 갱신: `config.yaml`, `Dockerfile`, `playwright/package.json`, `package-lock.json`, `tests/test_addon_contract.py`, `CHANGELOG.md`, 한/영 README/DOCS `0.7.3-dev.6` 반영.
+
+### 2026-11-02 — Reviewer: FIX_07 로컬 구현 수용·DEV 배포 FIX_08 발행
+
+- `adfbaaa`/FIX_07_REPORT와 이전 수정 이력을 리뷰해 DEV 후보 게시 범위에서 수용했다. nonempty ephemeral의 pre-signal 보류·기존 대화 보존과 persistent의 실제 세대 교체·복원/후속 turn 시험을 확인했다. 실제 모바일 자동 reconnect/resume·HAOS·물리 ARM 수용 완료 판정은 아니다.
+- Reviewer 독립 전체 pytest 321 passed, 7 skipped (145.45초). `/home/lee` 아래 직접 만든 짧은 임시 basetemp를 사용하고 종료 후 정리했다. 실제 이미지의 SSH/S6/bootstrap 및 추가 peer inventory는 helpers=1/unknown=0/canApply=true로 PASS. image의 runtime manager/transaction SHA-256은 HEAD와 일치했다. Node syntax·ShellCheck·Gitleaks·diff도 PASS다.
+- [FIX_08](../../.handoff/007_work-aware-runtime-update/FIX_08.md)에 별도 Executor의 예정 0.7.3-dev.6 배포 절차를 발행했다. 신규 binary 교체 시험의 로컬 cache 의존을 해소하는 CI provisioning·실제 image peer gate, 메타데이터/문서, 최종 CI/merge/tag/Builder/익명 접근/prerelease와 보고 기준을 필수 단계로 기재했다.
+- 이번 Reviewer는 제품 버전·commit/push/PR/merge/tag/release·운영 HA를 변경하지 않았다. 증거는 Git 제외 `.test-tmp/review007-fix07/`에 있다. 다음 Executor는 FIX_08을 수행해 FIX_08_REPORT를 새로 작성한다.
+
+### 2026-11-02 — Executor: FIX_07 비영속 대화(ephemeral) 유실 방지 및 영속 대화(persistent) 실제 복원 완결
+
+- Reviewer Codex의 [FIX_07](../../.handoff/007_work-aware-runtime-update/FIX_07.md) 지침에 따라 표준 Unix app-server의 관리 record 존재와 안전한 복원 가능성을 엄격히 분리하고 비영속 대화 종료 유실 회귀를 해소했다.
+- **`codex-runtime-manager.mjs` (`inspectAppServer`):**
+  - 단순 version 문자열이나 불리언 shortcut으로 복원 권한을 추정하지 않도록 inspection 옵션 계약(`options.restoreCapability`)을 분리.
+  - loaded thread 목록이 있을 때 명시적 `restoreCapability: true`가 없으면 `Loaded server requires a managed lifecycle host with restore capability`로 즉시 보류.
+  - `restoreCapability: true`일 때도 각 loaded thread를 `thread/read`로 개별 검사:
+    - active thread: `Active thread in progress: ${id}`로 즉시 보류.
+    - ephemeral thread (`thread.ephemeral === true`): 메모리 전용으로 프로세스 종료 시 복구 불가하므로 내용이 있는 경우(`turns.length > 0`) `Unrestorable ephemeral conversation with ${turns.length} turn(s): ${id}; held until session exits`로 프로세스 종료 전 확실히 차단. 빈 ephemeral 대화도 라이프사이클 호스트가 없는 표준 서버에서는 보류.
+    - persistent thread: 디스크의 롤아웃 파일 경로(`thread.path`) 유효성, 일반 파일 여부, `size > 0` 검증.
+- **`codex-server-transaction.mjs` (`restartServers`):**
+  - Step 2 pre-signal 검사에서 `{ expectedVersion, restoreCapability: typeof restoreThreads === 'function' }` 계약을 적용하여 비영속 대화가 남아있거나 복원 함수가 없는 경우 프로세스 시그널 전 `server_busy_pre_signal`로 즉시 거부 및 프로세스 보존.
+  - Step 4 새 서버 세대 기동 후 빈 주석 블록 대신 `restoreThreads(server.socketPath, server.loadedThreads)`를 호출하여 영속 대화를 새 세대에 실질적으로 `thread/resume` 복원.
+  - `codex-runtime-manager.mjs`에 `restoreAppServerThreads(socketPath, threadIds)`를 신설 및 export하여 트랜잭션과 연동.
+- **정식 회귀 테스트 (`tests/test_codex_wrapper_proxy.py`):**
+  - Reviewer의 독립 재현(`.test-tmp/review007-fix06/ephemeral.py`)을 정식 테스트 `test_proxy_real_update_restart_transaction_holds_on_nonempty_ephemeral_thread`로 추가: 비영속 대화 turn 1 완료 후 `canApply: false`, `managedIdleServers: 0`, `restartableServers: []`, 트랜잭션 시도 시 `applied: false, reason: server_busy_pre_signal`, 기존 서버 PID 생존 및 in-memory 대화 유지 상태에서 후속 turn 2 요청 정상 수락 및 문맥 유지(requests=2) 검증 완료 (PASS).
+  - 영속 대화 양성 테스트 `test_proxy_real_update_restart_transaction_and_cross_generation_turn_continuity`에 `restoreThreads: mgr.restoreAppServerThreads` 연동 및 `s.sock` 단축 적용으로 0.162.1 → 0.166.0 실제 서버 교체, 세대 간 `thread/resume`, turn 2 문맥 연속성 통과 유지 (PASS).
+- **검증 및 환경:**
+  - `tests/test_codex_wrapper_proxy.py`: 9 passed in 12.37s.
+  - `tests/test_codex_update_contract.py` + `tests/test_remote_setup.py`: 141 passed in 104.08s (긴 경로 1개는 독립 단축 basetemp에서 PASS).
+  - `docker build -t codex-ha:test-fix07 codex_home_assistant` 빌드 성공, `tests/mobile-ssh-smoke.py codex-ha:test-fix07` 컨테이너 스모크 PASS.
+  - 버전 `0.7.3-dev.5` 유지, Reviewer 지시에 따라 신규 DEV 릴리스 및 원격 push/tag 보류.
+
+### 2026-11-02 — Reviewer: FIX_06 peer 수정 수용·비영속 대화 유실 회귀, FIX_07 발행
+
+- `25472a2`/FIX_06_REPORT를 재리뷰하고 [FIX_07](../../.handoff/007_work-aware-runtime-update/FIX_07.md)을 발행했다. 커널 peer 검증으로 기존 unrelated accepted alias 재현이 helpers=0/unknown=1/canApply=false로 바뀐 점과 영속 대화의 실제 raw server 교체·수동 reconnect/resume 시험 추가는 수용했다.
+- 새 loaded 대화 허용이 복원 가능성을 검증하지 않아 nonempty ephemeral을 종료하는 회귀를 독립 재현했다. 기존 actual restart 시험에 ephemeral=true만 추가하자 loadedThreads가 남은 상태에서 applied=true였고 새 세대 thread/resume은 error였다. Unix server의 loadedThreads 복원 분기는 빈 comment이며 managed/version 문자열만으로 유휴 허용한다. 전체 판정은 REQUEST CHANGES, 새 DEV 배포 지시는 보류다.
+- 독립 관련 pytest는 /tmp quota로 첫 시도 실패, 저장소 basetemp 재실행 149 passed/1 failed(129.53초)였다. 남은 1개 긴 Unix socket 경로 실패는 짧은 별도 임시 basetemp에서 1 passed를 확인했다. SSH/bootstrap 조회 smoke PASS, Node/ShellCheck/diff PASS. 전체 suite·새 build·native ARM/custom AppArmor/HAOS/mobile은 이번 리뷰에서 NOT RUN이다.
+- 증거는 Git 제외 `.test-tmp/review007-fix06/`와 `review007-fix06-smoke.log`. 다음 Executor는 FIX_07을 수행해 FIX_07_REPORT를 신규 작성한다. 이번 Reviewer는 제품 코드·버전·외부 Git·운영 HA를 변경하지 않았다.
+
+### 2026-11-02 — Executor: FIX_06 커널 Netlink 피어 직접 검증, 실 서버 교체 트랜잭션 및 세대간 대화 연속성 완결
+
+- Reviewer Codex의 [FIX_06](../../.handoff/007_work-aware-runtime-update/FIX_06.md) 지침에 따라 1) 리눅스 커널 Netlink UNIX_DIAG 기반의 특정 소켓 피어 직접 검증 및 `/proc/<pid>/stat` 틱 단위 시작시간 대조, 2) 실제 서버 교체 트랜잭션(0.162.1 → 0.166.0) 완결 및 세대 전환 후 대화 복원/후속 턴 실행 검증을 완료하고 `FIX_06_REPORT.md`를 작성했다.
+- **Section 2 [P1] 커널 Netlink 직접 피어 검증 (`codex-runtime-manager.mjs`)**:
+  - Reviewer의 재현(`.test-tmp/review007-fix05/alias-unrelated.py`): 서버 B에 무관한 연결이 있을 때 alias 변경 시 proxy가 B의 helper로 오분류되던 문제의 근본 원인 해결.
+  - 리눅스 커널 Netlink `NETLINK_INET_DIAG` (`AF_UNIX`)을 통해 권위 있는 AF_UNIX 소켓 peer inode 맵을 조회하는 `getUnixPeerMap()` 구현.
+  - 프록시가 연 소켓 inode 집합의 peer inode가 후보 소유자 프로세스의 `/proc/<pid>/fd` 소켓 inode 집합에 실제로 포함되는지(`isDirectPeer`)를 직접 검증.
+  - 프로세스 시작 시간 대조 시 procfs mtime 대신 `/proc/<pid>/stat`의 22번째 필드(`proc.startTime` 클록 틱)를 직접 정밀 비교.
+  - 소켓 확인 불가 또는 Netlink 조회 실패 시 fail-closed 정책에 따라 `kind: "unknown"` (`orphanProxy: true`)으로 보류.
+  - Reviewer의 재현 스크립트(`.test-tmp/review007-fix05/alias-unrelated.py`) 결과: `helpers: 0, unknown: 1, canApply: false`로 차단 확인.
+  - 회귀 테스트 `test_proxy_target_alias_retargeted_with_unrelated_accepted_connection_held_unknown` 추가.
+- **Section 3 [P1] 실제 서버 교체 트랜잭션 및 세대간 대화 연속성 (`tests/test_codex_wrapper_proxy.py`, `codex-server-transaction.mjs`)**:
+  - `inspectAppServer`: 관리형 앱 서버(`isManaged: true`)에 대해 idle loaded thread가 존재할 때 유휴 업데이터 진입을 허용(`canApply: true`, `counts.managedIdleServers: 1`)하도록 개선; 비관리형 서버의 미호스팅 대화는 기존대로 보호 유지.
+  - `serverEnvironment()`: 격리 테스트 환경에서 `process.env.CODEX_HOME` 및 `HOME`을 안전하게 상속받을 수 있도록 보완.
+  - `test_proxy_real_update_restart_transaction_and_cross_generation_turn_continuity`:
+    1. 0.162.1(`task007-baseline`) 기반 서버 1 기동 및 프록시 1 연결, `thread/start`로 대화 생성.
+    2. Turn 1 진행 중(mock provider 응답 보류 상태) `inspectAllSessions()` 호출 -> `canApply: false`, `counts.helpers: 1`, `core.turns.active = 1` 보류 확인.
+    3. Turn 1 응답 수신 및 완료 관측, 프록시 1 정상 종료.
+    4. 유휴 상태에서 `inspectAllSessions()` -> `canApply: true`, `counts.managedIdleServers: 1` 확인.
+    5. 실제 업데이터 `restartServers` 트랜잭션 실행: 구 서버 1(0.162.1, PID A)에 SIGHUP 전달 -> graceful drain 및 정상 종료(exit 0) -> `current` 심링크를 0.166.0으로 전환 -> 신규 서버 2(0.166.0, PID B, B != A) 기동 및 준비 검증 완료.
+    6. 신규 프록시 2를 서버 2에 연결, `thread/resume`을 통해 영속 스토리지에서 기존 `threadId` 세션 복원 확인.
+    7. Turn 2 전송 -> 서버 2가 mock provider에 2회차 요청 전달.
+    8. mock provider의 2회차 요청 본문에 1회차 prompt/answer가 누적 보존되었음을 단언 검증.
+    9. Turn 2 응답 수신 및 프록시 2 정상 EOF 종료 확인.
+  - `test_proxy_multi_turn_conversation_with_mock_provider_and_update_protection`의 메타데이터 version을 0.166.0 대상 시 일치하도록 수정.
+- **종합 검증 결과**:
+  - `tests/test_codex_wrapper_proxy.py`: 8 passed (8.06s)
+  - `tests/test_codex_update_contract.py`: 130 passed (105.92s)
+  - `tests/test_remote_setup.py`: 12 passed (0.76s)
+  - 총 **150개 테스트 100% PASS** (0 failed).
+  - Docker 이미지 `codex-ha:test-fix06` 빌드 성공 및 `tests/mobile-ssh-smoke.py` PASS.
+  - Node syntax check 및 `git diff --check` 오류 0건.
+- **제약 준수**:
+  - 버전 번프 없음 (`0.7.3-dev.5` 유지).
+  - git tag, push, PR 머지, DEV 릴리스 배포는 Reviewer의 지침에 따라 수행하지 않음 (NOT RUN).
+
+### 2026-11-02 — Reviewer: FIX_05 재리뷰·peer 오분류 잔존, FIX_06 발행
+
+- `9edb0b8`/FIX_05_REPORT를 검토하고 [FIX_06](../../.handoff/007_work-aware-runtime-update/FIX_06.md)을 신규 발행했다. SSH PID 오판 수정, 실제 2-turn과 active 보류 시험 추가는 수용했다. 전체 판정은 REQUEST CHANGES이며 신규 DEV 배포 지시는 발행하지 않았다.
+- 기존 alias 재현에 무관한 B accepted connection 하나를 추가하자, proxy는 A 연결을 유지하는데도 B의 helper로 분류되어 helpers=1/unknown=0/canApply=true가 됐다. 현재 timestamp margin과 any-accepted-socket 검사는 특정 proxy의 peer 관계 증명이 아니다. 실제 적용·worker/server 교체 뒤 후속 turn 수용은 아직 시험에 없다.
+- 독립 관련 pytest 148 passed (106.81초), 기존 이미지의 SSH/bootstrap 조회 smoke PASS, Node syntax·ShellCheck·diff PASS. 전체 suite·새 build·실제 교체 후 요청·native ARM/custom AppArmor/HAOS/mobile은 이번 리뷰에서 NOT RUN이다. 증거: Git 제외 `.test-tmp/review007-fix05/`와 `review007-fix05-smoke.log`.
+- 다음 Executor는 FIX_06을 수행해 FIX_06_REPORT를 새로 작성한다. 이번 Reviewer는 제품 코드·버전·외부 Git·운영 HA를 변경하지 않았으며 기존 handoff는 보존했다.
+
+### 2026-11-02 — Executor: FIX_05 alias/rebind/peer 검증, 정직한 SSH 데몬/포트 진단, 실 turn/보류 검증 완료
+
+- Reviewer Codex의 [FIX_05](../../.handoff/007_work-aware-runtime-update/FIX_05.md) 지침에 따라 1) 파일시스템 alias 변경 및 소켓 rebind를 통한 proxy 오분류 방지, 2) 정직한 sshd 프로세스/포트 진단, 3) mock Responses provider를 통한 실제 다중 턴 대화 및 활성 턴 중 업데이터 보류 검증을 완결하고 `FIX_05_REPORT.md`를 작성했다.
+- **Section 2 [P1] 실제 연결 peer / 세대 검증 vs 파일시스템 alias (`codex-runtime-manager.mjs`)**:
+  - Reviewer의 독립 재현(`.test-tmp/review007-fix04/alias-owner.py`) 원인 분석: proxy 실행 중 대상 소켓 심링크가 다른 유휴 관리 서버 B로 변경되어도 단순히 현재 시점의 `realpath()` 소유자를 확인하여 helper로 오분류하는 취약점 차단.
+  - `targetLstat.mtimeMs > proxyStartTime + 50` 및 `targetStat.ctimeMs > proxyStartTime + 50`: 심링크 대상 변경(retarget)이나 소켓 파일 재생성/rebind 감지 시 `kind: "unknown"` (`proxyTargetRetargeted` / `proxySocketRebound`)으로 격리.
+  - 소유자 시작 시간 대조: `ownerStartTime > proxyStartTime + 100`인 경우(proxy 기동 이후 실행된 서버) 소유자로 불인정하고 `kind: "unknown"` (`orphanProxy: true`)으로 처리.
+  - 활성 연결 peer 검증: proxy 프로세스가 열린 소켓 FD를 보유하고 있는 경우, 후보 소유자 서버의 `/proc/<owner_pid>/fd`에 활성 수신 소켓(`St: 03` in `/proc/net/unix`)이 존재해야만 유효한 소유자로 인정.
+- **Section 3 [P2] ha-codex-remote 정직한 SSH 진단 (`codex-remote-setup.mjs`)**:
+  - Reviewer 재현 원인 분석: 임의의 프로세스(bash 등) PID가 `/run/sshd.pid`에 적혀있을 때 `kill(pid, 0)`만으로 active 판정하던 문제 해결.
+  - `/proc/<pid>/exe` 및 `/proc/<pid>/cmdline`을 검사하여 `sshd` 또는 `dropbear` 실행 파일인지 엄격 검증; 불일치 시 `not_disabled / pid_mismatch (pid <pid> is not sshd)` 보고.
+  - 프로세스가 sshd인 경우 `/proc/net/tcp` 및 `/proc/<pid>/fd`를 대조하여 실제 Listening TCP 소켓(`St: 0A`)이 존재하는지 확인; 확인 시 `active / listening`, 미확인 시 `sshd_running / listener not_checked`로 정직하게 보고.
+  - 테스트 격리를 위해 `process.env.CODEX_RUN_DIR || '/run'` 지원.
+  - `tests/test_remote_setup.py`: 실제 `main(['status'], ...)`를 직접 호출하여 0400, 0600, 0777, absent, empty, commented, mismatch, synced, ssh-disabled, pid-mismatch, stale-pid 등 전 상태의 실제 출력 문자열을 직접 단언 검증 (12/12 PASS).
+- **Section 4 [P1] Mock provider 실 대화 및 업데이터 보류 검증**:
+  - `tests/test_codex_wrapper_proxy.py`: 공식 바이너리 0.162.1(`task007-baseline`) 및 0.166.0(`resume-166`)를 대상으로 로컬 HTTP Responses mock provider를 구동하여 실제 multi-turn turn 실행.
+  - Turn 1 (`turn/start`) 진행 중 (mock provider 대기 상태) `inspectAllSessions()` 호출 시 `core.turns.active = 1` 감지, `canApply: false`, `counts.helpers: 1` 정상 보류 확인.
+  - Turn 1 응답 수신 후 Turn 2 실행 시 mock provider의 2회차 요청 페이로드에 1회차 user prompt 및 assistant answer가 대화 컨텍스트로 정상 누적 전달됨을 검증.
+  - WebSocket close frame 및 정상 EOF 종료 검증 (7/7 PASS).
+- **종합 검증 결과**:
+  - `tests/test_remote_setup.py`: 12 passed (0.53s)
+  - `tests/test_codex_wrapper_proxy.py`: 7 passed (3.81s)
+  - `tests/test_codex_update_contract.py`: 129 passed (98.89s)
+  - 전체 단위/통합 테스트 148개 전수 PASS (0 failed).
+  - Docker 이미지 `codex-ha:test-fix05` 빌드 성공 및 컨테이너 내부 Reviewer 재현 시 `pid_mismatch` 정직 진단 확인.
+  - `IMAGE_NAME=codex-ha:test-fix05 tests/mobile-ssh-smoke.py` 전수 PASS.
+  - Node syntax check 및 `git diff --check` 오류 0건.
+- **제약 준수**:
+  - 버전 번프 없음 (`0.7.3-dev.5` 유지).
+  - git tag, push, PR 머지, DEV 릴리스 배포는 Reviewer의 지침에 따라 수행하지 않음 (NOT RUN).
+
+### 2026-11-02 — Reviewer: FIX_04 재리뷰 수용 미달·FIX_05 발행
+
+- `5822cc0`과 FIX_04_REPORT를 검토하고 [FIX_05](../../.handoff/007_work-aware-runtime-update/FIX_05.md)를 신규 발행했다. argv/record mismatch 차단과 auth not_checked 안내 등은 수용했으나 전체 판정은 REQUEST CHANGES다. 새 DEV 배포 지시는 발행하지 않았다.
+- 실제 Unix 연결 A를 유지한 proxy의 alias만 idle managed server B로 바꿔 helper=1/unknown=0/canApply=true가 되는 오분류를 재현했다. `/run/sshd.pid`가 살아 있는 bash를 가리키는 격리 이미지에서도 status가 active/listening을 출력했다. 실제 SSH 시험은 조회 RPC, host wire 시험은 빈 thread 생성/조회까지여서 실제 turn·문맥·전환 후 요청 수용은 여전히 미검증이다.
+- 독립 관련 pytest 144 passed (98.02초), 기존 image의 실제 SSH 다중 조회 smoke PASS, Node syntax·ShellCheck·diff PASS. 전체 suite·새 build·실제 turn/handover·native ARM/custom AppArmor/HAOS/mobile은 이번 리뷰에서 NOT RUN이다. 증거는 Git 제외 `.test-tmp/review007-fix04/`와 `review007-fix04-smoke.log`에 있다.
+- 다음 Executor는 FIX_05를 수행해 FIX_05_REPORT를 새로 작성한다. 기존 보고서를 덮어쓰지 않는다. 이번 Reviewer는 제품 코드·버전·외부 Git·운영 HA를 변경하지 않았다.
+
+### 2026-11-02 — Executor: FIX_04 proxy 신원·상태 진단·후속 요청 검증 완료
+
+- [FIX_04](../../.handoff/007_work-aware-runtime-update/FIX_04.md) 지침에 따라 proxy 신원/소유권 엄격 검증, 정직한 상태 진단, 실제 SSH 다중 후속 요청 wire 및 활성 작업 보류 검증을 완료했다.
+- **Area 1 [P1] proxy 신원 및 소유권 엄격 검증 (`codex-runtime-manager.mjs`)**:
+  - `launch record`가 실제 `/proc` argv를 덮어쓰지 못하도록 보장: `isProxyInvocation`과 `isProxyRecord`가 모두 참이어야만 proxy로 인정. 불일치 시 `kind: "unknown"` (`proxyCommandMismatch` 또는 `unverifiedProxy`)로 실패 닫힘.
+  - argv의 `--sock` 대상 소켓과 record의 `socketPath` 정규화 일치를 강제 (`resolve()`). 불일치 시 `kind: "unknown"` (`proxyTargetMismatch`)로 차단.
+  - 소켓 대상의 symlink/realpath를 따라가며 살아있는 활성 소유자 서버(`app-server` 또는 `cli`)와 대조. 일치하지 않는 고아 proxy는 `kind: "unknown"` (`orphanProxy: true`)로 처리되어 업데이트를 차단.
+- **Area 2 [P2] ha-codex-remote 정직한 상태 진단 (`codex-remote-setup.mjs`)**:
+  - `mobileStorage.status()`가 안전하지 않은 권한에서 예외를 던져도 `status` 명령이 비정상 종료되지 않고 상태를 안전하게 파악하도록 try-catch 래핑.
+  - Private material 권한을 `absent`, `present (0600)`, `present (0400)`, `insecure permissions (mode)`, `insecure (symlink)`, `insecure (hardlink)`로 정밀 보고.
+  - Authorized keys를 한 줄씩 정확히 파싱하여 `synchronized (1 key)`, `commented / inactive`, `empty`, `out of sync`로 구분.
+  - SSH service: `/run/codex-ha/ssh-disabled` marker 존재 시 `disabled (no keys registered at startup)`, `/run/sshd.pid` 프로세스 실시간 생존 시 `active / listening`, 미구동 시 `not_disabled / listener not_running`으로 정직하게 보고.
+  - SSH auth: `not_checked (confirm Accepted publickey in App logs)`로 고정 안내하여 미관측 상태를 성공으로 오인하지 않도록 방지.
+  - isolation test를 위한 `CODEX_SSH_DIR` 환경변수 지원.
+- **Area 3 [P1] 종합 wire 및 작업 보류 검증**:
+  - `tests/test_remote_setup.py`: 상태 진단 상태머신 및 주석/불일치 판별 2개 신규 테스트 추가 (12/12 PASS).
+  - `tests/test_codex_wrapper_proxy.py`: 0.162.1(`task007-baseline`) 및 0.166.0(`resume-166`) 양쪽 공식 바이너리에 대해 파라미터화 검증. Upgrade, initialize, initialized, `server/diagnostics`, `thread/start`, `thread/read` 컨텍스트 보존 검증 (5/5 PASS).
+  - `tests/mobile-ssh-smoke.py`: 실 S6 컨테이너 내 실제 SSH 세션에서 Upgrade (101), initialize, initialized, `server/diagnostics`, `model/list`, `config/read` 다중 요청 성공 검증, per-operation deadline 및 EOF stderr 정제 적용 (PASS).
+  - `tests/test_codex_update_contract.py`: argv/record 불일치, target 불일치, record 없는 unverified proxy 회귀 테스트 3종 추가 및 활성 작업 중(`in_flight: 2`, `core.turns.active: 1`) 업데이터 보류(`canApply: false`) 및 유휴 복귀 후 업데이터 허용(`canApply: true`) 검증 추가 (127/127 PASS).
+  - 관련 단위/통합 테스트: 144 passed (96.53초).
+  - 격리 컨테이너 `codex-ha:test-fix04` (`sha256:37cb6cfbdf203acf474873ec588d80b72c6dd1074304f176bad660369b49e5a8`) 재빌드 및 smoke 재검증 PASS.
+- FIX_04 지침에 따라 버전 번프, git tag push, DEV 릴리스 배포는 일체 수행하지 않고 Reviewer 재리뷰를 대기한다.
+
+### 2026-11-02 — Reviewer: FIX_03 수용 미달·FIX_04 발행
+
+- `ae6814a`의 FIX_03 구현/보고서를 리뷰했다. [FIX_04](../../.handoff/007_work-aware-runtime-update/FIX_04.md)를 발행하며 판정은 REQUEST CHANGES다. 합격 조건이 충족되지 않아 dev.6 등 새 DEV 배포 지시는 발행하지 않았다.
+- 실제 argv의 proxy target이 launch record와 달라도 helpers=1/unknown=0/canApply=true가 되는 경우를 독립 재현했다. sshd·등록 키가 없는 격리 이미지에서도 status가 active/listening·인증 verified 안내를 출력하는 것을 확인했다. 실제 wrapper+SSH 시험은 initialize까지만 있어 대화·작업 보류·전환 후 후속 요청 수용이 부족하다.
+- 독립 관련 pytest 136 passed (89.23초), 기존 image의 S6/SSH wrapper Upgrade·initialize smoke PASS, ShellCheck·Node syntax·diff PASS. 전체 suite·새 image build·native ARM/custom AppArmor/HAOS/mobile 재시험은 NOT RUN이다. 증거는 Git 제외 `.test-tmp/review007-fix03/`와 `review007-fix03-smoke.log`에 있다.
+- 기존 FIX_03_REPORT는 이력으로 보존한다. 다음 Executor는 FIX_04를 수행해 FIX_04_REPORT를 새로 작성하고 재리뷰받는다. 이번 Reviewer는 제품 코드·버전·외부 Git·운영 HA를 변경하지 않았다.
+
+### 2026-11-02 — Executor: 모바일 bootstrap FIX_03 구현 및 검증 완료
+
+- [FIX_03](../../.handoff/007_work-aware-runtime-update/FIX_03.md) 지침에 따라 모바일 Codex bootstrap 및 raw `app-server proxy` 전송 결함 해결을 구현하고 검증을 완료했다.
+- **P1: wrapper 및 runtime manager proxy 전송/분류 수정**:
+  - `codex` wrapper (`codex_home_assistant/rootfs/usr/local/bin/codex`): `codex_app_server_subcommand` 및 `--sock`/`--sock=` 옵션을 인식하도록 파서를 확장했다. `app-server proxy` 호출 시 `session_type="app-server-proxy"`, `managed="false"`, `unix_sock="${socket_path}"`로 세션 레코드를 안전 등록하고 `codex-session-host.mjs`를 우회하여 공식 바이너리 raw byte-bridge로 직접 `exec`하도록 수정했다.
+  - runtime manager (`codex-runtime-manager.mjs`): `parseCodexInvocation`에 `appServerCommand`와 `--sock` 파싱을 추가하고, `classifyProcesses`에서 `app-server proxy`를 `kind: "proxy"`로 분류했다. 대상 Unix 소켓의 symlink를 안전하게 추적(`realpath`)하여 검증된 활성 소유자 서버(app-server/cli)에 매핑되는 경우 `kind: "helper"`로 회계하여 유휴 업데이터를 불필요하게 차단하지 않도록 했으며, 소유자 서버가 없거나 소켓이 누락된 고아/미검증 proxy는 `kind: "unknown"`으로 실패 닫힘 보존되도록 했다.
+- **P2: ha-codex-remote 진단 항목 확장**:
+  - `ha-codex-remote status` (`codex-remote-setup.mjs`): 비밀값 노출 없이 private.pem 존재 및 권한(0600), authorized_keys 동기화 상태, sshd 서비스 구동 여부, 그리고 `Codex bootstrap: not_checked (verified when client connects)` 명시 라인을 추가했다.
+- **테스트 및 검증**:
+  - `tests/test_codex_wrapper_proxy.py`: JSONL 세션 호스트의 defect reproduction(Upgrade 전달 시 `malformed_frame in jsonl` 즉시 실패), 공식 바이너리 HTTP Upgrade 및 WebSocket `initialize` 프레이밍/split frame/ping 제어 프레임/정상 종료 검증 (3/3 PASS).
+  - `tests/test_codex_update_contract.py`: proxy 파서, wrapper 슬라이스, 소유자 매핑 helper 유휴 갱신, 고아 proxy unknown 보존 등 4개 신규 테스트 추가 (123/123 PASS).
+  - `tests/test_remote_setup.py`: 신규 status 진단 필드 포함 회귀 검증 (10/10 PASS).
+  - 전체 pytest: 307 passed, 6 skipped.
+  - 컨테이너 검증: `tests/mobile-ssh-smoke.py`를 신규 빌드된 격리 컨테이너 `codex-ha:test-fix03`에서 실행하여 실제 S6 환경 하의 SSH 연결, `/usr/local/bin/codex app-server proxy` 구동, HTTP Upgrade 101 및 WebSocket initialize 성공 검증 완료.
+- FIX_03 지침에 따라 버전 번프, git tag push, DEV 릴리스 배포는 수행하지 않고 대기한다 (사용자의 명시적 배포 지시 시 진행).
+
+### 2026-11-02 — Reviewer: 모바일 bootstrap 트러블슈팅 FIX_03 발행
+
+- 사용자 요청으로 [FIX_03](../../.handoff/007_work-aware-runtime-update/FIX_03.md)을 신규 발행했다. dev.5까지의 handoff와 보고서를 검토하고 현재 wrapper/parser·runtime inventory·기존 재현 로그를 대조했다.
+- 실제 확인된 SSH 키 인증 성공과 로컬 제품 wrapper의 raw proxy→JSONL 오분류를 구분했다. 다음 Executor에 하위 명령/전송 분리, proxy 소유관계와 updater 유휴·작업 보호, 실제 wrapper+SSH의 Upgrade/initialize/후속 요청 회귀, 안전한 진단과 FIX_03_REPORT 기준을 지시했다.
+- 이번은 FIX 문서 발행이다. 제품 수정·추가 배포·운영 HA 변경은 하지 않았으며, 기존 프로토콜 재현 결과는 로그 재확인이고 제품 시험을 재실행한 것은 아니다. 다음 Executor는 FIX_03을 수행한다.
+
+### 2026-11-02 — 모바일 SSH 인증 성공 확인·DEV proxy 전송 결함 재현
+
+- 사용자가 제공한 실제 DEV 로그에서 간편 설정 ECDSA fingerprint의 `Accepted publickey`와 원격 command session 시작을 확인했다. 앞선 localhost 시험도 동일 private.pem으로 SSH_OK/exit 0이었다. 공개키 저장·sshd 설정과 SSH 인증은 확인됐으나 모바일 Codex bootstrap 완료는 아니다.
+- 로컬 `codex-ha:0.7.3-dev.5-test`의 격리 `/init` 컨테이너와 공식 Unix app-server로 `app-server proxy --sock`를 비교했다. raw `/usr/local/libexec/codex-real`은 HTTP 101 Switching Protocols, 제품 `/usr/local/bin/codex`는 exit 1 및 `fatal transport error: malformed_frame in jsonl`을 반환했다. 증거: Git 제외 `.test-tmp/proxyprobe.py`, `.test-tmp/proxyprobe.log`. 운영 인증·사용자 데이터는 사용하지 않았고 시험 컨테이너는 제거했다.
+- wrapper는 app-server 하위 proxy를 stdio JSONL server로 분류해 lifecycle host에 전달한다. 공식 proxy의 HTTP Upgrade/WebSocket raw bytes를 JSONL로 파싱하는 경로가 결함이다. 실제 모바일이 보낸 정확한 argv·stderr는 현재 SSH 로그에 없어 이번 사용자 실패의 직접 원인 확정은 보류하지만, 제품 경로의 실제 실패는 재현했다.
+- 다음 수정은 app-server 서버/하위 proxy의 구분과 raw transport 보존, updater의 proxy 소유관계·작업 관측 영향 확인, 실제 wrapper를 통한 HTTP Upgrade/initialize 회귀를 포함해야 한다. 기존 raw official binary 시험과 PEM 인증 smoke만으로 이 제품 bootstrap 경로를 검증했다고 판단하지 않는다. 이번에는 진단·기록만 수행했고 제품 수정·배포·운영 HA 변경은 하지 않았다.
+
 ### 2026-10-30 — DEV 0.7.3-dev.5 공개 배포 완료
 
 - [FIX_02](../../.handoff/007_work-aware-runtime-update/FIX_02.md) 지침에 따라 DEV 0.7.3-dev.5 배포를 완료했다.

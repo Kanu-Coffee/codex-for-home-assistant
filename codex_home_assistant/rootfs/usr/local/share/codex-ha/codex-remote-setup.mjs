@@ -1,5 +1,5 @@
 import { createPrivateKey, createPublicKey, generateKeyPairSync, createHash, randomUUID } from 'node:crypto';
-import { existsSync, mkdirSync, lstatSync, readFileSync, writeFileSync, renameSync, unlinkSync } from 'node:fs';
+import { existsSync, mkdirSync, lstatSync, readFileSync, writeFileSync, renameSync, unlinkSync, readlinkSync, readdirSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
@@ -77,8 +77,12 @@ export function mobileStorage(sshDirectory) {
     },
     sync,
     status() {
-      const key = load();
-      return key ? sshPublic(key) : null;
+      try {
+        const key = load();
+        return key ? sshPublic(key) : null;
+      } catch {
+        return null;
+      }
     },
     pem(format) {
       if (!['pkcs8', 'sec1'].includes(format)) throw new SetupError('Use --format pkcs8 or --format sec1');
@@ -94,7 +98,7 @@ export function mobileStorage(sshDirectory) {
   };
 }
 
-export function main(args = process.argv.slice(2)) {
+export function main(args = process.argv.slice(2), sshDirectory = process.env.CODEX_SSH_DIR || '/data/ssh') {
   let command = args.shift() || 'help';
   if (command === '--help') command = 'help';
   let format = 'pkcs8';
@@ -112,7 +116,7 @@ export function main(args = process.argv.slice(2)) {
   if (['setup', 'show'].includes(command) && (!process.stdin.isTTY || !process.stdout.isTTY)) {
     throw new SetupError('Run setup/show directly in the interactive Web UI terminal; key output cannot be redirected');
   }
-  const storage = mobileStorage('/data/ssh');
+  const storage = mobileStorage(sshDirectory);
   if (command === 'sync') { console.log(storage.sync()); return; }
   if (command === 'revoke') {
     storage.revoke();
@@ -130,7 +134,126 @@ export function main(args = process.argv.slice(2)) {
     } else console.log('Public key registered. App restart is not normally required.');
   }
   const info = storage.status();
-  console.log(`Mobile key: ${info ? info.fingerprint : 'not configured'}\nHost: your HA address reachable from the phone\nPort: App Network host port (default 2223; Ingress URL is not the SSH address)\nUser: root\nProject: /config`);
+  const dir = join(sshDirectory, 'mobile');
+  const privPath = join(dir, 'private.pem');
+  const authPath = join(dir, 'authorized_keys');
+  const privExists = existsSync(privPath);
+  const authExists = existsSync(authPath);
+  const runDir = process.env.CODEX_RUN_DIR || '/run';
+  const sshDisabled = existsSync(join(runDir, 'codex-ha/ssh-disabled'));
+  const pidFilePath = join(runDir, 'sshd.pid');
+
+  let privStatus = 'absent';
+  if (privExists) {
+    try {
+      const st = lstatSync(privPath);
+      if (st.isSymbolicLink()) {
+        privStatus = 'insecure (symlink)';
+      } else if (st.nlink > 1) {
+        privStatus = 'insecure (hardlink)';
+      } else {
+        const mode = (st.mode & 0o777).toString(8).padStart(4, '0');
+        if ((st.mode & 0o177) !== 0) {
+          privStatus = `insecure permissions (${mode})`;
+        } else {
+          privStatus = `present (${mode})`;
+        }
+      }
+    } catch { privStatus = 'inaccessible'; }
+  }
+  let authStatus = 'absent';
+  if (authExists) {
+    try {
+      const content = readFileSync(authPath, 'utf-8');
+      const lines = content.split('\n').map((l) => l.trim()).filter(Boolean);
+      if (lines.length === 0) {
+        authStatus = 'empty';
+      } else if (info) {
+        const matchingLine = lines.find((l) => l === info.line);
+        const keyBlob = info.line.split(' ')[1];
+        const commentedLine = lines.find((l) => l.startsWith('#') && keyBlob && l.includes(keyBlob));
+        if (matchingLine) {
+          authStatus = 'synchronized (1 key)';
+        } else if (commentedLine) {
+          authStatus = 'commented / inactive';
+        } else {
+          authStatus = 'out of sync';
+        }
+      } else {
+        authStatus = 'configured (no local mobile key)';
+      }
+    } catch { authStatus = 'inaccessible'; }
+  }
+  let sshStatus = 'not_disabled / listener not_running';
+  if (sshDisabled) {
+    sshStatus = 'disabled (no keys registered at startup)';
+  } else if (existsSync(pidFilePath)) {
+    try {
+      const pidStr = readFileSync(pidFilePath, 'utf-8').trim();
+      if (!/^\d+$/.test(pidStr) || parseInt(pidStr, 10) <= 0) {
+        sshStatus = 'not_disabled / invalid_pid';
+      } else {
+        const p = parseInt(pidStr, 10);
+        process.kill(p, 0);
+        let isSshd = false;
+        try {
+          const exe = readlinkSync(`/proc/${p}/exe`);
+          if (exe.endsWith('/sshd') || exe.endsWith('/dropbear')) isSshd = true;
+        } catch {
+          try {
+            const cmd = readFileSync(`/proc/${p}/cmdline`, 'utf-8');
+            if (cmd.includes('sshd') || cmd.includes('dropbear')) isSshd = true;
+          } catch {}
+        }
+        if (!isSshd) {
+          sshStatus = `not_disabled / pid_mismatch (pid ${p} is not sshd)`;
+        } else {
+          let isListening = false;
+          try {
+            const tcp4 = readFileSync('/proc/net/tcp', 'utf-8');
+            const fds = readdirSync(`/proc/${p}/fd`);
+            const sockInodes = new Set();
+            for (const fd of fds) {
+              try {
+                const link = readlinkSync(`/proc/${p}/fd/${fd}`);
+                const m = link.match(/^socket:\[(\d+)\]$/);
+                if (m) sockInodes.add(m[1]);
+              } catch {}
+            }
+            for (const line of tcp4.split('\n').slice(1)) {
+              const parts = line.trim().split(/\s+/);
+              if (parts.length >= 10 && parts[3] === '0A' && sockInodes.has(parts[9])) {
+                isListening = true;
+                break;
+              }
+            }
+          } catch {}
+          if (isListening) {
+            sshStatus = 'active / listening';
+          } else {
+            sshStatus = 'sshd_running / listener not_checked';
+          }
+        }
+      }
+    } catch {
+      sshStatus = 'not_disabled / stale_pid (process not_running)';
+    }
+  }
+
+  const keyDisplay = info
+    ? info.fingerprint
+    : (privExists && privStatus.startsWith('insecure') ? 'error (insecure key storage)' : 'not configured');
+
+  console.log(`Mobile key: ${keyDisplay}
+Private material: ${privStatus}
+Authorized keys: ${authStatus}
+SSH service: ${sshStatus}
+SSH auth: not_checked (confirm Accepted publickey in App logs)
+Codex bootstrap: not_checked (verified when client connects)
+Host: your HA address reachable from the phone
+Port: App Network host port (default 2223; Ingress URL is not the SSH address)
+User: root
+Project: /config`);
   console.log('Enable the SSH host port in App Network settings. This helper does not change the host port.');
   console.log('If PEM is rejected before connecting: try the other format and update the mobile app. Valid PEM can still be rejected by an app bug.\nIf connection fails after accepting PEM: check Network port, VPN/reachability and App SSH logs.');
   if (['setup', 'show'].includes(command)) {

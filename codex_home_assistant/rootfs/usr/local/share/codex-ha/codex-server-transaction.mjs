@@ -116,11 +116,19 @@ function versionMatches(binary, version, env) {
 
 // No ambient credentials, user shell hooks, loader variables or Node options.
 export function serverEnvironment() {
-  return { PATH: '/usr/local/bin:/usr/bin:/bin', HOME: '/data/home', CODEX_HOME: '/data/codex',
-    LANG: 'C.UTF-8', LC_ALL: 'C.UTF-8', HA_URL: 'http://supervisor/core/api', SUPERVISOR_URL: 'http://supervisor' };
+  return {
+    PATH: '/usr/local/bin:/usr/bin:/bin',
+    HOME: process.env.HOME || '/data/home',
+    CODEX_HOME: process.env.CODEX_HOME || '/data/codex',
+    LANG: 'C.UTF-8',
+    LC_ALL: 'C.UTF-8',
+    HA_URL: process.env.HA_URL || 'http://supervisor/core/api',
+    SUPERVISOR_URL: process.env.SUPERVISOR_URL || 'http://supervisor',
+  };
 }
 
 export async function restartServers({ servers, binary, version, inspectProcess, inspectServer,
+  restoreThreads,
   switchToNew, switchToOld, writeRecord, removeRecord, commitAttempt,
   writeJournal = async () => {}, clearJournal = async () => {},
   commitSelection = async () => {}, rollbackSelection = async () => {},
@@ -163,7 +171,10 @@ export async function restartServers({ servers, binary, version, inspectProcess,
       if (!current || current.startTime !== identity.startTime || !await executableMatches(current, exe)) {
         throw new Error('server_executable_mismatch');
       }
-      const ready = await inspectServer(server.socketPath, child.pid, expectedVersion);
+      const ready = await inspectServer(server.socketPath, child.pid, {
+        expectedVersion,
+        restoreCapability: false,
+      });
       if (!ready.busy) {
         await writeRecord(child.pid, { ...record, pid: child.pid, start: identity.startTime, exe, version: expectedVersion });
         return launched;
@@ -224,10 +235,14 @@ export async function restartServers({ servers, binary, version, inspectProcess,
           !await executableMatches(proc, record.exe) || !versionMatches(record.exe, record.version, env)) {
         throw new Error('invalid_managed_launch_record');
       }
-      const inspectRes = await inspectServer(server.socketPath, server.pid, record.version);
+      const inspectRes = await inspectServer(server.socketPath, server.pid, {
+        expectedVersion: record.version,
+        restoreCapability: typeof restoreThreads === 'function',
+      });
       if (inspectRes.busy) {
         throw new Error('server_busy_pre_signal');
       }
+      server.loadedThreads = inspectRes.loadedThreads || [];
     }
     await commitAttempt();
     await journal('draining');
@@ -286,7 +301,9 @@ export async function restartServers({ servers, binary, version, inspectProcess,
       } else {
         const launched = await launch(server, binary, version);
         if (Array.isArray(server.loadedThreads) && server.loadedThreads.length > 0) {
-          // Threads are restored onto the launched generation
+          if (typeof restoreThreads === 'function') {
+            await restoreThreads(server.socketPath, server.loadedThreads);
+          }
         }
       }
     }
