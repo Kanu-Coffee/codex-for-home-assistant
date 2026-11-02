@@ -63,8 +63,19 @@ jobs:
             'bwrap (enforce)' /sys/kernel/security/apparmor/profiles
 
 
+      - name: Install locked runtime transport for local tests
+        run: npm ci --prefix codex_home_assistant/playwright --ignore-scripts --no-audit --no-fund
+
+      - name: Prepare official Codex test binaries
+        run: bash tests/prepare-test-binaries.sh
+
       - name: Run Python policy and helper tests
+        env:
+          CODEX_WIRE_PROBE_BINARY: ${{ github.workspace }}/.test-tmp/task007-baseline/bin/codex
         run: python -m pytest -ra
+
+      - name: Remove installed runtime test dependencies before repository lint
+        run: rm -rf codex_home_assistant/playwright/node_modules .test-tmp
 
       - name: Run YAML lint
         run: yamllint -c .yamllint .
@@ -76,7 +87,7 @@ jobs:
 
       - name: Run Markdown lint
         # Handoff history is immutable and is not product documentation.
-        run: npx --yes markdownlint-cli2@0.23.0 "**/*.md" "#**/.pytest_cache/**" "#.handoff/**"
+        run: npx --yes markdownlint-cli2@0.23.0 "**/*.md" "#**/.pytest_cache/**" "#.handoff/**" "#**/.test-tmp/**"
 
       - name: Run Dockerfile lint
         run: |
@@ -163,6 +174,9 @@ jobs:
 
       - name: Run container smoke tests
         run: bash tests/docker-smoke.sh codex-for-home-assistant:test
+
+      - name: Verify mobile PEM SSH setup and revocation
+        run: python3 tests/mobile-ssh-smoke.py codex-for-home-assistant:test
 
       - name: Run headless browser approval policy smoke tests
         run: bash tests/browser-approval-smoke.sh codex-for-home-assistant:test
@@ -272,6 +286,9 @@ jobs:
 
       - name: Run container smoke tests
         run: bash tests/docker-smoke.sh codex-for-home-assistant:aarch64-test
+
+      - name: Verify mobile PEM SSH setup and revocation
+        run: python3 tests/mobile-ssh-smoke.py codex-for-home-assistant:aarch64-test
 
       - name: Run headless browser approval policy smoke tests
         run: bash tests/browser-approval-smoke.sh codex-for-home-assistant:aarch64-test

@@ -7,5 +7,11 @@
     "MD041": false,
     "MD060": false
   },
-  "globs": ["**/*.md", "#**/.pytest_cache/**", "#.handoff/**"]
+  "globs": ["**/*.md"],
+  "ignores": [
+    ".handoff/**",
+    "**/.pytest_cache/**",
+    "**/.test-tmp/**",
+    "**/node_modules/**"
+  ]
 }

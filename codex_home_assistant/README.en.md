@@ -1,4 +1,4 @@
-> DEV candidate: `0.7.2-dev.2` improves diagnostic failure distinction, runtime version reporting, and graceful shutdown. Use `https://github.com/Kanu-Coffee/codex-for-home-assistant#dev`; the app/panel are **Codex for Home Assistant (DEV)** / **Codex DEV**. VM/CI validation is separate from real-device acceptance.
+> Stable `0.7.3` promotes the user-accepted `0.7.3-dev.6` runtime with mobile SSH proxy separation, kernel Netlink peer verification, runtime auto-update thread restoration, and persistent key setup. Install from `https://github.com/Kanu-Coffee/codex-for-home-assistant`.
 
 <p align="right">
   <a href="README.md">한국어</a> · <strong>English</strong>
@@ -31,7 +31,7 @@ Use Codex inside Home Assistant to inspect your setup and improve dashboards, au
 
 ## Quick start
 
-1. Install and start the app (0.7.1). It supports `amd64` and 64-bit `aarch64`. The manifest omits the `stage` key and therefore uses the Supervisor's default stable channel; `boot: manual` remains explicit. User acceptance confirmed the CLI and browser on amd64 HAOS, and native amd64/ARM CI passed for DEV 0.7.1-dev.7. Stable 0.7.1 reuses that runtime and passed both architectures’ release CI and publication checks. Actual Raspberry Pi/aarch64 HAOS acceptance remains **NOT RUN**, distinct from native ARM CI.
+1. Install and start the app (0.7.3). It supports `amd64` and 64-bit `aarch64`. The manifest omits the `stage` key and therefore uses the Supervisor's default stable channel; `boot: manual` remains explicit. User acceptance confirmed the CLI, browser, and Remote on amd64 HAOS, and native amd64/ARM CI passed for DEV 0.7.3-dev.6. Stable 0.7.3 reuses that runtime and passed both architectures’ release CI and publication checks. Actual Raspberry Pi/aarch64 HAOS acceptance remains **NOT RUN**, distinct from native ARM CI.
 2. Select **OPEN WEB UI**.
 3. Sign in once with `ha-codex-login`.
 4. Run `ha-codex`.
@@ -64,3 +64,11 @@ Direct GitHub submission requires an available candidate search, a ten-minute si
 See the [English user guide](DOCS.en.md) for installation, all settings, mobile Remote, updates, security, and troubleshooting. [한국어 사용 설명서](DOCS.md) is also available.
 
 This is an unofficial community project. It is not affiliated with or endorsed by OpenAI, Home Assistant, or Nabu Casa.
+
+### Development runtime handover
+
+Managed CLI/TUI and Remote stdio do not defer updates merely because a window, connection, process, or conversation remains open. In-flight and queued requests, tools, approval waits, and background work are protected. When idle, the worker is replaced under the existing schedule, retry budget, and cooldown; the connection and persistent conversation are restored before processing the next request. The TUI frontend itself updates on its next launch. Legacy directly launched sessions and external `--remote` servers are outside automatic handover. Nonempty ephemeral conversations, unsupported activity observation, and incomplete recovery defer transition with a specific reason.
+
+Local official 0.162.1 → 0.165.0 integration is verified; HAOS/mobile and native ARM acceptance remain pending.
+
+Mobile SSH quick setup is available via `ha-codex-remote setup` in the Web UI shell to generate a key, register the public key, and display the phone PEM; `ha-codex-remote show --format sec1` displays the alternate format. Actual mobile client acceptance remains unverified.

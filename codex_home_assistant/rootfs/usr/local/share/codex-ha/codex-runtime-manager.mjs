@@ -1,5 +1,5 @@
 import { verifyManagedPolicy } from './codex-policy-probe.mjs';
-import { restartServers } from './codex-server-transaction.mjs';
+import { restartServers, verifyRelayIdentity } from './codex-server-transaction.mjs';
 import { packageInventory, recordPackage, verifyPackage, durableJson } from './codex-package-integrity.mjs';
 import { createHash, randomBytes } from "node:crypto";
 import { constants as fsConstants, existsSync, readFileSync, createReadStream } from "node:fs";
@@ -20,17 +20,70 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { basename, dirname, join, resolve } from "node:path";
-import { spawn, spawnSync } from "node:child_process";
+import { execFile, spawn, spawnSync } from "node:child_process";
+import { promisify } from "node:util";
 import { createConnection } from "node:net";
 import { get as httpsGet } from "node:https";
 import { get as httpGet } from "node:http";
 
+const execFileAsync = promisify(execFile);
+
 export const BASELINE_VERSION = "0.162.1";
-export const APP_VERSION = "0.7.2";
+export const APP_VERSION = "0.7.3";
 export const DEFAULT_TIMEZONE = "Asia/Seoul";
 export const UPDATE_SLOTS = [3, 9, 15, 21];
 export const MAX_IDLE_CHECKS = 12;
 export const MAX_RESTART_ATTEMPTS = 1;
+
+export async function getUnixPeerMap() {
+  const pythonBin = process.env.PYTHON || (existsSync("/usr/bin/python3") ? "/usr/bin/python3" : "python3");
+  const pyCode = `
+import socket, struct, json, sys
+try:
+    nl = socket.socket(socket.AF_NETLINK, socket.SOCK_RAW, 4)
+    nl.bind((0, 0))
+    req = struct.pack("=IHHIIBBHIIIII", 40, 20, 0x301, 1, 0, 1, 0, 0, 0xffffffff, 0, 0x04, 0, 0)
+    nl.send(req)
+    peers = {}
+    while True:
+        data = nl.recv(65536)
+        offset = 0
+        done = False
+        while offset < len(data):
+            nl_len, nl_type, nl_flags, nl_seq, nl_pid = struct.unpack_from("=IHHII", data, offset)
+            if nl_type == 3:
+                done = True
+                break
+            if nl_type == 20:
+                msg = data[offset+16:offset+nl_len]
+                family, typ, state, ino, c1, c2 = struct.unpack_from("=BBBxIII", msg, 0)
+                attr_offset = 16
+                peer_ino = None
+                while attr_offset < len(msg):
+                    nla_len, nla_type = struct.unpack_from("=HH", msg, attr_offset)
+                    if nla_len < 4:
+                        break
+                    if nla_type == 2:
+                        peer_ino = struct.unpack_from("=I", msg, attr_offset + 4)[0]
+                    attr_offset += (nla_len + 3) & ~3
+                if peer_ino:
+                    peers[str(ino)] = peer_ino
+            offset += (nl_len + 3) & ~3
+        if done:
+            break
+    nl.close()
+    sys.stdout.write(json.dumps(peers))
+except Exception:
+    sys.stdout.write("{}")
+`;
+  try {
+    const { stdout } = await execFileAsync(pythonBin, ["-c", pyCode], { timeout: 3000 });
+    const parsed = JSON.parse(stdout || "{}");
+    return parsed;
+  } catch {
+    return null;
+  }
+}
 
 export function getBaseRuntimeDir() { return process.env.CODEX_RUNTIME_DIR || "/data/codex-runtime"; }
 export function getBaselineDir() { return process.env.CODEX_BASELINE_DIR || "/usr/local/lib/codex-ha/codex-baseline"; }
@@ -42,8 +95,23 @@ export function getCurrentLink() { return join(getBaseRuntimeDir(), "current"); 
 export function getPreviousLink() { return join(getBaseRuntimeDir(), "previous"); }
 export function getStagedLink() { return join(getBaseRuntimeDir(), "staged"); }
 export function getStateFile() { return join(getBaseRuntimeDir(), "state.json"); }
+export function getTransactionFile() { return join(getBaseRuntimeDir(), "transaction.json"); }
 export function getGateLockFile() { return join(getMaintenanceDir(), "gate.lock"); }
 export function getSessionsDir() { return join(getMaintenanceDir(), "sessions"); }
+
+async function hasPendingTransaction() {
+  try { await lstat(getTransactionFile()); return true; }
+  catch (err) { return err.code !== "ENOENT"; }
+}
+
+export async function recoverPendingTransaction() {
+  // No phase-aware recovery is implemented yet. Preserve the journal and
+  // every worker until ownership, generation and held input can be verified.
+  if (await hasPendingTransaction()) {
+    return { recovered: false, error: "transaction_recovery_unverified" };
+  }
+  return { recovered: true, noop: true };
+}
 
 export function getAppVersion() {
   const bakedPath = process.env.CODEX_HA_APP_VERSION_FILE || "/usr/local/share/codex-ha/app-version";
@@ -559,7 +627,7 @@ export async function readOptions() {
 export const LAST_BLOCKER_CODES = Object.freeze([
   "cli", "remote_stdio", "unmanaged_server", "bad_socket", "socket_inaccessible",
   "server_busy", "unknown", "inspection_failed", "daily_budget_exhausted",
-  "restart_cooldown",
+  "restart_cooldown", "compatibility_unverified",
 ]);
 
 function sanitizeLastBlocker(value) {
@@ -677,6 +745,18 @@ export async function initRuntime() {
     await mkdir(getStagingDir(), { recursive: true, mode: 0o700 });
     await mkdir(getMaintenanceDir(), { recursive: true, mode: 0o700 });
     await mkdir(getSessionsDir(), { recursive: true, mode: 0o700 });
+
+    // An interrupted handover may still own live workers or held requests.
+    // Preserve every generation and require explicit investigation; do not
+    // silently rewrite links or claim that it was rolled back.
+    if (await hasPendingTransaction()) {
+      const state = await loadState();
+      state.status = "failed";
+      state.blockedReason = "blocked_restart";
+      state.reason = "Interrupted runtime transition requires recovery";
+      await saveState(state);
+      return state;
+    }
 
     const currentCheck = await validateSymlinkContainment(getCurrentLink());
     if (!currentCheck.valid || !existsSync(currentCheck.target)) {
@@ -819,10 +899,14 @@ export function parseCodexInvocation(cmdline, startIndex = 1) {
     "-m", "--model", "-c", "--config", "-C", "--cd", "--profile", "-p", "--color",
     "-s", "--sandbox", "-a", "--ask-for-approval", "--enable", "--disable",
     "--remote", "--remote-auth-token-env", "--local-provider", "-i", "--image",
-    "--add-dir", "--listen",
+    "--add-dir", "--listen", "--sock",
+    "--code-mode-host", "--ws-auth", "--ws-token-file", "--ws-token-sha256",
+    "--ws-shared-secret-file", "--ws-issuer", "--ws-audience", "--ws-max-clock-skew-seconds",
   ]);
   let subcommand = null;
+  let appServerCommand = null;
   let listenSocket = null;
+  let proxySocket = null;
   let optionsEnded = false;
   for (let i = startIndex; i < cmdline.length; i++) {
     const token = cmdline[i];
@@ -833,23 +917,39 @@ export function parseCodexInvocation(cmdline, startIndex = 1) {
         if (token.startsWith("--listen=")) {
           const value = token.slice("--listen=".length);
           if (value.startsWith("unix://")) listenSocket = value.slice(7);
+          else listenSocket = value;
+        } else if (token.startsWith("--sock=")) {
+          const value = token.slice("--sock=".length);
+          if (value.startsWith("unix://")) proxySocket = value.slice(7);
+          else proxySocket = value;
         }
         continue;
       }
       if (token.startsWith("-") && token !== "-") {
         if (OPTION_WITH_VALUE.has(token)) {
           const value = cmdline[i + 1];
-          if (token === "--listen" && typeof value === "string" && value.startsWith("unix://")) {
-            listenSocket = value.slice(7);
+          if (token === "--listen" && typeof value === "string") {
+            if (value.startsWith("unix://")) listenSocket = value.slice(7);
+            else listenSocket = value;
+          } else if (token === "--sock" && typeof value === "string") {
+            if (value.startsWith("unix://")) proxySocket = value.slice(7);
+            else proxySocket = value;
           }
           i++;
         }
         continue;
       }
-      if (subcommand === null) subcommand = token;
+      if (subcommand === null) {
+        subcommand = token;
+      } else if (subcommand === "app-server" && appServerCommand === null) {
+        appServerCommand = token;
+      }
     }
   }
-  return { subcommand, listenSocket };
+  const result = { subcommand, listenSocket };
+  if (appServerCommand !== null) result.appServerCommand = appServerCommand;
+  if (proxySocket !== null) result.proxySocket = proxySocket;
+  return result;
 }
 
 async function ancestorPids(pid, maxDepth = 32) {
@@ -1111,7 +1211,34 @@ export class MinimalWebSocketClient {
   }
 }
 
-export async function inspectAppServer(socketPath, expectedPid) {
+export async function restoreAppServerThreads(socketPath, threadIds) {
+  if (!Array.isArray(threadIds) || threadIds.length === 0) {
+    return { success: true, restored: [] };
+  }
+  let client = null;
+  const restored = [];
+  try {
+    client = new MinimalWebSocketClient(socketPath);
+    await client.connect();
+    for (const threadId of threadIds) {
+      if (!threadId || typeof threadId !== "string") continue;
+      const res = await client.call("thread/resume", { threadId });
+      if (!res || !res.thread || res.thread.id !== threadId) {
+        throw new Error(`thread/resume failed or returned invalid thread for ${threadId}`);
+      }
+      restored.push(threadId);
+    }
+    return { success: true, restored };
+  } finally {
+    if (client) client.close();
+  }
+}
+
+export async function inspectAppServer(socketPath, expectedPid, options = {}) {
+  const opts = typeof options === "string"
+    ? { expectedVersion: options }
+    : (typeof options === "object" && options !== null ? options : {});
+  const restoreCapability = Boolean(opts.restoreCapability);
   let client = null;
   try {
     client = new MinimalWebSocketClient(socketPath);
@@ -1135,7 +1262,7 @@ export async function inspectAppServer(socketPath, expectedPid) {
       return { busy: true, reason: "Diagnostics gauges is missing, not an array, or empty" };
     }
 
-    const requiredGauges = ["app.requests.in_flight", "app.requests.queued", "core.turns.active"];
+    const requiredGauges = ["app.requests.in_flight", "app.requests.queued", "app.server_requests.pending", "core.turns.active"];
     for (const reqName of requiredGauges) {
       const g = diag.gauges.find((x) => x && x.name === reqName);
       // The diagnostics protocol registers gauges on first increment. Fresh
@@ -1158,16 +1285,175 @@ export async function inspectAppServer(socketPath, expectedPid) {
       return { busy: true, reason: "Malformed thread/loaded/list response" };
     }
 
-    if (threadsRes.data.length > 0) {
-      return { busy: true, reason: `${threadsRes.data.length} conversation(s) loaded` };
+    const loadedThreadIds = [];
+    for (const t of threadsRes.data) {
+      let id = null;
+      let statusType = null;
+      if (typeof t === "string") {
+        id = t;
+      } else if (t && typeof t === "object") {
+        id = t.id || t.threadId;
+        statusType = typeof t.status === "string" ? t.status : t.status?.type;
+      }
+      if (!id) {
+        return { busy: true, reason: "Malformed thread entry in loaded list" };
+      }
+      if (statusType === "active") {
+        return { busy: true, reason: `Active thread ${id}` };
+      }
+      loadedThreadIds.push(id);
     }
 
-    return { busy: false, pid: diagPid };
+    if (loadedThreadIds.length === 0) {
+      return { busy: false, pid: diagPid, loadedThreads: [] };
+    }
+
+    // Server has loaded threads. If caller does not possess safe restore capability,
+    // loaded conversations cannot be safely restored across server termination.
+    if (!restoreCapability) {
+      return { busy: true, reason: "Loaded server requires a managed lifecycle host with restore capability" };
+    }
+
+    // Inspect each loaded thread's persistence, restorability, and status
+    const verifiedLoadedThreads = [];
+    for (const id of loadedThreadIds) {
+      let readRes;
+      try {
+        readRes = await client.call("thread/read", { threadId: id });
+      } catch (err) {
+        return { busy: true, reason: `Failed to inspect loaded thread ${id}: ${err.message}` };
+      }
+
+      const thread = readRes?.thread;
+      if (!thread || typeof thread !== "object" || thread.id !== id) {
+        return { busy: true, reason: `Malformed thread detail or ID mismatch for loaded thread ${id}` };
+      }
+
+      const currentStatus = typeof thread.status === "string" ? thread.status : thread.status?.type;
+      if (currentStatus === "active") {
+        return { busy: true, reason: `Active thread in progress: ${id}` };
+      }
+
+      // Check ephemeral vs persistent
+      if (thread.ephemeral === true) {
+        const turns = Array.isArray(thread.turns) ? thread.turns : [];
+        if (turns.length > 0) {
+          return {
+            busy: true,
+            reason: `Unrestorable ephemeral conversation with ${turns.length} turn(s): ${id}; held until session exits`,
+          };
+        }
+        if (!opts.allowEmptyEphemeral && !opts.lifecycleHost) {
+          return {
+            busy: true,
+            reason: `Unrestorable ephemeral conversation: ${id}; held until session exits`,
+          };
+        }
+      } else {
+        // Persistent conversation: verify rollout file on disk
+        if (typeof thread.path !== "string" || !thread.path.trim()) {
+          return { busy: true, reason: `Persistent thread ${id} missing rollout file path` };
+        }
+        try {
+          const filePath = resolve(thread.path);
+          const st = await stat(filePath);
+          if (!st.isFile()) {
+            return { busy: true, reason: `Persistent thread ${id} rollout path is not a regular file: ${filePath}` };
+          }
+          if (st.size === 0) {
+            return { busy: true, reason: `Persistent thread ${id} has empty rollout file: ${filePath}` };
+          }
+        } catch (fsErr) {
+          return { busy: true, reason: `Persistent thread ${id} rollout file inaccessible: ${fsErr.message}` };
+        }
+      }
+
+      verifiedLoadedThreads.push(id);
+    }
+
+    return { busy: false, pid: diagPid, loadedThreads: verifiedLoadedThreads };
   } catch (err) {
     return { busy: true, reason: `App-server inspection failed: ${err.message}` };
   } finally {
     if (client) client.close();
   }
+}
+
+export async function inspectSessionHost(controlSocketPath) {
+  try {
+    const st = await lstat(controlSocketPath).catch(() => null);
+    if (!st || !st.isSocket() || st.uid !== process.getuid() || (st.mode & 0o077) !== 0) {
+      return { busy: true, error: "Control socket missing or has unsafe ownership or permissions" };
+    }
+  } catch (e) {
+    return { busy: true, error: `Control socket stat failed: ${e.message}` };
+  }
+
+  return new Promise((resolvePromise) => {
+    let settled = false;
+    let client = null;
+    const finish = (result) => {
+      if (settled) return;
+      settled = true;
+      try { client?.destroy(); } catch {}
+      resolvePromise(result);
+    };
+
+    try {
+      client = createConnection(controlSocketPath);
+    } catch (err) {
+      return finish({ busy: true, error: err.message });
+    }
+
+    let buf = "";
+    const timer = setTimeout(() => {
+      finish({ busy: true, error: "Control socket inspection timed out" });
+    }, 5000);
+
+    client.on("connect", () => {
+      client.write(JSON.stringify({ cmd: "inspect" }) + "\n");
+    });
+
+    client.on("data", (chunk) => {
+      buf += chunk.toString("utf-8");
+      const idx = buf.indexOf("\n");
+      if (idx !== -1) {
+        clearTimeout(timer);
+        try {
+          const res = JSON.parse(buf.slice(0, idx).trim());
+          if (
+            !res ||
+            typeof res !== "object" ||
+            typeof res.busy !== "boolean" ||
+            !Number.isSafeInteger(res.inFlight) || res.inFlight < 0 ||
+            !Number.isSafeInteger(res.pending) || res.pending < 0 ||
+            !Number.isSafeInteger(res.activeTurns) || res.activeTurns < 0 ||
+            !Array.isArray(res.loadedThreads) ||
+            typeof res.version !== "string"
+          ) {
+            return finish({ busy: true, unknown: true, error: "invalid_control_response_schema" });
+          }
+          if (res.unknown === true) {
+            return finish({ busy: true, unknown: true, error: res.reason || "unknown_session_host_state" });
+          }
+          if (!res.busy && (res.inFlight > 0 || res.pending > 0 || res.activeTurns > 0)) {
+            return finish({ busy: true, unknown: true, error: "inconsistent_inspect_state_active_while_not_busy" });
+          }
+          if (!res.workerPid || typeof res.workerPid !== "number" || !existsSync(`/proc/${res.workerPid}`)) {
+            return finish({ busy: true, unknown: true, error: "session_host_worker_process_missing" });
+          }
+          finish(res);
+        } catch (err) {
+          finish({ busy: true, error: err.message });
+        }
+      }
+    });
+
+    client.on("error", (err) => {
+      clearTimeout(timer);
+      finish({ busy: true, error: err.message });
+    });
+  });
 }
 
 export async function inspectAllSessions(options = {}) {
@@ -1278,12 +1564,41 @@ export async function inspectAllSessions(options = {}) {
     const identity = e.identity || await executableEntrypoint(e.proc);
     const invocation = parseCodexInvocation(e.proc.cmdline || [], identity ? identity.argvIndex + 1 : 1);
     if (identity) e.identity = identity;
-    const serverByArgv = identity && identity.role === "primary" && invocation.subcommand === "app-server";
-    const serverByRecord = record && record.type === "app-server" &&
-      (!invocation.subcommand || invocation.subcommand === "app-server");
-    if (serverByArgv || serverByRecord) {
+    const isProxyInvocation = identity && identity.role === "primary" &&
+      invocation.subcommand === "app-server" && invocation.appServerCommand === "proxy";
+    const isProxyRecord = record && record.type === "app-server-proxy";
+    const serverByArgv = identity && identity.role === "primary" &&
+      invocation.subcommand === "app-server" && !invocation.appServerCommand;
+    const serverByRecord = record &&
+      ((record.type === "app-server" && (!invocation.subcommand || (invocation.subcommand === "app-server" && !invocation.appServerCommand))) ||
+       (record.type === "remote-stdio" && record.managed === true));
+    if (isProxyInvocation || isProxyRecord) {
+      if (!isProxyInvocation) {
+        // Record claims app-server-proxy, but actual process argv/command is not a proxy.
+        // Record alone must never convert an arbitrary or non-proxy process into a proxy.
+        e.kind = "unknown";
+        e.proxyCommandMismatch = true;
+      } else if (!isProxyRecord) {
+        // Actual process is running app-server proxy, but valid matching launch record is missing.
+        e.kind = "unknown";
+        e.unverifiedProxy = true;
+      } else {
+        // Both invocation and record agree this is a proxy.
+        // Verify that the argv target socket and record target socket match!
+        const argvSock = invocation.proxySocket || null;
+        const recSock = record.socketPath || record.targetSocket || null;
+        if (!argvSock || !recSock || resolve(argvSock) !== resolve(recSock)) {
+          e.kind = "unknown";
+          e.proxyTargetMismatch = true;
+        } else {
+          e.kind = "proxy";
+          e.targetSocket = argvSock;
+          e.proxyRecord = record;
+        }
+      }
+    } else if (serverByArgv || serverByRecord) {
       e.kind = "app-server";
-      e.socketPath = invocation.listenSocket;
+      e.socketPath = record?.socketPath || invocation.listenSocket;
     } else if (!record && identity && identity.role === "companion") {
       e.kind = "companion";
     } else if (!record && identity && identity.role !== "primary" && identity.role !== "companion") {
@@ -1294,14 +1609,147 @@ export async function inspectAllSessions(options = {}) {
     }
   }
 
-  // Pass 4: companions and helpers attach to a verified live owner. An
-  // orphaned companion that cannot be attributed is held as unknown; it is
-  // never counted as an independent Codex conversation.
+  // Pass 4: companions, helpers, and relay child workers attach to a verified live owner.
   const ownerPids = new Set();
+  const relayPids = new Set();
+  const relayWorkerPids = new Set();
+
   for (const [pid, e] of entries) {
     if (e.kind === "cli" || e.kind === "app-server") ownerPids.add(pid);
+    if (e.record && e.record.managed === true && (e.record.type === "remote-stdio" || e.record.controlSocket)) {
+      relayPids.add(pid);
+      if (e.record.workerPid) relayWorkerPids.add(e.record.workerPid);
+    }
   }
+
   for (const [pid, e] of entries) {
+    if (relayPids.has(pid)) continue;
+
+    // Check if this entry is a managed child worker or client of a verified relay
+    let isRelayWorker = false;
+    for (const [rPid, rEntry] of entries) {
+      if (relayPids.has(rPid) && rEntry.record && (rEntry.record.workerPid === pid || rEntry.record.clientPid === pid)) {
+        const chain = await ancestorPids(pid);
+        if (chain.includes(rPid)) {
+          isRelayWorker = true;
+          e.owner = rPid;
+          break;
+        }
+      }
+    }
+    if (isRelayWorker) {
+      e.kind = "helper";
+      e.isRelayChild = true;
+      continue;
+    }
+
+    if (e.kind === "proxy") {
+      const targetSock = e.targetSocket || e.record?.socketPath || null;
+      if (!e.record || e.record.type !== "app-server-proxy" || !targetSock) {
+        e.kind = "unknown";
+        e.unverifiedProxy = true;
+        continue;
+      }
+      let isSocket = false;
+      let realTarget = null;
+      let targetStat = null;
+      let targetLstat = null;
+      try {
+        targetLstat = await lstat(targetSock);
+        targetStat = await stat(targetSock);
+        isSocket = targetStat.isSocket();
+        realTarget = await realpath(targetSock).catch(() => resolve(targetSock));
+      } catch {}
+
+      if (!isSocket || !realTarget || !targetStat || !targetLstat) {
+        e.kind = "unknown";
+        e.missingTargetSocket = true;
+        continue;
+      }
+
+      // Check open socket file descriptors of the proxy process
+      const proxySocketInodes = new Set();
+      try {
+        const proxyFds = await readdir(`/proc/${pid}/fd`);
+        for (const fd of proxyFds) {
+          const link = await readlink(`/proc/${pid}/fd/${fd}`).catch(() => "");
+          const m = link.match(/^socket:\[(\d+)\]$/);
+          if (m) proxySocketInodes.add(parseInt(m[1], 10));
+        }
+      } catch {
+        e.kind = "unknown";
+        e.orphanProxy = true;
+        continue;
+      }
+
+      if (proxySocketInodes.size === 0) {
+        e.kind = "unknown";
+        e.orphanProxy = true;
+        continue;
+      }
+
+      const peerMap = await getUnixPeerMap();
+      if (!peerMap) {
+        e.kind = "unknown";
+        e.orphanProxy = true;
+        continue;
+      }
+
+      const proxyStartTicks = BigInt(e.proc.startTime || 0);
+      let ownerPid = null;
+      for (const [sPid, sEntry] of entries) {
+        if (sPid === pid) continue;
+        const candidateSock = sEntry.socketPath || sEntry.record?.clientSocket || null;
+        if (candidateSock) {
+          const realCandidate = await realpath(candidateSock).catch(() => resolve(candidateSock));
+          if (realCandidate === realTarget || resolve(candidateSock) === resolve(targetSock)) {
+            if (sEntry.kind === "app-server" || sEntry.kind === "cli") {
+              const ownerStartTicks = BigInt(sEntry.proc.startTime || 0);
+              if (proxyStartTicks > 0n && ownerStartTicks > 0n && ownerStartTicks > proxyStartTicks) {
+                continue;
+              }
+
+              // Kernel peer verification: candidate owner must own the exact peer socket connected to proxy
+              let isDirectPeer = false;
+              try {
+                const oFds = await readdir(`/proc/${sPid}/fd`);
+                const oSockInodes = new Set();
+                for (const fd of oFds) {
+                  const lk = await readlink(`/proc/${sPid}/fd/${fd}`).catch(() => "");
+                  const m = lk.match(/^socket:\[(\d+)\]$/);
+                  if (m) oSockInodes.add(parseInt(m[1], 10));
+                }
+                for (const pIno of proxySocketInodes) {
+                  const peerIno = peerMap[String(pIno)];
+                  if (peerIno && oSockInodes.has(peerIno)) {
+                    isDirectPeer = true;
+                    break;
+                  }
+                }
+              } catch {}
+
+              if (!isDirectPeer) {
+                continue;
+              }
+
+              ownerPid = sPid;
+              break;
+            }
+          }
+        }
+      }
+
+      if (ownerPid) {
+        e.kind = "helper";
+        e.owner = ownerPid;
+        e.isProxy = true;
+      } else {
+        e.kind = "unknown";
+        e.orphanProxy = true;
+      }
+      continue;
+    }
+
     if (e.kind !== "companion") continue;
     const chain = await ancestorPids(pid);
     const owner = chain.find((a) => ownerPids.has(a));
@@ -1324,6 +1772,16 @@ export async function inspectAllSessions(options = {}) {
         addBusy("inspection_failed", pid, `process state unknown: ${e.proc.error}`);
       } else if (e.orphanCompanion) {
         addBusy("unknown", pid, "codex package companion without verifiable owner; held for manual review");
+      } else if (e.proxyTargetMismatch) {
+        addBusy("unknown", pid, "codex proxy argv target socket does not match launch record; held for review");
+      } else if (e.proxyCommandMismatch) {
+        addBusy("unknown", pid, "codex process command does not match proxy launch record; held for review");
+      } else if (e.unverifiedProxy) {
+        addBusy("unknown", pid, "codex proxy process without verified launch record; held until identity is verified");
+      } else if (e.missingTargetSocket) {
+        addBusy("unknown", pid, `codex proxy target socket is missing or not a socket: ${e.targetSocket || "unknown"}; held until verified`);
+      } else if (e.orphanProxy) {
+        addBusy("unknown", pid, `codex proxy without verified target server for socket ${e.targetSocket || "unknown"}; held until owner is verified`);
       } else if (e.unrecognized) {
         addBusy("unknown", pid, "unrecognized executable inside managed codex package; held until identity is verified");
       } else {
@@ -1336,6 +1794,31 @@ export async function inspectAllSessions(options = {}) {
       continue;
     }
     if (e.kind === "cli") {
+      if (e.record && e.record.managed === true && e.record.controlSocket) {
+        const hostRes = await inspectSessionHost(e.record.controlSocket);
+        if (hostRes.error) {
+          counts.unknown++;
+          addBusy("inspection_failed", pid, `managed cli inspection failed: ${hostRes.error}`);
+        } else if (hostRes.busy) {
+          counts.cli++;
+          addBusy("cli", pid, `active CLI tasks in flight (${hostRes.inFlight || 0} reqs, ${hostRes.activeTurns || 0} turns)`);
+        } else if (!await verifyRelayIdentity({pid, start: e.proc.startTime, controlSocket: e.record.controlSocket, managedRecord: e.record}, hostRes, inspectProcess)) {
+          counts.unknown++;
+          addBusy("inspection_failed", pid, "managed cli identity unverified");
+        } else {
+          counts.managedIdleServers++;
+          restartableServers.push({
+            pid,
+            type: e.record.type || "cli",
+            start: e.proc.start,
+            controlSocket: e.record.controlSocket,
+            proc: e.proc,
+            managedRecord: e.record,
+            loadedThreads: hostRes.loadedThreads || [],
+          });
+        }
+        continue;
+      }
       counts.cli++;
       if (e.registered) {
         addBusy("cli", pid, "active registered session");
@@ -1348,6 +1831,52 @@ export async function inspectAllSessions(options = {}) {
     // kind === app-server
     const socketPath = e.socketPath || null;
     if (!socketPath) {
+      if (e.record && e.record.managed === true && e.record.controlSocket) {
+        const hostRes1 = await inspectSessionHost(e.record.controlSocket);
+        if (hostRes1.error || (hostRes1.relayPid && hostRes1.relayPid !== pid)) {
+          counts.unknown++;
+          addBusy("inspection_failed", pid, `managed remote stdio inspection failed: ${hostRes1.error || "PID mismatch"}`);
+          continue;
+        }
+        if (hostRes1.busy) {
+          counts.remoteStdio++;
+          addBusy("remote_stdio", pid, `active remote stdio tasks in flight (${hostRes1.inFlight || 0} reqs, ${hostRes1.activeTurns || 0} turns)`);
+          continue;
+        }
+
+        // 1-second confirmation interval for stability
+        await new Promise((r) => setTimeout(r, 1000));
+        const hostRes2 = await inspectSessionHost(e.record.controlSocket);
+        if (hostRes2.error || (hostRes2.relayPid && hostRes2.relayPid !== pid)) {
+          counts.unknown++;
+          addBusy("inspection_failed", pid, `managed remote stdio second inspection failed: ${hostRes2.error || "PID mismatch"}`);
+          continue;
+        }
+        if (hostRes2.busy) {
+          counts.remoteStdio++;
+          addBusy("remote_stdio", pid, `active remote stdio tasks in flight (${hostRes2.inFlight || 0} reqs, ${hostRes2.activeTurns || 0} turns)`);
+          continue;
+        }
+
+        const server = { pid, start: e.proc.startTime, controlSocket: e.record.controlSocket, managedRecord: e.record };
+        if (!await verifyRelayIdentity(server, hostRes2, inspectProcess)) {
+          counts.unknown++;
+          addBusy("inspection_failed", pid, "managed remote stdio identity unverified");
+          continue;
+        }
+
+        counts.managedIdleServers++;
+        restartableServers.push({
+          pid,
+          type: "remote-stdio",
+          start: e.proc.start,
+          controlSocket: e.record.controlSocket,
+          proc: e.proc,
+          managedRecord: e.record,
+          loadedThreads: hostRes2.loadedThreads || [],
+        });
+        continue;
+      }
       counts.remoteStdio++;
       addBusy("remote_stdio", pid,
         "active remote stdio app-server; restart unsupported, deferred until session exits");
@@ -1392,7 +1921,7 @@ export async function inspectAllSessions(options = {}) {
       continue;
     }
 
-    const check1 = await inspectAppServer(socketPath, pid);
+    const check1 = await inspectAppServer(socketPath, pid, { restoreCapability: true });
     if (check1.busy) {
       counts.unmanagedAppServers++;
       addBusy("server_busy", pid, `app-server busy: ${check1.reason}`);
@@ -1400,7 +1929,7 @@ export async function inspectAllSessions(options = {}) {
     }
 
     await new Promise((r) => setTimeout(r, 1000));
-    const check2 = await inspectAppServer(socketPath, pid);
+    const check2 = await inspectAppServer(socketPath, pid, { restoreCapability: true });
     if (check2.busy) {
       counts.unmanagedAppServers++;
       addBusy("server_busy", pid, `app-server busy: ${check2.reason}`);
@@ -1410,10 +1939,12 @@ export async function inspectAllSessions(options = {}) {
     counts.managedIdleServers++;
     restartableServers.push({
       pid,
+      type: "app-server",
       start: e.proc.start,
       socketPath,
       proc: e.proc,
       managedRecord,
+      loadedThreads: check2.loadedThreads || [],
     });
   }
 
@@ -1843,6 +2374,9 @@ export async function checkUpdate(targetVersion = null, options = {}) {
     }
     const state = await loadState();
     const currentVersion = state.selectedVersion || getBundledVersion();
+    if (await hasPendingTransaction()) {
+      return { upToDate: false, blocked: true, blockedReason: "blocked_restart", state };
+    }
 
     const optionsObj = await readOptions();
     const tz = optionsObj.timezone || DEFAULT_TIMEZONE;
@@ -1981,6 +2515,14 @@ export async function applyUpdate(options = {}) {
     }
     const isManual = options.isManual === true;
     const state = await loadState();
+
+    if (await hasPendingTransaction()) {
+      state.status = "failed";
+      state.blockedReason = "blocked_restart";
+      state.reason = "Interrupted runtime transition requires recovery";
+      await saveState(state);
+      return { applied: false, reason: "rollback_incomplete", state };
+    }
 
     const opts = await readOptions();
     const tz = opts.timezone || DEFAULT_TIMEZONE;
@@ -2175,18 +2717,57 @@ export async function applyUpdate(options = {}) {
         await symlink(target, temp);
         await rename(temp, getCurrentLink());
       };
+      const previousSelectedVersion = state.selectedVersion;
+      const previousSelectedDigest = state.selectedDigest;
       const transaction = await restartServers({
         servers: sessions.restartableServers,
         binary: join(stagedTarget, "bin/codex"), version: newVersion,
         inspectProcess, inspectServer: inspectAppServer,
+        restoreThreads: restoreAppServerThreads,
         switchToNew: () => replaceLink(stagedTarget),
         switchToOld: () => replaceLink(previousTarget),
         writeRecord: (pid, record) => durableJson(join(getSessionsDir(), String(pid)), record),
         removeRecord: pid => rm(join(getSessionsDir(), String(pid)), { force: true }),
+        writeJournal: entry => durableJson(getTransactionFile(), {
+          schemaVersion: 1, ...entry, previousTarget, stagedTarget,
+          candidateDigest: integrity.digest,
+        }),
+        clearJournal: () => rm(getTransactionFile(), { force: true }),
         commitAttempt: async () => {
           state.lastRestartAt = getNow().toISOString();
           state.nextRestartAllowedAt = new Date(now + 24 * 3600 * 1000).toISOString();
           state.restartAttemptCount = (state.restartAttemptCount || 0) + 1;
+          await saveState(state);
+        },
+        commitSelection: async () => {
+          state.selectedVersion = newVersion;
+          state.selectedDigest = integrity.digest;
+          state.status = "applying";
+          state.reason = "Selected runtime; completing session transition";
+          await saveState(state);
+        },
+        rollbackSelection: async () => {
+          state.selectedVersion = previousSelectedVersion;
+          state.selectedDigest = previousSelectedDigest;
+          await saveState(state);
+        },
+        finishSelection: async () => {
+          if (previousTarget) {
+            const tempPrev = join(getBaseRuntimeDir(), `.prev-${process.pid}-${Date.now()}`);
+            await symlink(previousTarget, tempPrev);
+            await rename(tempPrev, getPreviousLink());
+          }
+          if (existsSync(getStagedLink())) await rm(getStagedLink(), { force: true });
+          state.selectedVersion = newVersion;
+          state.selectedDigest = integrity.digest;
+          state.stagedVersion = null;
+          state.candidateVersion = null;
+          state.candidateDigest = null;
+          state.lastApplyAt = getNow().toISOString();
+          state.lastBlocker = null;
+          state.status = "applied";
+          state.reason = `Successfully applied ${newVersion} with graceful server restart`;
+          state.nextRetryAt = null;
           await saveState(state);
         },
       });
@@ -2198,28 +2779,6 @@ export async function applyUpdate(options = {}) {
         return { applied: false, reason: transaction.recovery === "rollback_incomplete" ? "rollback_incomplete" : transaction.reason, state };
       }
 
-      // Success
-      if (previousTarget) {
-        const tempPrev = join(getBaseRuntimeDir(), `.prev-${process.pid}-${Date.now()}`);
-        await symlink(previousTarget, tempPrev);
-        await rename(tempPrev, getPreviousLink());
-      }
-      if (existsSync(getStagedLink())) {
-        await rm(getStagedLink(), { force: true });
-      }
-
-      state.currentVersion = newVersion;
-      state.selectedVersion = newVersion;
-      state.selectedDigest = integrity.digest;
-      state.stagedVersion = null;
-      state.candidateVersion = null;
-      state.candidateDigest = null;
-      state.lastApplyAt = getNow().toISOString();
-      state.lastBlocker = null;
-      state.status = "applied";
-      state.reason = `Successfully applied ${newVersion} with graceful server restart`;
-      state.nextRetryAt = null;
-      await saveState(state);
       await cleanupOldReleases(newVersion, previousTarget);
       return { applied: true, version: newVersion, state };
     }
@@ -2467,6 +3026,7 @@ export async function getStatus() {
   const state = await loadState();
   const sessions = await inspectAllSessions({ readOnly: true });
   const options = await readOptions();
+  const pendingRecovery = await hasPendingTransaction();
   const appVersion = getAppVersion();
   const bundledVersion = getBundledVersion();
 
@@ -2570,7 +3130,8 @@ export async function getStatus() {
     maxIdleChecks: MAX_IDLE_CHECKS,
     restartAttemptCount: state.restartAttemptCount || 0,
     maxRestartAttempts: MAX_RESTART_ATTEMPTS,
-    blockedReason: state.blockedReason || null,
+    blockedReason: state.blockedReason || (pendingRecovery ? "blocked_restart" : null),
+    pendingRecovery,
     nextRetryAt: state.nextRetryAt || null,
     nextRestartAllowedAt: state.nextRestartAllowedAt || null,
     lastCheckAt: state.lastCheckAt,
@@ -2584,6 +3145,10 @@ export async function getStatus() {
     // count, not a conversation count; owned helper companions are excluded.
     activeSessions: sessions.sessionCount,
     isIdle: sessions.isIdle,
+    // Compatibility field: previously flagged whether live session handover was
+    // unconditionally blocked. With verified managed server switch_worker in place,
+    // restartable idle managed servers are eligible for live handover.
+    liveHandoverBlocked: false,
     // Compatibility field: session-level predicate indicating whether live
     // task/session blockers are absent (sessions.canApply).
     // Note: This evaluates only live process blockers; it does not check
@@ -2594,6 +3159,7 @@ export async function getStatus() {
       options.valid &&
       options.autoUpdate &&
       state.stagedVersion &&
+      !pendingRecovery &&
       !state.blockedReason &&
       state.status !== "paused_busy" &&
       (state.idleCheckCount || 0) < MAX_IDLE_CHECKS &&
@@ -2606,6 +3172,12 @@ export async function getStatus() {
 }
 
 export function formatSessionReady(status) {
+  if (status.pendingRecovery) {
+    return "no (interrupted transition requires recovery)";
+  }
+  if (status.liveHandoverBlocked) {
+    return "no (idle observed; live session migration is unverified)";
+  }
   if (!status.canApply) {
     return "no (waiting for real sessions or unverifiable processes to exit)";
   }
@@ -2627,6 +3199,9 @@ export function formatAutoApplyReady(status) {
   }
   if (status.blockedReason) {
     return `blocked (${status.blockedReason})`;
+  }
+  if (status.liveHandoverBlocked) {
+    return "no (live session migration is unverified)";
   }
   if (status.status === "paused_busy" || (status.idleCheckCount || 0) >= status.maxIdleChecks) {
     return `paused (daily check budget exhausted; waiting for scheduled retry at ${status.nextRetryAt || "next window"}; manual apply can re-check immediately)`;

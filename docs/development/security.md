@@ -365,7 +365,7 @@ AppArmor와 managed requirements가 고정한 `secrets.yaml`·`.storage` 밖의 
 - S6 `codex-updater` 서비스는 `SUPERVISOR_TOKEN` 및 민감 환경 변수를 제거한 상태로 데몬을 실행
 - 런타임 아카이브 추출 시 path traversal 방지 및 SHA-256 해시 검증 강제
 - `/data/codex-runtime/state.json` 및 업데이터 로그에 토큰이나 민감 사용자 입력을 남기지 않음
-- 활성 세션(CLI, TUI, SSH, remote stdio, app-server) 감지 시 유휴 상태가 될 때까지 symlink 전환을 안전하게 보류
+- 실제 작업 또는 관측 불가 상태(CLI, TUI, SSH, remote stdio, app-server) 감지 시 유휴 상태가 될 때까지 symlink 전환을 안전하게 보류
 
 ## 7. 사고 대응
 
@@ -456,3 +456,7 @@ hash를 담는 감사 자료이며 scanner에 전달하지 않는다. 단일 gat
 Go module checksum을 executable checksum으로 취급하지 않으며, 새 Go 바이너리나
 hash에 이전 비적용 판단을 자동 승계하지 않는다. 실제 exploitability 검증과
 module 단위 scanner 결과, raw findings와 suppressed findings는 구분해 기록한다.
+
+## 모바일 SSH 간편 설정
+
+모바일 간편 설정 키는 개인키 0600·디렉터리 0700으로 `/data/ssh/mobile`에 영속화한다. 사용자의 명시적인 대화형 setup/show만 PEM을 표시하며 agent/log/redirection 출력을 허용하지 않는다. 터미널 scrollback·백업에 개인키가 남는 위험은 유지된다. revoke는 신규 인증을 차단하며 이미 연결된 세션을 강제 종료하지 않는다.

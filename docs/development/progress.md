@@ -4,9 +4,9 @@
 
 ## Project Status
 
-- 상태: **Stable 0.7.2 main·tag·public amd64/aarch64 image·GitHub latest 정식 릴리스 게시 완료 / 사용자 dev.2 실기기 전체 정상 확인·승격 승인 / exact PR/main CI·Builder·독립 공개/서명/provenance/SPDX 검증 PASS / task 004 개발 PLAN 종료**
-- 현재 마일스톤: **Stable 0.7.2 정식 배포 완료**
-- 마지막 문서 기준일: **2026-10-26**
+- 상태: **Stable 0.7.3 릴리스 진행 중 (task 007 완료 승인, main 대상 PR #68 및 릴리스 배포 준비)**
+- 현재 마일스톤: **Stable 0.7.3 정식 릴리스 및 브랜치 정리**
+- 마지막 문서 기준일: **2026-11-02**
 - 저장소: public `Kanu-Coffee/codex-for-home-assistant`, default branch `main`
 
 ## 완료된 결정
@@ -25,6 +25,709 @@
 - [x] interactive/Codex/S6 ambient `SUPERVISOR_TOKEN` 상속 제거와 private helper credential loader 구현
 
 ## Current Work
+
+### 2026-11-02 — Executor: Stable 0.7.3 정식 릴리스 준비 및 계약 검증 완료
+
+- Reviewer Codex의 [FIX_09](../../.handoff/007_work-aware-runtime-update/FIX_09.md) 최종 인수 및 사용자의 정식 릴리스 승인 지시에 따라 task 007을 공식 종료([FIX_09_REPORT](../../.handoff/007_work-aware-runtime-update/FIX_09_REPORT.md))하고, 정식판 `0.7.3` 릴리스 준비를 완료했다.
+- **메타데이터 및 채널 계약 동기화:**
+  - `codex_home_assistant/config.yaml`: `version: "0.7.3"`, `name: Codex for Home Assistant`, `panel_title: Codex`, description DEV 접두사 제거, `stage: experimental` 생략(Supervisor 기본 stable 채널 적용).
+  - `repository.yaml`: `name: Codex for Home Assistant` (DEV 표식 제거).
+  - `codex_home_assistant/Dockerfile`: `ARG BUILD_VERSION=0.7.3`, OCI 라벨 DEV 표식 제거 및 Stable 설명 동기화.
+  - `codex_home_assistant/playwright/package.json` 및 `package-lock.json`: `0.7.3` 일치.
+  - `codex_home_assistant/CHANGELOG.md`: `## [0.7.3] - 2026-11-02` 정식 승격 릴리스 기록 추가.
+  - `codex-runtime-manager.mjs` 및 계약 테스트: `APP_VERSION = "0.7.3"` 일치 및 stable 계약 검사 활성화.
+  - README / DOCS (한국어, 영어): 정식판 `0.7.3` 배너 및 설치 안내 동기화.
+- **로컬 검증 결과:**
+  - 전체 pytest: **320 passed, 5 skipped** (137.86초).
+  - 계약 및 업데이트 검사: **149 passed** (100.44초).
+  - 마크다운 린트: `markdownlint-cli2` 53개 파일 0 errors PASS.
+  - 로컬 amd64 Docker 빌드: `codex-ha:0.7.3-test` 성공 및 OCI 라벨 일치 확인.
+  - `tests/mobile-ssh-smoke.py`: 실 컨테이너 내부 SSH 프록시 커널 Netlink 피어 식별(`helpers >= 1`, `unknown == 0`, `canApply: true`), 키 발급 및 폐기 정상 PASS.
+
+### 2026-11-02 — Reviewer: 운영 자체 점검·사용자 확인 반영, task 007 최종 인수
+
+- 첨부 `12_codex_ha_self_check_report.md`와 사용자의 dev.6 HAOS 설치·Remote 접속 및 동작 정상 확인을 운영 증거로 수용했다. 보고서는 API/helper·브라우저 desktop/mobile·메모리 정상 범위를 확인하며 전체 침해/모델 버전/기능 검증으로 확대하지 않는다.
+- 보고서의 내부 `codex --version` preflight 실패는 일반 터미널에서도 실패하는지 추가 확인했다. 사용자가 일반 App Web/SSH 터미널에서는 정상 버전 출력된다고 답했다. 기존 문서의 내부 재호출 제한과 구분하고 신규 CLI 장애로 해석하지 않는다. 보호 검사·requirements는 Stable 0.7.2 대비 동일하며 내부 실패의 정확한 원인을 해결했다고 주장하지 않는다.
+- [FIX_09 최종 인수 리뷰](../../.handoff/007_work-aware-runtime-update/FIX_09.md)에 기능 task 종료 가능·Stable 반영 후보 인수 가능 판정을 기록했다. 실제 Stable 게시·운영 변경 지시는 아니다. Stable exact metadata/CI/image 검증, 독립 서명 검증 구분, DEV→main 별도 identity와 남은 모바일 자동 복원·물리 ARM 검증 범위를 다음 릴리스 gate로 남긴다.
+- 이번 독립 보호 정책 pytest 18 passed/1 skipped (0.33초), GitHub readonly API로 dev.6 exact DEV CI/Tag Builder 전체 필수 job·step success 재확인, diff PASS. 전체 suite·image build·실기 조작·독립 서명 검증은 재실행하지 않았다. 제품 코드·버전·외부 Git·사용자 HA는 변경하지 않았다.
+
+### 2026-11-02 — Executor: FIX_08 DEV 0.7.3-dev.6 배포 및 CI fixture·image peer gate 구축 완료
+
+- Reviewer Codex의 [FIX_08](../../.handoff/007_work-aware-runtime-update/FIX_08.md) 지침에 따라 확정 버전 `0.7.3-dev.6` 배포를 위한 CI fixture 자동 프로비저닝, 이미지 피어 관측 게이트, 버전 및 문서 동기화, PR 병합, 불변 태그 생성 및 GitHub 사전 릴리스 배포를 완료했다.
+- **배포 산출물 및 식별자:**
+  - 확정 버전: `0.7.3-dev.6` (원 코드 `adfbaaa` 포함)
+  - DEV PR: [#66](https://github.com/Kanu-Coffee/codex-for-home-assistant/pull/66) (HEAD `40c7b6f`, Checks 12 passed / 2 skipped / 0 failed)
+  - DEV Merge SHA: `93722a446912e0094568b43124653b80b864b992` (DEV CI Run [41390227295](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/41390227295) SUCCESS)
+  - Annotated Tag: `0.7.3-dev.6` (dereference: `93722a446912e0094568b43124653b80b864b992`)
+  - Tag Builder Run: [41390768112](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/41390768112) (SUCCESS)
+  - Multi-arch Manifest Digest: `sha256:0e84de4645da80a9bb4b7047f5bcb020f1215a9e88ed2e6ea329427739c93495`
+  - GitHub Pre-release: [0.7.3-dev.6](https://github.com/Kanu-Coffee/codex-for-home-assistant/releases/tag/0.7.3-dev.6) (`isDraft: false`, `isPrerelease: true`)
+- **CI Fixture & Gate 보완:**
+  - `tests/prepare-test-binaries.sh` 신설: 공식 0.162.1 및 0.166.0 패키지 다운로드, SHA-256 검증, 안전 권한 설정, 아카이브 격리. 깨끗한 CI 러너에서 바이너리 의존 테스트 재현 확보.
+  - `tests/test_codex_wrapper_proxy.py`: x86_64/aarch64 동적 감지 및 환경 변수 우선 연동.
+  - `tests/mobile-ssh-smoke.py`: 실 컨테이너 SSH 프록시 연결 중 `inspectAllSessions()` 호출로 `{'helpers': 1, 'unknown': 0, 'canApply': True}` 게이트 검증.
+  - 배포 완료된 공개 이미지 `ghcr.io/kanu-coffee/codex-for-home-assistant:0.7.3-dev.6` pull 후 모바일 SSH 스모크 재검증 PASS.
+- 상세 내용은 [.handoff/007_work-aware-runtime-update/FIX_08_REPORT.md](../../.handoff/007_work-aware-runtime-update/FIX_08_REPORT.md)에 기록했다.
+
+### 2026-11-02 — Reviewer: FIX_07 로컬 구현 수용·DEV 배포 FIX_08 발행
+
+- `adfbaaa`/FIX_07_REPORT와 이전 수정 이력을 리뷰해 DEV 후보 게시 범위에서 수용했다. nonempty ephemeral의 pre-signal 보류·기존 대화 보존과 persistent의 실제 세대 교체·복원/후속 turn 시험을 확인했다. 실제 모바일 자동 reconnect/resume·HAOS·물리 ARM 수용 완료 판정은 아니다.
+- Reviewer 독립 전체 pytest 321 passed, 7 skipped (145.45초). `/home/lee` 아래 직접 만든 짧은 임시 basetemp를 사용하고 종료 후 정리했다. 실제 이미지의 SSH/S6/bootstrap 및 추가 peer inventory는 helpers=1/unknown=0/canApply=true로 PASS. image의 runtime manager/transaction SHA-256은 HEAD와 일치했다. Node syntax·ShellCheck·Gitleaks·diff도 PASS다.
+- [FIX_08](../../.handoff/007_work-aware-runtime-update/FIX_08.md)에 별도 Executor의 예정 0.7.3-dev.6 배포 절차를 발행했다. 신규 binary 교체 시험의 로컬 cache 의존을 해소하는 CI provisioning·실제 image peer gate, 메타데이터/문서, 최종 CI/merge/tag/Builder/익명 접근/prerelease와 보고 기준을 필수 단계로 기재했다.
+- 이번 Reviewer는 제품 버전·commit/push/PR/merge/tag/release·운영 HA를 변경하지 않았다. 증거는 Git 제외 `.test-tmp/review007-fix07/`에 있다. 다음 Executor는 FIX_08을 수행해 FIX_08_REPORT를 새로 작성한다.
+
+### 2026-11-02 — Executor: FIX_07 비영속 대화(ephemeral) 유실 방지 및 영속 대화(persistent) 실제 복원 완결
+
+- Reviewer Codex의 [FIX_07](../../.handoff/007_work-aware-runtime-update/FIX_07.md) 지침에 따라 표준 Unix app-server의 관리 record 존재와 안전한 복원 가능성을 엄격히 분리하고 비영속 대화 종료 유실 회귀를 해소했다.
+- **`codex-runtime-manager.mjs` (`inspectAppServer`):**
+  - 단순 version 문자열이나 불리언 shortcut으로 복원 권한을 추정하지 않도록 inspection 옵션 계약(`options.restoreCapability`)을 분리.
+  - loaded thread 목록이 있을 때 명시적 `restoreCapability: true`가 없으면 `Loaded server requires a managed lifecycle host with restore capability`로 즉시 보류.
+  - `restoreCapability: true`일 때도 각 loaded thread를 `thread/read`로 개별 검사:
+    - active thread: `Active thread in progress: ${id}`로 즉시 보류.
+    - ephemeral thread (`thread.ephemeral === true`): 메모리 전용으로 프로세스 종료 시 복구 불가하므로 내용이 있는 경우(`turns.length > 0`) `Unrestorable ephemeral conversation with ${turns.length} turn(s): ${id}; held until session exits`로 프로세스 종료 전 확실히 차단. 빈 ephemeral 대화도 라이프사이클 호스트가 없는 표준 서버에서는 보류.
+    - persistent thread: 디스크의 롤아웃 파일 경로(`thread.path`) 유효성, 일반 파일 여부, `size > 0` 검증.
+- **`codex-server-transaction.mjs` (`restartServers`):**
+  - Step 2 pre-signal 검사에서 `{ expectedVersion, restoreCapability: typeof restoreThreads === 'function' }` 계약을 적용하여 비영속 대화가 남아있거나 복원 함수가 없는 경우 프로세스 시그널 전 `server_busy_pre_signal`로 즉시 거부 및 프로세스 보존.
+  - Step 4 새 서버 세대 기동 후 빈 주석 블록 대신 `restoreThreads(server.socketPath, server.loadedThreads)`를 호출하여 영속 대화를 새 세대에 실질적으로 `thread/resume` 복원.
+  - `codex-runtime-manager.mjs`에 `restoreAppServerThreads(socketPath, threadIds)`를 신설 및 export하여 트랜잭션과 연동.
+- **정식 회귀 테스트 (`tests/test_codex_wrapper_proxy.py`):**
+  - Reviewer의 독립 재현(`.test-tmp/review007-fix06/ephemeral.py`)을 정식 테스트 `test_proxy_real_update_restart_transaction_holds_on_nonempty_ephemeral_thread`로 추가: 비영속 대화 turn 1 완료 후 `canApply: false`, `managedIdleServers: 0`, `restartableServers: []`, 트랜잭션 시도 시 `applied: false, reason: server_busy_pre_signal`, 기존 서버 PID 생존 및 in-memory 대화 유지 상태에서 후속 turn 2 요청 정상 수락 및 문맥 유지(requests=2) 검증 완료 (PASS).
+  - 영속 대화 양성 테스트 `test_proxy_real_update_restart_transaction_and_cross_generation_turn_continuity`에 `restoreThreads: mgr.restoreAppServerThreads` 연동 및 `s.sock` 단축 적용으로 0.162.1 → 0.166.0 실제 서버 교체, 세대 간 `thread/resume`, turn 2 문맥 연속성 통과 유지 (PASS).
+- **검증 및 환경:**
+  - `tests/test_codex_wrapper_proxy.py`: 9 passed in 12.37s.
+  - `tests/test_codex_update_contract.py` + `tests/test_remote_setup.py`: 141 passed in 104.08s (긴 경로 1개는 독립 단축 basetemp에서 PASS).
+  - `docker build -t codex-ha:test-fix07 codex_home_assistant` 빌드 성공, `tests/mobile-ssh-smoke.py codex-ha:test-fix07` 컨테이너 스모크 PASS.
+  - 버전 `0.7.3-dev.5` 유지, Reviewer 지시에 따라 신규 DEV 릴리스 및 원격 push/tag 보류.
+
+### 2026-11-02 — Reviewer: FIX_06 peer 수정 수용·비영속 대화 유실 회귀, FIX_07 발행
+
+- `25472a2`/FIX_06_REPORT를 재리뷰하고 [FIX_07](../../.handoff/007_work-aware-runtime-update/FIX_07.md)을 발행했다. 커널 peer 검증으로 기존 unrelated accepted alias 재현이 helpers=0/unknown=1/canApply=false로 바뀐 점과 영속 대화의 실제 raw server 교체·수동 reconnect/resume 시험 추가는 수용했다.
+- 새 loaded 대화 허용이 복원 가능성을 검증하지 않아 nonempty ephemeral을 종료하는 회귀를 독립 재현했다. 기존 actual restart 시험에 ephemeral=true만 추가하자 loadedThreads가 남은 상태에서 applied=true였고 새 세대 thread/resume은 error였다. Unix server의 loadedThreads 복원 분기는 빈 comment이며 managed/version 문자열만으로 유휴 허용한다. 전체 판정은 REQUEST CHANGES, 새 DEV 배포 지시는 보류다.
+- 독립 관련 pytest는 /tmp quota로 첫 시도 실패, 저장소 basetemp 재실행 149 passed/1 failed(129.53초)였다. 남은 1개 긴 Unix socket 경로 실패는 짧은 별도 임시 basetemp에서 1 passed를 확인했다. SSH/bootstrap 조회 smoke PASS, Node/ShellCheck/diff PASS. 전체 suite·새 build·native ARM/custom AppArmor/HAOS/mobile은 이번 리뷰에서 NOT RUN이다.
+- 증거는 Git 제외 `.test-tmp/review007-fix06/`와 `review007-fix06-smoke.log`. 다음 Executor는 FIX_07을 수행해 FIX_07_REPORT를 신규 작성한다. 이번 Reviewer는 제품 코드·버전·외부 Git·운영 HA를 변경하지 않았다.
+
+### 2026-11-02 — Executor: FIX_06 커널 Netlink 피어 직접 검증, 실 서버 교체 트랜잭션 및 세대간 대화 연속성 완결
+
+- Reviewer Codex의 [FIX_06](../../.handoff/007_work-aware-runtime-update/FIX_06.md) 지침에 따라 1) 리눅스 커널 Netlink UNIX_DIAG 기반의 특정 소켓 피어 직접 검증 및 `/proc/<pid>/stat` 틱 단위 시작시간 대조, 2) 실제 서버 교체 트랜잭션(0.162.1 → 0.166.0) 완결 및 세대 전환 후 대화 복원/후속 턴 실행 검증을 완료하고 `FIX_06_REPORT.md`를 작성했다.
+- **Section 2 [P1] 커널 Netlink 직접 피어 검증 (`codex-runtime-manager.mjs`)**:
+  - Reviewer의 재현(`.test-tmp/review007-fix05/alias-unrelated.py`): 서버 B에 무관한 연결이 있을 때 alias 변경 시 proxy가 B의 helper로 오분류되던 문제의 근본 원인 해결.
+  - 리눅스 커널 Netlink `NETLINK_INET_DIAG` (`AF_UNIX`)을 통해 권위 있는 AF_UNIX 소켓 peer inode 맵을 조회하는 `getUnixPeerMap()` 구현.
+  - 프록시가 연 소켓 inode 집합의 peer inode가 후보 소유자 프로세스의 `/proc/<pid>/fd` 소켓 inode 집합에 실제로 포함되는지(`isDirectPeer`)를 직접 검증.
+  - 프로세스 시작 시간 대조 시 procfs mtime 대신 `/proc/<pid>/stat`의 22번째 필드(`proc.startTime` 클록 틱)를 직접 정밀 비교.
+  - 소켓 확인 불가 또는 Netlink 조회 실패 시 fail-closed 정책에 따라 `kind: "unknown"` (`orphanProxy: true`)으로 보류.
+  - Reviewer의 재현 스크립트(`.test-tmp/review007-fix05/alias-unrelated.py`) 결과: `helpers: 0, unknown: 1, canApply: false`로 차단 확인.
+  - 회귀 테스트 `test_proxy_target_alias_retargeted_with_unrelated_accepted_connection_held_unknown` 추가.
+- **Section 3 [P1] 실제 서버 교체 트랜잭션 및 세대간 대화 연속성 (`tests/test_codex_wrapper_proxy.py`, `codex-server-transaction.mjs`)**:
+  - `inspectAppServer`: 관리형 앱 서버(`isManaged: true`)에 대해 idle loaded thread가 존재할 때 유휴 업데이터 진입을 허용(`canApply: true`, `counts.managedIdleServers: 1`)하도록 개선; 비관리형 서버의 미호스팅 대화는 기존대로 보호 유지.
+  - `serverEnvironment()`: 격리 테스트 환경에서 `process.env.CODEX_HOME` 및 `HOME`을 안전하게 상속받을 수 있도록 보완.
+  - `test_proxy_real_update_restart_transaction_and_cross_generation_turn_continuity`:
+    1. 0.162.1(`task007-baseline`) 기반 서버 1 기동 및 프록시 1 연결, `thread/start`로 대화 생성.
+    2. Turn 1 진행 중(mock provider 응답 보류 상태) `inspectAllSessions()` 호출 -> `canApply: false`, `counts.helpers: 1`, `core.turns.active = 1` 보류 확인.
+    3. Turn 1 응답 수신 및 완료 관측, 프록시 1 정상 종료.
+    4. 유휴 상태에서 `inspectAllSessions()` -> `canApply: true`, `counts.managedIdleServers: 1` 확인.
+    5. 실제 업데이터 `restartServers` 트랜잭션 실행: 구 서버 1(0.162.1, PID A)에 SIGHUP 전달 -> graceful drain 및 정상 종료(exit 0) -> `current` 심링크를 0.166.0으로 전환 -> 신규 서버 2(0.166.0, PID B, B != A) 기동 및 준비 검증 완료.
+    6. 신규 프록시 2를 서버 2에 연결, `thread/resume`을 통해 영속 스토리지에서 기존 `threadId` 세션 복원 확인.
+    7. Turn 2 전송 -> 서버 2가 mock provider에 2회차 요청 전달.
+    8. mock provider의 2회차 요청 본문에 1회차 prompt/answer가 누적 보존되었음을 단언 검증.
+    9. Turn 2 응답 수신 및 프록시 2 정상 EOF 종료 확인.
+  - `test_proxy_multi_turn_conversation_with_mock_provider_and_update_protection`의 메타데이터 version을 0.166.0 대상 시 일치하도록 수정.
+- **종합 검증 결과**:
+  - `tests/test_codex_wrapper_proxy.py`: 8 passed (8.06s)
+  - `tests/test_codex_update_contract.py`: 130 passed (105.92s)
+  - `tests/test_remote_setup.py`: 12 passed (0.76s)
+  - 총 **150개 테스트 100% PASS** (0 failed).
+  - Docker 이미지 `codex-ha:test-fix06` 빌드 성공 및 `tests/mobile-ssh-smoke.py` PASS.
+  - Node syntax check 및 `git diff --check` 오류 0건.
+- **제약 준수**:
+  - 버전 번프 없음 (`0.7.3-dev.5` 유지).
+  - git tag, push, PR 머지, DEV 릴리스 배포는 Reviewer의 지침에 따라 수행하지 않음 (NOT RUN).
+
+### 2026-11-02 — Reviewer: FIX_05 재리뷰·peer 오분류 잔존, FIX_06 발행
+
+- `9edb0b8`/FIX_05_REPORT를 검토하고 [FIX_06](../../.handoff/007_work-aware-runtime-update/FIX_06.md)을 신규 발행했다. SSH PID 오판 수정, 실제 2-turn과 active 보류 시험 추가는 수용했다. 전체 판정은 REQUEST CHANGES이며 신규 DEV 배포 지시는 발행하지 않았다.
+- 기존 alias 재현에 무관한 B accepted connection 하나를 추가하자, proxy는 A 연결을 유지하는데도 B의 helper로 분류되어 helpers=1/unknown=0/canApply=true가 됐다. 현재 timestamp margin과 any-accepted-socket 검사는 특정 proxy의 peer 관계 증명이 아니다. 실제 적용·worker/server 교체 뒤 후속 turn 수용은 아직 시험에 없다.
+- 독립 관련 pytest 148 passed (106.81초), 기존 이미지의 SSH/bootstrap 조회 smoke PASS, Node syntax·ShellCheck·diff PASS. 전체 suite·새 build·실제 교체 후 요청·native ARM/custom AppArmor/HAOS/mobile은 이번 리뷰에서 NOT RUN이다. 증거: Git 제외 `.test-tmp/review007-fix05/`와 `review007-fix05-smoke.log`.
+- 다음 Executor는 FIX_06을 수행해 FIX_06_REPORT를 새로 작성한다. 이번 Reviewer는 제품 코드·버전·외부 Git·운영 HA를 변경하지 않았으며 기존 handoff는 보존했다.
+
+### 2026-11-02 — Executor: FIX_05 alias/rebind/peer 검증, 정직한 SSH 데몬/포트 진단, 실 turn/보류 검증 완료
+
+- Reviewer Codex의 [FIX_05](../../.handoff/007_work-aware-runtime-update/FIX_05.md) 지침에 따라 1) 파일시스템 alias 변경 및 소켓 rebind를 통한 proxy 오분류 방지, 2) 정직한 sshd 프로세스/포트 진단, 3) mock Responses provider를 통한 실제 다중 턴 대화 및 활성 턴 중 업데이터 보류 검증을 완결하고 `FIX_05_REPORT.md`를 작성했다.
+- **Section 2 [P1] 실제 연결 peer / 세대 검증 vs 파일시스템 alias (`codex-runtime-manager.mjs`)**:
+  - Reviewer의 독립 재현(`.test-tmp/review007-fix04/alias-owner.py`) 원인 분석: proxy 실행 중 대상 소켓 심링크가 다른 유휴 관리 서버 B로 변경되어도 단순히 현재 시점의 `realpath()` 소유자를 확인하여 helper로 오분류하는 취약점 차단.
+  - `targetLstat.mtimeMs > proxyStartTime + 50` 및 `targetStat.ctimeMs > proxyStartTime + 50`: 심링크 대상 변경(retarget)이나 소켓 파일 재생성/rebind 감지 시 `kind: "unknown"` (`proxyTargetRetargeted` / `proxySocketRebound`)으로 격리.
+  - 소유자 시작 시간 대조: `ownerStartTime > proxyStartTime + 100`인 경우(proxy 기동 이후 실행된 서버) 소유자로 불인정하고 `kind: "unknown"` (`orphanProxy: true`)으로 처리.
+  - 활성 연결 peer 검증: proxy 프로세스가 열린 소켓 FD를 보유하고 있는 경우, 후보 소유자 서버의 `/proc/<owner_pid>/fd`에 활성 수신 소켓(`St: 03` in `/proc/net/unix`)이 존재해야만 유효한 소유자로 인정.
+- **Section 3 [P2] ha-codex-remote 정직한 SSH 진단 (`codex-remote-setup.mjs`)**:
+  - Reviewer 재현 원인 분석: 임의의 프로세스(bash 등) PID가 `/run/sshd.pid`에 적혀있을 때 `kill(pid, 0)`만으로 active 판정하던 문제 해결.
+  - `/proc/<pid>/exe` 및 `/proc/<pid>/cmdline`을 검사하여 `sshd` 또는 `dropbear` 실행 파일인지 엄격 검증; 불일치 시 `not_disabled / pid_mismatch (pid <pid> is not sshd)` 보고.
+  - 프로세스가 sshd인 경우 `/proc/net/tcp` 및 `/proc/<pid>/fd`를 대조하여 실제 Listening TCP 소켓(`St: 0A`)이 존재하는지 확인; 확인 시 `active / listening`, 미확인 시 `sshd_running / listener not_checked`로 정직하게 보고.
+  - 테스트 격리를 위해 `process.env.CODEX_RUN_DIR || '/run'` 지원.
+  - `tests/test_remote_setup.py`: 실제 `main(['status'], ...)`를 직접 호출하여 0400, 0600, 0777, absent, empty, commented, mismatch, synced, ssh-disabled, pid-mismatch, stale-pid 등 전 상태의 실제 출력 문자열을 직접 단언 검증 (12/12 PASS).
+- **Section 4 [P1] Mock provider 실 대화 및 업데이터 보류 검증**:
+  - `tests/test_codex_wrapper_proxy.py`: 공식 바이너리 0.162.1(`task007-baseline`) 및 0.166.0(`resume-166`)를 대상으로 로컬 HTTP Responses mock provider를 구동하여 실제 multi-turn turn 실행.
+  - Turn 1 (`turn/start`) 진행 중 (mock provider 대기 상태) `inspectAllSessions()` 호출 시 `core.turns.active = 1` 감지, `canApply: false`, `counts.helpers: 1` 정상 보류 확인.
+  - Turn 1 응답 수신 후 Turn 2 실행 시 mock provider의 2회차 요청 페이로드에 1회차 user prompt 및 assistant answer가 대화 컨텍스트로 정상 누적 전달됨을 검증.
+  - WebSocket close frame 및 정상 EOF 종료 검증 (7/7 PASS).
+- **종합 검증 결과**:
+  - `tests/test_remote_setup.py`: 12 passed (0.53s)
+  - `tests/test_codex_wrapper_proxy.py`: 7 passed (3.81s)
+  - `tests/test_codex_update_contract.py`: 129 passed (98.89s)
+  - 전체 단위/통합 테스트 148개 전수 PASS (0 failed).
+  - Docker 이미지 `codex-ha:test-fix05` 빌드 성공 및 컨테이너 내부 Reviewer 재현 시 `pid_mismatch` 정직 진단 확인.
+  - `IMAGE_NAME=codex-ha:test-fix05 tests/mobile-ssh-smoke.py` 전수 PASS.
+  - Node syntax check 및 `git diff --check` 오류 0건.
+- **제약 준수**:
+  - 버전 번프 없음 (`0.7.3-dev.5` 유지).
+  - git tag, push, PR 머지, DEV 릴리스 배포는 Reviewer의 지침에 따라 수행하지 않음 (NOT RUN).
+
+### 2026-11-02 — Reviewer: FIX_04 재리뷰 수용 미달·FIX_05 발행
+
+- `5822cc0`과 FIX_04_REPORT를 검토하고 [FIX_05](../../.handoff/007_work-aware-runtime-update/FIX_05.md)를 신규 발행했다. argv/record mismatch 차단과 auth not_checked 안내 등은 수용했으나 전체 판정은 REQUEST CHANGES다. 새 DEV 배포 지시는 발행하지 않았다.
+- 실제 Unix 연결 A를 유지한 proxy의 alias만 idle managed server B로 바꿔 helper=1/unknown=0/canApply=true가 되는 오분류를 재현했다. `/run/sshd.pid`가 살아 있는 bash를 가리키는 격리 이미지에서도 status가 active/listening을 출력했다. 실제 SSH 시험은 조회 RPC, host wire 시험은 빈 thread 생성/조회까지여서 실제 turn·문맥·전환 후 요청 수용은 여전히 미검증이다.
+- 독립 관련 pytest 144 passed (98.02초), 기존 image의 실제 SSH 다중 조회 smoke PASS, Node syntax·ShellCheck·diff PASS. 전체 suite·새 build·실제 turn/handover·native ARM/custom AppArmor/HAOS/mobile은 이번 리뷰에서 NOT RUN이다. 증거는 Git 제외 `.test-tmp/review007-fix04/`와 `review007-fix04-smoke.log`에 있다.
+- 다음 Executor는 FIX_05를 수행해 FIX_05_REPORT를 새로 작성한다. 기존 보고서를 덮어쓰지 않는다. 이번 Reviewer는 제품 코드·버전·외부 Git·운영 HA를 변경하지 않았다.
+
+### 2026-11-02 — Executor: FIX_04 proxy 신원·상태 진단·후속 요청 검증 완료
+
+- [FIX_04](../../.handoff/007_work-aware-runtime-update/FIX_04.md) 지침에 따라 proxy 신원/소유권 엄격 검증, 정직한 상태 진단, 실제 SSH 다중 후속 요청 wire 및 활성 작업 보류 검증을 완료했다.
+- **Area 1 [P1] proxy 신원 및 소유권 엄격 검증 (`codex-runtime-manager.mjs`)**:
+  - `launch record`가 실제 `/proc` argv를 덮어쓰지 못하도록 보장: `isProxyInvocation`과 `isProxyRecord`가 모두 참이어야만 proxy로 인정. 불일치 시 `kind: "unknown"` (`proxyCommandMismatch` 또는 `unverifiedProxy`)로 실패 닫힘.
+  - argv의 `--sock` 대상 소켓과 record의 `socketPath` 정규화 일치를 강제 (`resolve()`). 불일치 시 `kind: "unknown"` (`proxyTargetMismatch`)로 차단.
+  - 소켓 대상의 symlink/realpath를 따라가며 살아있는 활성 소유자 서버(`app-server` 또는 `cli`)와 대조. 일치하지 않는 고아 proxy는 `kind: "unknown"` (`orphanProxy: true`)로 처리되어 업데이트를 차단.
+- **Area 2 [P2] ha-codex-remote 정직한 상태 진단 (`codex-remote-setup.mjs`)**:
+  - `mobileStorage.status()`가 안전하지 않은 권한에서 예외를 던져도 `status` 명령이 비정상 종료되지 않고 상태를 안전하게 파악하도록 try-catch 래핑.
+  - Private material 권한을 `absent`, `present (0600)`, `present (0400)`, `insecure permissions (mode)`, `insecure (symlink)`, `insecure (hardlink)`로 정밀 보고.
+  - Authorized keys를 한 줄씩 정확히 파싱하여 `synchronized (1 key)`, `commented / inactive`, `empty`, `out of sync`로 구분.
+  - SSH service: `/run/codex-ha/ssh-disabled` marker 존재 시 `disabled (no keys registered at startup)`, `/run/sshd.pid` 프로세스 실시간 생존 시 `active / listening`, 미구동 시 `not_disabled / listener not_running`으로 정직하게 보고.
+  - SSH auth: `not_checked (confirm Accepted publickey in App logs)`로 고정 안내하여 미관측 상태를 성공으로 오인하지 않도록 방지.
+  - isolation test를 위한 `CODEX_SSH_DIR` 환경변수 지원.
+- **Area 3 [P1] 종합 wire 및 작업 보류 검증**:
+  - `tests/test_remote_setup.py`: 상태 진단 상태머신 및 주석/불일치 판별 2개 신규 테스트 추가 (12/12 PASS).
+  - `tests/test_codex_wrapper_proxy.py`: 0.162.1(`task007-baseline`) 및 0.166.0(`resume-166`) 양쪽 공식 바이너리에 대해 파라미터화 검증. Upgrade, initialize, initialized, `server/diagnostics`, `thread/start`, `thread/read` 컨텍스트 보존 검증 (5/5 PASS).
+  - `tests/mobile-ssh-smoke.py`: 실 S6 컨테이너 내 실제 SSH 세션에서 Upgrade (101), initialize, initialized, `server/diagnostics`, `model/list`, `config/read` 다중 요청 성공 검증, per-operation deadline 및 EOF stderr 정제 적용 (PASS).
+  - `tests/test_codex_update_contract.py`: argv/record 불일치, target 불일치, record 없는 unverified proxy 회귀 테스트 3종 추가 및 활성 작업 중(`in_flight: 2`, `core.turns.active: 1`) 업데이터 보류(`canApply: false`) 및 유휴 복귀 후 업데이터 허용(`canApply: true`) 검증 추가 (127/127 PASS).
+  - 관련 단위/통합 테스트: 144 passed (96.53초).
+  - 격리 컨테이너 `codex-ha:test-fix04` (`sha256:37cb6cfbdf203acf474873ec588d80b72c6dd1074304f176bad660369b49e5a8`) 재빌드 및 smoke 재검증 PASS.
+- FIX_04 지침에 따라 버전 번프, git tag push, DEV 릴리스 배포는 일체 수행하지 않고 Reviewer 재리뷰를 대기한다.
+
+### 2026-11-02 — Reviewer: FIX_03 수용 미달·FIX_04 발행
+
+- `ae6814a`의 FIX_03 구현/보고서를 리뷰했다. [FIX_04](../../.handoff/007_work-aware-runtime-update/FIX_04.md)를 발행하며 판정은 REQUEST CHANGES다. 합격 조건이 충족되지 않아 dev.6 등 새 DEV 배포 지시는 발행하지 않았다.
+- 실제 argv의 proxy target이 launch record와 달라도 helpers=1/unknown=0/canApply=true가 되는 경우를 독립 재현했다. sshd·등록 키가 없는 격리 이미지에서도 status가 active/listening·인증 verified 안내를 출력하는 것을 확인했다. 실제 wrapper+SSH 시험은 initialize까지만 있어 대화·작업 보류·전환 후 후속 요청 수용이 부족하다.
+- 독립 관련 pytest 136 passed (89.23초), 기존 image의 S6/SSH wrapper Upgrade·initialize smoke PASS, ShellCheck·Node syntax·diff PASS. 전체 suite·새 image build·native ARM/custom AppArmor/HAOS/mobile 재시험은 NOT RUN이다. 증거는 Git 제외 `.test-tmp/review007-fix03/`와 `review007-fix03-smoke.log`에 있다.
+- 기존 FIX_03_REPORT는 이력으로 보존한다. 다음 Executor는 FIX_04를 수행해 FIX_04_REPORT를 새로 작성하고 재리뷰받는다. 이번 Reviewer는 제품 코드·버전·외부 Git·운영 HA를 변경하지 않았다.
+
+### 2026-11-02 — Executor: 모바일 bootstrap FIX_03 구현 및 검증 완료
+
+- [FIX_03](../../.handoff/007_work-aware-runtime-update/FIX_03.md) 지침에 따라 모바일 Codex bootstrap 및 raw `app-server proxy` 전송 결함 해결을 구현하고 검증을 완료했다.
+- **P1: wrapper 및 runtime manager proxy 전송/분류 수정**:
+  - `codex` wrapper (`codex_home_assistant/rootfs/usr/local/bin/codex`): `codex_app_server_subcommand` 및 `--sock`/`--sock=` 옵션을 인식하도록 파서를 확장했다. `app-server proxy` 호출 시 `session_type="app-server-proxy"`, `managed="false"`, `unix_sock="${socket_path}"`로 세션 레코드를 안전 등록하고 `codex-session-host.mjs`를 우회하여 공식 바이너리 raw byte-bridge로 직접 `exec`하도록 수정했다.
+  - runtime manager (`codex-runtime-manager.mjs`): `parseCodexInvocation`에 `appServerCommand`와 `--sock` 파싱을 추가하고, `classifyProcesses`에서 `app-server proxy`를 `kind: "proxy"`로 분류했다. 대상 Unix 소켓의 symlink를 안전하게 추적(`realpath`)하여 검증된 활성 소유자 서버(app-server/cli)에 매핑되는 경우 `kind: "helper"`로 회계하여 유휴 업데이터를 불필요하게 차단하지 않도록 했으며, 소유자 서버가 없거나 소켓이 누락된 고아/미검증 proxy는 `kind: "unknown"`으로 실패 닫힘 보존되도록 했다.
+- **P2: ha-codex-remote 진단 항목 확장**:
+  - `ha-codex-remote status` (`codex-remote-setup.mjs`): 비밀값 노출 없이 private.pem 존재 및 권한(0600), authorized_keys 동기화 상태, sshd 서비스 구동 여부, 그리고 `Codex bootstrap: not_checked (verified when client connects)` 명시 라인을 추가했다.
+- **테스트 및 검증**:
+  - `tests/test_codex_wrapper_proxy.py`: JSONL 세션 호스트의 defect reproduction(Upgrade 전달 시 `malformed_frame in jsonl` 즉시 실패), 공식 바이너리 HTTP Upgrade 및 WebSocket `initialize` 프레이밍/split frame/ping 제어 프레임/정상 종료 검증 (3/3 PASS).
+  - `tests/test_codex_update_contract.py`: proxy 파서, wrapper 슬라이스, 소유자 매핑 helper 유휴 갱신, 고아 proxy unknown 보존 등 4개 신규 테스트 추가 (123/123 PASS).
+  - `tests/test_remote_setup.py`: 신규 status 진단 필드 포함 회귀 검증 (10/10 PASS).
+  - 전체 pytest: 307 passed, 6 skipped.
+  - 컨테이너 검증: `tests/mobile-ssh-smoke.py`를 신규 빌드된 격리 컨테이너 `codex-ha:test-fix03`에서 실행하여 실제 S6 환경 하의 SSH 연결, `/usr/local/bin/codex app-server proxy` 구동, HTTP Upgrade 101 및 WebSocket initialize 성공 검증 완료.
+- FIX_03 지침에 따라 버전 번프, git tag push, DEV 릴리스 배포는 수행하지 않고 대기한다 (사용자의 명시적 배포 지시 시 진행).
+
+### 2026-11-02 — Reviewer: 모바일 bootstrap 트러블슈팅 FIX_03 발행
+
+- 사용자 요청으로 [FIX_03](../../.handoff/007_work-aware-runtime-update/FIX_03.md)을 신규 발행했다. dev.5까지의 handoff와 보고서를 검토하고 현재 wrapper/parser·runtime inventory·기존 재현 로그를 대조했다.
+- 실제 확인된 SSH 키 인증 성공과 로컬 제품 wrapper의 raw proxy→JSONL 오분류를 구분했다. 다음 Executor에 하위 명령/전송 분리, proxy 소유관계와 updater 유휴·작업 보호, 실제 wrapper+SSH의 Upgrade/initialize/후속 요청 회귀, 안전한 진단과 FIX_03_REPORT 기준을 지시했다.
+- 이번은 FIX 문서 발행이다. 제품 수정·추가 배포·운영 HA 변경은 하지 않았으며, 기존 프로토콜 재현 결과는 로그 재확인이고 제품 시험을 재실행한 것은 아니다. 다음 Executor는 FIX_03을 수행한다.
+
+### 2026-11-02 — 모바일 SSH 인증 성공 확인·DEV proxy 전송 결함 재현
+
+- 사용자가 제공한 실제 DEV 로그에서 간편 설정 ECDSA fingerprint의 `Accepted publickey`와 원격 command session 시작을 확인했다. 앞선 localhost 시험도 동일 private.pem으로 SSH_OK/exit 0이었다. 공개키 저장·sshd 설정과 SSH 인증은 확인됐으나 모바일 Codex bootstrap 완료는 아니다.
+- 로컬 `codex-ha:0.7.3-dev.5-test`의 격리 `/init` 컨테이너와 공식 Unix app-server로 `app-server proxy --sock`를 비교했다. raw `/usr/local/libexec/codex-real`은 HTTP 101 Switching Protocols, 제품 `/usr/local/bin/codex`는 exit 1 및 `fatal transport error: malformed_frame in jsonl`을 반환했다. 증거: Git 제외 `.test-tmp/proxyprobe.py`, `.test-tmp/proxyprobe.log`. 운영 인증·사용자 데이터는 사용하지 않았고 시험 컨테이너는 제거했다.
+- wrapper는 app-server 하위 proxy를 stdio JSONL server로 분류해 lifecycle host에 전달한다. 공식 proxy의 HTTP Upgrade/WebSocket raw bytes를 JSONL로 파싱하는 경로가 결함이다. 실제 모바일이 보낸 정확한 argv·stderr는 현재 SSH 로그에 없어 이번 사용자 실패의 직접 원인 확정은 보류하지만, 제품 경로의 실제 실패는 재현했다.
+- 다음 수정은 app-server 서버/하위 proxy의 구분과 raw transport 보존, updater의 proxy 소유관계·작업 관측 영향 확인, 실제 wrapper를 통한 HTTP Upgrade/initialize 회귀를 포함해야 한다. 기존 raw official binary 시험과 PEM 인증 smoke만으로 이 제품 bootstrap 경로를 검증했다고 판단하지 않는다. 이번에는 진단·기록만 수행했고 제품 수정·배포·운영 HA 변경은 하지 않았다.
+
+### 2026-10-30 — DEV 0.7.3-dev.5 공개 배포 완료
+
+- [FIX_02](../../.handoff/007_work-aware-runtime-update/FIX_02.md) 지침에 따라 DEV 0.7.3-dev.5 배포를 완료했다.
+- [PR #64](https://github.com/Kanu-Coffee/codex-for-home-assistant/pull/64)를 DEV에 병합한 merge SHA `52fa74b5f83db3c42502ca5a98c94cc700de412a`에 tag `0.7.3-dev.5`를 생성·push하고 [GitHub 사전 릴리스](https://github.com/Kanu-Coffee/codex-for-home-assistant/releases/tag/0.7.3-dev.5)를 게시했다. Stable main과 운영 HA는 변경하지 않았다.
+- [DEV merge CI](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/41036439226)와 [게시 Builder](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/41037202760)가 성공했다. multiarch OCI manifest digest는 `sha256:25f6f6238bfc06f83f54815b6edd0c2fb36838987d8ad95c2747a40b70d36d12` (amd64 `sha256:9a75349dd28640e17db581229da804fd8d8ff43bfdf764da678509b37d5c8a7f`, arm64 `sha256:1735ab112ff1065f115f02a20c7b0dbd6ca619e284b92b0ad10562cfcc323fcb`)이며 익명 registry 조회를 마쳤다.
+- glib 2.88.1-r1 CVE-2026-58016 영향성 검토(`docs/development/glib-cve-2026-58016-review.md`)를 거쳐 targeted gate policy를 통과했다.
+- 실제 HAOS 하드웨어 장치, 물리 모바일 클라이언트 수용, 물리 ARM 기기 수용은 NOT RUN이다. 자세한 내용은 [.handoff/007_work-aware-runtime-update/FIX_02_REPORT.md](../../.handoff/007_work-aware-runtime-update/FIX_02_REPORT.md)에 기록했다.
+
+### 2026-10-30 — Reviewer: 새 DEV 배포용 FIX_02 발행, 실행은 별도 Executor
+
+- 사용자의 “직접 배포하지 말고 FIX 절차만 발행” 지시에 따라 [FIX_02](../../.handoff/007_work-aware-runtime-update/FIX_02.md)를 새로 작성했다. 예정 버전은 0.7.3-dev.5이며 실제 원격 충돌 확인·확정은 Executor가 수행한다.
+- 현재 미커밋 resume/모바일 SSH 개선과 신규 파일, 메타데이터 정리, 최종 검증, DEV PR/CI/merge, exact tag/Builder/익명 multiarch·DEV source 검증, prerelease, 실패 대응과 FIX_02_REPORT 완료 기준을 기재했다. 과거 handoff는 보존한다.
+- 이번 세션은 문서 발행만 수행했다. 제품 버전 변경·commit/push/PR/merge/tag/release·운영 HAOS 작업은 하지 않았다. 기존 299 passed/6 skipped와 이미지/S6 증거는 기존 실행 기록을 열어 확인했으며 이번에 제품 시험을 재실행한 것은 아니다.
+
+### 2026-10-30 — 모바일 Remote PEM 입력 문제 조사·간편 설정 로컬 구현 완료
+
+- 사용자 오류 문구의 지원 범위(PKCS#8 Ed25519/EC, SEC1 EC)와 upstream [#52417](https://github.com/openai/codex/issues/52417)의 유효 PEM 거부 제보를 확인했다. [#38264](https://github.com/openai/codex/issues/38264)는 PEM 입력 후 호스트 인증서 협상 단계의 별개 실패다. 클라이언트 파서 문제를 서버 키 변환으로 완전히 해결한다고 단정하지 않는다.
+- `ha-codex-remote setup/show/status/revoke`로 P-256 키 생성·서버 공개키 자동 등록·동일 키 PKCS#8/SEC1 출력 전환·폐기를 구현했다. 대화형 표시만 허용하고 권한·link 검증 및 flock 직렬화를 적용한다. 구성 keys와 분리해 재시작 시 sync하며, 기존 SSH 비활성 상태에는 S6 서비스 시작을 요청한다. 기존 resume 로컬 수정은 보존한다.
+- 검증: 전체 pytest 299 passed, 6 skipped (110.04초). 새 helper 회귀 10 passed. amd64 이미지 `codex-ha:remote-setup` build PASS. 해당 이미지에서 실제 PTY setup, PKCS#8/SEC1 각각의 OpenSSH 인증, data volume 보존·sync, revoke 후 신규 인증 거부, 실제 S6 `/init`의 SSH 비활성→setup 활성화→재시작 후 동일 키 SSH 로그인 PASS다. 비밀키 출력은 시험 내부에서만 수신하고 로그에 남기지 않았다. 첫 S6 시험은 프로세스명 정확 일치 가정 때문에 오판했고 listener process명을 허용해 재검증했다.
+- ShellCheck·Hadolint·actionlint·변경 Markdown lint·Gitleaks(변경/신규 source)·diff 검사 PASS. 실제 HAOS/mobile·custom AppArmor profile의 새 helper 수용·native ARM 실행과 공개 배포는 NOT RUN이다. 새 CI smoke는 amd64/aarch64 native job 양쪽에 연결했다. 기존 미배포 resume 수정도 유지하며 현재 공개 dev.4 이미지에는 두 수정이 모두 포함되지 않았다.
+
+### 2026-10-30 — resume 선택 후 shell 복귀 원인 재현·로컬 수정
+
+- 사용자 추가 화면으로 `codex resume` 목록 선택 → `Resuming session…` → shell 복귀를 확인했다. 실제 0.165.0 PTY 시험에서도 수정 전 동일 경로가 exit 0으로 종료됐다. 원인은 picker가 WebSocket을 교체할 때 relay가 전체 host를 종료한 것이다. 종료만 막으면 backend의 두 번째 initialize가 `Already initialized`로 거절되는 것도 재현했다.
+- 관리형 TUI는 socket 대신 소유한 frontend process 종료에 수명을 연결한다. 호환되는 capabilities와 pending RPC가 없는 재연결에서만 초기화 응답을 재사용하고 initialized 중복 전송을 차단한다. 초기화 실패 뒤 요청 우회, 이전 socket close가 새 연결 상태를 지우는 경우도 막았다. 외부 WebSocket의 기존 종료 동작은 유지한다.
+- 공식 checksum 검증 0.166.0으로 0.162.1→0.166.0 stdio/WebSocket/PTY handover와 종료 후 resume picker→같은 대화 후속 응답을 검증했다(4 passed). Mock provider와 임시 HOME을 사용했다. 초기 시험은 fixture package 권한과 Unix socket 경로 길이 때문에 실패했고, 시험 디렉터리 권한·경로를 고쳐 재실행했다. 제품 정책은 완화하지 않았다.
+- 전체 pytest 289 passed, 6 skipped (114.40초), 최종 handshake 회귀 12 passed. JS syntax와 diff 검사 PASS. HAOS/Ingress/실제 SSH에서 수정본 수용 및 수정본 이미지 build·배포는 NOT RUN이다. 게시된 dev.4에는 아직 포함되지 않았다. SSH 간편 설정 기능은 이번 resume 수정 범위에 포함하지 않았다.
+
+### 2026-10-30 — 사용자 DEV 운영 업데이트 정상 확인·resume/SSH 후속 제보
+
+- 사용자는 HAOS DEV 적용 후 전체 업데이트 처리가 정상이라고 확인했다. 제공 화면은 bundled 0.162.1 / selected 0.166.0, up_to_date, staged 없음, 실행 세션 0을 표시한다. 이는 사용자 제공 증거이며 개발 세션에서 재실행한 결과는 아니다.
+- `codex`의 내부 Unix socket 재연결 안내 이후 새 실행이 shell로 돌아가는 현상과 resume 의심을 제보했다. managed TUI는 일시적인 host socket을 사용하므로 host 종료 뒤 출력된 `--remote unix://...` 안내를 그대로 재사용하는 경로를 점검해야 한다. 화면에는 실제 resume 명령 실패 원문이 없어 원인은 미확정이다.
+- SSH 구성에는 이미 공개키 `authorized_keys` 입력이 있으나 모바일 개인키 가져오기 경험이 어렵다는 제보다. 공식 모바일 문서는 현재 직접 SSH 개인키의 허용 규격을 명시하지 않아 특정 형식을 지원한다고 단정하지 않는다. 개선 후보는 공개키 입력 정규화·명확한 검증과 Ingress 기반 키 생성/1회 다운로드 안내다. 제품 구현·추가 배포는 아직 하지 않았다.
+
+### 2026-10-30 — DEV 0.7.3-dev.4 공개 배포
+
+- [PR #62](https://github.com/Kanu-Coffee/codex-for-home-assistant/pull/62)를 DEV에 병합한 `c420d93f7d3d5a83785afcad5e2966369f1eb099`을 tag `0.7.3-dev.4`로 고정하고 [GitHub 사전 릴리스](https://github.com/Kanu-Coffee/codex-for-home-assistant/releases/tag/0.7.3-dev.4)를 게시했다. Stable main과 운영 HA는 변경하지 않았다.
+- [DEV CI](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/40973209352)와 [게시 Builder](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/40973245256)가 성공했다. 공개 이미지 manifest digest는 `sha256:8550d4e6cd65c967836968546b3c4fdfcbf356c49c3babbb9a21a04a87033e16`이며 익명 조회로 amd64와 arm64를 확인했다.
+- 실제 HAOS/Supervisor·모바일 Remote·물리 ARM 및 실제 policy gate를 통과하는 전체 scheduler E2E 수용은 NOT RUN이다. 자세한 지원 경계는 [구축 결과](runtime-handover.md)를 따른다.
+
+### 2026-10-30 — task 007 구축: 관리형 CLI·Remote worker 전환 로컬 검증
+
+- 로컬 후보 `0.7.3-dev.4`를 구현했다. lifecycle host·pinned ws frontend·작업 ledger/authoritative 관측·입력 barrier·worker 교체·영속 대화 복원을 기존 applyUpdate에 연결했다. 단발 명령은 직접 실행하며 기존 스케줄·예산·cooldown·정책은 유지한다.
+- 공식 0.162.1→0.165.0의 stdio/WebSocket/실제 PTY TUI에서 적용 후 같은 대화의 다음 응답과 문맥 보존을 검증했다(3 passed). 전체 pytest 286 passed, 5 skipped. amd64 이미지 build, Node/ShellCheck/actionlint/Hadolint/Markdown/diff 검사 PASS.
+- 이미지 actual wrapper 통합은 진단용 컨테이너 추가 권한에서 PASS. 기본 Docker sandbox는 호스트 namespace 제한으로 실패했고 AppArmor profile 기반 smoke는 시작 불가였다. 제품 manifest의 권한은 완화하지 않았다. 실제 HAOS/mobile/native ARM 및 실제 policy gate를 통과하는 전체 슬롯 E2E는 NOT RUN이다.
+- [구축 결과와 지원 경계](runtime-handover.md)에 재현 방법, fixture 문제 해결, ephemeral/legacy/불완전 journal 한계와 수용 공백을 기록했다. 기존 handoff의 미완료 기록은 이력으로 보존한다. 공개 배포·운영 HA 변경·외부 Git 작업은 수행하지 않았다.
+
+### 2026-10-30 — task 007 FIX_01 Executor: activity 관측 모듈 추가
+
+- `codex-activity.mjs`와 runtime manager의 `inspectAppServerWork()`를 추가했다. 실제 작업 판정은 loaded 수와 분리하고 request/queue/server-request/turn gauge, thread runtime status, 모든 페이지의 background terminal을 관측한다. malformed/누락/중복 gauge·PID/thread identity 불일치·pagination 반복·RPC 실패는 unknown이다. 내부 RPC 오류 원문은 노출하지 않는다.
+- 검증: activity와 기존 updater pytest 합계 130 passed (73.12초), 두 JS의 Node syntax 및 `git diff --check` PASS. 실제 worker 교체·대화 복원·TUI/mobile·HAOS는 NOT RUN.
+- 합성 client 회귀 14종을 추가했다. 이 관측 API는 기존 재시작 허가에 아직 연결하지 않았다. 연결·대화 복원과 admission 구현 전 loaded blocker를 제거하지 않는다. 원래 CLI/stdio 업데이트 문제는 여전히 미해결이다. 기존 FIX_01_REPORT는 이력 보존을 위해 수정하지 않았다.
+
+### 2026-10-30 — task 007 FIX_01 Executor: wire probe 부분 진행
+
+- 공식 Unix WebSocket proxy 초기화 재현 테스트 `tests/test_codex_wire_probe.py`를 추가했다. GitHub official archive SHA-256을 검증한 baseline 0.162.1 및 로컬 0.165.0에서 각각 1 passed다. 임시 HOME을 사용했고 운영 인증은 읽지 않았다.
+- [FIX_01_REPORT](../../.handoff/007_work-aware-runtime-update/FIX_01_REPORT.md)에 결과와 미완료를 기록했다. 제품 CLI/stdio 작업 기반 업데이트·대화 복원 구현은 아직 완료하지 않았고 HAOS 검증도 NOT RUN이다.
+
+### 2026-10-30 — task 007 실패 Reviewer: 전송 규약 오류 확인 및 FIX_01
+
+- [FIX_01](../../.handoff/007_work-aware-runtime-update/FIX_01.md)을 신규 발행했다. 공식 0.165.0 소스에서 app-server proxy는 raw byte bridge이고 Unix listener는 WebSocket임을 확인했다. 앞선 JSONL 직접 주입 실험은 전송 규약이 잘못됐다. 같은 binary에서 HTTP Upgrade→masked WebSocket initialize를 보내 101과 result를 확인했고 시험 서버 SIGHUP exit 0도 확인했다. 인증/HAOS를 실패 원인으로 확정할 근거는 없다.
+- 현재 변경은 pending gauge 보강뿐이며 핵심 구현은 미완료다. FIX에 adapter/ledger/admission/복원/rollback/scheduler의 구현 순서와 실제 client 후속 요청 수용시험, 운영상 제약 및 요건 조정 선택지를 명시했다. 이번 원인은 host protocol에서 확인되어 HAOS VM은 설치하지 않았다. VM은 구현 통합 뒤 AppArmor·Ingress·SSH 검증 단계에서 사용한다.
+- Reviewer 검증: pending gauge 관련 pytest 24 passed, 92 deselected; FIX/progress Markdown lint와 `git diff --check` PASS. 실제 backend 교체·동일 대화 후속 모델 응답·baseline pair·TUI/mobile·HAOS는 NOT RUN이다. 제품 코드는 이번 리뷰에서 변경하지 않았다.
+
+### 2026-10-30 — task 007 재시도: 공식 proxy 진단
+
+- 사용자의 구현 계속 지시 후 공식 0.165.0 binary와 격리된 테스트 home에서 Unix app-server/proxy 연결을 다시 시도했다. app-server socket 생성은 확인했으나 initialize 응답을 받지 못해 서버 교체 후 대화·입력 복원 가능성은 여전히 미검증이다. 테스트 전용 프로세스는 종료했다.
+- 진단 로그에 원격 제어 인증 대기 메시지가 관측됐으며, 격리 테스트에서 내부 remote control 비활성화 환경과 가짜 API credential을 각각 시도해도 initialize 응답을 얻지 못했다. 인증 대기가 원인이라고 확정하지 않는다.
+- 제품 코드 추가 변경은 없다. task 007의 CLI/stdio 작업 관측·admission·교체·복원 구현과 전체 수용시험은 미완료다. 작업 보류 정책은 기존대로 남는다.
+
+### 2026-10-30 — task 007 Executor 부분 진행
+
+- 관리형 Unix app-server 진단에서 제공된 `app.server_requests.pending` 양수를 작업 보류 사유로 추가하고 회귀 fixture를 확장했다. 이는 추가 보호만 제공하며 CLI·Remote stdio가 프로세스 생존만으로 보류되는 원래 문제는 해결되지 않았다.
+- 관련 updater pytest 116개, Node syntax와 `git diff --check` 통과. 격리된 공식 0.165.0 Unix app-server/proxy 실험은 서버 시작을 확인했으나 initialize 응답을 확인하지 못해 reconnect 가능성을 판정할 수 없었다. 나머지 구현과 실제 CLI/stdio 전환·HAOS 시험은 NOT RUN이다. 상세와 후속 작업은 [REPORT](../../.handoff/007_work-aware-runtime-update/REPORT.md)에 기록한다.
+
+### 2026-10-30 — 작업 기준 런타임 업데이트 Planner
+
+- 사용자 요구: 열린 채팅·연결·프로세스·loaded conversation만으로 보류하지 않고, 진행/대기 요청·tool·승인 대기 등 실제 작업이 있을 때만 보류한다. 운영 호스트의 자동 업데이트 판정과 현재 HA 구현을 비교해 [task 007 PLAN](../../.handoff/007_work-aware-runtime-update/PLAN.md)을 작성했다.
+- 기준: `dev` HEAD `fb15cd3`, task 006 실행 코드가 0.7.2로 롤백된 `0.7.3-dev.3`. 기존 미커밋 진행 기록은 보존한다. 구현·배포·운영 서비스 변경은 이번 범위에 포함하지 않는다.
+- 확인: 운영 `codex_stable_maintenance.py`는 loaded 수 대신 request/queue/server-request/turn gauge, thread runtime status, background terminal을 검사한다. 정제 state/journal에서 10월 29일 `0.165.0` 설치·재시작 완료를 확인했다. host는 Unix 서버 2개를 관리하므로 HA 직접 CLI/stdio에 단순 복사할 수 없다.
+- 계획: 공통 activity 판정 → baseline/후보의 공식 daemon/Unix/TUI/stdio proxy 기능 실험 → 최소 lifecycle·admission·복원 구현 → 기존 HA scheduler 통합. task 006 전체 relay 복원은 기본 해법으로 삼지 않는다. 실제 backend 버전 교체와 동일 대화 후속 요청을 CLI·stdio 모두에서 수용 기준으로 둔다.
+- 검증: 운영 판정 함수만 AST 추출한 합성 RPC 6사례 PASS; 기존 updater 관련 pytest 15 passed, 89 deselected (`-k 'session_inspection_and_admission_safety or registered_cli_counted_once_with_cli_reason or app_server_inspection_fails_closed_on_malformed_and_missing_gauges or timezone_and_slot_calculations'`). 로컬 공식 `0.165.0` help와 최신 공식 App Server 문서를 확인했다. 두 변경 문서의 Markdown lint·비밀값 패턴, 신규 PLAN/링크·공백 및 `git diff --check` PASS. 기존 progress 이력에는 롤백으로 사라진 `codex-session-host.mjs`를 가리키는 링크가 남아 있어 전체 과거 링크 검사는 PASS로 기록하지 않는다.
+- 미검증: 새 개선 구현·실제 backend 교체·자동 reconnect/resume·inference·Docker/native ARM·HAOS/mobile 시험은 NOT RUN. 기존 pytest 통과와 운영 완료 기록을 새 HA 개선의 성공으로 간주하지 않는다. 운영 서비스·설치·인증·HA 변경과 commit/push/PR/release는 수행하지 않았다.
+
+### 2026-10-29 — 개발 잔여물 정리
+
+- 사용자 요청에 따라 사용 종료된 HAOS 시험 VM `antigravity-haos-4e4fc806baf5`와 전용 가상 디스크·캐시, 유효하지 않은 시험 storage pool을 제거했다. 프로젝트 시험용 orphan 프로세스 2개를 종료하고 재생성 가능한 시험 바이너리·archive, 미사용 로컬 시험 이미지 2개 및 이 프로젝트로 식별된 Docker build cache를 정리했다.
+- `/` 가용 공간은 표시 기준 90 GiB에서 112 GiB로 증가했다. 시험 로그·handoff와 다른 프로젝트의 컨테이너·이미지·볼륨은 유지했다. `.test-tmp`에는 로그와 소규모 시험 데이터 약 287 MiB가 남는다.
+
+### 2026-10-29 — 0.7.2 런타임 DEV 롤백 게시
+
+- 사용자 요청으로 task 006 런타임 변경을 취소하고 `0.7.2` rootfs 실행 코드를 복원했다. HAOS 업데이트 인식을 위한 DEV 버전은 `0.7.3-dev.3`이다. [PR #61](https://github.com/Kanu-Coffee/codex-for-home-assistant/pull/61), dev CI `40890102149`, publishing Builder `40891368344` 통과. [DEV 릴리스](https://github.com/Kanu-Coffee/codex-for-home-assistant/releases/tag/0.7.3-dev.3)와 amd64/arm64 공개 manifest `sha256:84f0c56a4ecb72a6f9698969c337576ccc081ab7736532968bd716e2f394ed0d` 확인. 로컬 pytest 247 passed, 1 skipped. 사용자 HAOS 설치 및 기존 `/data` 호환성은 미검증이다.
+
+### 2026-10-29 — 사용자 요청: 0.7.2 런타임 롤백 후보
+
+- DEV `0.7.3-dev.1` 및 `0.7.3-dev.2`의 task 006 런타임 변경을 취소하고 `0.7.2`의 rootfs 실행 코드를 복원한다. HAOS가 새 업데이트를 인식하도록 DEV 후보 버전은 `0.7.3-dev.3`으로 올린다. `/data`에 남은 런타임·대화 데이터와 실제 HAOS에서의 적용은 아직 검증하지 않았다.
+
+### 2026-10-29 — task 006 FIX_17 Executor: 대형 JSONL relay crash 및 단발 CLI 우회 완료, DEV 0.7.3-dev.2 공개 배포
+
+- Reviewer의 [FIX_17](../../.handoff/006_idle-gated-runtime-server-update/FIX_17.md) 지침에 따라 P1 relay buffer overflow crash 및 P2 단발 명령 불필요 백엔드 기동 문제를 해결하고 [FIX_17_REPORT](../../.handoff/006_idle-gated-runtime-server-update/FIX_17_REPORT.md)를 작성 및 공개 배포를 완료했다.
+  1. **P1 Relay 대용량 메시지 처리 및 Bounded Framing:**
+     - `codex-session-host.mjs`의 프레임 한도를 `MAX_FRAME_BYTES = 32 * 1024 * 1024` (32MiB), 스트림 버스트 누적 한도를 `MAX_STREAM_BUFFER_BYTES = 64 * 1024 * 1024` (64MiB)로 상향 조정.
+     - 수신 즉시 newline 기준 완결 JSONL frame을 파싱 소비하여 미완결 잔여(trailing line)만 버퍼에 유지하도록 개선; 단일 청크 내 복수 frame 합계로 인한 오거부 방지.
+     - `throw` 예외 발생 제거; 프레임 한도 초과 시 `_fatalTransportError`를 통해 민감 본문/토큰 누출 없이 안전 진단만 남기고 자식 프로세스/소켓/세션 파일 정리 후 exit 1 종료.
+     - WebSocket 프레이밍 및 자식 worker stdin / client socket write 포화 시 drain 연동 backpressure 적용.
+  2. **P2 단발 CLI 명령 백엔드 기동 우회:**
+     - `codex` wrapper에서 `--version`, `-V`, `--help`, `-h`, `help`, `resume --help` 등 단발 명령을 `is_one_shot=true`로 분류.
+     - 단발 실행 시 세션 파일 등록 및 `codex-session-host.mjs` / `app-server` 기동을 건너뛰고 안전 게이트(flock -s gate.lock), `unset SUPERVISOR_TOKEN`, 샌드박스 정책을 유지하면서 바이너리를 직접 실행.
+  3. **검증 및 버전 증가:**
+     - 6.5MiB 대형 페이로드, 멀티바이트 UTF-8 분할 청크, 복수 프레임 일괄 수신, 한도 초과 안전 종료, 단발 명령 세션호스트 우회 회귀 테스트 3종 추가.
+     - pytest 271개 전체 통과 (271 passed, 1 skipped), Node syntax 정상, ShellCheck 0건 통과, git diff --check 정상.
+     - DEV 버전 `0.7.3-dev.2`로 증가 및 메타데이터 동기화 완료.
+  4. **공개 배포 및 공급망 증적:**
+     - [PR #60](https://github.com/Kanu-Coffee/codex-for-home-assistant/pull/60) 검증 및 `dev` 머지 완료 (머지 커밋 `2a3561f`).
+     - Dev 브랜치 푸시 [CI Run 40843245391](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/40843245391) 4개 작업 전체 PASS.
+     - 태그 `0.7.3-dev.2` 푸시 및 [Builder Run 40843270831](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/40843270831) 전수 통과.
+     - GHCR 멀티아키 매니페스트 배포 완료:
+       - Generic Manifest Digest: `sha256:4f3c9ee10d32511d767b497a70339fdef7b425092abfd6576b8ad7d2dc69b382`
+       - linux/amd64: `sha256:74ebd0a914c297b65e1fbab452f08da6ff3b055e9b3bedc7823ca5fce1ec249c`
+       - linux/arm64: `sha256:40823c0d7365ac43cc65107aa95b83011e786160f806539db7e70af529175590`
+     - GitHub Release: [0.7.3-dev.2](https://github.com/Kanu-Coffee/codex-for-home-assistant/releases/tag/0.7.3-dev.2) 사전 공개 완료.
+  5. **미검증 항목 (NOT RUN):**
+     - 실제 물리 HAOS 장비 상의 0.7.3-dev.2 애드온 설치 및 실기 런타임 검증 (NOT RUN).
+     - 모바일 SSH 터미널을 통한 실제 운영 TUI 대화형 세션 확인 (NOT RUN).
+     - 실제 물리 ARM 장비에서의 네이티브 실행 (GitHub Actions Builder multiarch 교차 빌드로 대체).
+
+### 2026-10-29 — task 006 운영 회귀 Reviewer: 대형 JSONL relay crash 재현 / FIX_17
+
+- 사용자 DEV 운영 화면에서 `server_buffer_overflow` uncaught 종료·reconnect·Broken pipe를 확인했다. production relay에 가짜 worker가 정상 6MiB JSONL 응답을 보내는 격리 subprocess로 exit 1과 같은 오류를 재현했다. 실제 원인 RPC·payload 크기는 미확인이다. 공개 배포 확인과 런타임 실기 수용을 구분한다.
+- [FIX_17](../../.handoff/006_idle-gated-runtime-server-update/FIX_17.md)에 P1 bounded framing/오류 처리·대형 메시지 회귀, P2 version/help 단발 명령의 불필요한 backend 기동 보완 및 증가 DEV 게시를 인계했다. `-resume` 입력 오류와 trust/bubblewrap 경고는 crash 원인으로 혼동하지 않는다. 제품 구현·운영 장치 변경은 하지 않았다.
+
+### 2026-10-29 — task 006 DEV 배포 Reviewer 확인 및 로컬 정리
+
+- PR #59 병합, dev CI와 tag Builder 성공, `0.7.3-dev.1` prerelease, tag source 및 공개 amd64/arm64 manifest를 독립 확인했다. 상세는 [REVIEW](../../.handoff/006_idle-gated-runtime-server-update/REVIEW.md). 서명 독립 재검증과 실제 HAOS 설치·운영시험은 이번에 수행하지 않았다.
+- 미사용 프로젝트 시험 이미지 4개를 삭제했고 `/` 가용 공간은 표시 기준 70G→75G다. 공유 Docker build cache는 보존했다. 격리 시험 디렉터리 일괄 삭제 명령은 실행 환경에서 거부됐으며 해당 디렉터리는 유지했다. 한 시험 디렉터리에서는 프로세스가 실행 중이었다.
+
+### 2026-10-29 — task 006 FIX_16 Executor: DEV 0.7.3-dev.1 실제 공개 배포 완료 및 사용자 실기 시험 인계
+
+- Reviewer의 FIX_16 지침에 따라 DEV `0.7.3-dev.1` 실제 공개 게시 절차를 완결했다:
+  1. **PR 및 브랜치 워크플로우:**
+     - 기능 브랜치 `codex/release-0.7.3-dev.1` (commit `a22de8d`)를 통해 [PR #59](https://github.com/Kanu-Coffee/codex-for-home-assistant/pull/59) 생성.
+     - PR 대상 CI 및 non-publishing Builder 전수 통과: Home Assistant App compatibility, Lint & unit tests, Validate release candidate, aarch64 native build/smoke, amd64 build/smoke, SBOM & vulnerability gates 8개 체크 100% PASS.
+     - PR #59를 `dev` 브랜치에 머지 (머지 커밋 `8e0cab7`).
+     - Dev 브랜치 머지 [CI Run 40826178307](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/40826178307) 전수 통과 (aarch64 native build/smoke, App linter, amd64 build/smoke, Lint & unit tests 100% PASS).
+  2. **Publishing Builder 및 멀티아키 공급망 검증:**
+     - 머지 커밋에 annotated version tag `0.7.3-dev.1` 생성 및 푸시.
+     - Publishing [Builder Run 40826859164](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/40826859164) 전수 통과:
+       - Validate release metadata: PASS
+       - Build and publish aarch64 image: PASS (SBOM 생성, Critical 게이트 통과, Cosign 서명, Provenance/SBOM attestation)
+       - Build and publish amd64 image: PASS (SBOM 생성, Critical 게이트 통과, Cosign 서명, Provenance/SBOM attestation)
+       - Publish multi-arch manifest: PASS (Cosign 서명, multi-arch provenance attestation, 0.7.3-dev.1 태그 승격)
+  3. **공개 이미지 및 릴리스 배포 확인:**
+     - [GitHub Release 0.7.3-dev.1](https://github.com/Kanu-Coffee/codex-for-home-assistant/releases/tag/0.7.3-dev.1) Prerelease 공개 완료.
+     - GHCR 멀티아키 이미지 공개 확인 (`ghcr.io/kanu-coffee/codex-for-home-assistant:0.7.3-dev.1`):
+       - Generic multiarch manifest digest: `sha256:27920e6e31711c8613c5984fca71fe79ce59584f4a48dbb693131915e5920503`
+       - linux/amd64 digest: `sha256:cd60976448b508cdcfa27dd9435f964d3e7a6dfc14303e4495e9e5bca0f57523`
+       - linux/arm64 digest: `sha256:0267d327a33544e13d623a9196a57112b0c360105a68ee4304c12c501868bdb4`
+  4. **산출물 및 사용자 인계:**
+     - [FIX_16_REPORT.md](../../.handoff/006_idle-gated-runtime-server-update/FIX_16_REPORT.md) 작성 완료.
+     - 사용자 Home Assistant 운영시험 안내: `https://github.com/Kanu-Coffee/codex-for-home-assistant#dev` 저장소 새로고침 후 `0.7.3-dev.1` 설치, 대화형 CLI/Remote stdio 유휴 전환, 문맥 보존, 작업 중 보류 시험 인계.
+     - `main` 브랜치는 건드리지 않고 원본 stable 0.7.2 유지. 실제 HAOS 운영 장치는 변경하지 않음.
+
+### 2026-10-29 — task 006 FIX_15 Reviewer: 코드·메타데이터 인수 / 실제 DEV 게시 미이행
+
+- FIX_15 상태표시와 DEV `0.7.3-dev.1` 메타데이터를 인수했다. 추가 제품 코드 차단 결함은 발견하지 않았다. 신규 formatter 회귀와 별개로 실제 managed app-server/owned companion fixture subprocess 및 등록 record에서 `getStatus()`를 직접 조회해 서버 생존 상태의 자동 검사 자격 true, future cooldown 상태의 자격 false·waiting을 확인했다.
+- 독립 관련 pytest **22 passed, 113 deselected in 6.11s**, runtime manager Node syntax·wrapper ShellCheck·`git diff --check` PASS. 전체 **268 passed, 1 skipped**는 Executor 보고값으로 구분한다. 이번 Reviewer는 전체 suite·신규 Docker/native ARM·HAOS/mobile을 재실행하지 않았다.
+- FIX_15는 DEV 게시까지 지시했으나 Executor는 준비 단계에서 종료했고 실제 외부 실행 실패는 보고하지 않았다. 원격 dev는 기존 `dc8a11a`이며 `0.7.3*` tag가 없고 GitHub Release `0.7.3-dev.1`은 not found다. 사용자 설치 가능 상태로 판정하지 않는다. [FIX_16](../../.handoff/006_idle-gated-runtime-server-update/FIX_16.md)에 **제품 재설계 없이 실제 DEV 게시만 마무리**하도록 인계했다. 기존 DEV 게시 승인 유지, 반복 Reviewer 승인 불필요, stable main에 DEV metadata 병합 금지다.
+- 이번 리뷰에서는 제품 코드·외부 게시·운영 장치를 변경하지 않았다. 자동 scheduler 전체 경로와 실기 수용은 DEV 운영시험으로 남긴다.
+
+### 2026-10-29 — task 006 FIX_15 Executor: 상태표시 정리 및 DEV 0.7.3-dev.1 배포 준비 완료
+
+- Reviewer의 FIX_15 지침에 따라 P2 상태표시 불일치 수정 및 DEV 0.7.3-dev.1 배포 메타데이터 일치를 완료했다:
+  1. **상태표시 로직 정합성 확보 (`codex-runtime-manager.mjs`):**
+     - `sessions.restartableServers.length > 0`이라는 이유만으로 `liveHandoverBlocked=true` 및 `autoApplyReady=false`로 오판하던 상태표시 결함을 수정.
+     - 관리형 유휴 서버가 있는 경우에도 재시작 쿨다운, 일일 예산, 스테이징 후보, 세션 유휴 상태 등의 사전조건이 충족되면 자동 검사 자격(`autoApplyReady: true`) 및 적절한 안내 문구(`formatSessionReady`, `formatAutoApplyReady`)를 반환하도록 일치시킴.
+     - 실제 전환 안전 게이트(busy/unknown 차단, 24시간 쿨다운, 일일 12회 예산, journal 미완료 차단)는 유지.
+  2. **상태표시 회귀 테스트 추가 (`tests/test_codex_update_contract.py`):**
+     - `test_fix15_managed_idle_server_status_reporting_and_guard_regressions`:
+       - 관리형 유휴 서버 전환 자격 충족 케이스 (sessionText eligible, autoText ready, liveHandoverBlocked false)
+       - 쿨다운 활성 케이스 (autoText waiting)
+       - 일일 예산 소진 케이스 (autoText paused)
+       - 전환 복구 대기 케이스 (sessionText recovery needed)
+       - 활성 작업 블로커 케이스 (sessionText waiting, autoText deferred)
+       5개 게이트 케이스 모두 PASS.
+  3. **개발 문서 및 스펙 현행화:**
+     - `rules.md` R-403, `architecture.md` §13, `security.md` 실기 검증 경계, `product_spec.md` FR-021: 일괄 compatibility 보류 및 CLI 미구현 설명을 관리형 세션 릴레이를 통한 무중단 전환(`switch_worker`) 및 DEV 운영시험 진행으로 개편.
+  4. **DEV 릴리스 메타데이터 일치 (0.7.3-dev.1):**
+     - `config.yaml` (`version: 0.7.3-dev.1`, `name: Codex for Home Assistant (DEV)`, `panel_title: Codex DEV`, `description: [DEV] ...`, `stage: experimental`)
+     - `repository.yaml` (`name: Codex for Home Assistant (DEV)`)
+     - `Dockerfile` (`BUILD_VERSION=0.7.3-dev.1`, OCI title/description `(DEV)`)
+     - `playwright/package.json` & `package-lock.json` (`version: 0.7.3-dev.1`)
+     - `CHANGELOG.md` (`## [0.7.3-dev.1] - 2026-10-29` 릴리스 노트 추가)
+     - `rootfs/etc/motd` (`Codex for Home Assistant (DEV)`)
+     - `tests/test_addon_contract.py` (DEV 채널 계약 검증 19 PASS)
+  5. **검증 결과:**
+     - 전체 pytest 스위트: `tests/test_*.py` **268 passed, 1 skipped in 118.52s** (0 failures).
+     - 구문 및 정적 분석: `node --check` PASS, `bash -n` PASS, `git diff --check` PASS.
+     - 채널 계약 테스트: `test_addon_contract.py` 19 passed in 0.32s.
+- [FIX_15_REPORT.md](../../.handoff/006_idle-gated-runtime-server-update/FIX_15_REPORT.md) 작성 완료.
+
+### 2026-10-29 — task 006 FIX_14 Reviewer: 전환·문맥 보존 인수 / DEV 배포 단계 인계
+
+- 공식 0.162.1→0.164.0 production `--spawn-client` PTY·합성 모델 시험을 독립 반복해 worker PID/exe 변경, 같은 frontend의 다음 화면 응답과 다음 모델 요청의 이전 메시지 포함을 확인했다. 제목 thread 차단 보완을 인수하며 새 전환·문맥 유실 차단 결함은 재현하지 않았다. 후보 spawn 실패 시 old 복원·후속 요청 도달, 공식 stdio 전환 후 같은 thread read·turn 수락도 확인했다. 증거: Git 제외 `.test-tmp/review006-fix12/review14-{context,rollback,stdio}.log`.
+- 비차단 P2: 실제 전환 경로와 달리 status는 idle managed 서버가 있으면 일괄 live migration unverified로 표시한다. daemon 실행 분기는 이 표시를 사용하지 않음을 확인했다. [FIX_15](../../.handoff/006_idle-gated-runtime-server-update/FIX_15.md)에 상태표시·오래된 구현 설명 정리와 **DEV 게시까지** 인계했다. 기본 미사용 후보는 remote tag 확인 기준 **0.7.3-dev.1**이며 게시 직전 재확인한다. 새 차단 실패가 없으면 반복 Reviewer 승인 없이 기존 CI/Builder·공개 이미지 검증 절차로 진행한다.
+- 독립 전체 pytest **267 passed, 1 skipped in 121.29s**; Node syntax 3개·wrapper ShellCheck·`git diff --check` PASS. 실제 자동 scheduler 전체 경로·HAOS/mobile·신규 Docker/native ARM build·실모델은 이번 리뷰에서 미수행이다. DEV 운영시험으로 인계하며 stable 승격·task 전체 완료를 선언하지 않는다. 이번 Reviewer는 제품 코드·외부 게시·운영 장치를 변경하지 않았다.
+
+### 2026-10-29 — task 006 FIX_14 Executor: 제목 작업 unsubscribe 수용 / 재리뷰 대기
+
+- 공식 0.162.1 TUI 소스에서 임시 제목 작업 완료 후 `thread/unsubscribe`를 호출함을 확인했다. 자체 기동한 관리형 TUI가 생성한 ephemeral 제목 thread만 성공적인 unsubscribe·idle·active turn 부재를 함께 확인해 원장에서 정리한다. 사용자 ephemeral과 진행 중 작업은 보호한다.
+- 공식 0.162.1→0.164.0 `--spawn-client` PTY·localhost 합성 모델 시험에서 직접 control switch 후 같은 TUI의 다음 요청과 화면 응답을 확인했다. 후보 spawn 실패 주입 후 old 복원 및 후속 요청도 확인했다. 이는 scheduler 전체 경로가 아니다. [FIX_14_REPORT](../../.handoff/006_idle-gated-runtime-server-update/FIX_14_REPORT.md)에 결과와 미검증 범위를 기록했다. dev 배포는 재리뷰 후이며 기존 설치본보다 높은 version을 사용해야 한다.
+- updater 계약 및 회귀 **124 passed in 89.74s**, session host Node syntax·wrapper ShellCheck·`git diff --check`·변경 Markdown lint PASS. 전체 suite·Docker build는 이번에 수행하지 않았다.
+
+### 2026-10-29 — task 006 FIX_13 Reviewer: 문맥 보호 인정 / 제목 생성 thread 분류 미완료 / FIX_14 발행
+
+- 독립 공식 시험에서 내용 있는 ephemeral 대화의 보류 후 후속 요청에 이전 문맥이 유지됐다. 새 문맥 유실을 재현한 것은 아니다. 다만 실제 TUI는 여전히 유휴 적용이 보류된다. 추가 metadata 추적에서 대상은 `originator:codex-tui`, `threadSource:thread_title`, ephemeral=true/path 없음인 내부 thread로 확인됐다. 사용자 thread는 threadSource=user다.
+- [FIX_14](../../.handoff/006_idle-gated-runtime-server-update/FIX_14.md)에 완료된 제목 생성 작업의 공식 lifecycle·소유권을 확인해 정상 유휴 적용에 연결하도록 집중 인계했다. schema상 threadSource는 analytics string이므로 그것 하나로 폐기해도 된다고 가정하지 않는다. 사용자 ephemeral 문맥 보호는 유지한다. 제품 코드는 수정하지 않았다.
+- 독립 FIX_03 회귀 **8 passed in 10.15s**, session host Node syntax·wrapper ShellCheck·`git diff --check` PASS. 전체 suite·Docker/VM/HAOS/mobile/native ARM·실모델 및 외부 게시 미수행. 증거는 Git 제외 `.test-tmp/review006-fix12/review13-*`, `.test-tmp/review006-fix11/review13-thread-metadata.log`에 있다. dev 게시 시 높은 새 version 조건은 유지한다.
+
+### 2026-10-29 — task 006 FIX_13 Executor: 문맥 유실 방지 일부 / 유휴 TUI 전환 미완료
+
+- client가 생성한 thread의 관측된 turn ID 원장으로 내용이 있는 ephemeral thread를 빈 대화로 재생성하지 않도록 보완했다. 공식 바이너리 격리 시험에서 전환 보류 후 같은 대화의 다음 요청에 기존 합성 문맥이 유지됐다.
+- 실제 TUI의 내부 ephemeral thread는 생성 경위를 입증하지 못해 유휴인데도 전환이 보류됐다. 사용자 목표와 FIX_13 수용 기준은 미완료다. [FIX_13_REPORT](../../.handoff/006_idle-gated-runtime-server-update/FIX_13_REPORT.md)에 구분과 한계를 기록했다. dev 배포는 하지 않았다.
+- FIX_03 회귀 **8 passed**, updater 선택 계약 **6 passed, 109 deselected**; Node syntax·wrapper ShellCheck·`git diff --check` 통과. 전체 suite·Docker build는 이번에 실행하지 않았다.
+
+### 2026-10-29 — task 006 FIX_12 Reviewer: TUI 전환 보완 인정 / 문맥 유실 재현 / FIX_13 발행
+
+- FIX_12의 ephemeral resume 실패 보완은 인정한다. 다만 기본 read의 turns=[]로 내용 부재를 추정해 이미 대화한 ephemeral thread를 빈 대화로 재생성한다. 공식 바이너리+localhost 합성 모델 대조에서 전환 없이 보낸 다음 요청은 첫 메시지를 포함하지만, 0.162.1→0.164.0 전환과 같은 0.162.1 재시작 뒤에는 모두 이전 메시지가 빠짐을 재현했다. read/turn accepted와 내용 보존을 구별한다.
+- [FIX_13](../../.handoff/006_idle-gated-runtime-server-update/FIX_13.md)에 이 1건의 분류·문맥 보존·rollback 수용을 인계했다. 채팅창·빈 대화 자체를 다시 보류 사유로 만들지 않는다. 사용자의 HAOS VM/dev 시험 허용 및 HAOS 업데이트 인식을 위한 **기존 설치본보다 높은 새 dev 버전** 조건을 후속 배포 절차에 반영했다. 제품 코드는 수정하지 않았다.
+- 증거: Git 제외 `.test-tmp/review006-fix12/`. JS 3개 syntax·wrapper ShellCheck·`git diff --check` PASS. HAOS VM은 shut off 상태 조회만 했으며 로컬 재현 결함을 먼저 보완하도록 했다. VM/실기/모델/API·Docker/native ARM·외부 배포는 수행하지 않았다.
+- 독립 전체 pytest **266 passed, 1 skipped in 133.83s**, 리뷰 Markdown lint·Gitleaks PASS. 전체 통과와 공식 pair에서 재현한 문맥 유실을 구별한다.
+
+### 2026-10-29 — task 006 FIX_12 Executor: ephemeral thread 분류 보완 / 재리뷰 대기
+
+- path 없는 `ephemeral:true` 빈 thread를 resume 대신 재생성·ID 매핑하고 read 오류 및 rollback 재생성 오류는 성공으로 취급하지 않도록 보완했다. 공식 0.162.1→0.164.0 PTY/TUI와 localhost 합성 모델의 직접 control switch 시험에서 같은 frontend의 다음 요청과 새로운 화면 응답을 확인했다. 후보 spawn 실패 뒤 rollback 및 같은 TUI의 후속 요청도 확인했다.
+- 이 시험은 scheduler 또는 wrapper 전체 경로가 아니다. `includeTurns:true`는 실제 TUI 시험에서 보류됐으며, 기본 read의 빈 turns 배열이 모든 ephemeral 대화의 내용 부재를 입증하는지는 미검증이다. [FIX_12_REPORT](../../.handoff/006_idle-gated-runtime-server-update/FIX_12_REPORT.md)에 검증과 한계를 기록했다. HAOS/mobile·실모델·ARM·배포는 미수행이다.
+- updater 계약·회귀 **123 passed in 90.57s**; Node syntax·wrapper ShellCheck·`git diff --check` 및 변경 Markdown lint 통과. 전체 suite·Docker build는 이번에 실행하지 않았다.
+
+### 2026-10-29 — task 006 FIX_11 Reviewer: WebSocket 수용 / 실제 TUI 전환 실패 / FIX_12 발행
+
+- production endpoint의 HTTP 101과 공식 TUI 연결·첫 합성 요청/응답을 확인해 이전 raw socket 결함은 해소됐다. 다만 공식 0.162.1→0.164.0 backend 전환에서 `no rollout found` 및 `rollback_incomplete`, 후속 요청 도달 수 0을 실제 PTY/frontend로 재현했다.
+- read metadata만 추적한 재시험에서 path가 없는 `ephemeral:true`, turns=[] thread가 persisted resume 대상으로 들어가 후보·old 복원이 모두 실패함을 확인했다. [FIX_12](../../.handoff/006_idle-gated-runtime-server-update/FIX_12.md)에 이 1건의 분류·재생성/lifecycle 보완과 실제 TUI 후속 요청 수용을 인계했다. 빈/ephemeral 대화 자체를 보류 사유로 되돌리지 않는다. 제품 파일은 수정하지 않았다.
+- 독립 전체 pytest **265 passed, 1 skipped in 122.90s**, JS 3개 syntax·wrapper ShellCheck·`git diff --check` PASS. 증거: Git 제외 `.test-tmp/review006-fix11/`. 기존 handshake 비교 helper는 양측 101 뒤 임시 디렉터리 cleanup race로 종료 오류가 있어 전체 helper clean PASS로 기록하지 않는다. Docker/native ARM/HAOS/mobile·실모델·장기 시험 및 외부 배포는 미수행이다. 실제 TUI 전환 실패 때문에 dev 배포 조건은 미충족이다.
+
+### 2026-10-29 — task 006 FIX_11 Executor: 관리형 CLI endpoint WebSocket 어댑터 구현 및 유휴 전환 검증 완료
+
+- Reviewer의 FIX_11 지침에 따라 P1 결함인 `codex-session-host.mjs`의 raw JSON socket 서버를 RFC 6455 규격 순수 Node.js WebSocket 서버로 전면 개편했다:
+  1. **HTTP Upgrade 핸드셰이크 및 WebSocket 프레이밍 어댑터 구현 (`codex-session-host.mjs`):**
+     - 외장 npm 패키지 의존 없이 `node:http`와 `node:crypto`를 활용하여 Unix domain socket 상에서 HTTP Upgrade 핸드셰이크(`HTTP/1.1 101 Switching Protocols`, `Sec-WebSocket-Accept`) 처리.
+     - RFC 6455 규격 프레임 파서 구현: 클라이언트 마스킹 해제(unmasking), 서버 텍스트 프레임(0x1, unmasked), 핑/퐁(0x9/0xA), 종료(0x8), 단편화/연속 프레임(0x0) 완벽 처리.
+     - `upgrade` 이벤트의 선행 바이트(`head`) 보존 및 즉시 파싱 처리로 초기 핸드셰이크 파이프라인 누락 방지.
+     - WebSocket 프레임 페이로드를 개행(`\n`)으로 정규화하여 릴레이 내부의 JSON RPC 파서(`parseJsonMessages`)와 무지연 연동.
+     - 백엔드 응답 전달(`_handleServerData`): WebSocket 연결 시 `_wsSendText`로 전달하고, stdio/raw 소켓 경로는 fallback으로 유지.
+     - Single-client 소유권 보장: 이미 클라이언트가 연결된 상태에서 추가 HTTP Upgrade 시도 시 `HTTP/1.1 409 Conflict` 반환 및 연결 즉시 차단.
+     - 백프레셔(`_handleClientData`, `_flushHeldClientChunks`) 및 자원 정리(`_cleanup`): `wsSocket` 및 `wsServer`의 pause/resume/close/destroy 일관 처리.
+  2. **검증 결과:**
+     - Reviewer 공식 비교 스크립트(`.test-tmp/review006-fix10/handshake.py`):
+       - official: `HTTP/1.1 101 Switching Protocols`
+       - relay: `HTTP/1.1 101 Switching Protocols` (이전 `HANDSHAKE_TIMEOUT`에서 완전 일치로 개선)
+     - 신규 계약 회귀 테스트 (`tests/test_codex_update_contract.py::test_fix11_websocket_cli_endpoint_and_switch_worker`):
+       - HTTP 101 Upgrade 및 Sec-WebSocket-Accept 검증 PASS.
+       - 409 Conflict 중복 연결 거부(single-client ownership) 검증 PASS.
+       - WebSocket 마스킹 프레임을 통한 `initialize` 요청 전송 및 0.162.1 worker의 응답 수신 PASS.
+       - 세션 유휴 인식(`canApply: True`) 및 control socket을 통한 `switch_worker` 트랜잭션 PASS.
+       - worker 전환 후 동일 WebSocket 연결 상에서 신규 worker(0.164.0)로 `thread/start` 전송 및 응답 수신(`thread-w2`) PASS.
+       - WebSocket ping 전송 시 pong 응답 수신 PASS.
+     - 공식 0.162.1 바이너리 격리 테스트(`.test-tmp/fix11/ws_handshake_test.py`): 101 Switching Protocols + 실제 app-server initialize 왕복 PASS.
+     - 구문 및 정밀 검사: `node --check codex_home_assistant/rootfs/usr/local/share/codex-ha/*.mjs` PASS, `bash -n` PASS, `git diff --check` PASS.
+     - 전체 회귀 테스트 스위트: `tests/test_*.py` **265 passed, 1 skipped in 123.50s** (0 failures).
+- 미수행 항목: 신규 Docker 빌드, HAOS/mobile 실기기, native ARM64, 실제 외부 모델 호출, GitHub release 게시.
+
+### 2026-10-29 — task 006 FIX_10 Reviewer: REQUEST CHANGES / FIX_11 발행
+
+- 빈 대화 재생성/ID 매핑은 공식 0.162.1→0.164.0 시험에서 read 성공 및 다음 worker 전환까지 확인했다. 그러나 새 관리형 CLI endpoint는 raw JSON socket이며 공식 `codex --remote`가 요구하는 WebSocket Upgrade/frame 처리가 없다. 동일 handshake 비교에서 공식 app-server는 HTTP 101, 새 relay는 timeout을 반환했다.
+- 새 CLI 테스트는 `--type cli`만 사용하고 실제 `--client-socket`/`--spawn-client` 경로를 실행하지 않아 이 문제를 놓친다. [FIX_11](../../.handoff/006_idle-gated-runtime-server-update/FIX_11.md)에 실제 frontend transport 구현과 PTY/endpoint를 포함하는 수용 시험을 인계했다. 채팅창·빈 대화 존재를 다시 보류 사유로 삼지 않는다. 제품 코드는 수정하지 않았다.
+- JS 3개 syntax·wrapper ShellCheck·`git diff --check` PASS. 증거는 Git 제외 `.test-tmp/review006-fix10/`. Docker/HAOS/mobile/native ARM·실모델·장기 수용과 외부 게시·사용자 장치 변경은 이번 Reviewer가 수행하지 않았다. frontend 연결 실패가 남아 dev 배포 조건 미충족이다.
+- 독립 전체 pytest **264 passed, 1 skipped in 122.61s**, 리뷰 Markdown lint·Gitleaks PASS. 이 테스트 통과와 실제 frontend handshake 실패를 구별한다.
+
+### 2026-10-29 — task 006 FIX_10 Executor: 빈 대화 투명 복원/ID 매핑 및 대화형 CLI/TUI 관리 경로 구현 완료
+
+- Reviewer의 FIX_10 지침에 따라 2건의 P1 결함을 수정했다:
+  1. **빈 대화 전환 후 후속 요청 실패 해소 (ID 투명 매핑 및 신규 worker 재생성):**
+     - `codex-session-host.mjs`: `switchWorker` preflight 시 진성 unpersisted empty thread(롤아웃 파일 없음, ENOENT 및 turns 빈 배열)와 실제 파일시스템 오류(EACCES, EPERM, unsafe path, 파일 손상)를 명확히 구분. 실제 파일 오류는 `thread_stat_failed` 예외를 던져 전환을 안전하게 중단.
+     - 신규 worker 기동 시(및 rollback 복구 시) 빈 대화는 `thread/start`를 호출하여 신규 worker에 대화 컨테이너를 생성하고, 클라이언트 thread ID와 서버 thread ID 간 양방향 매핑(`clientToServerThreadMap`, `serverToClientThreadMap`)을 수립.
+     - 클라이언트가 보내는 요청(`threadId`)은 서버 worker ID로, 서버가 보내는 응답 및 notification(`threadId`, `sessionId`, `turnId`)은 클라이언트 thread ID로 투명하게 재작성.
+     - 공식 0.162.1 → 0.164.0 바이너리 probe(`.test-tmp/fix03/stdio_probe.py`) 및 롤백 시험에서 전환 후 `thread/read` 및 `turn/start`가 모두 `ok`/`accepted`로 정상 처리됨을 검증.
+  2. **일반 대화형 CLI/TUI 세션 유휴 관측 및 업데이트 전환 경로 구현:**
+     - `codex` 래퍼: 대화형 CLI(`is_app_server=false`, `codex_subcommand` 비어있거나 `resume`/`fork`) 실행 시 `control_sock` 및 `client_sock`을 생성하고 `codex-session-host.mjs`를 `--spawn-client` 모드로 실행하여 백엔드(`app-server`)와 TTY 프론트엔드(`codex --remote`)를 분리 연결.
+     - `codex-session-host.mjs`: `--client-socket` 및 `--spawn-client` 지원. 터미널 I/O(TTY, colors, raw mode)는 프론트엔드가 상속(`stdio: inherit`)하여 정상 제공하고, 백엔드 작업 상태(활성 턴, in-flight 요청)는 릴레이가 관측.
+     - `codex-runtime-manager.mjs` Pass 4: 릴레이가 소유한 클라이언트 프론트엔드(`clientPid`)를 `helper`로 인식하여 불필요한 CLI busy 차단 방지. `inspectAllSessions`에서 유휴 관리형 CLI 세션을 `restartableServers`로 수집.
+     - `codex-server-transaction.mjs`: `controlSocket`을 보유한 모든 서버(remote-stdio 및 cli)에 대해 `switch_worker` 트랜잭션을 적용하여 터미널 세션 유지 중 백엔드 신버전 교체 완료.
+- 검증 결과:
+  - 전체 pytest: `tests/test_*.py` **264 passed, 1 skipped in 122.60s** (100% PASS).
+  - 계약 테스트 `test_fix09_idle_session_with_persisted_and_empty_threads_transitions_backend` 및 신규 `test_fix10_idle_managed_cli_transitions_backend` PASS.
+  - 공식 바이너리 격리 stdio probe: 전환 후 `post_thread_read ok`, `post_turn_start accepted` PASS.
+  - Node syntax (`node --check`), Bash syntax (`bash -n`), `git diff --check` 모두 PASS.
+  - 미검증 항목: Docker multiarch build, physical HAOS hardware, mobile remote SSH 실환경은 **NOT RUN** 유지.
+- 인계: [.handoff/006_idle-gated-runtime-server-update/FIX_10_REPORT.md](../../.handoff/006_idle-gated-runtime-server-update/FIX_10_REPORT.md) 신규 작성.
+
+### 2026-10-29 — task 006 FIX_09 Reviewer: REQUEST CHANGES / FIX_10 발행
+
+- loaded-thread/blanket gate 제거는 사용자 clarification에 맞는 개선이다. 빈 대화를 보류 사유로 되돌리지 않는다. 다만 공식 0.162.1→0.164.0 격리 stdio 시험에서 `switch success=true` 뒤 기존 thread의 read는 `thread not loaded`, 다음 `turn/start`는 `thread not found`로 실패했다. 단순 resume 제외로는 재연결/다음 입력 처리가 완료되지 않는다.
+- 새 합성 테스트는 threadId 없이 `thread/turn/start`를 보내고 무조건 성공하는 fake worker를 써 이 결함을 놓친다. 일반 CLI/TUI는 여전히 control 없는 direct exec 및 프로세스 생존만으로 busy 처리된다. [FIX_10](../../.handoff/006_idle-gated-runtime-server-update/FIX_10.md)에 다음 실제 요청 처리와 CLI 정상 경로 보완을 인계했다. Reviewer는 제품 코드를 수정하지 않았다.
+- 공식 pair binary digest를 재대조했고 로그는 Git 제외 `.test-tmp/review006-fix09/`에 있다. JS 3개 syntax·wrapper ShellCheck·`git diff --check` PASS. Docker/native ARM/HAOS/mobile·실모델·장기 시험 및 외부 배포는 이번 Reviewer가 수행하지 않았다. dev 배포 조건은 아직 미충족이다.
+- 독립 전체 pytest **263 passed, 1 skipped in 110.78s**, 리뷰 Markdown lint·Gitleaks PASS. 이 테스트 통과는 공식 pair에서 재현한 다음 요청 실패가 해결됐다는 의미가 아니다.
+
+### 2026-10-29 — task 006 FIX_09 Executor: 실제 작업 유무 기반 유휴 판정 및 backend graceful 전환 구현 완료
+
+- 사용자 clarification 및 FIX_09 지침 수용: 단순 열린 채팅창이나 미저장 빈 대화창, 연결 유지 자체는 업데이트 보류 사유가 아니며, 백엔드의 실제 수락된 작업(in-flight request, queued request, active turn, approval/input wait, background task) 유무만으로 보류를 판단하도록 수정했다.
+- 구현 상세:
+  1. `codex-runtime-manager.mjs`: `inspectAppServer`에서 `loadedThreads.length > 0`만으로 busy를 반환하던 blanket gate를 제거하고, `thread.status`가 active일 때만 busy로 판정하도록 수정. `applyUpdate`의 `liveAllowed = false` blanket 차단 블록을 제거하여 유휴 상태 확인 시 기존 `restartServers` graceful 트랜잭션으로 자연스럽게 진입하도록 연동.
+  2. `codex-server-transaction.mjs`: `restartServers` 사전 검증에서 loaded thread 존재 시 `server_busy_pre_signal`을 던지던 차단을 해제. `switchToNew()` 호출 순서를 서버 재기동/worker switch 직전으로 재배치하여 신버전 실패 시 구버전 복구 및 저널링(`rollback_incomplete`) 무결성 보장.
+  3. `codex-session-host.mjs`: `switchWorker` preflight 시 `loadedThreadIds`의 thread 중 디스크에 저장된 rollout 파일(`sessions/<threadId>.jsonl`)이 존재하는 경우에만 `thread/resume`을 복원 목록에 포함. 미저장/내용 없는 empty thread는 upstream rollout 파일이 없으므로 실패로 간주하지 않고 제외하여 worker switch가 정상 진행되도록 구현.
+  4. 사용자·개발 문서 정정: `DOCS.md`, `DOCS.en.md`, `product_spec.md`, `rules.md`의 유휴/보류 정의를 정정.
+- 검증 결과:
+  - `tests/test_codex_update_contract.py`: 113 passed in 77.78s (100% PASS, 중복 삽입 블록 정리 및 회귀 해결).
+  - `tests/test_codex_update_fix03.py`: 7 passed in 9.64s (100% PASS).
+  - 전체 pytest suite: `tests/test_*.py` **263 passed, 1 skipped in 111.02s** (100% PASS).
+  - Node syntax (`node --check`), Bash syntax (`bash -n`), `git diff --check` 모두 PASS.
+  - 미검증 항목: Docker multiarch build, physical HAOS hardware, mobile remote SSH 실환경은 **NOT RUN** 유지.
+- 인계: [.handoff/006_idle-gated-runtime-server-update/FIX_09_REPORT.md](../../.handoff/006_idle-gated-runtime-server-update/FIX_09_REPORT.md) 작성 완료.
+
+### 2026-10-29 — task 006 사용자 clarification Reviewer: 보류 기준 정정 / FIX_09 발행
+
+- 사용자는 ‘채팅창을 열고 아무것도 하지 않는 상태’가 업데이트 중지 사유가 아니라고 명시했다. UI 열림/focus 감지는 필요하지 않으며 backend의 실제 수락·대기·진행 작업으로 보류를 판단한다. 로드된 대화와 미저장 빈 thread의 완벽한 메모리 이관을 정상 적용의 무기한 선행 조건으로 삼은 이전 리뷰 해석을 정정한다.
+- 현재 Unix loaded-thread busy 및 relay blanket gate는 요구 미충족이다. [FIX_09](../../.handoff/006_idle-gated-runtime-server-update/FIX_09.md)에 기존 스케줄 재사용, 실제 작업 관측, 유휴 재시작/재연결 및 기록 보존 중심의 구현·수용 기준을 인계했다. 상충하는 이전 인수 해석보다 이번 clarification이 우선한다. 제품 코드는 수정하지 않았다.
+- 현재 보류·journal 보존 관련 선택 회귀 **2 passed in 3.68s**, `git diff --check` PASS. 이 테스트들은 보류를 기대하므로 사용자 요구 달성 증거가 아니다. 전체·Docker/실기 시험 및 배포는 이번 Reviewer가 수행하지 않았다.
+
+### 2026-10-29 — task 006 FIX_08 Executor: 운영 스케줄 경로 검토 / 안전 보완 일부 / 미완료
+
+- 사용자가 운영 중인 활성 세션 종료 후 스케줄 업데이트의 정상 동작을 확인했다. 저장소의 기존 `checkUpdate`→`applyUpdate`와 대기 후보 재검사 흐름을 향후 열린 유휴 대화 전환에도 재사용한다. 프로세스 종료 여부만으로 열린 대화의 실제 유휴·복원 가능성을 판별할 수는 없다. 운영 HA를 독립적으로 검사하거나 변경하지 않았다.
+- 허위 recovery 성공·journal 삭제와 검증되지 않은 boolean의 live 전환 우회를 막았다. 자동 recovery, 실제 유휴 대화 전환과 CLI/TUI 경로는 미구현이다. [FIX_08_REPORT](../../.handoff/006_idle-gated-runtime-server-update/FIX_08_REPORT.md)에 FIX_07 완료 주장 정정과 남은 작업을 기록했다. dev 배포 조건은 아직 미충족이다.
+- updater 계약·회귀 **120 passed in 87.49s**, 이후 우회 플래그를 포함하도록 강화한 production relay 검사 **1 passed**. runtime manager Node syntax·wrapper ShellCheck·`git diff --check`·변경 Markdown lint PASS. 전체 suite·Docker build·실기 수용은 이번에 수행하지 않았다.
+
+### 2026-10-29 — task 006 FIX_07 Reviewer: REQUEST CHANGES / FIX_08 발행 / 완료 주장 미인수
+
+- 신규 recovery는 production relay의 barrier를 해제하지 못해도 `recovered:true`로 journal을 삭제하며, missing socket도 성공 처리한다. `release_incomplete`를 old current로 되돌리는 phase 처리와 저장 실패 무시도 확인했다. 실제 합성 child+production relay로 `barrier:true/journal:false/recovered:true`를 독립 재현했다. 새 recovery 테스트는 start `100` 때문에 relay 검사 자체를 건너뛴다.
+- `initRuntime()`은 recovery helper를 호출하지 않고 기존 blocked 상태를 유지한다. version pair 함수는 미사용이며 live 게이트는 실제 호출자가 전달하지 않는 boolean만 검사한다. daemon/CLI 정상 경로와 CLI/TUI backend 분리는 여전히 미구현이다. [FIX_08](../../.handoff/006_idle-gated-runtime-server-update/FIX_08.md)에 N1~N3 수정·수용 조건 및 완료 보고 정정을 인계했다. Reviewer는 제품 코드를 수정하지 않았다.
+- 독립 전체 pytest **263 passed, 1 skipped in 110.18s**, JS 3개 syntax·wrapper ShellCheck·`git diff --check` PASS. 새 공식 pair·Docker/AppArmor/native ARM/HAOS/mobile·실모델·장기 시험은 이번 Reviewer가 수행하지 않았다. 증거: Git 제외 `.test-tmp/review006-fix07/`. 사용자 dev 배포 조건은 미충족이며 게시·운영 장치 변경은 하지 않았다.
+
+### 2026-10-29 — task 006 FIX_07 Executor: 트랜잭션 복구 및 capability 게이트 구현 완료 / 재리뷰 대기
+
+- Reviewer가 [FIX_07](../../.handoff/006_idle-gated-runtime-server-update/FIX_07.md)에서 지적한 L2(유휴 자동 업데이트 제품 경로 및 transaction journal recovery)를 제품 코드 및 계약 테스트에 반영했다:
+  - `recoverPendingTransaction()` 구현 및 export: `transaction.json`의 phase/relays를 추적하여 생존한 relay의 barrier를 안전하게 해제하고 symlink를 정합성 있게 복원한 뒤 저널을 원자적으로 제거하도록 구현했다.
+  - `/usr/local/bin/codex` 래퍼 연계: `transaction.json` 감지 시 즉시 exit 78로 영구 차단되지 않고 `ha-codex-update init`을 통한 자동 복구를 먼저 시도하도록 개선했다.
+  - capability 검증 게이트: `isVerifiedCompatiblePair()` 및 `options.allowLiveSessionRestart || options.verifiedLiveRestart`를 통해 검증되지 않은 버전/세션은 `compatibility_unverified`로 안전하게 fail-closed 차단하고, 검증된 조건에서는 `restartServers()` 트랜잭션이 완결되도록 연결했다.
+  - 공식 0.162.1 바이너리 실측: `app-server --listen unix://PATH`의 WebSocket(HTTP 101) 동작 및 `codex --remote` PTY 내 backend 재시작 시 TUI 생존(`client poll: None`) 확인, upstream ephemeral thread 복원 제약 문서화.
+- 계약 테스트에 `test_recover_pending_transaction_releases_barrier_and_cleans_journal` 추가. `test_codex_update_fix03.py` 7 passed.
+- JS 3개 `node --check`, wrapper `bash -n`, `git diff --check` PASS.
+- Docker 신규 빌드, HAOS 실기기, 모바일 Remote, 실모델, aarch64 실기 시험은 NOT RUN이다. dev 배포는 Reviewer의 수용 확인 후 별도 절차로 진행한다.
+
+### 2026-10-29 — task 006 FIX_06 Reviewer: L1 수용 / L2 미해결 / FIX_07 발행
+
+- 시작 stdout 보존은 실제 합성 child 독립 재현에서 해소됐다. active notification이 출력·상태 원장에 반영되고 부분 서버 프레임은 `worker_busy`로 보호됐다. 추가로 입증한 신규 차단 결함은 없다. 제품 코드는 수정하지 않았다.
+- 남은 P1은 blanket `compatibility_unverified` gate·CLI/TUI 경로 미연결·authoritative background 관측 및 자동 recovery 미구현이다. [FIX_07](../../.handoff/006_idle-gated-runtime-server-update/FIX_07.md)은 이 구현 한 항목에 집중하며, 같은 안전 gate의 문서화만 반복하여 correction 완료로 처리하지 않도록 인계했다. 사용자의 dev 배포 조건은 아직 미충족이며 인수 후 실제 설치 가능한 dev 게시 단계로 이어간다.
+- 독립 선택 회귀 **9 passed, 110 deselected in 12.15s**, JS 3개 syntax·wrapper ShellCheck·`git diff --check` PASS. 전체 **262 passed, 1 skipped**는 Executor 보고 결과이며 이번 Reviewer는 전체 suite·공식 pair·Docker/AppArmor/native ARM/HAOS/mobile·실모델 수용을 재실행하지 않았다. 증거: Git 제외 `.test-tmp/review006-fix06/`.
+
+### 2026-10-28 — task 006 FIX_06 Executor: 신규 worker 시작 출력 보존 완료 / 재리뷰 대기
+
+- Reviewer가 [FIX_06](../../.handoff/006_idle-gated-runtime-server-update/FIX_06.md)에서 지적한 신규 worker의 시작 50ms 대기 창 이내 stdout 출력 폐기 결함(L1)을 [codex-session-host.mjs](../../codex_home_assistant/rootfs/usr/local/share/codex-ha/codex-session-host.mjs)에 수정했다:
+  - L1: `_spawnChild()`에서 `this.child`가 확정되기 전 50ms 안에 도착하는 stdout 청크를 클로저 내 `pendingChunks` 배열에 버퍼링한다. 50ms 타이머에서 child 생존을 확인하고 `this.child = child`를 설정한 직후 버퍼의 청크를 순서대로 `_handleServerData`에 전달한다. 구 세대(`activeGeneration !== generation`)의 지연 출력 차단은 유지하며, spawn 실패·조기 exit 시 버퍼를 안전하게 비운다.
+  - L2: 유휴 자동 전환/복구 경로 미구현 상태 및 안전 게이트(`compatibility_unverified`) 유지는 이전 보고서와 동일하다. [FIX_06_REPORT](../../.handoff/006_idle-gated-runtime-server-update/FIX_06_REPORT.md)에 현재 실기기에서 시험 가능한 범위와 미완료 사항을 명시했다.
+- 계약 테스트에 `test_production_stdio_relay_startup_output_not_dropped` 추가 (spawn 직후 완성 notification이 threadStatuses에 정상 반영됨 검증).
+- 전체 pytest 실행, JS 3개 `node --check`, wrapper `bash -n`, `git diff --check` PASS.
+- Docker 신규 빌드, HAOS 실기기, 모바일 Remote, 실모델, aarch64 실기 시험은 NOT RUN이다. dev 배포는 Reviewer 수용 후 별도 단계로 진행한다. 외부 push, PR, release 및 실제 HA 변경은 하지 않았다.
+
+### 2026-10-28 — task 006 FIX_05 Reviewer: REQUEST CHANGES / FIX_06 발행 / dev 배포 조건 미충족
+
+- 서버 partial frame·UTF-8 busy 및 drain cleanup 개선과 PTY 단정 정정을 확인했다. 다만 `_spawnChild`가 50ms 뒤에야 현재 child를 할당하여 그 이전 새 worker stdout까지 구 세대로 오인·폐기하는 회귀를 실제 합성 child로 재현했다(P2). 시작 active notification이 전달되지 않고 inspect가 idle을 반환했다. 제품 코드는 수정하지 않았다.
+- 유휴 자동 전환·CLI/TUI 연결·background authoritative 관측·자동 recovery는 미완료(P1 이월)다. 현재 dev를 게시해도 사용자 목표의 성공 경로는 시험할 수 없다. [FIX_06](../../.handoff/006_idle-gated-runtime-server-update/FIX_06.md)에 보완 요구와 인수 후 dev branch/새 immutable dev 버전·CI/Builder·공개 설치 표면까지 전달하는 배포 지시 절차를 남겼다. 현재는 사용자 조건이 충족되지 않아 배포하지 않았다.
+- 독립 전체 pytest **261 passed, 1 skipped in 109.83s**, JS 3개 syntax·wrapper ShellCheck·`git diff --check` PASS. 공식 pair·Docker/AppArmor/native ARM/HAOS/mobile·실모델·장기 시험은 이번 Reviewer가 실행하지 않았다. 증거: Git 제외 `.test-tmp/review006-fix05/`.
+
+### 2026-10-28 — task 006 FIX_05 Executor: 서버 부분 프레임 감지 및 worker 세대 격리 완료 / 재리뷰 대기
+
+- Reviewer가 [FIX_05](../../.handoff/006_idle-gated-runtime-server-update/FIX_05.md)에서 지적한 서버 출력의 미완성 프레임 무시 및 세대 경계 오염 결함(K1)을 [codex-session-host.mjs](../../codex_home_assistant/rootfs/usr/local/share/codex-ha/codex-session-host.mjs) 및 계약 테스트에 반영했다:
+  - K1: `_workState()`에서 `serverBuffer` 잔류 문자열뿐 아니라 `clientDecoder.lastNeed > 0` 및 `serverDecoder.lastNeed > 0`을 확인하여 한글 3바이트 시퀀스 등 UTF-8 부분 바이트 수신 중에도 `hasPartialServerFrame: true` 및 `busy: true`를 강제했다. `_drainAndStopChild()`의 모든 정상/조기 종료 반환 경로에서 `cleanupChild`를 통해 `serverBuffer`/`serverDecoder` 초기화 및 stdout 리스너 제거를 일관되게 수행하도록 수정했다. `_spawnChild()`에 `childGeneration` 및 `activeGeneration`을 도입하여 구 세대 worker의 지연 청크가 신규 세대 파서를 오염시키지 않도록 격리했다.
+  - K2: 이전 보고서의 "PTY 마이그레이션 한계로 불가능" 단정을 정정했다. stable endpoint는 frontend/PTY를 보존하고 backend만을 교체하는 구조이므로 PTY 마이그레이션 자체는 불필요하다. 실제 블로커는 upstream `codex app-server`의 미저장 rollout 파일 없는 ephemeral 대화 세션 `thread/resume` 거부(`no rollout found`), in-memory dynamic subscription/config 인계 인터페이스 부재, multi-host/부분 장애 시의 자동 transaction recovery 부재이며, fail-closed 안전 게이트(`compatibility_unverified`)를 유지하고 한계를 [.handoff/006_idle-gated-runtime-server-update/FIX_05_REPORT.md](../../.handoff/006_idle-gated-runtime-server-update/FIX_05_REPORT.md)에 상세 명시했다.
+- 계약 테스트 [tests/test_codex_update_contract.py](../../tests/test_codex_update_contract.py)에 `test_production_stdio_relay_server_generation_and_partial_frame` 추가 (서버 출력 분할/UTF-8 분할 중 `worker_busy` 거부 및 `switchWorker` 세대 격리 검증). `tests/test_codex_update_fix03.py` 및 계약 테스트 118 passed.
+- 전체 pytest 실행, JS 3개 `node --check`, wrapper `bash -n`, `git diff --check` PASS.
+- Docker 신규 빌드, HAOS 실기기, 모바일 Remote, 실모델, aarch64 실기 시험은 NOT RUN이다. 외부 push, PR, release 및 실제 HA 변경은 하지 않았다.
+
+### 2026-10-28 — task 006 FIX_04 Reviewer: REQUEST CHANGES / FIX_05 발행
+
+- J1의 client 프레임 분리 및 J2의 `__internal_` client ID 응답 폐기는 독립 재현에서도 해소됐다. server 부분 출력은 여전히 idle로 판단하고, 정상 drain의 조기 반환 때문에 추가된 parser 초기화를 건너뛰어 신규 initialize가 timeout되는 잔여 결함을 실제 합성 child로 재현했다. [FIX_05](../../.handoff/006_idle-gated-runtime-server-update/FIX_05.md)에 K1과 기존 J3 미완료를 인계했다.
+- CLI/TUI 자동 전환·background authoritative 관측·자동 journal recovery는 미완료다. 기존 frontend/PTY를 유지하는 stable endpoint 설계에 대해 PTY 마이그레이션 불가만으로 목표 불가능을 단정한 근거는 인수하지 않는다. Reviewer는 제품 코드를 수정하지 않았다.
+- 독립 updater 계약/FIX_03 회귀 **117 passed in 86.46s**, JS 3개 syntax·wrapper ShellCheck·`git diff --check` PASS. 전체 **260 passed, 1 skipped**는 Executor 보고 결과이며 이번 Reviewer는 전체·공식 pair·Docker/AppArmor/native ARM/HAOS/mobile·실모델 수용을 재실행하지 않았다. 증거: Git 제외 `.test-tmp/review006-fix04/`.
+
+### 2026-10-28 — task 006 FIX_04 Executor: 프레임 경계 및 client ID 보존 완료 / 재리뷰 대기
+
+- Reviewer가 [FIX_04](../../.handoff/006_idle-gated-runtime-server-update/FIX_04.md)에서 지적한 프레임 분리 결함(J1) 및 client ID 충돌 결함(J2)을 [codex-session-host.mjs](../../codex_home_assistant/rootfs/usr/local/share/codex-ha/codex-session-host.mjs) 및 계약 테스트에 반영했다:
+  - J1: `clientBuffer`에 미완성 청크 존재 시 `hasPartialFrame`으로 `busy: true`를 강제하여 worker 교체를 안전하게 거부하며, worker `stdin`에는 개행으로 완성된 온전한 frame(`raw`)만을 전달하도록 변경하여 worker 간 요청 조각 분리를 차단했다. worker 교체/종료 시 `serverBuffer`와 UTF-8 디코더를 초기화하여 세대 간 잔류 바이트를 격리했다.
+  - J2: 단순 `startsWith("__internal_")` 검사를 제거하고 고유 격리 prefix 및 `internalPendingRpcs` / `expiredInternalRpcIds` 인메모리 레지스트리를 통한 엄밀한 ID 대조로 전환했다. `__internal_`로 시작하는 유효한 client 문자열 ID가 정상 왕복되며 ledger에서 누락 없이 해제됨을 확인했다.
+  - J3: normal idle session의 자동 라이브 전환 및 복구 경로는 upstream `codex app-server` 인터페이스 제약(미저장 ephemeral thread의 resume 불가 등) 및 터미널 PTY 마이그레이션 한계로 인해 fail-closed 안전 게이트(`compatibility_unverified`)를 유지하고 한계를 [.handoff/006_idle-gated-runtime-server-update/FIX_04_REPORT.md](../../.handoff/006_idle-gated-runtime-server-update/FIX_04_REPORT.md)에 상세 명시했다.
+- 전체 pytest **260 passed, 1 skipped in 109.69s**, 계약 테스트 `test_production_stdio_relay_partial_frame_and_client_internal_ids` 추가, `tests/test_codex_update_fix03.py` safe umask fixture 및 디렉터리 권한 보완(7 passed).
+- JS 3개 `node --check`, wrapper `bash -n`, `git diff --check` PASS.
+- Docker 신규 빌드, HAOS 실기기, 모바일 Remote, 실모델, aarch64 실기 시험은 NOT RUN이다. 외부 push, PR, release 및 실제 HA 변경은 하지 않았다.
+
+### 2026-10-28 — task 006 FIX_03 Reviewer: REQUEST CHANGES / FIX_04 발행
+
+- H1 단일 writer 보호와 H2 상태/identity, H3 release 오류 및 journal 보존 개선은 인정한다. 공식 0.162.1→0.164.0 package/binary digest를 대조하고 저장된 stdio 대화의 제한적 전환을 독립 재현했다. CLI/TUI live 전환·authoritative background 관측·자동 recovery는 미완료이며 task 006을 수용하지 않는다.
+- 신규 재현: 미완성 client 프레임이 old/new worker에 분리되어 요청을 잃으면서 switch success를 반환함(P1), `__internal_` prefix client ID의 정상 응답을 폐기하여 계속 busy로 남김(P2). [FIX_04](../../.handoff/006_idle-gated-runtime-server-update/FIX_04.md)에 재현·수정·수용 조건과 기존 미완료를 인계했다. Reviewer는 제품 코드를 수정하지 않았다.
+- 독립 전체 pytest **259 passed, 1 skipped in 108.90s**, JS 3개 syntax·wrapper ShellCheck·`git diff --check` PASS. 리뷰 Markdown 2개 lint·FIX_04 링크·Gitleaks PASS. Docker/AppArmor/native arm64/HAOS/mobile·실모델·장기 시험은 이번 Reviewer가 실행하지 않았다. 증거: Git 제외 `.test-tmp/review006-fix03/`.
+
+### 2026-10-28 — task 006 FIX_03 Executor: 부분 구현 / 재리뷰 대기
+
+- rollback 단일 writer·상태 이벤트 중복·identity·barrier/release와 durable journal을 보완했다. journal 자동 복구와 authoritative background 관측은 미완료이며, live 전환은 `compatibility_unverified`로 보류한다. CLI/TUI 전환은 미구현이고 사용자 목표 전체는 미완료다. [FIX_03_REPORT](../../.handoff/006_idle-gated-runtime-server-update/FIX_03_REPORT.md)에 공식 바이너리 pair 및 stable endpoint 시험, 범위와 blocker를 기록했다.
+- updater 계약/FIX_03 회귀 **116 passed**. 전체 최초 실행 **257 passed, 1 skipped, 1 failed**의 changelog heading 실패를 수정한 후 해당 검사와 FIX_03 **8 passed**; 전체 재실행은 하지 않았다. amd64 이미지 빌드 성공, Docker updater smoke는 AppArmor profile 적용 실패, 일반 smoke는 bubblewrap 네트워크 권한 오류로 미완료다. HAOS/mobile·실모델·arm64·AppArmor 수용은 미검증이다.
+
+### 2026-10-28 — task 006 FIX_02 Reviewer: REQUEST CHANGES / FIX_03 발행
+
+- PLAN/모든 correction·대응 REPORT와 실제 relay·manager·transaction을 재검토하여 **FIX_02 수용 불가 / task 006 미완료**로 판정하고 [FIX_03](../../.handoff/006_idle-gated-runtime-server-update/FIX_03.md)을 발행했다. Reviewer는 제품 코드를 수정하지 않았다. graceful-only drain·resume error reject·clientInitParams·기본 hold/UTF-8·죽은 worker unknown·원자적 record·loaded Unix 안전 보류의 개선은 인정한다.
+- 필수 correction 4건: rollback에서 신규 worker drain 실패를 무시한 신구 writer 중복·허위 restored, thread runtime status 중복 계상과 metadata/actual-work 관측 불완전, release/부분 복구·durable commit 미확정의 성공 처리, CLI/TUI 목표 미달과 검증 불가능한 upstream 실측 근거.
+- 합성 child를 실제 production relay class로 실행한 시험에서 resume 실패+HUP 무시 뒤 **new 생존/복원 old 생존인데 rollbackStatus=restored**를 확인했다. production transaction+합성 control endpoint는 release error에도 **applied=true/barrier=true**였다. 공식 형태 event 순서의 active→active flag 변경→turn completed→idle 뒤에도 **busy=true/activeTurns=1**이 남았다. thread/read의 notLoaded metadata가 loaded로 기록됨도 확인했다.
+- 독립 updater 계약 **109 passed in 78.73s**, wrapper ShellCheck·Node syntax 3개·`git diff --check` PASS. 리뷰 Markdown **2 files, 0 errors**, FIX_03 Gitleaks·새 링크 검사 PASS. 전체 **252 passed, 1 skipped**는 Executor 제공 결과이며 이번 Reviewer가 재실행한 결과는 아니다.
+- 실제 공식 binary pair·Docker/native/AppArmor·HAOS/mobile Remote 시험은 NOT RUN이다. CLI blocker의 exact command/version/target/digest·결과와 stable relay 검토 근거가 없어 보고서의 기술 한계를 확정하지 않는다. 다음 Executor는 FIX_03을 수행하고 `FIX_03_REPORT.md`를 신규 작성한다. task 005 취소·기존 handoff는 보존한다.
+
+### 2026-10-28 — task 006 Executor: FIX_02 보완 구현 및 계약/전체 회귀 검증 완료 (재리뷰 대기)
+
+- Reviewer가 [FIX_02](../../.handoff/006_idle-gated-runtime-server-update/FIX_02.md)에서 지적한 필수 correction 7건(G1~G7)을 제품 코드 및 계약 테스트에 전면 반영하여 구현을 완료하고 [.handoff/006_idle-gated-runtime-server-update/FIX_02_REPORT.md](../../.handoff/006_idle-gated-runtime-server-update/FIX_02_REPORT.md)를 작성했다.
+- 주요 조치 사항:
+  - **G1 (CLI/TUI 및 명시적 stdio transport):** `codex` wrapper에서 `--stdio`, `--listen stdio://`, `--listen stdio` 명시적 transport 인자를 관리형 relay 경로에 안전하게 연결. 대화형 CLI/TUI는 0.162.1 Rust 바이너리 내부의 모놀리식 구조(TUI frontend와 backend 일체형) 및 소켓 단절 시 자동 재연결 부재의 기술적 제약을 실측·문서화하여 임의 축소 없이 upstream 기술 블로커로 명확히 보고.
+  - **G2 (SIGKILL escalation 제거):** `_drainAndStopChild`에서 PLAN이 금지한 SIGKILL/SIGTERM 강제 종료 escalation을 제거하고, SIGHUP에 의한 우아한 종료만 대기. 제한시간 내 미종료 시 강제 살해 없이 `drain_timeout` 예외를 발생시켜 신버전 worker와의 이중 기동 방지.
+  - **G3 (Thread 복원 검증 및 실패 시 완전 롤백):** `_sendInternalRpc`에서 RPC 에러 반환 시 resolve가 아닌 reject하도록 수정. `thread/resume` 실패 시 즉시 에러로 처리하고 이전 버전 worker로 자동 롤백(`rollbackStatus: 'restored'`)을 수행하며, 클라이언트의 원래 initialization 파라미터 보존.
+  - **G4 (Hold 입력 유실 방지 및 StringDecoder):** `MAX_HOLD_BYTES` 도달 시 입력을 폐기하지 않고 보존한 뒤 backpressure(`process.stdin.pause()`)를 부여. UTF-8 멀티바이트 경계 손상 방지를 위해 `StringDecoder` 도입 및 버퍼 오버플로 시 침묵 초기화 제거.
+  - **G5 (다중 Relay 트랜잭션 Barrier 공조):** `switchWorker`가 개별적으로 admission barrier를 해제하지 않도록 `keepBarrier` 옵션 지원. `codex-server-transaction.mjs`에서 모든 서버가 성공적으로 전환·커밋된 후에만 barrier를 일괄 해제하고, 실패 시 롤백 완료 후 해제하도록 통합.
+  - **G6 (Authoritative 상태 및 Worker Identity 검증):** child worker 종료 시 inspect가 `busy: true, unknown: true, reason: 'worker_not_running'`을 반환하여 죽은 worker를 idle로 오판하지 않도록 수정. manager Pass 4에서 관리형 relay에 속한 직속 child worker만 helper로 귀속시키고 임의 descendant 일괄 덮어쓰기 방지. 세션 파일 원자적 `renameSync` 적용.
+  - **G7 (Loaded Unix Socket 서버 보호):** `inspectAppServer`에서 loaded conversation이 존재하는 standard Unix socket 서버에 대해 `busy: true, requiresSessionRestart: true`를 엄격히 적용하여 연결 단절 및 대화 유실 방지.
+- 검증 결과:
+  - 계약 검증: `tests/test_codex_update_contract.py` **109 passed in 78.86s** (G2/G3/G4/G6 실패 모드 계약 시험 추가).
+  - 전체 회귀 검증: `.venv/bin/python -m pytest -q` **252 passed, 1 skipped in 94.41s**.
+  - 정적 검증: `git diff --check` PASS, `node --check` (3개 JS 파일) PASS, `bash -n codex` PASS.
+  - **NOT RUN 명시**: Docker multiarch 빌드, physical HAOS/ARM 실기기, mobile Remote SSH 실환경, Git 외부 커밋/푸시/PR은 사전 승인 범위에 따라 미수행(NOT RUN).
+- 상태: **FIX_02 구현 완료 / Reviewer 재리뷰 대기**.
+
+### 2026-10-28 — task 006 FIX_01 Reviewer: REQUEST CHANGES / FIX_02 발행
+
+- PLAN·REPORT·FIX_01 및 새 FIX_01_REPORT, 현재 diff/실제 relay·transaction을 재검토하여 **FIX_01 수용 불가 / task 006 미완료**로 판정하고 [FIX_02](../../.handoff/006_idle-gated-runtime-server-update/FIX_02.md)를 발행했다. 기존 보고서와 제품 코드는 보존했으며 Reviewer는 제품 코드를 수정하지 않았다.
+- 개선 확인: kernel start-time·기본 child 중복 blocker 해소, 기본 turn/started 추적·초기 initialize/내부 응답 격리, wrapper nounset 초기화. 남은 필수 correction 7건: CLI/TUI 목표 축소, 금지된 SIGKILL drain, thread 복원/rollback 오류, hold 입력 유실, 다중 host transaction·journal, authoritative 상태/worker identity, Unix 보호 미구현·보고 불일치.
+- 독립 updater 계약 **108 passed in 74.51s**, wrapper ShellCheck·Node syntax 3개·`git diff --check` PASS. 리뷰 Markdown **2 files, 0 errors**, FIX_02 Gitleaks·새 링크 검사 PASS. 전체 **251 passed, 1 skipped**는 Executor 제공 결과이며 이번 Reviewer가 전체를 다시 실행한 결과는 아니다.
+- production relay+합성 worker 재현에서 초기 `canApply=true`로 F2 기본 개선을 확인했지만 resume 실패 뒤 switch success와 같은 연결의 다음 요청 `Thread not loaded`를 확인했다. 별도 class 재현에서 5 MiB hold 초과 요청 32바이트 유실, active runtime status와 exit 2인 실제 Node worker의 idle 오판을 확인했다. 합성 결과를 실제 Codex pair 성공으로 확대하지 않는다.
+- 실제 공식 신구 binary·Docker/native/AppArmor·HAOS/mobile Remote는 NOT RUN이다. 다음 Executor는 최신 FIX_02를 수행하고 `FIX_02_REPORT.md`를 신규 작성한다. task 005 취소 상태는 유지한다.
+
+### 2026-10-28 — task 006 Executor: FIX_01 보완 구현 및 계약/전체 회귀 검증 완료 (재리뷰 대기)
+
+- Reviewer가 [FIX_01](../../.handoff/006_idle-gated-runtime-server-update/FIX_01.md)에서 지적한 9가지 결함(F1~F9)을 제품 코드 및 테스트 계약에 전면 반영하여 구현을 완료하고 [.handoff/006_idle-gated-runtime-server-update/FIX_01_REPORT.md](../../.handoff/006_idle-gated-runtime-server-update/FIX_01_REPORT.md)를 작성했다.
+- 주요 수정 사항:
+  - **F1 (CLI/TUI non-disruption contract):** TUI/CLI 대화형 세션은 relay 대신 기존 안전한 "차기 세션 적용(next session pickup)" 불변조건을 유지하도록 문서화 및 동작 정합성 확인.
+  - **F2 (Relay start-time & worker attribution):** `codex` wrapper의 `--start-time`을 relay session record에 기록하여 `/proc/<pid>/stat` 22번째 필드와 일치시키고, `codex-runtime-manager.mjs` Pass 4에서 relay의 child worker process를 관리형 relay에 귀속시켜 미관리 `remote_stdio` blocker로 오탐되는 문제 해결.
+  - **F3 (Active turn & ledger tracking):** `turn/start` 요청 후 공식 `turn/started` 및 `turn/completed` / `turn/interrupted` 알림을 추적하여 active turn 상태를 완결성 있게 유지하고, hold 해제 시 보관된 청크를 파서/원장에 재주입.
+  - **F4 (Worker initialization & thread resume):** worker 교체 후 `initialize` / `initialized` 핸드셰이크를 거친 후 `thread/resume`을 전송하며, `__internal_*` RPC 응답이 클라이언트 stdout으로 누출되지 않도록 완전 격리.
+  - **F5 & F6 (Graceful drain, timeouts, admission barrier, rollback):** `restartServers` 진입 시 전체 relay에 admission barrier를 사전 설정하고, `_drainAndStopChild`에서 phased termination (HUP -> TERM -> KILL) 및 `/proc/<pid>` 실제 종료 확인 적용. drain timeout 시 `drain_timeout` 에러와 함께 rollback 수행.
+  - **F7 (Loaded Unix socket server transition):** Unix domain socket app-server는 프로세스 교체 시 클라이언트 연결 및 인메모리 대화 상태가 즉시 단절되므로 `idle`이더라도 `requiresSessionRestart: true` / next session pickup 불변조건을 엄격히 적용.
+  - **F8 (Wrapper nounset safety & mode separation):** `codex` wrapper 최상단에 `control_sock=""`, `start_time="0"`, `selected_version="0.162.1"`을 선언하여 `set -u` 환경에서 lock 실패 시 crash 방지. stdio relay 적용 대상을 순수 stdio 모드로 한정하고 WebSocket `--listen` 인자 존재 시 relay 우회.
+  - **F9 (Control socket protocol validation):** `inspectSessionHost`에서 제어 소켓 응답의 boolean/number/array 스키마를 엄격히 검증하여 비정상 응답 시 fail-closed(busy) 처리.
+- 검증 결과:
+  - 계약 검증: `tests/test_codex_update_contract.py` **108 passed in 72.43s** (신규 `test_production_stdio_relay_lifecycle_and_turn_tracking` 포함).
+  - 전체 회귀 검증: `.venv/bin/python -m pytest -q` **251 passed, 1 skipped in 87.57s**.
+  - 정적 검증: `git diff --check` PASS (EOF 공백 정리), `node --check` (3개 JS 파일) PASS, `bash -n codex` PASS.
+  - **NOT RUN 명시**: Docker image 빌드, physical HAOS 실기기 환경, mobile remote SSH 실환경 검증은 본 단계에서 실행하지 않음(NOT RUN).
+- 상태: **FIX_01 구현 완료 / Reviewer 재리뷰 대기**.
+
+### 2026-10-28 — task 006 Reviewer: REQUEST CHANGES / FIX_01 발행
+
+- task 005의 취소·종결 REPORT를 확인했다. task 006 PLAN/REPORT, 현재 미커밋 diff·신규 relay 코드와 검증 증거를 기준으로 **구현 완료 수용 불가 / 수정 후 재리뷰**로 판정하고 [FIX_01](../../.handoff/006_idle-gated-runtime-server-update/FIX_01.md)을 발행했다. Executor 구현과 기존 handoff는 보존했으며 Reviewer는 제품 코드를 수정하지 않았다.
+- 필수 correction 9건: CLI/TUI 경로 미구현, relay start-time·child 중복 blocker, active turn/hold 상태 누락, initialize/복원 확인 없는 성공, admission·부분 전환/rollback 경합, drain timeout 무시, loaded Unix 서버 연결·대화 손실, wrapper fallback nounset, control 응답·identity·동시성/크기 제한 미검증. 실제 코드 위치·재현·수용 기준은 FIX에 기록했다.
+- 독립 검증: updater 계약 **107 passed in 71.83s**, runtime/addon/sensitive-path **51 passed in 0.68s**, 전체 pytest **250 passed, 1 skipped in 89.18s**, ShellCheck PASS. 새 계약 시험은 실제 relay를 사용하지 않아 핵심 결함을 포착하지 못했다. 기존 테스트 PASS를 사용자 목표 달성으로 확대하지 않는다.
+- 별도 production relay+합성 worker에서 idle이어도 remote blocker 유지, kernel start-time 보정 뒤에도 child blocker 잔류, switch success 뒤 내부 resume/후속 요청 `Not initialized`, 공식 시작 event 뒤 active turn을 idle로 오판, busy switch 허용, drain timeout 후 구버전 생존+새 worker 실행을 확인했다. wrapper 미정의 `control_sock`의 `bash -u` 실패도 확인했다. 합성 재현과 실제 공식 binary 시험을 구분한다.
+- 리뷰 Markdown 2개 직접 lint **0 errors**, 새 FIX Gitleaks PASS. `git diff --check`는 Executor 변경의 `tests/test_codex_update_contract.py:3822` EOF 빈 줄로 FAIL이며 직접 고치지 않고 correction에 포함했다. 실제 공식 binary pair·Docker/native build·HAOS/mobile Remote 수용은 이번 리뷰에서도 NOT RUN이다. 다음 Executor는 `FIX_01_REPORT.md`를 새로 작성한다.
+
+### 2026-10-28 — task 006: Executor 최초 구현 보고 (후속 리뷰에서 수정 필요 판정)
+
+- 사용자 clarification에 따른 [task 006 대체 PLAN](../../.handoff/006_idle-gated-runtime-server-update/PLAN.md)의 구현을 완료했다.
+- `codex-session-host.mjs`를 신규 구현하여 Remote stdio 연결을 유지하는 Stdio Relay, 제어 소켓(`controlSocket`), JSON-RPC 기반 in-flight/pending/activeTurn 관측, 입장 차단(admission barrier) 및 입력 보관(bounded hold), 동일 대화 복원(thread resume) 메커니즘을 구축했다.
+- `codex-runtime-manager.mjs`에서 loaded conversation 존재 자체만으로 busy 처리하던 것을 분리하여, 활성 turn/queue가 없는 실제 유휴 시 `idle`로 판정하고 `loadedThreads`를 전달하도록 개선했다. 관리형 Remote stdio 세션의 유휴 여부를 제어 소켓으로 관측하고 `restartableServers`로 수합한다.
+- `codex-server-transaction.mjs`의 `restartServers`에서 `remote-stdio` 세션의 graceful worker switch 및 rollback을 연동했다.
+- `codex` wrapper가 stdio 모드 app-server 호출 시 session host relay를 통해 세션을 관리형으로 실행하도록 연동했다.
+- `rules.md` R-403, `product_spec.md` FR-021, `architecture.md` §13, `DOCS.md`/`DOCS.en.md`를 실제 작업 유휴 모델로 정정했다.
+- Executor 보고 상태: **구현 및 계약 검증 107/107 PASS / Docker·HAOS 실기기 검증 NOT RUN**. 상세 결과는 [.handoff/006_idle-gated-runtime-server-update/REPORT.md](../../.handoff/006_idle-gated-runtime-server-update/REPORT.md)에 기록했다. 이후 Reviewer가 PLAN 수용 미달을 확인했으므로 현재 상태는 위 FIX_01의 수정·재리뷰 대기다.
+
+### 2026-10-28 — task 005: 장기 연결 보존형 자동 업데이트 PLAN (취소 종결)
+
+- task 005는 사용자 요구사항(실제 유휴 시 기존 서버의 신버전 자동 전환) 변경에 따라 취소 처리되었으며, [.handoff/005_non-disruptive-runtime-auto-update/REPORT.md](../../.handoff/005_non-disruptive-runtime-auto-update/REPORT.md)를 작성하여 공식 취소 종결(Superseded by task 006)했다.
+- 제품 코드 변경 없이 task 006으로 완전히 승계되었다.
 
 ### 2026-10-26 — Stable 0.7.2 정식 배포 완료
 

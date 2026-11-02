@@ -1,4 +1,4 @@
-> DEV 후보: `0.7.2-dev.2` — 검사 실패 원인 분리, 런타임 버전 상세 분리, 정상 정지 유예를 개선합니다. 설치 저장소는 `https://github.com/Kanu-Coffee/codex-for-home-assistant#dev`이며 App/패널은 **Codex for Home Assistant (DEV)** / **Codex DEV**입니다. VM·CI 검증과 실제 사용자 장치 수용은 구분합니다.
+> 정식판 `0.7.3` — 실기기 수용을 마친 `0.7.3-dev.6`의 모바일 SSH 프록시 분리, 커널 Netlink 피어 식별, 런타임 자동 업데이트 대화 복원 및 영속 키 설정을 승격합니다. 설치 저장소는 `https://github.com/Kanu-Coffee/codex-for-home-assistant`입니다.
 
 <p align="right">
   <strong>한국어</strong> · <a href="README.en.md">English</a>
@@ -31,7 +31,7 @@ Home Assistant 안에서 Codex와 대화하며 설정을 살펴보고 대시보�
 
 ## 빠른 시작
 
-1. 앱(0.7.1)을 설치하고 시작합니다. `amd64`와 64비트 `aarch64`를 지원합니다. Manifest는 `stage` 키를 생략해 Supervisor의 기본 stable 채널을 사용하며 `boot: manual`입니다. 사용자 HAOS amd64에서 CLI·브라우저 수용을 확인했고 DEV 0.7.1-dev.7의 native amd64/ARM CI가 통과했습니다. Stable 0.7.1도 같은 런타임으로 양 architecture CI와 배포 검증을 통과했습니다. 실제 Raspberry Pi/aarch64 HAOS 실기는 **NOT RUN**이며 native ARM CI와 구분합니다.
+1. 앱(0.7.3)을 설치하고 시작합니다. `amd64`와 64비트 `aarch64`를 지원합니다. Manifest는 `stage` 키를 생략해 Supervisor의 기본 stable 채널을 사용하며 `boot: manual`입니다. 사용자 HAOS amd64에서 CLI·브라우저 및 Remote 수용을 확인했고 DEV 0.7.3-dev.6의 native amd64/ARM CI가 통과했습니다. Stable 0.7.3도 같은 런타임으로 양 architecture CI와 배포 검증을 통과했습니다. 실제 Raspberry Pi/aarch64 HAOS 실기는 **NOT RUN**이며 native ARM CI와 구분합니다.
 2. **OPEN WEB UI**를 누릅니다.
 3. 처음 한 번 `ha-codex-login`으로 로그인합니다.
 4. `ha-codex`를 실행합니다.
@@ -64,3 +64,11 @@ GitHub 직접 제출은 후보 검색이 가능한 경우의 10분 만료·1회�
 설치, 전체 설정값, 모바일 Remote, 업데이트, 보안과 문제 해결은 [한국어 사용 설명서](DOCS.md)를 확인하세요. 영문 안내는 [English user guide](DOCS.en.md)에 있습니다.
 
 비공식 커뮤니티 프로젝트이며 OpenAI 또는 Home Assistant/Nabu Casa와 제휴하거나 보증받은 제품이 아닙니다.
+
+### 개발 후보의 런타임 전환
+
+관리형 CLI/TUI와 Remote stdio는 창·연결·로드된 대화만으로 업데이트를 보류하지 않습니다. 진행·대기 요청, tool/승인 대기와 백그라운드 작업을 보호하고, 유휴 시 기존 스케줄·재시도 예산·cooldown에 따라 실행 worker를 교체합니다. 연결과 영속 대화를 복원한 뒤 다음 요청을 처리합니다. TUI frontend 자체는 종료 후 다음 실행부터 갱신됩니다. 이전 버전에서 직접 실행한 세션과 외부 `--remote` 서버는 자동 이관 대상이 아니며, 내용 있는 비영속 대화·미지원 작업 관측·복구 불완전 상태는 구체적인 이유와 함께 보류합니다.
+
+공식 0.162.1 → 0.165.0 로컬 통합을 검증했으며, HAOS/mobile 및 native ARM 수용은 아직 미검증입니다.
+
+모바일 SSH 간편 설정은 Web UI shell의 `ha-codex-remote setup`으로 키 생성·공개키 등록·휴대폰용 PEM 표시를 한 번에 진행하며, `ha-codex-remote show --format sec1`으로 대체 형식을 표시합니다. 실제 모바일 클라이언트 수용은 아직 미검증입니다.

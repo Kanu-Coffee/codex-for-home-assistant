@@ -1,4 +1,4 @@
-> Stable `0.7.2` promotes the user-accepted `0.7.2-dev.2` runtime with process classification, diagnostic/version reporting, and graceful shutdown improvements. Install from `https://github.com/Kanu-Coffee/codex-for-home-assistant`.
+> Stable `0.7.3` promotes the user-accepted `0.7.3-dev.6` runtime with mobile SSH proxy separation, kernel Netlink peer verification, runtime auto-update thread restoration, and persistent key setup. Install from `https://github.com/Kanu-Coffee/codex-for-home-assistant`.
 
 <p align="right">
   <a href="DOCS.md">한국어</a> · <strong>English</strong>
@@ -8,7 +8,7 @@
 
 This guide explains how Home Assistant OS users can install the app, use Codex through the Web UI, SSH, or mobile Remote, and safely work on dashboards, automations, entities, and configuration errors.
 
-The current stable installation baseline is app version `0.7.2`. HAOS displays the app as **Codex for Home Assistant** and the sidebar as **Codex**.
+The current stable installation baseline is app version `0.7.3`. HAOS displays the app as **Codex for Home Assistant** and the sidebar as **Codex**.
 
 > [!WARNING]
 > This app can read and write `/config` except for protected `secrets.yaml` and `.storage` paths, and it can use the Home Assistant Core and Supervisor `manager` APIs. API responses, logs, and browser views can still contain sensitive information. Allow only trusted administrators to use it, and review a backup and diff before making changes. Never port-forward TCP `2223` directly to the internet.
@@ -18,11 +18,11 @@ The current stable installation baseline is app version `0.7.2`. HAOS displays t
 ### Supported environments
 
 - Home Assistant OS or another installation with Supervisor
-- Stable `0.7.2` supports **amd64** and 64-bit **aarch64** devices. Raspberry Pi requires 64-bit HAOS. 32-bit `armv7` is not supported.
+- Stable `0.7.3` supports **amd64** and 64-bit **aarch64** devices. Raspberry Pi requires 64-bit HAOS. 32-bit `armv7` is not supported.
 - Internet access for the app image and Codex authentication
 - An OpenAI/ChatGPT account with access to Codex
 
-The stable `0.7.2` manifest omits the `stage` key and therefore uses the Supervisor's default stable channel; `boot: manual` remains explicit. The candidate payload lineage passed native ARM CI, public amd64+aarch64 image publication, and anonymous inspection. A real Raspberry Pi/aarch64 HAOS run remains **NOT RUN**; release approval explicitly accepted that gap based on the automated evidence. HACS installation is not supported.
+The stable `0.7.3` manifest omits the `stage` key and therefore uses the Supervisor's default stable channel; `boot: manual` remains explicit. The candidate payload lineage passed native ARM CI, public amd64+aarch64 image publication, and anonymous inspection. A real Raspberry Pi/aarch64 HAOS run remains **NOT RUN**; release approval explicitly accepted that gap based on the automated evidence. HACS installation is not supported.
 
 ### What the app provides
 
@@ -102,7 +102,7 @@ Keep the defaults when getting started. After changing settings, restart the app
 
 | Setting | Default | Accepted values and meaning | Caution |
 | --- | --- | --- | --- |
-| `authorized_keys` | `[]` | OpenSSH public keys allowed to connect | When empty, only SSH is disabled; the Web UI remains available. Never enter a private key. |
+| `authorized_keys` | `[]` | OpenSSH public keys allowed to connect | When both configured and quick-setup keys are absent, only SSH is disabled; the Web UI remains available. Never enter a private key. |
 | `web_terminal_auto_start_codex` | `false` | Start Codex once in each new `tmux` session | Does not affect an existing session. Exiting Codex returns to Bash. |
 | `tmux_session_name` | `codex-ha` | A 1–64 character session name using letters, numbers, `.`, `_`, or `-` | A change takes effect in a new session. |
 | `codex_approval_policy` | `on-request` | `untrusted`, `on-request`, or `never` | `never` grants broad automatic approval. Use it only for trusted work. |
@@ -221,6 +221,28 @@ ChatGPT mobile Remote
   → Codex app server bundled in the HA app
   → /config remote project
 ```
+
+### Mobile SSH quick setup
+
+Exit Codex to the shell in the Web UI and run this command yourself:
+
+```bash
+ha-codex-remote setup
+```
+
+It creates a dedicated ECDSA P-256 key and registers its public key automatically. Copy **only the entire private-key block, including BEGIN/END lines**, into the phone Remote private-key field. No configuration-tab key entry is needed. Use your reachable HA address, the SSH host port from App Network (default 2223), user `root`, and project `/config`. The Ingress URL is not the SSH address. Enable the SSH port in Network if it is disabled.
+
+If the default PKCS#8 is rejected, display the **same key** as SEC1:
+
+```bash
+ha-codex-remote show --format sec1
+```
+
+Use `show --format pkcs8` to switch back. Repeating `setup` preserves the key. `ha-codex-remote status` shows a non-secret fingerprint and connection guidance. `ha-codex-remote revoke` removes mobile-key access; the next setup creates a new key that must also replace the phone's key. Existing SSH connections may continue after revocation. There is one quick-setup key per App, separate from the normal `authorized_keys` list.
+
+Keys persist under `/data/ssh/mobile` with directory mode 0700 and file mode 0600 across App restarts and configuration saves. Setup requests SSH startup if missing keys had disabled it, or tells you to restart the App if that request fails. Private-key display requires a human interactive terminal and refuses output redirection. The key can remain in terminal scrollback and `/data` backups: never share its screen/output in chat or issues, and do not ask Codex to print it on your behalf.
+
+An [upstream iOS report](https://github.com/openai/codex/issues/52417) describes the same rejection with valid SEC1 and PKCS#8 PEM. If both formats fail at input, update the mobile app and record only its version and error text. This helper cannot fix a client parser bug. If the key is accepted but connection fails, check the port, VPN/reachability and SSH logs. [Host-certificate negotiation failures](https://github.com/openai/codex/issues/38264) are a separate failure stage. Actual ChatGPT mobile acceptance remains unverified.
 
 1. In the Web UI, complete `ha-codex-login` and confirm that `codex login status` reports a signed-in session.
 2. Add only the **public key** paired with the key used by mobile Remote to `authorized_keys`, then restart the app.
@@ -434,12 +456,12 @@ It is normal for Web UI/tmux and SSH connections to drop briefly during an updat
 Separate from Home Assistant app image updates, the bundled Codex binary supports automated updates that protect active sessions starting in `0.7.1`.
 
 - **Schedule**: Checks official GitHub Releases 4 times daily (03:00, 09:00, 15:00, 21:00 in configured timezone, default `Asia/Seoul`), verifies SHA-256 against release metadata, and stages the package under `/data/codex-runtime/releases/<version>-<target>`.
-- **Idle session protection & periodic caps**: If active sessions (TUI, SSH, remote stdio, background tasks, or app-server turns) are detected, update application is safely deferred (`staged`).
+- **Idle work protection**: Active work defers application. Unverifiable activity is reported separately and also prevents transition.
   - Session counts are not process counts. Classification uses the actual `/proc/<pid>/exe` entrypoint and managed launch records; unrelated processes that merely carry `/bin/codex` or `app-server` strings as argv data, and helper companions (`codex-code-mode-host`, `bwrap`, `rg`, …) owned by a verified Codex process, never become independent sessions. Processes whose identity cannot be verified - including unrecognized executables inside the managed package directory - are held explicitly as an `unknown` blocker.
   - Fast local checks are capped at 12 checks per calendar date (covering up to 1 hour of active session contention).
   - Reaching 12 checks transitions the candidate to temporary pause (`paused_busy`) rather than a permanent block, pausing fast 5-minute loops for the day and automatically resuming apply attempts on the next date's first scheduled slot.
   - Automated graceful restart for idle Unix app-servers is limited to at most 1 transaction per 24 hours to prevent churn.
-- **Automatic apply**: Once every real interactive or managed session process has exited or is verified idle, it flips the `/data/codex-runtime/current` symlink atomically. If a remote stdio session is the blocker, save your work and close the connection normally; isolated verification showed the real Codex stdio app-server exits by itself when its input connection closes, and the next re-check proceeds (the updater never force-disconnects or reconnects a remote). New sessions immediately use the updated version.
+- **Automatic apply**: Managed CLI/TUI and Remote stdio do not defer updates merely because a window, connection, process, or conversation remains open. In-flight and queued requests, tools, approval waits, and background work are protected. When idle, the worker is replaced under the existing schedule, retry budget, and cooldown; the connection and persistent conversation are restored before processing the next request. The TUI frontend itself updates on its next launch. Legacy directly launched sessions and external `--remote` servers are outside automatic handover. Nonempty ephemeral conversations, unsupported activity observation, and incomplete recovery defer transition with a specific reason.
 - **Manual update**: Use `ha-codex-update status`, `ha-codex-update check`, `ha-codex-update apply`, or `ha-codex-update update`. The `status` command reports daily checks, restart counts, pause reason, next retry time, and the last apply attempt's `lastBlocker`, which distinguishes an observed process blocker (CLI/remote stdio/unmanaged/unknown) from a pre-inspection skip (`daily_budget_exhausted` or `restart_cooldown`). The standard `codex update` command is also routed to this managed updater.
 
 Before applying, the updater checks actual managed config and MCP parsing, ordinary writes, denied protected-path opens, local networking, and graceful shutdown. An incompatible candidate or unavailable test environment blocks application with `blocked_policy`. Protected contents are never read by the probe. A private receipt stores the verified archive’s complete file inventory, checked on reuse, application, and new session admission. Existing damaged releases are preserved. This does not isolate deliberate tampering by container root.
@@ -571,7 +593,7 @@ Before uninstalling, decide how to handle any Codex configuration and authentica
 
 ## Limitations and support
 
-- Stable `0.7.2` supports amd64 and 64-bit aarch64. Native aarch64 CI and image validation passed, but a real Raspberry Pi/aarch64 HAOS run remains **NOT RUN** and was accepted as a release validation gap. Armv7 is unsupported.
+- Stable `0.7.3` supports amd64 and 64-bit aarch64. Native aarch64 CI and image validation passed, but a real Raspberry Pi/aarch64 HAOS run remains **NOT RUN** and was accepted as a release validation gap. Armv7 is unsupported.
 - `secrets.yaml` and `.storage` contents are explicitly blocked from normal direct Codex filesystem access, so their contents do not enter Codex through that path; managed requirements also deny Codex directory reads. The AppArmor validator allowance still leaves `.storage` entry listing available to a root shell. Sensitive raw API, log, and browser output is not sanitized, and a root interactive process also retains residual access to the private runtime credential file.
 - It does not bundle or automatically install Bubble Card or other custom cards.
 - The Web UI is a terminal, not a dedicated chat interface.
@@ -583,3 +605,16 @@ Before uninstalling, decide how to handle any Codex configuration and authentica
 Before requesting support, follow [SUPPORT.md](../SUPPORT.md) to remove tokens, internal URLs, entities, and user information. Use [GitHub Issues](https://github.com/Kanu-Coffee/codex-for-home-assistant/issues) for general problems and the private process in [SECURITY.md](../.github/SECURITY.md) for vulnerabilities.
 
 This is an unofficial community project. It is not affiliated with or endorsed by OpenAI, Home Assistant, or Nabu Casa. Source is distributed under the [Apache License 2.0](../LICENSE).
+
+### Resume exit in DEV 0.7.3-dev.4 and 0.7.3-dev.5 fix
+
+In 0.7.3-dev.4, selecting a conversation with Enter in `codex resume` could return to the shell at `Resuming session…`. The managed CLI host incorrectly treated the picker connection closing as a full exit. In 0.7.3-dev.5, the host is kept alive across this transition and handles compatible reconnect initialization. An internal `--remote unix://…` address cannot be reused after its host exits.
+
+### DEV 0.7.3-dev.6: Mobile SSH proxy separation, kernel Netlink peer identification, and thread restoration
+
+0.7.3-dev.6 strengthens safety for mobile SSH connections and runtime updates:
+
+- **SSH wrapper proxy separation**: Decouples `codex app-server proxy` from the JSONL lifecycle host so mobile SSH bootstrap commands stream transparently to background listeners without framing errors.
+- **Kernel Netlink peer identification**: Directly queries Linux Netlink socket diagnostics to map proxy connections to authorized helper sessions, safely holding unverified or mismatched sockets as `unknown`.
+- **Persistent thread restoration & ephemeral thread protection**: Servers with active turns hold updater signals. Persistent conversations are resumed (`thread/resume`) across server generations, while non-empty ephemeral conversations lacking rollout files are held busy until session termination to avoid irreversible conversation loss.
+- **Preserved mobile SSH credentials**: Existing mobile SSH keys survive updates without requiring re-registration or key regeneration.

@@ -1,4 +1,4 @@
-> Stable `0.7.2` promotes the user-accepted `0.7.2-dev.2` runtime with process classification, diagnostic/version reporting, and graceful shutdown improvements. Install from `https://github.com/Kanu-Coffee/codex-for-home-assistant`.
+> Stable `0.7.3` promotes the user-accepted `0.7.3-dev.6` runtime with mobile SSH proxy separation, kernel Netlink peer verification, runtime auto-update thread restoration, and persistent key setup. Install from `https://github.com/Kanu-Coffee/codex-for-home-assistant`.
 
 <p align="right">
   <a href="README.md">한국어</a> · <strong>English</strong>
@@ -30,7 +30,7 @@
 > [!WARNING]
 > This app can read and write `/config` except for protected `secrets.yaml` and `.storage` paths, and it can use the Home Assistant Core and Supervisor `manager` APIs. API responses, logs, and browser views can still contain sensitive information. Back up your system and review the plan and diff before important changes. Never expose its SSH port directly to the internet.
 
-This is an unofficial community project. It is not affiliated with or endorsed by OpenAI, Home Assistant, or Nabu Casa. Stable `0.7.2` supports `amd64` and 64-bit `aarch64`, appears in HAOS as **Codex for Home Assistant**, and uses **Codex** in the sidebar. The user confirmed real-device validation and approved promotion of 0.7.2-dev.2. Stable 0.7.2 retains that runtime; exact stable CI and publication evidence are recorded in development progress. Actual Raspberry Pi/aarch64 HAOS acceptance remains **NOT RUN**, distinct from native ARM CI.
+This is an unofficial community project. It is not affiliated with or endorsed by OpenAI, Home Assistant, or Nabu Casa. Stable `0.7.3` supports `amd64` and 64-bit `aarch64`, appears in HAOS as **Codex for Home Assistant**, and uses **Codex** in the sidebar. The user confirmed real-device validation and approved promotion of 0.7.3-dev.6. Stable 0.7.3 retains that runtime; exact stable CI and publication evidence are recorded in development progress. Actual Raspberry Pi/aarch64 HAOS acceptance remains **NOT RUN**, distinct from native ARM CI.
 
 ## Real Web terminal preview
 
@@ -88,7 +88,7 @@ flowchart LR
 ### Requirements
 
 - Home Assistant OS or another installation with Supervisor
-- Stable `0.7.2` supports **amd64** and 64-bit **aarch64** devices. Raspberry Pi requires 64-bit HAOS. 32-bit `armv7` is not supported.
+- Stable `0.7.3` supports **amd64** and 64-bit **aarch64** devices. Raspberry Pi requires 64-bit HAOS. 32-bit `armv7` is not supported.
 - Internet access to download the public image
 - An OpenAI/ChatGPT account with access to Codex
 
@@ -125,7 +125,7 @@ flowchart LR
 See the [English user guide](codex_home_assistant/DOCS.en.md) for complete installation, sign-in, SSH, update, and recovery instructions.
 
 > [!NOTE]
-> Stable `0.7.2` provides amd64 and 64-bit aarch64 images. Native aarch64 CI and multi-architecture image validation passed, but a real Raspberry Pi/aarch64 HAOS run remains **NOT RUN**; release approval explicitly accepted that validation gap.
+> Stable `0.7.3` provides amd64 and 64-bit aarch64 images. Native aarch64 CI and multi-architecture image validation passed, but a real Raspberry Pi/aarch64 HAOS run remains **NOT RUN**; release approval explicitly accepted that validation gap.
 
 ## Prompts to try
 
@@ -195,7 +195,7 @@ Keep the defaults when getting started.
 
 | Setting | Default | Purpose |
 | --- | --- | --- |
-| `authorized_keys` | `[]` | SSH public keys. When empty, only SSH is disabled. |
+| `authorized_keys` | `[]` | SSH public keys. SSH is disabled only when configured and quick-setup keys are both absent. |
 | `web_terminal_auto_start_codex` | `false` | Automatically start Codex in a new Web terminal session. |
 | `codex_approval_policy` | `on-request` | Approval policy for command execution. |
 | `codex_sandbox_mode` | `workspace-write` | Managed Codex sandbox with network access. Legacy `danger-full-access` input is accepted for compatibility but enforced as `workspace-write`. |
@@ -224,7 +224,7 @@ App initialization and every Codex launch inspect protected paths for symlinks, 
 
 ## Current limitations
 
-- Stable `0.7.2` supports amd64 and 64-bit aarch64. Native aarch64 CI and image validation passed, but a real Raspberry Pi/aarch64 HAOS run remains **NOT RUN** and was accepted as a release validation gap. 32-bit armv7 is not supported.
+- Stable `0.7.3` supports amd64 and 64-bit aarch64. Native aarch64 CI and image validation passed, but a real Raspberry Pi/aarch64 HAOS run remains **NOT RUN** and was accepted as a release validation gap. 32-bit armv7 is not supported.
 - This is a Home Assistant App (formerly called an Add-on), so it cannot be installed through HACS.
 - The default is `boot: manual`. The stable manifest omits the `stage` key and therefore uses the Supervisor's default stable channel.
 - The Web UI is a terminal, not a dedicated mobile chat interface.
@@ -251,3 +251,11 @@ Direct GitHub submission through `$ha-feedback` requires a ten-minute single-use
 ## License
 
 Project source is distributed under the [Apache License 2.0](LICENSE). See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for runtime dependency notices.
+
+### Development runtime handover
+
+Managed CLI/TUI and Remote stdio do not defer updates merely because a window, connection, process, or conversation remains open. In-flight and queued requests, tools, approval waits, and background work are protected. When idle, the worker is replaced under the existing schedule, retry budget, and cooldown; the connection and persistent conversation are restored before processing the next request. The TUI frontend itself updates on its next launch. Legacy directly launched sessions and external `--remote` servers are outside automatic handover. Nonempty ephemeral conversations, unsupported activity observation, and incomplete recovery defer transition with a specific reason.
+
+Local official 0.162.1 → 0.165.0 integration is verified; HAOS/mobile and native ARM acceptance remain pending.
+
+Mobile SSH quick setup is available via `ha-codex-remote setup` in the Web UI shell to generate a key, register the public key, and display the phone PEM; `ha-codex-remote show --format sec1` displays the alternate format. Actual mobile client acceptance remains unverified.

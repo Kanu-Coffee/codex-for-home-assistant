@@ -1,4 +1,4 @@
-> 정식판 `0.7.2` — 실기기 수용을 마친 `0.7.2-dev.2`의 프로세스 분류·진단/버전 표시·종료 처리를 승격합니다. 설치 저장소는 `https://github.com/Kanu-Coffee/codex-for-home-assistant`입니다.
+> 정식판 `0.7.3` — 실기기 수용을 마친 `0.7.3-dev.6`의 모바일 SSH 프록시 분리, 커널 Netlink 피어 식별, 런타임 자동 업데이트 대화 복원 및 영속 키 설정을 승격합니다. 설치 저장소는 `https://github.com/Kanu-Coffee/codex-for-home-assistant`입니다.
 
 <p align="right">
   <strong>한국어</strong> · <a href="DOCS.en.md">English</a>
@@ -8,7 +8,7 @@
 
 이 문서는 Home Assistant OS 사용자가 앱을 설치하고, Web UI·SSH·모바일 Remote에서 Codex를 사용하며, 안전하게 대시보드·자동화·엔티티와 설정 오류를 다루는 방법을 설명합니다.
 
-현재 안정판 설치 기준은 앱 버전 `0.7.2`입니다. HAOS에서 App은 **Codex for Home Assistant**, 사이드바는 **Codex**로 표시됩니다.
+현재 안정판 설치 기준은 앱 버전 `0.7.3`입니다. HAOS에서 App은 **Codex for Home Assistant**, 사이드바는 **Codex**로 표시됩니다.
 
 > [!WARNING]
 > 이 앱은 보호된 `secrets.yaml`·`.storage`를 제외한 `/config`를 읽고 쓸 수 있고 Home Assistant Core 및 Supervisor `manager` API를 사용할 수 있습니다. API 응답·로그·브라우저 화면에는 민감정보가 포함될 수 있습니다. 신뢰하는 관리자만 사용하고, 변경 전 backup과 diff를 확인하세요. TCP `2223`을 인터넷에 직접 port-forward하지 마세요.
@@ -18,11 +18,11 @@
 ### 지원 환경
 
 - Home Assistant OS 또는 Supervisor가 있는 설치 환경
-- 안정판 `0.7.2`은 **amd64**와 64비트 **aarch64** 장치를 지원합니다. Raspberry Pi는 64비트 HAOS가 필요하며 32비트 `armv7`은 지원하지 않습니다.
+- 안정판 `0.7.3`은 **amd64**와 64비트 **aarch64** 장치를 지원합니다. Raspberry Pi는 64비트 HAOS가 필요하며 32비트 `armv7`은 지원하지 않습니다.
 - 앱 이미지와 Codex 인증에 필요한 인터넷 연결
 - Codex를 사용할 수 있는 OpenAI/ChatGPT 계정
 
-안정판 `0.7.2` manifest는 `stage` 키를 생략해 Supervisor의 기본 stable 채널을 사용하며 `boot: manual`입니다. 후보 payload 계보의 Native ARM CI와 공개 amd64+aarch64 image 발행·익명 조회 검증은 통과했습니다. 실제 Raspberry Pi/aarch64 HAOS 실기는 **NOT RUN**이며, 이 공백은 자동 검증 결과를 근거로 릴리스 승인 과정에서 명시적으로 수용됐습니다. HACS 설치는 지원하지 않습니다.
+안정판 `0.7.3` manifest는 `stage` 키를 생략해 Supervisor의 기본 stable 채널을 사용하며 `boot: manual`입니다. 후보 payload 계보의 Native ARM CI와 공개 amd64+aarch64 image 발행·익명 조회 검증은 통과했습니다. 실제 Raspberry Pi/aarch64 HAOS 실기는 **NOT RUN**이며, 이 공백은 자동 검증 결과를 근거로 릴리스 승인 과정에서 명시적으로 수용됐습니다. HACS 설치는 지원하지 않습니다.
 
 ### 이 앱이 제공하는 것
 
@@ -101,7 +101,7 @@ ha-codex
 
 | 설정 | 기본값 | 허용값·의미 | 주의 |
 | --- | --- | --- | --- |
-| `authorized_keys` | `[]` | SSH를 허용할 OpenSSH 공개키 목록 | 비어 있으면 SSH만 비활성화되고 Web UI는 유지됩니다. 개인키를 넣지 마세요. |
+| `authorized_keys` | `[]` | SSH를 허용할 OpenSSH 공개키 목록 | 구성 키와 간편 설정 키가 모두 없으면 SSH만 비활성화되고 Web UI는 유지됩니다. 개인키를 넣지 마세요. |
 | `web_terminal_auto_start_codex` | `false` | 새 `tmux` 세션에서 Codex를 한 번 자동 시작 | 기존 세션에는 소급되지 않습니다. Codex 종료 후 Bash로 돌아옵니다. |
 | `tmux_session_name` | `codex-ha` | 영문, 숫자, `.`, `_`, `-`로 된 1~64자 세션 이름 | 바꾼 뒤 새 세션을 사용합니다. |
 | `codex_approval_policy` | `on-request` | `untrusted`, `on-request`, `never` | `never`는 광범위한 자동 승인을 뜻하므로 신뢰하는 작업에서만 사용하세요. |
@@ -220,6 +220,28 @@ ChatGPT 모바일 Remote
   → HA 앱의 내장 Codex app-server
   → /config 원격 프로젝트
 ```
+
+### 모바일 SSH 간편 설정
+
+Web UI에서 Codex를 종료해 shell로 돌아온 뒤 직접 실행합니다.
+
+```bash
+ha-codex-remote setup
+```
+
+ECDSA P-256 전용 키를 생성하고 공개키를 자동 등록합니다. 화면의 **BEGIN부터 END까지 개인키 블록만** 휴대폰 Remote의 개인키 칸에 붙여넣으세요. 서버는 공개키를 이미 등록했으므로 구성 탭에 복사할 필요가 없습니다. Host는 휴대폰에서 도달 가능한 HA 주소, Port는 App Network의 SSH host port(기본 2223), User는 `root`, 프로젝트는 `/config`입니다. Ingress 주소는 SSH 주소가 아닙니다. Network에서 SSH 포트를 비활성화했다면 먼저 활성화하세요.
+
+기본 PKCS#8이 거절되면 **같은 키**를 SEC1으로 표시합니다.
+
+```bash
+ha-codex-remote show --format sec1
+```
+
+`show --format pkcs8`으로 돌아갈 수 있고 `setup` 재실행도 기존 키를 유지합니다. `ha-codex-remote status`는 비밀값 없이 fingerprint·접속 안내를 보여줍니다. `ha-codex-remote revoke`는 모바일 키를 해제합니다. 해제 후 `setup`은 새 키를 만들므로 휴대폰 키도 교체해야 합니다. 이미 연결된 SSH 세션은 해제 후에도 계속될 수 있습니다. 한 앱당 하나의 간편 설정 키를 제공하며 일반 `authorized_keys` 목록은 별도로 유지합니다.
+
+모바일 키는 `/data/ssh/mobile`에 디렉터리 0700·파일 0600으로 보존되며 App 재시작과 구성 저장 후에도 유지됩니다. SSH가 키 미설정으로 비활성화됐던 경우 시작을 요청하며 실패하면 App 재시작을 안내합니다. 개인키는 사용자가 직접 실행한 대화형 터미널에만 표시하며 리다이렉션은 거부합니다. 표시된 키는 터미널 scrollback과 `/data` 백업에 남을 수 있으므로 화면·출력을 채팅이나 이슈에 공유하지 마세요. Codex에게 키 출력을 대신 요청하지 마세요.
+
+유효한 SEC1·PKCS#8도 iOS 앱이 거부한다는 [동일 오류 제보](https://github.com/openai/codex/issues/52417)가 있습니다. 형식을 바꿔도 입력 단계에서 거절되면 모바일 앱을 업데이트하고 앱 버전·오류 문구만 기록하세요. 이 도우미는 클라이언트 파서 오류를 수정하지 않습니다. 키를 수락한 뒤 접속이 실패한다면 포트·VPN·접근 가능성과 SSH 로그를 점검합니다. [호스트 인증서 협상 실패 사례](https://github.com/openai/codex/issues/38264)는 입력 단계의 형식 오류와 별개입니다. 실제 ChatGPT 모바일 수용은 아직 미검증입니다.
 
 1. Web UI에서 `ha-codex-login`을 완료하고 `codex login status`가 로그인 상태를 표시하는지 확인합니다.
 2. 모바일 Remote가 사용할 키의 **공개키만** `authorized_keys`에 추가한 뒤 앱을 재시작합니다.
@@ -431,12 +453,12 @@ flowchart LR
 앱 이미지 업데이트와 별개로, 내장 Codex 바이너리는 `0.7.1`부터 세션을 보호하는 런타임 자동 업데이트를 지원합니다.
 
 - **주기 확인**: 하루 4회(기본 시간대 `Asia/Seoul` 기준 03:00, 09:00, 15:00, 21:00) 공식 GitHub Releases에서 새 stable 버전을 확인하고 SHA-256을 검증하여 `/data/codex-runtime/releases/<version>-<target>`에 준비(staging)합니다.
-- **유휴(idle) 세션 보호 및 기간별 한도**: 실행 중인 TUI, SSH, remote stdio, 백그라운드 작업, app-server 세션이 감지되면 업데이트 적용을 보류(`staged`)합니다.
+- **유휴(idle) 작업 보호**: 실제 작업이 있을 때 적용을 보류합니다. 관측 불가 상태도 별도 이유와 함께 보류합니다.
   - 세션 수는 프로세스 수와 다릅니다. `status`의 분류는 `/proc/<pid>/exe`의 실제 실행 파일과 관리 등록 record 기준의 고유 프로세스를 세며, 명령줄에 `/bin/codex`·`app-server` 같은 문자열이 데이터로만 포함된 무관 프로세스나 검증된 Codex 프로세스에 종속된 helper·companion(`codex-code-mode-host`, `bwrap`, `rg` 등)은 독립 세션으로 계상하지 않습니다. package 디렉터리 내부의 미식별 실행 파일을 포함해 신원을 검증할 수 없는 잔여 프로세스는 보류 사유 `unknown`으로 명시적으로 대기시킵니다.
   - 당일 빠른 5분 재확인은 날짜별 최대 12회(1시간 분량)로 제한됩니다.
   - 12회 도달 시 영구 차단이 아닌 일시 보류(`paused_busy`) 상태가 되어 당일 5분 확인을 멈추고, 다음 날 첫 예약 슬롯에서 동일 후보 적용을 자동으로 재개합니다.
   - 유휴 Unix app-server의 자동 재시작 트랜잭션은 24시간당 최대 1회로 제한되어 불필요한 연속 재시작을 방지합니다.
-- **자동 적용**: 실제 대화형·관리형 세션 프로세스가 모두 종료되거나 검증된 유휴 상태가 되면 원자적 심볼릭 링크 교체(`current -> releases/<version>-<target>`)를 완료합니다. remote stdio 세션이 보류의 원인이라면 작업을 저장하고 연결을 정상 종료하세요. 격리 검증에서 실제 Codex stdio app-server는 입력 연결이 닫히면 스스로 종료했고, 이후 재확인부터 적용이 진행됩니다(업데이터는 원격 연결을 강제로 끊거나 재연결하지 않습니다). 새 세션부터 즉시 갱신된 버전을 사용합니다.
+- **자동 적용**: 관리형 CLI/TUI와 Remote stdio는 창·연결·로드된 대화만으로 업데이트를 보류하지 않습니다. 진행·대기 요청, tool/승인 대기와 백그라운드 작업을 보호하고, 유휴 시 기존 스케줄·재시도 예산·cooldown에 따라 실행 worker를 교체합니다. 연결과 영속 대화를 복원한 뒤 다음 요청을 처리합니다. TUI frontend 자체는 종료 후 다음 실행부터 갱신됩니다. 이전 버전에서 직접 실행한 세션과 외부 `--remote` 서버는 자동 이관 대상이 아니며, 내용 있는 비영속 대화·미지원 작업 관측·복구 불완전 상태는 구체적인 이유와 함께 보류합니다.
 - **수동 관리**: CLI에서 `ha-codex-update status`, `ha-codex-update check`, `ha-codex-update apply`, `ha-codex-update update`를 사용할 수 있습니다. `status` 명령으로 일일 확인 횟수, 재시작 횟수, 다음 재시도 시각과 최근 적용 시도 기준 보류 원인(`lastBlocker`)을 확인할 수 있습니다. `lastBlocker`는 실제 발견한 프로세스 보류(CLI/Remote stdio/unmanaged/unknown 등)와 검사 전에 스킵된 하루 재검사 예산 소진(`daily_budget_exhausted`)·재시작 cooldown(`restart_cooldown`)을 구분하며, 예산 소진 자체는 status와 잔여 확인 횟수로도 확인됩니다. 기존 `codex update` 명령도 내부적으로 이 업데이터로 안전하게 라우팅됩니다.
 
 적용 직전 실제 managed config·MCP parsing, 일반 파일 쓰기, 보호 경로 열기 거부, 로컬 네트워크와 graceful 종료를 검사합니다. 실행 환경이나 후보가 검사를 지원하지 않으면 `blocked_policy`로 적용을 차단합니다. 보호 파일은 내용을 읽지 않고 열기 거부만 확인합니다. 검증된 archive의 전체 파일 inventory를 별도 private receipt에 저장하고 재사용·적용·새 세션 시작 때 확인합니다. 손상된 기존 release는 삭제하거나 덮어쓰지 않습니다. 이 검증은 관리자 root의 의도적 변조까지 격리하지는 않습니다.
@@ -568,7 +590,7 @@ Core가 준비될 시간을 두고 다시 확인합니다. DB/WAL을 직접 삭�
 
 ## 제한사항과 지원
 
-- 안정판 `0.7.2`은 amd64와 64비트 aarch64를 지원합니다. Native aarch64 CI와 image 검증은 통과했지만 실제 Raspberry Pi/aarch64 HAOS 실기는 **NOT RUN**이며 이 공백은 릴리스 승인 과정에서 수용됐습니다. Armv7은 지원하지 않습니다.
+- 안정판 `0.7.3`은 amd64와 64비트 aarch64를 지원합니다. Native aarch64 CI와 image 검증은 통과했지만 실제 Raspberry Pi/aarch64 HAOS 실기는 **NOT RUN**이며 이 공백은 릴리스 승인 과정에서 수용됐습니다. Armv7은 지원하지 않습니다.
 - `secrets.yaml`과 `.storage` content는 정상적인 Codex 직접 파일 접근에서 명시적으로 차단되어 그 경로로 내용이 Codex에 전달되지 않고, managed requirements는 Codex directory read도 거부합니다. 다만 AppArmor validator allowance 때문에 root shell의 `.storage` entry listing은 남습니다. 원시 API·로그·브라우저 결과의 민감값은 정화하지 않으며 root interactive process가 private runtime credential 파일을 직접 읽을 수 있는 잔여 위험도 있습니다.
 - Bubble Card와 다른 custom card를 포함하거나 자동 설치하지 않습니다.
 - 별도 채팅형 Web UI가 아닌 터미널 UI입니다.
@@ -580,3 +602,16 @@ Core가 준비될 시간을 두고 다시 확인합니다. DB/WAL을 직접 삭�
 지원 요청 전 [SUPPORT.md](../SUPPORT.md)에 따라 token, 내부 URL, entity·사용자 정보를 제거하세요. 일반 문제는 [GitHub Issues](https://github.com/Kanu-Coffee/codex-for-home-assistant/issues), 보안 취약점은 [SECURITY.md](../.github/SECURITY.md)의 비공개 경로를 사용하세요.
 
 프로젝트는 비공식 커뮤니티 프로젝트이며 OpenAI 또는 Home Assistant/Nabu Casa와 제휴하거나 보증받은 제품이 아닙니다. 소스는 [Apache License 2.0](../LICENSE)으로 배포됩니다.
+
+### DEV 0.7.3-dev.4의 resume 종료 문제 및 0.7.3-dev.5 수정
+
+0.7.3-dev.4에서 `codex resume` 목록에서 Enter를 누른 뒤 `Resuming session…`에서 shell로 돌아가는 문제가 확인됐습니다. 관리형 CLI host가 선택 화면의 연결 종료를 전체 종료로 처리한 것이 원인입니다. 0.7.3-dev.5에서는 화면 전환 시 host를 유지하고 호환되는 재연결 초기화를 처리하여 이 문제를 해결했습니다. 화면에 남은 내부 `--remote unix://…` 주소는 host 종료 뒤 재사용할 수 없습니다.
+
+### DEV 0.7.3-dev.6의 모바일 SSH 프록시 분리, 커널 Netlink 피어 식별 및 대화 복원
+
+0.7.3-dev.6에서는 모바일 SSH 원격 접속 및 런타임 갱신 시 안전성을 보강했습니다:
+
+- **SSH 래퍼 프록시 분리**: `codex app-server proxy` 명령을 JSONL lifecycle 호스트와 분리하여, 모바일 SSH 부트스트랩 시 프레이밍 오류 없이 백그라운드 리스너에 투명하게 연결됩니다.
+- **커널 Netlink 기반 소켓 피어 식별**: 리눅스 커널의 Netlink 소켓 진단을 통해 실제 연결된 프록시의 피어 소켓을 신뢰성 있게 판별하며, 소유권 불일치 연결은 안전하게 `unknown`으로 분류해 업데이트 시 대기합니다.
+- **영속 대화 자동 복원 및 임시 대화 보호**: 진행 중인 turn이 있는 서버는 업데이트를 보류하고, 서버 세대 교체 후 영속 대화는 자동으로 복원(`thread/resume`)되어 다음 turn 문맥을 유지합니다. 롤아웃 파일이 없는 임시(ephemeral) 대화가 열려 있는 경우 대화 소실을 방지하기 위해 세션 종료 시까지 업데이트를 보류합니다.
+- **기존 모바일 SSH 키 보존**: 이전 버전에서 발급받은 모바일 SSH 키는 그대로 유지되며 재생성이나 재인증이 필요하지 않습니다.

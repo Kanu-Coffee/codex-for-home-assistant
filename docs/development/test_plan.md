@@ -581,8 +581,6 @@ raw scan으로 진행한다. 실제 Grype 대조에서 metadata 누락 fixture�
 
 ## 6. FIX_09 수용 행렬 (dev.2 후보 보완 및 HAOS VM 검증)
 
-> 2026-10-26 후속 수용: 사용자가 잔여 실기기 항목을 포함해 전체 검증 완료·정상을 확인하고 stable 0.7.2 승격을 승인했다. 아래 표는 당시 개발/VM의 측정 이력이며 NOT RUN을 임의의 측정 PASS로 덮어쓰지 않는다. 사용자 수용과 exact stable CI/Builder/공개 게시 결과는 `progress.md`의 Stable 0.7.2 완료 기록을 따른다. 상세 ARM 하드웨어 및 DEV→main source migration 측정 증거는 별도로 제공되지 않았다.
-
 ### 6.1 실행 경계별 수용 판정
 
 | 진입 경로 | `/config` 보호 경로 상태 | 기대 동작 및 반환 코드 | 판정 상태 |
@@ -627,3 +625,13 @@ raw scan으로 진행한다. 실제 Grype 대조에서 metadata 누락 fixture�
 2. **실기기 Web 터미널 (`ttyd`) 및 SSH 세션 라이브 동작**: dev.2 게시 후 실제 사용자 브라우저/터미널 세션 동작 확인 대기 (NOT RUN).
 3. **ARM64 물리 기기 실행**: aarch64 하드웨어 상의 네이티브 실행 검증 대기 (NOT RUN).
 4. **Memory warning 9개 및 PATH alias EROFS 관측**: 단순 warning 제거가 아닌 원인별 영향 분류 및 enrichment 정상 동작 여부 관측 과제로 유지.
+
+## 관리형 worker 전환 회귀
+
+`tests/test_codex_live_handover.py`는 `CODEX_HANDOVER_BASELINE`과 `CODEX_HANDOVER_CANDIDATE`의 공식 binary pair를 사용한다. disposable home과 local Responses fixture로 stdio/WebSocket/PTY TUI의 첫 응답, busy 중 적용 보류, idle 후 실제 applyUpdate, 변경된 worker exe/PID, 같은 대화의 두 번째 응답과 이전 문맥 포함을 검사한다. image policy probe는 이 host 시험에서 주입한 stub이며 실제 AppArmor/requirements 검증을 대체하지 않는다. `tests/codex-update-smoke.sh`와 HAOS 시험에서 실제 policy gate를 별도로 검증한다.
+
+## 모바일 SSH 간편 설정
+
+모바일 간편 설정: setup→PKCS#8/SEC1 동일 공개키 검증→두 형식 실제 SSH 인증→App 재시작/구성 저장 후 보존→revoke 후 신규 인증 거부를 검사한다. 실제 ChatGPT 앱에서 두 PEM 입력·SSH 연결·app-server 후속 요청 수용은 HAOS/mobile 환경에서 별도 검증한다. 개인키를 로그나 증거에 포함하지 않는다.
+
+로컬 amd64 `codex-ha:remote-setup`의 `python3 tests/mobile-ssh-smoke.py codex-ha:remote-setup`는 실제 PTY setup, 두 PEM SSH 인증, revoke 거부, S6 활성화·재시작 후 SSH 로그인 PASS다. 실제 HAOS/ChatGPT 모바일 및 custom AppArmor/native ARM 수용은 NOT RUN이다.
