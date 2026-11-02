@@ -75,7 +75,7 @@ jobs:
         run: python -m pytest -ra
 
       - name: Remove installed runtime test dependencies before repository lint
-        run: rm -rf codex_home_assistant/playwright/node_modules
+        run: rm -rf codex_home_assistant/playwright/node_modules .test-tmp
 
       - name: Run YAML lint
         run: yamllint -c .yamllint .
@@ -87,7 +87,7 @@ jobs:
 
       - name: Run Markdown lint
         # Handoff history is immutable and is not product documentation.
-        run: npx --yes markdownlint-cli2@0.23.0 "**/*.md" "#**/.pytest_cache/**" "#.handoff/**"
+        run: npx --yes markdownlint-cli2@0.23.0 "**/*.md" "#**/.pytest_cache/**" "#.handoff/**" "#**/.test-tmp/**"
 
       - name: Run Dockerfile lint
         run: |

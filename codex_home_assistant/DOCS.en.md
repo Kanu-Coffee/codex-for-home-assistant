@@ -613,6 +613,7 @@ In 0.7.3-dev.4, selecting a conversation with Enter in `codex resume` could retu
 ### DEV 0.7.3-dev.6: Mobile SSH proxy separation, kernel Netlink peer identification, and thread restoration
 
 0.7.3-dev.6 strengthens safety for mobile SSH connections and runtime updates:
+
 - **SSH wrapper proxy separation**: Decouples `codex app-server proxy` from the JSONL lifecycle host so mobile SSH bootstrap commands stream transparently to background listeners without framing errors.
 - **Kernel Netlink peer identification**: Directly queries Linux Netlink socket diagnostics to map proxy connections to authorized helper sessions, safely holding unverified or mismatched sockets as `unknown`.
 - **Persistent thread restoration & ephemeral thread protection**: Servers with active turns hold updater signals. Persistent conversations are resumed (`thread/resume`) across server generations, while non-empty ephemeral conversations lacking rollout files are held busy until session termination to avoid irreversible conversation loss.
