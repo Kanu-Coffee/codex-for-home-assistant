@@ -1,5 +1,6 @@
 """Regression tests for codex app-server proxy transport, framing, and updater protection."""
 import base64
+import hashlib
 import json
 import os
 import select
@@ -14,26 +15,32 @@ import pytest
 REPOSITORY_ROOT = Path(__file__).resolve().parent.parent
 
 
-def find_test_codex_binary() -> Path | None:
+def find_all_test_codex_binaries() -> list[Path]:
     env_bin = os.environ.get("CODEX_WIRE_PROBE_BINARY")
     if env_bin and Path(env_bin).exists():
-        return Path(env_bin).resolve()
+        return [Path(env_bin).resolve()]
+    found = []
+    seen_hashes = set()
     for candidate in [
         REPOSITORY_ROOT / ".test-tmp/task007-baseline/bin/codex",
-        REPOSITORY_ROOT / ".test-tmp/resume-166/package/bin/codex",
         REPOSITORY_ROOT / ".test-tmp/resume-166/bin/codex",
     ]:
         if candidate.exists() and os.access(candidate, os.X_OK):
-            return candidate.resolve()
-    return None
+            h = hashlib.sha256(candidate.read_bytes()).hexdigest()
+            if h not in seen_hashes:
+                seen_hashes.add(h)
+                found.append(candidate.resolve())
+    return found
 
 
-@pytest.fixture
-def codex_binary() -> Path:
-    binary = find_test_codex_binary()
-    if not binary:
+ALL_BINARIES = find_all_test_codex_binaries()
+
+
+@pytest.fixture(params=ALL_BINARIES if ALL_BINARIES else [None], ids=lambda p: p.parent.parent.name if p else "none")
+def codex_binary(request) -> Path:
+    if request.param is None:
         pytest.skip("No real codex binary found in test environment or CODEX_WIRE_PROBE_BINARY")
-    return binary
+    return request.param
 
 
 def make_ws_upgrade_request(key: bytes | None = None) -> bytes:
@@ -143,7 +150,7 @@ def test_official_proxy_wire_upgrade_and_initialize(codex_binary: Path, tmp_path
         assert resp_header.startswith(b"HTTP/1.1 101 ")
 
         # 2. WebSocket initialize frame
-        init_req = json.dumps({"id": 1, "method": "initialize", "params": {"clientInfo": {"name": "test", "version": "1"}}})
+        init_req = json.dumps({"id": 1, "method": "initialize", "params": {"clientInfo": {"name": "test", "version": "1"}, "capabilities": {"experimentalApi": True}}})
         proxy.stdin.write(make_masked_ws_text_frame(init_req))
         proxy.stdin.flush()
 
@@ -152,7 +159,50 @@ def test_official_proxy_wire_upgrade_and_initialize(codex_binary: Path, tmp_path
         init_res = json.loads(payload.decode("utf-8"))
         assert init_res.get("id") == 1 and "result" in init_res
 
-        # 3. Clean termination on client EOF
+        # 3. Initialized notification
+        proxy.stdin.write(make_masked_ws_text_frame(json.dumps({"method": "initialized", "params": {}})))
+        proxy.stdin.flush()
+
+        # 4. Subsequent request: server/diagnostics
+        proxy.stdin.write(make_masked_ws_text_frame(json.dumps({"id": 2, "method": "server/diagnostics", "params": {}})))
+        proxy.stdin.flush()
+        diag_res = None
+        for _ in range(5):
+            op, pl = read_ws_frame(proxy.stdout)
+            if op == 1:
+                msg = json.loads(pl.decode("utf-8"))
+                if msg.get("id") == 2:
+                    diag_res = msg
+                    break
+        assert diag_res and "result" in diag_res, f"Unexpected diagnostics response: {diag_res}"
+
+        # 5. Subsequent request: thread/start
+        proxy.stdin.write(make_masked_ws_text_frame(json.dumps({"id": 3, "method": "thread/start", "params": {"cwd": str(tmp_path)}})))
+        proxy.stdin.flush()
+        thread_id = None
+        for _ in range(5):
+            op, pl = read_ws_frame(proxy.stdout)
+            if op == 1:
+                msg = json.loads(pl.decode("utf-8"))
+                if msg.get("id") == 3:
+                    thread_id = msg.get("result", {}).get("thread", {}).get("id")
+                    break
+        assert thread_id, f"Failed to obtain thread id: {msg}"
+
+        # 6. Subsequent request: thread/read verifying conversation preservation on same connection
+        proxy.stdin.write(make_masked_ws_text_frame(json.dumps({"id": 4, "method": "thread/read", "params": {"threadId": thread_id}})))
+        proxy.stdin.flush()
+        read_res = None
+        for _ in range(5):
+            op, pl = read_ws_frame(proxy.stdout)
+            if op == 1:
+                msg = json.loads(pl.decode("utf-8"))
+                if msg.get("id") == 4:
+                    read_res = msg
+                    break
+        assert read_res and read_res.get("result", {}).get("thread", {}).get("id") == thread_id
+
+        # 7. Clean termination on client EOF
         proxy.stdin.close()
         assert proxy.wait(timeout=5) == 0
     finally:

@@ -92,3 +92,80 @@ def test_boot_and_sshd_use_separate_persistent_mobile_keys(rootfs):
     init = (rootfs / 'usr/local/bin/codex-ha-init').read_text()
     assert 'mobile_key_count=$(/usr/local/bin/ha-codex-remote sync)' in init
     assert 'valid_key_count=$((valid_key_count + mobile_key_count))' in init
+
+
+def test_status_diagnostics_states(repository_root, tmp_path):
+    os.chmod(tmp_path, 0o700)
+    # Test status breakdown under various configurations
+    result = node(repository_root, f"""
+import {{main, mobileStorage}} from './{MODULE}';
+import {{writeFileSync, chmodSync, symlinkSync, mkdirSync}} from 'node:fs';
+
+process.env.CODEX_SSH_DIR = {json.dumps(str(tmp_path))};
+const originalLog = console.log;
+function runStatus() {{
+  let output = '';
+  console.log = (...args) => {{ output += args.join(' ') + '\\n'; }};
+  try {{
+    main(['status'], {json.dumps(str(tmp_path))});
+  }} finally {{
+    console.log = originalLog;
+  }}
+  return output;
+}}
+
+// 1. Initial state: absent files
+const out1 = runStatus();
+
+// 2. Configured and synced key (simulate setup)
+const store = mobileStorage({json.dumps(str(tmp_path))});
+const pub = store.setup();
+const out2 = runStatus();
+
+console.log(JSON.stringify({{
+  out1_has_not_running: out1.includes('SSH service: not_disabled / listener not_running'),
+  out1_has_unverified_auth: out1.includes('SSH auth: not_checked (confirm Accepted publickey in App logs)'),
+  out1_has_bootstrap: out1.includes('Codex bootstrap: not_checked (verified when client connects)'),
+  out1_has_absent_priv: out1.includes('Private material: absent'),
+  out1_has_absent_auth: out1.includes('Authorized keys: absent'),
+}}));
+""")
+    data = json.loads(result.stdout)
+    assert data["out1_has_not_running"] is True
+    assert data["out1_has_unverified_auth"] is True
+    assert data["out1_has_bootstrap"] is True
+    assert data["out1_has_absent_priv"] is True
+    assert data["out1_has_absent_auth"] is True
+
+
+def test_status_authorized_keys_comment_and_mismatch(repository_root, tmp_path):
+    os.chmod(tmp_path, 0o700)
+    result = node(repository_root, f"""
+import {{mobileStorage}} from './{MODULE}';
+import {{writeFileSync, readFileSync}} from 'node:fs';
+
+const store = mobileStorage({json.dumps(str(tmp_path))});
+const pub = store.setup();
+const authFile = {json.dumps(str(tmp_path / 'mobile' / 'authorized_keys'))};
+
+// Comment out the key
+writeFileSync(authFile, '# ' + pub.line + '\\n');
+const lines1 = readFileSync(authFile, 'utf-8').split('\\n').map(l=>l.trim()).filter(Boolean);
+const hasExact1 = lines1.some(l => l === pub.line);
+const keyBlob = pub.line.split(' ')[1];
+const hasCommented1 = lines1.some(l => l.startsWith('#') && l.includes(keyBlob));
+
+// Write unrelated key
+writeFileSync(authFile, 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIG... other\\n');
+const lines2 = readFileSync(authFile, 'utf-8').split('\\n').map(l=>l.trim()).filter(Boolean);
+const hasExact2 = lines2.some(l => l === pub.line);
+const hasCommented2 = lines2.some(l => l.startsWith('#') && l.includes(keyBlob));
+
+console.log(JSON.stringify({{
+  commented_detected: !hasExact1 && hasCommented1,
+  mismatch_detected: !hasExact2 && !hasCommented2
+}}));
+""")
+    data = json.loads(result.stdout)
+    assert data["commented_detected"] is True
+    assert data["mismatch_detected"] is True

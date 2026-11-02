@@ -26,6 +26,36 @@
 
 ## Current Work
 
+### 2026-11-02 — Executor: FIX_04 proxy 신원·상태 진단·후속 요청 검증 완료
+
+- [FIX_04](../../.handoff/007_work-aware-runtime-update/FIX_04.md) 지침에 따라 proxy 신원/소유권 엄격 검증, 정직한 상태 진단, 실제 SSH 다중 후속 요청 wire 및 활성 작업 보류 검증을 완료했다.
+- **Area 1 [P1] proxy 신원 및 소유권 엄격 검증 (`codex-runtime-manager.mjs`)**:
+  - `launch record`가 실제 `/proc` argv를 덮어쓰지 못하도록 보장: `isProxyInvocation`과 `isProxyRecord`가 모두 참이어야만 proxy로 인정. 불일치 시 `kind: "unknown"` (`proxyCommandMismatch` 또는 `unverifiedProxy`)로 실패 닫힘.
+  - argv의 `--sock` 대상 소켓과 record의 `socketPath` 정규화 일치를 강제 (`resolve()`). 불일치 시 `kind: "unknown"` (`proxyTargetMismatch`)로 차단.
+  - 소켓 대상의 symlink/realpath를 따라가며 살아있는 활성 소유자 서버(`app-server` 또는 `cli`)와 대조. 일치하지 않는 고아 proxy는 `kind: "unknown"` (`orphanProxy: true`)로 처리되어 업데이트를 차단.
+- **Area 2 [P2] ha-codex-remote 정직한 상태 진단 (`codex-remote-setup.mjs`)**:
+  - `mobileStorage.status()`가 안전하지 않은 권한에서 예외를 던져도 `status` 명령이 비정상 종료되지 않고 상태를 안전하게 파악하도록 try-catch 래핑.
+  - Private material 권한을 `absent`, `present (0600)`, `present (0400)`, `insecure permissions (mode)`, `insecure (symlink)`, `insecure (hardlink)`로 정밀 보고.
+  - Authorized keys를 한 줄씩 정확히 파싱하여 `synchronized (1 key)`, `commented / inactive`, `empty`, `out of sync`로 구분.
+  - SSH service: `/run/codex-ha/ssh-disabled` marker 존재 시 `disabled (no keys registered at startup)`, `/run/sshd.pid` 프로세스 실시간 생존 시 `active / listening`, 미구동 시 `not_disabled / listener not_running`으로 정직하게 보고.
+  - SSH auth: `not_checked (confirm Accepted publickey in App logs)`로 고정 안내하여 미관측 상태를 성공으로 오인하지 않도록 방지.
+  - isolation test를 위한 `CODEX_SSH_DIR` 환경변수 지원.
+- **Area 3 [P1] 종합 wire 및 작업 보류 검증**:
+  - `tests/test_remote_setup.py`: 상태 진단 상태머신 및 주석/불일치 판별 2개 신규 테스트 추가 (12/12 PASS).
+  - `tests/test_codex_wrapper_proxy.py`: 0.162.1(`task007-baseline`) 및 0.166.0(`resume-166`) 양쪽 공식 바이너리에 대해 파라미터화 검증. Upgrade, initialize, initialized, `server/diagnostics`, `thread/start`, `thread/read` 컨텍스트 보존 검증 (5/5 PASS).
+  - `tests/mobile-ssh-smoke.py`: 실 S6 컨테이너 내 실제 SSH 세션에서 Upgrade (101), initialize, initialized, `server/diagnostics`, `model/list`, `config/read` 다중 요청 성공 검증, per-operation deadline 및 EOF stderr 정제 적용 (PASS).
+  - `tests/test_codex_update_contract.py`: argv/record 불일치, target 불일치, record 없는 unverified proxy 회귀 테스트 3종 추가 및 활성 작업 중(`in_flight: 2`, `core.turns.active: 1`) 업데이터 보류(`canApply: false`) 및 유휴 복귀 후 업데이터 허용(`canApply: true`) 검증 추가 (127/127 PASS).
+  - 관련 단위/통합 테스트: 144 passed (96.53초).
+  - 격리 컨테이너 `codex-ha:test-fix04` (`sha256:37cb6cfbdf203acf474873ec588d80b72c6dd1074304f176bad660369b49e5a8`) 재빌드 및 smoke 재검증 PASS.
+- FIX_04 지침에 따라 버전 번프, git tag push, DEV 릴리스 배포는 일체 수행하지 않고 Reviewer 재리뷰를 대기한다.
+
+### 2026-11-02 — Reviewer: FIX_03 수용 미달·FIX_04 발행
+
+- `ae6814a`의 FIX_03 구현/보고서를 리뷰했다. [FIX_04](../../.handoff/007_work-aware-runtime-update/FIX_04.md)를 발행하며 판정은 REQUEST CHANGES다. 합격 조건이 충족되지 않아 dev.6 등 새 DEV 배포 지시는 발행하지 않았다.
+- 실제 argv의 proxy target이 launch record와 달라도 helpers=1/unknown=0/canApply=true가 되는 경우를 독립 재현했다. sshd·등록 키가 없는 격리 이미지에서도 status가 active/listening·인증 verified 안내를 출력하는 것을 확인했다. 실제 wrapper+SSH 시험은 initialize까지만 있어 대화·작업 보류·전환 후 후속 요청 수용이 부족하다.
+- 독립 관련 pytest 136 passed (89.23초), 기존 image의 S6/SSH wrapper Upgrade·initialize smoke PASS, ShellCheck·Node syntax·diff PASS. 전체 suite·새 image build·native ARM/custom AppArmor/HAOS/mobile 재시험은 NOT RUN이다. 증거는 Git 제외 `.test-tmp/review007-fix03/`와 `review007-fix03-smoke.log`에 있다.
+- 기존 FIX_03_REPORT는 이력으로 보존한다. 다음 Executor는 FIX_04를 수행해 FIX_04_REPORT를 새로 작성하고 재리뷰받는다. 이번 Reviewer는 제품 코드·버전·외부 Git·운영 HA를 변경하지 않았다.
+
 ### 2026-11-02 — Executor: 모바일 bootstrap FIX_03 구현 및 검증 완료
 
 - [FIX_03](../../.handoff/007_work-aware-runtime-update/FIX_03.md) 지침에 따라 모바일 Codex bootstrap 및 raw `app-server proxy` 전송 결함 해결을 구현하고 검증을 완료했다.

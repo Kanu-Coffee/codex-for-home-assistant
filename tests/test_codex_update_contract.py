@@ -2079,6 +2079,89 @@ def test_managed_idle_server_with_owned_proxy_is_restartable(repository_root: Pa
                 p.wait()
 
 
+def test_managed_server_with_owned_proxy_held_busy_during_active_work(repository_root: Path, tmp_path: Path) -> None:
+    runtime_dir = tmp_path / "runtime"
+    maint_dir = tmp_path / "maint"
+    runtime_dir.mkdir()
+    maint_dir.mkdir()
+    release = runtime_dir / "releases" / "0.162.1-x86_64-unknown-linux-musl"
+    socket_path = tmp_path / "managed_busy.sock"
+    flag_file = tmp_path / "server_busy_flag"
+    flag_file.write_text("busy\n", encoding="utf-8")
+    launcher = release / "bin" / "codex"
+    launcher.parent.mkdir(parents=True, exist_ok=True)
+    body = MOCK_APP_SERVER_JS.split("import fs from 'node:fs';\n")[1].replace("{socket!r}", repr(str(socket_path)))
+    # Modify MOCK_APP_SERVER_JS body to check flag_file: if present, report gauges with in_flight: 2, turns: 1
+    custom_body = (
+        body.replace(
+            "const msg = JSON.parse(payload.toString('utf-8'));",
+            "const msg = JSON.parse(payload.toString('utf-8'));\n"
+            f"          const isBusy = fs.existsSync({repr(str(flag_file))});",
+        )
+        .replace(
+            "{ name: 'app.requests.in_flight', value: 0 }",
+            "{ name: 'app.requests.in_flight', value: isBusy ? 2 : 0 }",
+        )
+        .replace(
+            "{ name: 'core.turns.active', value: 0 }",
+            "{ name: 'core.turns.active', value: isBusy ? 1 : 0 }",
+        )
+    )
+    launcher.write_text(
+        "#!/usr/bin/env node\n"
+        "import net from 'node:net';\n"
+        "import crypto from 'node:crypto';\n"
+        "import fs from 'node:fs';\n"
+        "if (process.argv.includes('proxy')) {\n"
+        "  setInterval(() => {}, 10000);\n"
+        "} else {\n"
+        + custom_body
+        + "\n}\n",
+        encoding="utf-8",
+    )
+    launcher.chmod(0o755)
+    server_proc = subprocess.Popen([str(launcher), "app-server", "--listen", f"unix://{socket_path}"],
+                                   stdout=subprocess.PIPE, text=True)
+    proxy_proc = None
+    try:
+        assert "READY" in server_proc.stdout.readline()
+        time.sleep(0.2)
+        _register_session(maint_dir, server_proc.pid, {
+            "type": "app-server", "managed": True, "socketPath": str(socket_path),
+            "exe": str(launcher), "version": "0.162.1", "cwd": str(tmp_path),
+            "args": ["app-server", "--listen", f"unix://{socket_path}"],
+        })
+        proxy_proc = subprocess.Popen([str(launcher), "app-server", "proxy", "--sock", str(socket_path)],
+                                      stdout=subprocess.DEVNULL, stdin=subprocess.PIPE)
+        time.sleep(0.2)
+        _register_session(maint_dir, proxy_proc.pid, {
+            "type": "app-server-proxy", "managed": False, "socketPath": str(socket_path),
+            "exe": str(launcher), "version": "0.162.1", "cwd": str(tmp_path),
+            "args": ["app-server", "proxy", "--sock", str(socket_path)],
+        })
+        # 1. While flag_file exists (active work in flight): updater MUST hold
+        res_busy = _inspect(repository_root, runtime_dir, maint_dir)
+        assert res_busy["canApply"] is False
+        assert any("in_flight" in r or "busy" in r for r in res_busy["busyReasons"]), res_busy["busyReasons"]
+        assert res_busy["counts"]["helpers"] == 1
+        assert res_busy["counts"]["unknown"] == 0
+
+        # 2. When active work finishes (flag_file removed): updater allows apply
+        flag_file.unlink()
+        time.sleep(1.2)  # Wait for consecutive diagnostic window
+        res_idle = _inspect(repository_root, runtime_dir, maint_dir)
+        assert res_idle["canApply"] is True
+        assert res_idle["busyReasons"] == [], res_idle["busyReasons"]
+        assert len(res_idle["restartableServers"]) == 1
+        assert res_idle["restartableServers"][0]["pid"] == server_proc.pid
+        assert res_idle["counts"]["helpers"] == 1
+    finally:
+        for p in (proxy_proc, server_proc):
+            if p is not None:
+                p.terminate()
+                p.wait()
+
+
 def test_proxy_with_missing_target_server_is_held_unknown(repository_root: Path, tmp_path: Path) -> None:
     runtime_dir = tmp_path / "runtime"
     maint_dir = tmp_path / "maint"
@@ -2109,6 +2192,116 @@ def test_proxy_with_missing_target_server_is_held_unknown(repository_root: Path,
         assert any("codex proxy without verified target server" in r for r in res["busyReasons"]), res["busyReasons"]
     finally:
         s.close()
+        proxy_proc.terminate()
+        proxy_proc.wait()
+
+
+def test_proxy_argv_target_mismatch_with_record_held_unknown(repository_root: Path, tmp_path: Path) -> None:
+    runtime_dir = tmp_path / "runtime"
+    maint_dir = tmp_path / "maint"
+    runtime_dir.mkdir()
+    maint_dir.mkdir()
+    release = runtime_dir / "releases" / "0.162.1-x86_64-unknown-linux-musl"
+    server_sock = tmp_path / "server.sock"
+    other_sock = tmp_path / "other.sock"
+    launcher = release / "bin" / "codex"
+    launcher.parent.mkdir(parents=True, exist_ok=True)
+    body = MOCK_APP_SERVER_JS.split("import fs from 'node:fs';\n")[1].replace("{socket!r}", repr(str(server_sock)))
+    launcher.write_text(
+        "#!/usr/bin/env node\n"
+        "import net from 'node:net';\n"
+        "import crypto from 'node:crypto';\n"
+        "import fs from 'node:fs';\n"
+        "if (process.argv.includes('proxy')) {\n"
+        "  setInterval(() => {}, 10000);\n"
+        "} else {\n"
+        + body
+        + "\n}\n",
+        encoding="utf-8",
+    )
+    launcher.chmod(0o755)
+    server_proc = subprocess.Popen([str(launcher), "app-server", "--listen", f"unix://{server_sock}"],
+                                   stdout=subprocess.PIPE, text=True)
+    proxy_proc = None
+    try:
+        assert "READY" in server_proc.stdout.readline()
+        time.sleep(0.2)
+        _register_session(maint_dir, server_proc.pid, {
+            "type": "app-server", "managed": True, "socketPath": str(server_sock),
+            "exe": str(launcher), "version": "0.162.1", "cwd": str(tmp_path),
+            "args": ["app-server", "--listen", f"unix://{server_sock}"],
+        })
+        # Launch proxy pointing to other_sock, but record claims server_sock
+        proxy_proc = subprocess.Popen([str(launcher), "app-server", "proxy", "--sock", str(other_sock)],
+                                      stdout=subprocess.DEVNULL, stdin=subprocess.PIPE)
+        time.sleep(0.2)
+        _register_session(maint_dir, proxy_proc.pid, {
+            "type": "app-server-proxy", "managed": False, "socketPath": str(server_sock),
+            "exe": str(launcher), "version": "0.162.1", "cwd": str(tmp_path),
+            "args": ["app-server", "proxy", "--sock", str(server_sock)],
+        })
+        res = _inspect(repository_root, runtime_dir, maint_dir)
+        assert res["canApply"] is False
+        assert res["counts"]["unknown"] == 1
+        assert res["counts"]["helpers"] == 0
+        assert any("codex proxy argv target socket does not match launch record" in r for r in res["busyReasons"]), res["busyReasons"]
+    finally:
+        for p in (proxy_proc, server_proc):
+            if p is not None:
+                p.terminate()
+                p.wait()
+
+
+def test_proxy_command_mismatch_with_record_held_unknown(repository_root: Path, tmp_path: Path) -> None:
+    runtime_dir = tmp_path / "runtime"
+    maint_dir = tmp_path / "maint"
+    runtime_dir.mkdir()
+    maint_dir.mkdir()
+    release = runtime_dir / "releases" / "0.162.1-x86_64-unknown-linux-musl"
+    socket_path = tmp_path / "test.sock"
+    launcher = release / "bin" / "codex"
+    launcher.parent.mkdir(parents=True, exist_ok=True)
+    launcher.write_text("#!/usr/bin/env node\nsetInterval(()=>{}, 10000);\n", encoding="utf-8")
+    launcher.chmod(0o755)
+    # Process launched as interactive CLI, but record falsely claims it is app-server-proxy
+    cli_proc = subprocess.Popen([str(launcher)], stdout=subprocess.DEVNULL, stdin=subprocess.PIPE)
+    try:
+        time.sleep(0.2)
+        _register_session(maint_dir, cli_proc.pid, {
+            "type": "app-server-proxy", "managed": False, "socketPath": str(socket_path),
+            "exe": str(launcher), "version": "0.162.1", "cwd": str(tmp_path),
+            "args": ["app-server", "proxy", "--sock", str(socket_path)],
+        })
+        res = _inspect(repository_root, runtime_dir, maint_dir)
+        assert res["canApply"] is False
+        assert res["counts"]["unknown"] == 1
+        assert any("codex process command does not match proxy launch record" in r for r in res["busyReasons"]), res["busyReasons"]
+    finally:
+        cli_proc.terminate()
+        cli_proc.wait()
+
+
+def test_proxy_unverified_without_session_record_held_unknown(repository_root: Path, tmp_path: Path) -> None:
+    runtime_dir = tmp_path / "runtime"
+    maint_dir = tmp_path / "maint"
+    runtime_dir.mkdir()
+    maint_dir.mkdir()
+    release = runtime_dir / "releases" / "0.162.1-x86_64-unknown-linux-musl"
+    socket_path = tmp_path / "test.sock"
+    launcher = release / "bin" / "codex"
+    launcher.parent.mkdir(parents=True, exist_ok=True)
+    launcher.write_text("#!/usr/bin/env node\nsetInterval(()=>{}, 10000);\n", encoding="utf-8")
+    launcher.chmod(0o755)
+    # Process launched as proxy, but NO session record is registered
+    proxy_proc = subprocess.Popen([str(launcher), "app-server", "proxy", "--sock", str(socket_path)],
+                                  stdout=subprocess.DEVNULL, stdin=subprocess.PIPE)
+    try:
+        time.sleep(0.2)
+        res = _inspect(repository_root, runtime_dir, maint_dir)
+        assert res["canApply"] is False
+        assert res["counts"]["unknown"] == 1
+        assert any("codex proxy process without verified launch record" in r for r in res["busyReasons"]), res["busyReasons"]
+    finally:
         proxy_proc.terminate()
         proxy_proc.wait()
 

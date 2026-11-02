@@ -1422,8 +1422,29 @@ export async function inspectAllSessions(options = {}) {
       ((record.type === "app-server" && (!invocation.subcommand || (invocation.subcommand === "app-server" && !invocation.appServerCommand))) ||
        (record.type === "remote-stdio" && record.managed === true));
     if (isProxyInvocation || isProxyRecord) {
-      e.kind = "proxy";
-      e.targetSocket = record?.socketPath || record?.targetSocket || invocation.proxySocket || null;
+      if (!isProxyInvocation) {
+        // Record claims app-server-proxy, but actual process argv/command is not a proxy.
+        // Record alone must never convert an arbitrary or non-proxy process into a proxy.
+        e.kind = "unknown";
+        e.proxyCommandMismatch = true;
+      } else if (!isProxyRecord) {
+        // Actual process is running app-server proxy, but valid matching launch record is missing.
+        e.kind = "unknown";
+        e.unverifiedProxy = true;
+      } else {
+        // Both invocation and record agree this is a proxy.
+        // Verify that the argv target socket and record target socket match!
+        const argvSock = invocation.proxySocket || null;
+        const recSock = record.socketPath || record.targetSocket || null;
+        if (!argvSock || !recSock || resolve(argvSock) !== resolve(recSock)) {
+          e.kind = "unknown";
+          e.proxyTargetMismatch = true;
+        } else {
+          e.kind = "proxy";
+          e.targetSocket = argvSock;
+          e.proxyRecord = record;
+        }
+      }
     } else if (serverByArgv || serverByRecord) {
       e.kind = "app-server";
       e.socketPath = record?.socketPath || invocation.listenSocket;
@@ -1540,6 +1561,10 @@ export async function inspectAllSessions(options = {}) {
         addBusy("inspection_failed", pid, `process state unknown: ${e.proc.error}`);
       } else if (e.orphanCompanion) {
         addBusy("unknown", pid, "codex package companion without verifiable owner; held for manual review");
+      } else if (e.proxyTargetMismatch) {
+        addBusy("unknown", pid, "codex proxy argv target socket does not match launch record; held for review");
+      } else if (e.proxyCommandMismatch) {
+        addBusy("unknown", pid, "codex process command does not match proxy launch record; held for review");
       } else if (e.unverifiedProxy) {
         addBusy("unknown", pid, "codex proxy process without verified launch record; held until identity is verified");
       } else if (e.missingTargetSocket) {

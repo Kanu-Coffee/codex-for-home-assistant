@@ -77,8 +77,12 @@ export function mobileStorage(sshDirectory) {
     },
     sync,
     status() {
-      const key = load();
-      return key ? sshPublic(key) : null;
+      try {
+        const key = load();
+        return key ? sshPublic(key) : null;
+      } catch {
+        return null;
+      }
     },
     pem(format) {
       if (!['pkcs8', 'sec1'].includes(format)) throw new SetupError('Use --format pkcs8 or --format sec1');
@@ -94,7 +98,7 @@ export function mobileStorage(sshDirectory) {
   };
 }
 
-export function main(args = process.argv.slice(2)) {
+export function main(args = process.argv.slice(2), sshDirectory = process.env.CODEX_SSH_DIR || '/data/ssh') {
   let command = args.shift() || 'help';
   if (command === '--help') command = 'help';
   let format = 'pkcs8';
@@ -112,7 +116,7 @@ export function main(args = process.argv.slice(2)) {
   if (['setup', 'show'].includes(command) && (!process.stdin.isTTY || !process.stdout.isTTY)) {
     throw new SetupError('Run setup/show directly in the interactive Web UI terminal; key output cannot be redirected');
   }
-  const storage = mobileStorage('/data/ssh');
+  const storage = mobileStorage(sshDirectory);
   if (command === 'sync') { console.log(storage.sync()); return; }
   if (command === 'revoke') {
     storage.revoke();
@@ -130,7 +134,7 @@ export function main(args = process.argv.slice(2)) {
     } else console.log('Public key registered. App restart is not normally required.');
   }
   const info = storage.status();
-  const dir = join('/data/ssh', 'mobile');
+  const dir = join(sshDirectory, 'mobile');
   const privPath = join(dir, 'private.pem');
   const authPath = join(dir, 'authorized_keys');
   const privExists = existsSync(privPath);
@@ -141,23 +145,66 @@ export function main(args = process.argv.slice(2)) {
   if (privExists) {
     try {
       const st = lstatSync(privPath);
-      privStatus = (st.mode & 0o077) === 0 ? 'present (0600)' : 'insecure permissions';
+      if (st.isSymbolicLink()) {
+        privStatus = 'insecure (symlink)';
+      } else if (st.nlink > 1) {
+        privStatus = 'insecure (hardlink)';
+      } else {
+        const mode = (st.mode & 0o777).toString(8).padStart(4, '0');
+        if ((st.mode & 0o177) !== 0) {
+          privStatus = `insecure permissions (${mode})`;
+        } else {
+          privStatus = `present (${mode})`;
+        }
+      }
     } catch { privStatus = 'inaccessible'; }
   }
   let authStatus = 'absent';
   if (authExists) {
     try {
       const content = readFileSync(authPath, 'utf-8');
-      authStatus = (info && content.includes(info.line)) ? 'synchronized' : 'configured';
+      const lines = content.split('\n').map((l) => l.trim()).filter(Boolean);
+      if (lines.length === 0) {
+        authStatus = 'empty';
+      } else if (info) {
+        const matchingLine = lines.find((l) => l === info.line);
+        const keyBlob = info.line.split(' ')[1];
+        const commentedLine = lines.find((l) => l.startsWith('#') && keyBlob && l.includes(keyBlob));
+        if (matchingLine) {
+          authStatus = 'synchronized (1 key)';
+        } else if (commentedLine) {
+          authStatus = 'commented / inactive';
+        } else {
+          authStatus = 'out of sync';
+        }
+      } else {
+        authStatus = 'configured (no local mobile key)';
+      }
     } catch { authStatus = 'inaccessible'; }
   }
-  const sshStatus = sshDisabled ? 'disabled (no keys registered at startup)' : 'active / listening';
+  let sshStatus = 'not_disabled / listener not_running';
+  if (sshDisabled) {
+    sshStatus = 'disabled (no keys registered at startup)';
+  } else if (existsSync('/run/sshd.pid')) {
+    try {
+      const pidStr = readFileSync('/run/sshd.pid', 'utf-8').trim();
+      if (/^\d+$/.test(pidStr)) {
+        const p = parseInt(pidStr, 10);
+        process.kill(p, 0);
+        sshStatus = 'active / listening';
+      }
+    } catch {}
+  }
 
-  console.log(`Mobile key: ${info ? info.fingerprint : 'not configured'}
+  const keyDisplay = info
+    ? info.fingerprint
+    : (privExists && privStatus.startsWith('insecure') ? 'error (insecure key storage)' : 'not configured');
+
+  console.log(`Mobile key: ${keyDisplay}
 Private material: ${privStatus}
 Authorized keys: ${authStatus}
 SSH service: ${sshStatus}
-SSH auth: verified on client connection (check App SSH logs for Accepted publickey)
+SSH auth: not_checked (confirm Accepted publickey in App logs)
 Codex bootstrap: not_checked (verified when client connects)
 Host: your HA address reachable from the phone
 Port: App Network host port (default 2223; Ingress URL is not the SSH address)
