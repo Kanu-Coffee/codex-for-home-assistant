@@ -2,6 +2,35 @@
 
 All notable changes to this App are documented in this file.
 
+## [0.7.3] - 2026-11-02
+
+### Added
+
+- Native Linux Netlink kernel peer socket verification (`/proc/net/tcp` fallback) to accurately map connected proxies to authorized helper sessions while treating unverified or mismatched connections as unknown.
+- Cross-generation turn continuity and active turn protection: active in-flight turns hold updater signals, and persistent conversations are resumed (`thread/resume`) on the newly launched server generation.
+- Dedicated interactive `ha-codex-remote setup/show/status/revoke` for persistent ECDSA P-256 mobile SSH keys, automatic public-key registration, and PKCS#8/SEC1 PEM export surviving configuration rewrites.
+- Real reproducible CI fixture provisioning for official Codex 0.162.1 and 0.166.0 binaries with SHA-256 integrity verification.
+- End-to-end container image peer observation smoke test verifying helper recognition (`helpers >= 1`, `unknown == 0`, `canApply: true`) during live SSH proxy connections.
+
+### Changed
+
+- Managed interactive CLI and JSONL Remote stdio through a persistent lifecycle host (`codex-session-host.mjs`). Idle loaded conversations no longer block worker handover; unfinished requests, approvals, and background work remain protected.
+- Used pinned `ws` runtime for TUI Unix WebSocket transport, preserving connection framing and backpressure for large messages.
+
+### Fixed
+
+- Separated `app-server proxy` raw WebSocket streaming from JSONL lifecycle host; correctly route SSH bootstrap commands to background listeners without framing errors.
+- Protected ephemeral conversations: non-empty ephemeral threads lacking persistent rollout files are held busy pre-signal (`canApply: false`) to prevent irreversible thread loss during updates.
+- Kept managed CLI host alive when the resume picker replaces its WebSocket connection; reuse backend initialization for compatible, drained reconnects.
+- Honest SSH diagnostics and listener status reporting: avoid reporting unobserved authentications as active and fix PID matching for sshd listeners.
+- Separated runtime manager options contract (`restoreCapability`) from version strings.
+- Preserved existing mobile SSH credentials across updates without re-running setup or revocation.
+
+### Release
+
+- Promote the user-accepted `0.7.3-dev.6` runtime to the stable channel after the user confirmed HAOS Remote field validation and approved stable release.
+- Retain identical runtime code, permissions, `/config` mapping, and protected-path policies.
+
 ## [0.7.3-dev.6] - 2026-11-02
 
 ### Added

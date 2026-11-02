@@ -4,8 +4,8 @@
 
 ## Project Status
 
-- 상태: **DEV 0.7.3-dev.6 공개 배포 완료 (PR #66 merge SHA `93722a44...`, tag `0.7.3-dev.6`, Multi-arch OCI image `sha256:0e84de46...`, GitHub Pre-release) / Stable 0.7.2 main 유지 / 모바일 SSH 프록시 분리, 커널 Netlink 피어 식별, 영속 대화 복원 및 임시 대화 보호 구현 / 실제 모바일 reconnect/resume 및 HAOS 실기기 수용 대기**
-- 현재 마일스톤: **DEV 0.7.3-dev.6 배포 완료 (실기기 확인 대기)**
+- 상태: **Stable 0.7.3 릴리스 진행 중 (task 007 완료 승인, main 대상 PR #68 및 릴리스 배포 준비)**
+- 현재 마일스톤: **Stable 0.7.3 정식 릴리스 및 브랜치 정리**
 - 마지막 문서 기준일: **2026-11-02**
 - 저장소: public `Kanu-Coffee/codex-for-home-assistant`, default branch `main`
 
@@ -25,6 +25,31 @@
 - [x] interactive/Codex/S6 ambient `SUPERVISOR_TOKEN` 상속 제거와 private helper credential loader 구현
 
 ## Current Work
+
+### 2026-11-02 — Executor: Stable 0.7.3 정식 릴리스 준비 및 계약 검증 완료
+
+- Reviewer Codex의 [FIX_09](../../.handoff/007_work-aware-runtime-update/FIX_09.md) 최종 인수 및 사용자의 정식 릴리스 승인 지시에 따라 task 007을 공식 종료([FIX_09_REPORT](../../.handoff/007_work-aware-runtime-update/FIX_09_REPORT.md))하고, 정식판 `0.7.3` 릴리스 준비를 완료했다.
+- **메타데이터 및 채널 계약 동기화:**
+  - `codex_home_assistant/config.yaml`: `version: "0.7.3"`, `name: Codex for Home Assistant`, `panel_title: Codex`, description DEV 접두사 제거, `stage: experimental` 생략(Supervisor 기본 stable 채널 적용).
+  - `repository.yaml`: `name: Codex for Home Assistant` (DEV 표식 제거).
+  - `codex_home_assistant/Dockerfile`: `ARG BUILD_VERSION=0.7.3`, OCI 라벨 DEV 표식 제거 및 Stable 설명 동기화.
+  - `codex_home_assistant/playwright/package.json` 및 `package-lock.json`: `0.7.3` 일치.
+  - `codex_home_assistant/CHANGELOG.md`: `## [0.7.3] - 2026-11-02` 정식 승격 릴리스 기록 추가.
+  - `codex-runtime-manager.mjs` 및 계약 테스트: `APP_VERSION = "0.7.3"` 일치 및 stable 계약 검사 활성화.
+  - README / DOCS (한국어, 영어): 정식판 `0.7.3` 배너 및 설치 안내 동기화.
+- **로컬 검증 결과:**
+  - 전체 pytest: **320 passed, 5 skipped** (137.86초).
+  - 계약 및 업데이트 검사: **149 passed** (100.44초).
+  - 마크다운 린트: `markdownlint-cli2` 53개 파일 0 errors PASS.
+  - 로컬 amd64 Docker 빌드: `codex-ha:0.7.3-test` 성공 및 OCI 라벨 일치 확인.
+  - `tests/mobile-ssh-smoke.py`: 실 컨테이너 내부 SSH 프록시 커널 Netlink 피어 식별(`helpers >= 1`, `unknown == 0`, `canApply: true`), 키 발급 및 폐기 정상 PASS.
+
+### 2026-11-02 — Reviewer: 운영 자체 점검·사용자 확인 반영, task 007 최종 인수
+
+- 첨부 `12_codex_ha_self_check_report.md`와 사용자의 dev.6 HAOS 설치·Remote 접속 및 동작 정상 확인을 운영 증거로 수용했다. 보고서는 API/helper·브라우저 desktop/mobile·메모리 정상 범위를 확인하며 전체 침해/모델 버전/기능 검증으로 확대하지 않는다.
+- 보고서의 내부 `codex --version` preflight 실패는 일반 터미널에서도 실패하는지 추가 확인했다. 사용자가 일반 App Web/SSH 터미널에서는 정상 버전 출력된다고 답했다. 기존 문서의 내부 재호출 제한과 구분하고 신규 CLI 장애로 해석하지 않는다. 보호 검사·requirements는 Stable 0.7.2 대비 동일하며 내부 실패의 정확한 원인을 해결했다고 주장하지 않는다.
+- [FIX_09 최종 인수 리뷰](../../.handoff/007_work-aware-runtime-update/FIX_09.md)에 기능 task 종료 가능·Stable 반영 후보 인수 가능 판정을 기록했다. 실제 Stable 게시·운영 변경 지시는 아니다. Stable exact metadata/CI/image 검증, 독립 서명 검증 구분, DEV→main 별도 identity와 남은 모바일 자동 복원·물리 ARM 검증 범위를 다음 릴리스 gate로 남긴다.
+- 이번 독립 보호 정책 pytest 18 passed/1 skipped (0.33초), GitHub readonly API로 dev.6 exact DEV CI/Tag Builder 전체 필수 job·step success 재확인, diff PASS. 전체 suite·image build·실기 조작·독립 서명 검증은 재실행하지 않았다. 제품 코드·버전·외부 Git·사용자 HA는 변경하지 않았다.
 
 ### 2026-11-02 — Executor: FIX_08 DEV 0.7.3-dev.6 배포 및 CI fixture·image peer gate 구축 완료
 

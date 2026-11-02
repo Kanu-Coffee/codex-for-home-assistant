@@ -1,6 +1,4 @@
-**DEV `0.7.3-dev.6`가 공개되었습니다. Netlink 커널 peer 식별, SSH wrapper proxy 분리, 영속 대화 복원 및 임시 대화 보호를 구현하며 HAOS 실기 수용은 아직 수행하지 않았습니다.**
-
-> 이전 DEV 후보: `0.7.2-dev.2` — 검사 실패 원인 분리, 런타임 버전 상세 분리, 정상 정지 유예를 개선합니다. 설치 저장소는 `https://github.com/Kanu-Coffee/codex-for-home-assistant#dev`이며 App/패널은 **Codex for Home Assistant (DEV)** / **Codex DEV**입니다. VM·CI 검증과 실제 사용자 장치 수용은 구분합니다.
+> 정식판 `0.7.3` — 실기기 수용을 마친 `0.7.3-dev.6`의 모바일 SSH 프록시 분리, 커널 Netlink 피어 식별, 런타임 자동 업데이트 대화 복원 및 영속 키 설정을 승격합니다. 설치 저장소는 `https://github.com/Kanu-Coffee/codex-for-home-assistant`입니다.
 
 <p align="right">
   <strong>한국어</strong> · <a href="README.en.md">English</a>
@@ -33,7 +31,7 @@ Home Assistant 안에서 Codex와 대화하며 설정을 살펴보고 대시보�
 
 ## 빠른 시작
 
-1. 앱(0.7.1)을 설치하고 시작합니다. `amd64`와 64비트 `aarch64`를 지원합니다. Manifest는 `stage` 키를 생략해 Supervisor의 기본 stable 채널을 사용하며 `boot: manual`입니다. 사용자 HAOS amd64에서 CLI·브라우저 수용을 확인했고 DEV 0.7.1-dev.7의 native amd64/ARM CI가 통과했습니다. Stable 0.7.1도 같은 런타임으로 양 architecture CI와 배포 검증을 통과했습니다. 실제 Raspberry Pi/aarch64 HAOS 실기는 **NOT RUN**이며 native ARM CI와 구분합니다.
+1. 앱(0.7.3)을 설치하고 시작합니다. `amd64`와 64비트 `aarch64`를 지원합니다. Manifest는 `stage` 키를 생략해 Supervisor의 기본 stable 채널을 사용하며 `boot: manual`입니다. 사용자 HAOS amd64에서 CLI·브라우저 및 Remote 수용을 확인했고 DEV 0.7.3-dev.6의 native amd64/ARM CI가 통과했습니다. Stable 0.7.3도 같은 런타임으로 양 architecture CI와 배포 검증을 통과했습니다. 실제 Raspberry Pi/aarch64 HAOS 실기는 **NOT RUN**이며 native ARM CI와 구분합니다.
 2. **OPEN WEB UI**를 누릅니다.
 3. 처음 한 번 `ha-codex-login`으로 로그인합니다.
 4. `ha-codex`를 실행합니다.
