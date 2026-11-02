@@ -4,9 +4,9 @@
 
 ## Project Status
 
-- 상태: **Stable 0.7.2 main·tag·public amd64/aarch64 image·GitHub latest 정식 릴리스 게시 완료 / 사용자 dev.2 실기기 전체 정상 확인·승격 승인 / exact PR/main CI·Builder·독립 공개/서명/provenance/SPDX 검증 PASS / task 004 개발 PLAN 종료**
-- 현재 마일스톤: **Stable 0.7.2 정식 배포 완료**
-- 마지막 문서 기준일: **2026-10-30**
+- 상태: **DEV 0.7.3-dev.6 공개 배포 완료 (PR #66 merge SHA `93722a44...`, tag `0.7.3-dev.6`, Multi-arch OCI image `sha256:0e84de46...`, GitHub Pre-release) / Stable 0.7.2 main 유지 / 모바일 SSH 프록시 분리, 커널 Netlink 피어 식별, 영속 대화 복원 및 임시 대화 보호 구현 / 실제 모바일 reconnect/resume 및 HAOS 실기기 수용 대기**
+- 현재 마일스톤: **DEV 0.7.3-dev.6 배포 완료 (실기기 확인 대기)**
+- 마지막 문서 기준일: **2026-11-02**
 - 저장소: public `Kanu-Coffee/codex-for-home-assistant`, default branch `main`
 
 ## 완료된 결정
@@ -26,15 +26,23 @@
 
 ## Current Work
 
-### 2026-11-02 — Executor: FIX_08 DEV 0.7.3-dev.6 배포 및 CI fixture·image peer gate 구축
+### 2026-11-02 — Executor: FIX_08 DEV 0.7.3-dev.6 배포 및 CI fixture·image peer gate 구축 완료
 
-- Reviewer Codex의 [FIX_08](../../.handoff/007_work-aware-runtime-update/FIX_08.md) 지침에 따라 확정 버전 `0.7.3-dev.6` 배포를 위한 CI fixture 자동 프로비저닝, 이미지 피어 관측 게이트, 버전 및 문서 동기화를 진행 중이다.
-- 원격 태그/릴리스/GHCR 확인: `0.7.3-dev.6` 미할당 확인 완료.
-- 재현 가능한 공식 바이너리 프로비저닝 스크립트 `tests/prepare-test-binaries.sh` 신설: 공식 0.162.1 및 0.166.0의 아키텍처별 tar.gz 다운로드, SHA-256 검증, 안전한 권한 설정, 아카이브 격리 처리.
-- `tests/test_codex_wrapper_proxy.py` 아키텍처 독립화: 동적 아키텍처 접미사 및 환경 변수 우선 검색 연동.
-- CI 워크플로(`.github/workflows/ci.yaml`): pytest 전 `tests/prepare-test-binaries.sh` 실행 및 `CODEX_WIRE_PROBE_BINARY` 연결. Actionlint 통과.
-- `tests/mobile-ssh-smoke.py` 확장: 실제 컨테이너 내 SSH 프록시 연결 중 `inspectAllSessions()` 호출로 `helpers >= 1, unknown == 0, canApply: true` 게이트 검증.
-- 메타데이터 및 문서 갱신: `config.yaml`, `Dockerfile`, `playwright/package.json`, `package-lock.json`, `tests/test_addon_contract.py`, `CHANGELOG.md`, 한/영 README/DOCS `0.7.3-dev.6` 반영.
+- Reviewer Codex의 [FIX_08](../../.handoff/007_work-aware-runtime-update/FIX_08.md) 지침에 따라 확정 버전 `0.7.3-dev.6` 배포를 위한 CI fixture 자동 프로비저닝, 이미지 피어 관측 게이트, 버전 및 문서 동기화, PR 병합, 불변 태그 생성 및 GitHub 사전 릴리스 배포를 완료했다.
+- **배포 산출물 및 식별자:**
+  - 확정 버전: `0.7.3-dev.6` (원 코드 `adfbaaa` 포함)
+  - DEV PR: [#66](https://github.com/Kanu-Coffee/codex-for-home-assistant/pull/66) (HEAD `40c7b6f`, Checks 12 passed / 2 skipped / 0 failed)
+  - DEV Merge SHA: `93722a446912e0094568b43124653b80b864b992` (DEV CI Run [41390227295](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/41390227295) SUCCESS)
+  - Annotated Tag: `0.7.3-dev.6` (dereference: `93722a446912e0094568b43124653b80b864b992`)
+  - Tag Builder Run: [41390768112](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/41390768112) (SUCCESS)
+  - Multi-arch Manifest Digest: `sha256:0e84de4645da80a9bb4b7047f5bcb020f1215a9e88ed2e6ea329427739c93495`
+  - GitHub Pre-release: [0.7.3-dev.6](https://github.com/Kanu-Coffee/codex-for-home-assistant/releases/tag/0.7.3-dev.6) (`isDraft: false`, `isPrerelease: true`)
+- **CI Fixture & Gate 보완:**
+  - `tests/prepare-test-binaries.sh` 신설: 공식 0.162.1 및 0.166.0 패키지 다운로드, SHA-256 검증, 안전 권한 설정, 아카이브 격리. 깨끗한 CI 러너에서 바이너리 의존 테스트 재현 확보.
+  - `tests/test_codex_wrapper_proxy.py`: x86_64/aarch64 동적 감지 및 환경 변수 우선 연동.
+  - `tests/mobile-ssh-smoke.py`: 실 컨테이너 SSH 프록시 연결 중 `inspectAllSessions()` 호출로 `{'helpers': 1, 'unknown': 0, 'canApply': True}` 게이트 검증.
+  - 배포 완료된 공개 이미지 `ghcr.io/kanu-coffee/codex-for-home-assistant:0.7.3-dev.6` pull 후 모바일 SSH 스모크 재검증 PASS.
+- 상세 내용은 [.handoff/007_work-aware-runtime-update/FIX_08_REPORT.md](../../.handoff/007_work-aware-runtime-update/FIX_08_REPORT.md)에 기록했다.
 
 ### 2026-11-02 — Reviewer: FIX_07 로컬 구현 수용·DEV 배포 FIX_08 발행
 
