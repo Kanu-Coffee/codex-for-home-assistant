@@ -26,6 +26,44 @@
 
 ## Current Work
 
+### 2026-11-02 — Executor: FIX_05 alias/rebind/peer 검증, 정직한 SSH 데몬/포트 진단, 실 turn/보류 검증 완료
+
+- Reviewer Codex의 [FIX_05](../../.handoff/007_work-aware-runtime-update/FIX_05.md) 지침에 따라 1) 파일시스템 alias 변경 및 소켓 rebind를 통한 proxy 오분류 방지, 2) 정직한 sshd 프로세스/포트 진단, 3) mock Responses provider를 통한 실제 다중 턴 대화 및 활성 턴 중 업데이터 보류 검증을 완결하고 `FIX_05_REPORT.md`를 작성했다.
+- **Section 2 [P1] 실제 연결 peer / 세대 검증 vs 파일시스템 alias (`codex-runtime-manager.mjs`)**:
+  - Reviewer의 독립 재현(`.test-tmp/review007-fix04/alias-owner.py`) 원인 분석: proxy 실행 중 대상 소켓 심링크가 다른 유휴 관리 서버 B로 변경되어도 단순히 현재 시점의 `realpath()` 소유자를 확인하여 helper로 오분류하는 취약점 차단.
+  - `targetLstat.mtimeMs > proxyStartTime + 50` 및 `targetStat.ctimeMs > proxyStartTime + 50`: 심링크 대상 변경(retarget)이나 소켓 파일 재생성/rebind 감지 시 `kind: "unknown"` (`proxyTargetRetargeted` / `proxySocketRebound`)으로 격리.
+  - 소유자 시작 시간 대조: `ownerStartTime > proxyStartTime + 100`인 경우(proxy 기동 이후 실행된 서버) 소유자로 불인정하고 `kind: "unknown"` (`orphanProxy: true`)으로 처리.
+  - 활성 연결 peer 검증: proxy 프로세스가 열린 소켓 FD를 보유하고 있는 경우, 후보 소유자 서버의 `/proc/<owner_pid>/fd`에 활성 수신 소켓(`St: 03` in `/proc/net/unix`)이 존재해야만 유효한 소유자로 인정.
+- **Section 3 [P2] ha-codex-remote 정직한 SSH 진단 (`codex-remote-setup.mjs`)**:
+  - Reviewer 재현 원인 분석: 임의의 프로세스(bash 등) PID가 `/run/sshd.pid`에 적혀있을 때 `kill(pid, 0)`만으로 active 판정하던 문제 해결.
+  - `/proc/<pid>/exe` 및 `/proc/<pid>/cmdline`을 검사하여 `sshd` 또는 `dropbear` 실행 파일인지 엄격 검증; 불일치 시 `not_disabled / pid_mismatch (pid <pid> is not sshd)` 보고.
+  - 프로세스가 sshd인 경우 `/proc/net/tcp` 및 `/proc/<pid>/fd`를 대조하여 실제 Listening TCP 소켓(`St: 0A`)이 존재하는지 확인; 확인 시 `active / listening`, 미확인 시 `sshd_running / listener not_checked`로 정직하게 보고.
+  - 테스트 격리를 위해 `process.env.CODEX_RUN_DIR || '/run'` 지원.
+  - `tests/test_remote_setup.py`: 실제 `main(['status'], ...)`를 직접 호출하여 0400, 0600, 0777, absent, empty, commented, mismatch, synced, ssh-disabled, pid-mismatch, stale-pid 등 전 상태의 실제 출력 문자열을 직접 단언 검증 (12/12 PASS).
+- **Section 4 [P1] Mock provider 실 대화 및 업데이터 보류 검증**:
+  - `tests/test_codex_wrapper_proxy.py`: 공식 바이너리 0.162.1(`task007-baseline`) 및 0.166.0(`resume-166`)를 대상으로 로컬 HTTP Responses mock provider를 구동하여 실제 multi-turn turn 실행.
+  - Turn 1 (`turn/start`) 진행 중 (mock provider 대기 상태) `inspectAllSessions()` 호출 시 `core.turns.active = 1` 감지, `canApply: false`, `counts.helpers: 1` 정상 보류 확인.
+  - Turn 1 응답 수신 후 Turn 2 실행 시 mock provider의 2회차 요청 페이로드에 1회차 user prompt 및 assistant answer가 대화 컨텍스트로 정상 누적 전달됨을 검증.
+  - WebSocket close frame 및 정상 EOF 종료 검증 (7/7 PASS).
+- **종합 검증 결과**:
+  - `tests/test_remote_setup.py`: 12 passed (0.53s)
+  - `tests/test_codex_wrapper_proxy.py`: 7 passed (3.81s)
+  - `tests/test_codex_update_contract.py`: 129 passed (98.89s)
+  - 전체 단위/통합 테스트 148개 전수 PASS (0 failed).
+  - Docker 이미지 `codex-ha:test-fix05` 빌드 성공 및 컨테이너 내부 Reviewer 재현 시 `pid_mismatch` 정직 진단 확인.
+  - `IMAGE_NAME=codex-ha:test-fix05 tests/mobile-ssh-smoke.py` 전수 PASS.
+  - Node syntax check 및 `git diff --check` 오류 0건.
+- **제약 준수**:
+  - 버전 번프 없음 (`0.7.3-dev.5` 유지).
+  - git tag, push, PR 머지, DEV 릴리스 배포는 Reviewer의 지침에 따라 수행하지 않음 (NOT RUN).
+
+### 2026-11-02 — Reviewer: FIX_04 재리뷰 수용 미달·FIX_05 발행
+
+- `5822cc0`과 FIX_04_REPORT를 검토하고 [FIX_05](../../.handoff/007_work-aware-runtime-update/FIX_05.md)를 신규 발행했다. argv/record mismatch 차단과 auth not_checked 안내 등은 수용했으나 전체 판정은 REQUEST CHANGES다. 새 DEV 배포 지시는 발행하지 않았다.
+- 실제 Unix 연결 A를 유지한 proxy의 alias만 idle managed server B로 바꿔 helper=1/unknown=0/canApply=true가 되는 오분류를 재현했다. `/run/sshd.pid`가 살아 있는 bash를 가리키는 격리 이미지에서도 status가 active/listening을 출력했다. 실제 SSH 시험은 조회 RPC, host wire 시험은 빈 thread 생성/조회까지여서 실제 turn·문맥·전환 후 요청 수용은 여전히 미검증이다.
+- 독립 관련 pytest 144 passed (98.02초), 기존 image의 실제 SSH 다중 조회 smoke PASS, Node syntax·ShellCheck·diff PASS. 전체 suite·새 build·실제 turn/handover·native ARM/custom AppArmor/HAOS/mobile은 이번 리뷰에서 NOT RUN이다. 증거는 Git 제외 `.test-tmp/review007-fix04/`와 `review007-fix04-smoke.log`에 있다.
+- 다음 Executor는 FIX_05를 수행해 FIX_05_REPORT를 새로 작성한다. 기존 보고서를 덮어쓰지 않는다. 이번 Reviewer는 제품 코드·버전·외부 Git·운영 HA를 변경하지 않았다.
+
 ### 2026-11-02 — Executor: FIX_04 proxy 신원·상태 진단·후속 요청 검증 완료
 
 - [FIX_04](../../.handoff/007_work-aware-runtime-update/FIX_04.md) 지침에 따라 proxy 신원/소유권 엄격 검증, 정직한 상태 진단, 실제 SSH 다중 후속 요청 wire 및 활성 작업 보류 검증을 완료했다.

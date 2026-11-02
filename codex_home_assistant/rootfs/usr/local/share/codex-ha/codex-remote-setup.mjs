@@ -1,5 +1,5 @@
 import { createPrivateKey, createPublicKey, generateKeyPairSync, createHash, randomUUID } from 'node:crypto';
-import { existsSync, mkdirSync, lstatSync, readFileSync, writeFileSync, renameSync, unlinkSync } from 'node:fs';
+import { existsSync, mkdirSync, lstatSync, readFileSync, writeFileSync, renameSync, unlinkSync, readlinkSync, readdirSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
@@ -139,7 +139,9 @@ export function main(args = process.argv.slice(2), sshDirectory = process.env.CO
   const authPath = join(dir, 'authorized_keys');
   const privExists = existsSync(privPath);
   const authExists = existsSync(authPath);
-  const sshDisabled = existsSync('/run/codex-ha/ssh-disabled');
+  const runDir = process.env.CODEX_RUN_DIR || '/run';
+  const sshDisabled = existsSync(join(runDir, 'codex-ha/ssh-disabled'));
+  const pidFilePath = join(runDir, 'sshd.pid');
 
   let privStatus = 'absent';
   if (privExists) {
@@ -185,15 +187,57 @@ export function main(args = process.argv.slice(2), sshDirectory = process.env.CO
   let sshStatus = 'not_disabled / listener not_running';
   if (sshDisabled) {
     sshStatus = 'disabled (no keys registered at startup)';
-  } else if (existsSync('/run/sshd.pid')) {
+  } else if (existsSync(pidFilePath)) {
     try {
-      const pidStr = readFileSync('/run/sshd.pid', 'utf-8').trim();
-      if (/^\d+$/.test(pidStr)) {
+      const pidStr = readFileSync(pidFilePath, 'utf-8').trim();
+      if (!/^\d+$/.test(pidStr) || parseInt(pidStr, 10) <= 0) {
+        sshStatus = 'not_disabled / invalid_pid';
+      } else {
         const p = parseInt(pidStr, 10);
         process.kill(p, 0);
-        sshStatus = 'active / listening';
+        let isSshd = false;
+        try {
+          const exe = readlinkSync(`/proc/${p}/exe`);
+          if (exe.endsWith('/sshd') || exe.endsWith('/dropbear')) isSshd = true;
+        } catch {
+          try {
+            const cmd = readFileSync(`/proc/${p}/cmdline`, 'utf-8');
+            if (cmd.includes('sshd') || cmd.includes('dropbear')) isSshd = true;
+          } catch {}
+        }
+        if (!isSshd) {
+          sshStatus = `not_disabled / pid_mismatch (pid ${p} is not sshd)`;
+        } else {
+          let isListening = false;
+          try {
+            const tcp4 = readFileSync('/proc/net/tcp', 'utf-8');
+            const fds = readdirSync(`/proc/${p}/fd`);
+            const sockInodes = new Set();
+            for (const fd of fds) {
+              try {
+                const link = readlinkSync(`/proc/${p}/fd/${fd}`);
+                const m = link.match(/^socket:\[(\d+)\]$/);
+                if (m) sockInodes.add(m[1]);
+              } catch {}
+            }
+            for (const line of tcp4.split('\n').slice(1)) {
+              const parts = line.trim().split(/\s+/);
+              if (parts.length >= 10 && parts[3] === '0A' && sockInodes.has(parts[9])) {
+                isListening = true;
+                break;
+              }
+            }
+          } catch {}
+          if (isListening) {
+            sshStatus = 'active / listening';
+          } else {
+            sshStatus = 'sshd_running / listener not_checked';
+          }
+        }
       }
-    } catch {}
+    } catch {
+      sshStatus = 'not_disabled / stale_pid (process not_running)';
+    }
   }
 
   const keyDisplay = info

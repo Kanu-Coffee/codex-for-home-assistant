@@ -1501,17 +1501,52 @@ export async function inspectAllSessions(options = {}) {
       }
       let isSocket = false;
       let realTarget = null;
+      let targetStat = null;
+      let targetLstat = null;
       try {
-        const st = await stat(targetSock);
-        isSocket = st.isSocket();
+        targetLstat = await lstat(targetSock);
+        targetStat = await stat(targetSock);
+        isSocket = targetStat.isSocket();
         realTarget = await realpath(targetSock).catch(() => resolve(targetSock));
       } catch {}
 
-      if (!isSocket || !realTarget) {
+      if (!isSocket || !realTarget || !targetStat || !targetLstat) {
         e.kind = "unknown";
         e.missingTargetSocket = true;
         continue;
       }
+
+      // Generation and retarget/rebind check vs proxy process start time
+      let proxyStartTime = 0;
+      try {
+        const pSt = await stat(`/proc/${pid}`);
+        proxyStartTime = pSt.mtimeMs;
+      } catch {}
+
+      if (proxyStartTime > 0 && targetLstat.isSymbolicLink() && targetLstat.mtimeMs > proxyStartTime + 50) {
+        e.kind = "unknown";
+        e.retargetedProxy = true;
+        continue;
+      }
+
+      if (proxyStartTime > 0 && targetStat.ctimeMs > proxyStartTime + 50) {
+        e.kind = "unknown";
+        e.reboundProxy = true;
+        continue;
+      }
+
+      // Check if proxy has open socket file descriptors
+      let proxyHasSocket = false;
+      try {
+        const proxyFds = await readdir(`/proc/${pid}/fd`);
+        for (const fd of proxyFds) {
+          const link = await readlink(`/proc/${pid}/fd/${fd}`).catch(() => "");
+          if (link.startsWith("socket:[")) {
+            proxyHasSocket = true;
+            break;
+          }
+        }
+      } catch {}
 
       let ownerPid = null;
       for (const [sPid, sEntry] of entries) {
@@ -1521,6 +1556,43 @@ export async function inspectAllSessions(options = {}) {
           const realCandidate = await realpath(candidateSock).catch(() => resolve(candidateSock));
           if (realCandidate === realTarget || resolve(candidateSock) === resolve(targetSock)) {
             if (sEntry.kind === "app-server" || sEntry.kind === "cli") {
+              // Generation check: owner server must not have started after proxy
+              let ownerStartTime = 0;
+              try {
+                const oSt = await stat(`/proc/${sPid}`);
+                ownerStartTime = oSt.mtimeMs;
+              } catch {}
+              if (proxyStartTime > 0 && ownerStartTime > proxyStartTime + 100) {
+                continue;
+              }
+
+              // Active connection check: if proxy has an open socket, candidate owner must have accepted socket
+              if (proxyHasSocket) {
+                let ownerHasAcceptedSocket = false;
+                try {
+                  const oFds = await readdir(`/proc/${sPid}/fd`);
+                  const oSockInodes = new Set();
+                  for (const fd of oFds) {
+                    const lk = await readlink(`/proc/${sPid}/fd/${fd}`).catch(() => "");
+                    const m = lk.match(/^socket:\[(\d+)\]$/);
+                    if (m) oSockInodes.add(m[1]);
+                  }
+                  if (oSockInodes.size > 0) {
+                    const netUnix = await readFile("/proc/net/unix", "utf-8").catch(() => "");
+                    for (const line of netUnix.split("\n").slice(1)) {
+                      const parts = line.trim().split(/\s+/);
+                      if (parts.length >= 7 && parts[4] === "0001" && parts[5] === "03" && oSockInodes.has(parts[6])) {
+                        ownerHasAcceptedSocket = true;
+                        break;
+                      }
+                    }
+                  }
+                } catch {}
+                if (!ownerHasAcceptedSocket) {
+                  continue;
+                }
+              }
+
               ownerPid = sPid;
               break;
             }

@@ -2039,6 +2039,8 @@ def test_managed_idle_server_with_owned_proxy_is_restartable(repository_root: Pa
         "import crypto from 'node:crypto';\n"
         "import fs from 'node:fs';\n"
         "if (process.argv.includes('proxy')) {\n"
+        "  const c = net.createConnection(process.argv[process.argv.indexOf('--sock')+1]);\n"
+        "  c.on('error', () => {});\n"
         "  setInterval(() => {}, 10000);\n"
         "} else {\n"
         + body
@@ -2113,6 +2115,8 @@ def test_managed_server_with_owned_proxy_held_busy_during_active_work(repository
         "import crypto from 'node:crypto';\n"
         "import fs from 'node:fs';\n"
         "if (process.argv.includes('proxy')) {\n"
+        "  const c = net.createConnection(process.argv[process.argv.indexOf('--sock')+1]);\n"
+        "  c.on('error', () => {});\n"
         "  setInterval(() => {}, 10000);\n"
         "} else {\n"
         + custom_body
@@ -2304,6 +2308,145 @@ def test_proxy_unverified_without_session_record_held_unknown(repository_root: P
     finally:
         proxy_proc.terminate()
         proxy_proc.wait()
+
+
+def test_proxy_target_alias_retargeted_is_held_unknown(repository_root: Path, tmp_path: Path) -> None:
+    runtime_dir = tmp_path / "runtime"
+    maint_dir = tmp_path / "maint"
+    runtime_dir.mkdir()
+    maint_dir.mkdir()
+    release = runtime_dir / "releases" / "0.162.1-x86_64-unknown-linux-musl"
+    launcher = release / "bin" / "codex"
+    launcher.parent.mkdir(parents=True, exist_ok=True)
+    b = tmp_path / "b.sock"
+    a = tmp_path / "a.sock"
+    alias = tmp_path / "target.sock"
+    body = MOCK_APP_SERVER_JS.split("import fs from 'node:fs';\n")[1].replace("{socket!r}", repr(str(b)))
+    launcher.write_text(
+        "#!/usr/bin/env node\n"
+        "import net from 'node:net';\n"
+        "import crypto from 'node:crypto';\n"
+        "import fs from 'node:fs';\n"
+        "if (process.argv.includes('proxy')) {\n"
+        "  const c = net.createConnection(process.argv[process.argv.indexOf('--sock')+1]);\n"
+        "  c.on('error', () => {});\n"
+        "  setInterval(() => {}, 10000);\n"
+        "} else {\n"
+        + body
+        + "\n}\n",
+        encoding="utf-8",
+    )
+    launcher.chmod(0o755)
+
+    import socket as py_socket
+    listener = py_socket.socket(py_socket.AF_UNIX, py_socket.SOCK_STREAM)
+    listener.bind(str(a))
+    listener.listen(1)
+    alias.symlink_to(a)
+
+    owner = subprocess.Popen([str(launcher), "app-server", "--listen", f"unix://{b}"], stdout=subprocess.PIPE, text=True)
+    proxy = None
+    accepted = None
+    try:
+        assert "READY" in owner.stdout.readline()
+        time.sleep(0.2)
+        _register_session(maint_dir, owner.pid, {
+            "type": "app-server", "managed": True, "socketPath": str(b),
+            "exe": str(launcher), "version": "0.162.1", "cwd": str(tmp_path),
+            "args": ["app-server", "--listen", f"unix://{b}"],
+        })
+        proxy = subprocess.Popen([str(launcher), "app-server", "proxy", "--sock", str(alias)], stdout=subprocess.DEVNULL)
+        accepted, _ = listener.accept()
+        _register_session(maint_dir, proxy.pid, {
+            "type": "app-server-proxy", "managed": False, "socketPath": str(alias),
+            "exe": str(launcher), "version": "0.162.1", "cwd": str(tmp_path),
+            "args": ["app-server", "proxy", "--sock", str(alias)],
+        })
+        # Retarget alias to b after proxy launch
+        alias.unlink()
+        alias.symlink_to(b)
+        time.sleep(0.2)
+
+        res = _inspect(repository_root, runtime_dir, maint_dir)
+        assert res["canApply"] is False
+        assert res["counts"]["unknown"] == 1
+        assert res["counts"]["helpers"] == 0
+    finally:
+        if proxy is not None:
+            proxy.terminate()
+            proxy.wait()
+        owner.terminate()
+        owner.wait()
+        if accepted is not None:
+            accepted.close()
+        listener.close()
+
+
+def test_proxy_socket_rebound_after_launch_is_held_unknown(repository_root: Path, tmp_path: Path) -> None:
+    runtime_dir = tmp_path / "runtime"
+    maint_dir = tmp_path / "maint"
+    runtime_dir.mkdir()
+    maint_dir.mkdir()
+    release = runtime_dir / "releases" / "0.162.1-x86_64-unknown-linux-musl"
+    launcher = release / "bin" / "codex"
+    launcher.parent.mkdir(parents=True, exist_ok=True)
+    sock = tmp_path / "rebound.sock"
+    body = MOCK_APP_SERVER_JS.split("import fs from 'node:fs';\n")[1].replace("{socket!r}", repr(str(sock)))
+    launcher.write_text(
+        "#!/usr/bin/env node\n"
+        "import net from 'node:net';\n"
+        "import crypto from 'node:crypto';\n"
+        "import fs from 'node:fs';\n"
+        "if (process.argv.includes('proxy')) {\n"
+        "  const c = net.createConnection(process.argv[process.argv.indexOf('--sock')+1]);\n"
+        "  c.on('error', () => {});\n"
+        "  setInterval(() => {}, 10000);\n"
+        "} else {\n"
+        + body
+        + "\n}\n",
+        encoding="utf-8",
+    )
+    launcher.chmod(0o755)
+
+    import socket as py_socket
+    listener1 = py_socket.socket(py_socket.AF_UNIX, py_socket.SOCK_STREAM)
+    listener1.bind(str(sock))
+    listener1.listen(1)
+
+    proxy = subprocess.Popen([str(launcher), "app-server", "proxy", "--sock", str(sock)], stdout=subprocess.DEVNULL)
+    accepted1, _ = listener1.accept()
+    time.sleep(0.1)
+    _register_session(maint_dir, proxy.pid, {
+        "type": "app-server-proxy", "managed": False, "socketPath": str(sock),
+        "exe": str(launcher), "version": "0.162.1", "cwd": str(tmp_path),
+        "args": ["app-server", "proxy", "--sock", str(sock)],
+    })
+
+    # Close old listener and re-create socket with a new owner
+    accepted1.close()
+    listener1.close()
+    sock.unlink()
+    time.sleep(0.2)
+
+    new_owner = subprocess.Popen([str(launcher), "app-server", "--listen", f"unix://{sock}"], stdout=subprocess.PIPE, text=True)
+    try:
+        assert "READY" in new_owner.stdout.readline()
+        time.sleep(0.2)
+        _register_session(maint_dir, new_owner.pid, {
+            "type": "app-server", "managed": True, "socketPath": str(sock),
+            "exe": str(launcher), "version": "0.162.1", "cwd": str(tmp_path),
+            "args": ["app-server", "--listen", f"unix://{sock}"],
+        })
+
+        res = _inspect(repository_root, runtime_dir, maint_dir)
+        assert res["canApply"] is False
+        assert res["counts"]["unknown"] == 1
+        assert res["counts"]["helpers"] == 0
+    finally:
+        proxy.terminate()
+        proxy.wait()
+        new_owner.terminate()
+        new_owner.wait()
 
 
 def test_managed_idle_server_with_owned_companion_is_restartable(repository_root: Path, tmp_path: Path) -> None:
