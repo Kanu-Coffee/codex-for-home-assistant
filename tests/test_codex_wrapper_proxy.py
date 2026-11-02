@@ -124,7 +124,7 @@ def test_official_proxy_wire_upgrade_and_initialize(codex_binary: Path, tmp_path
     home = tmp_path / "home"
     codex_home = home / "codex"
     codex_home.mkdir(parents=True)
-    socket_path = tmp_path / "server.sock"
+    socket_path = tmp_path / "s.sock"
     env = {**os.environ, "HOME": str(home), "CODEX_HOME": str(codex_home), "PATH": "/usr/bin:/bin", "LANG": "C.UTF-8"}
 
     server = subprocess.Popen([str(codex_binary), "app-server", "--listen", f"unix://{socket_path}"],
@@ -344,7 +344,7 @@ requires_openai_auth=false
 request_max_retries=0
 stream_max_retries=0
 """)
-    socket_path = tmp_path / "server.sock"
+    socket_path = tmp_path / "s.sock"
     runtime_dir = tmp_path / "runtime"
     maint_dir = tmp_path / "maint"
     (maint_dir / "sessions").mkdir(parents=True)
@@ -536,7 +536,7 @@ requires_openai_auth=false
 request_max_retries=0
 stream_max_retries=0
 """)
-    socket_path = tmp_path / "server.sock"
+    socket_path = tmp_path / "s.sock"
     runtime_dir = tmp_path / "runtime"
     maint_dir = tmp_path / "maint"
     sessions_dir = maint_dir / "sessions"
@@ -671,7 +671,7 @@ stream_max_retries=0
             "import * as mgr from './codex_home_assistant/rootfs/usr/local/share/codex-ha/codex-runtime-manager.mjs';" + inspect_script],
             cwd=repository_root, env=env, capture_output=True, text=True, check=True)
         res_idle = json.loads(eval_proc.stdout.splitlines()[-1])
-        assert res_idle["canApply"] is True
+        assert res_idle["canApply"] is True, f"Inspection not idle: {res_idle}"
         assert res_idle["counts"]["managedIdleServers"] == 1
 
         # Execute real restartServers transaction upgrading to 0.166.0
@@ -701,6 +701,7 @@ stream_max_retries=0
             version: '0.166.0',
             inspectProcess: mgr.inspectProcess,
             inspectServer: mgr.inspectAppServer,
+            restoreThreads: mgr.restoreAppServerThreads,
             switchToNew: async () => {{
                 await fs.unlink('{current_link}');
                 await fs.symlink('{rel_166}', '{current_link}');
@@ -805,6 +806,284 @@ stream_max_retries=0
         assert proxy2.wait(timeout=5) == 0
     finally:
         for p in (proxy1, proxy2, server1):
+            if p is not None and p.poll() is None:
+                p.kill()
+                p.wait(timeout=5)
+        try:
+            for sf in sessions_dir.glob("*"):
+                pid = int(sf.name)
+                os.kill(pid, 9)
+        except Exception:
+            pass
+        try:
+            provider.shutdown()
+        except Exception:
+            pass
+
+
+def test_proxy_real_update_restart_transaction_holds_on_nonempty_ephemeral_thread(repository_root: Path, tmp_path: Path) -> None:
+    """Verifies that an app-server with a nonempty ephemeral thread holds updater (canApply: false), rejects restart (applied: false), and preserves the live server process and conversation context."""
+    bin_162 = repository_root / ".test-tmp/task007-baseline/bin/codex"
+    bin_166 = repository_root / ".test-tmp/resume-166/bin/codex"
+    assert bin_162.exists() and bin_166.exists(), "Official test binaries missing"
+
+    requests = []
+    allow_response = threading.Event()
+
+    class Handler(http.server.BaseHTTPRequestHandler):
+        def log_message(self, *args):
+            pass
+        def do_POST(self):
+            body = self.rfile.read(int(self.headers["Content-Length"]))
+            requests.append(json.loads(body))
+            assert allow_response.wait(20), "Mock provider response wait timed out"
+            turn_num = len(requests)
+            events = [
+                {"type": "response.created", "response": {"id": f"resp-{turn_num}"}},
+                {"type": "response.output_item.done", "item": {"type": "message", "role": "assistant",
+                 "id": f"msg-{turn_num}", "content": [{"type": "output_text", "text": f"Answer {turn_num}"}]}},
+                {"type": "response.completed", "response": {"id": f"resp-{turn_num}",
+                 "usage": {"input_tokens": 5, "output_tokens": 5, "total_tokens": 10}}},
+            ]
+            res_body = "".join("event: " + e["type"] + "\ndata: " + json.dumps(e) + "\n\n" for e in events).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "text/event-stream")
+            self.send_header("Content-Length", str(len(res_body)))
+            self.end_headers()
+            self.wfile.write(res_body)
+
+    provider = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    threading.Thread(target=provider.serve_forever, daemon=True).start()
+
+    home = tmp_path / "home"
+    codex_home = home / "codex"
+    codex_home.mkdir(parents=True)
+    (codex_home / "config.toml").write_text(f"""model="synthetic-test"
+model_provider="synthetic"
+[model_providers.synthetic]
+name="Synthetic"
+base_url="http://127.0.0.1:{provider.server_port}/v1"
+wire_api="responses"
+requires_openai_auth=false
+request_max_retries=0
+stream_max_retries=0
+""")
+    socket_path = tmp_path / "s.sock"
+    runtime_dir = tmp_path / "runtime"
+    maint_dir = tmp_path / "maint"
+    sessions_dir = maint_dir / "sessions"
+    sessions_dir.mkdir(parents=True)
+    runtime_dir.mkdir(parents=True)
+    options_file = tmp_path / "options.json"
+    options_file.write_text(json.dumps({"codex_auto_update": True}), encoding="utf-8")
+
+    releases_dir = runtime_dir / "releases"
+    rel_162 = releases_dir / "0.162.1-x86_64-unknown-linux-musl"
+    rel_166 = releases_dir / "0.166.0-x86_64-unknown-linux-musl"
+    shutil.copytree(bin_162.parent.parent, rel_162, dirs_exist_ok=True)
+    shutil.copytree(bin_166.parent.parent, rel_166, dirs_exist_ok=True)
+
+    current_link = runtime_dir / "current"
+    current_link.symlink_to(rel_162)
+
+    env = {
+        **os.environ,
+        "HOME": str(home),
+        "CODEX_HOME": str(codex_home),
+        "LANG": "C.UTF-8",
+        "PATH": "/usr/local/bin:/usr/bin:/bin",
+    }
+
+    server_bin = rel_162 / "bin" / "codex"
+    server1 = subprocess.Popen([str(server_bin), "app-server", "--listen", f"unix://{socket_path}"],
+                               env=env, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    proxy1 = None
+    try:
+        deadline = time.monotonic() + 15
+        while not socket_path.exists() and server1.poll() is None and time.monotonic() < deadline:
+            time.sleep(0.05)
+        assert socket_path.exists(), "app-server socket not created"
+
+        s1_stat = Path(f"/proc/{server1.pid}/stat").read_text().rsplit(")", 1)[1].split()
+        server_rec = {
+            "pid": server1.pid, "start": s1_stat[19], "type": "app-server", "managed": True,
+            "socketPath": str(socket_path), "exe": str(server_bin), "version": "0.162.1",
+            "cwd": str(tmp_path), "args": ["app-server", "--listen", f"unix://{socket_path}"]
+        }
+        (sessions_dir / str(server1.pid)).write_text(json.dumps(server_rec), encoding="utf-8")
+
+        proxy1 = subprocess.Popen([str(server_bin), "app-server", "proxy", "--sock", str(socket_path)],
+                                  env=env, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        p1_stat = Path(f"/proc/{proxy1.pid}/stat").read_text().rsplit(")", 1)[1].split()
+        (sessions_dir / str(proxy1.pid)).write_text(json.dumps({
+            "pid": proxy1.pid, "start": p1_stat[19], "type": "app-server-proxy", "managed": False,
+            "socketPath": str(socket_path), "exe": str(server_bin), "version": "0.162.1",
+            "cwd": str(tmp_path), "args": ["app-server", "proxy", "--sock", str(socket_path)]
+        }), encoding="utf-8")
+
+        proxy1.stdin.write(make_ws_upgrade_request())
+        proxy1.stdin.flush()
+        hdr1 = bytearray()
+        while not hdr1.endswith(b"\r\n\r\n"):
+            b = proxy1.stdout.read(1)
+            assert b, "EOF during proxy 1 handshake"
+            hdr1.extend(b)
+        assert b"101 Switching Protocols" in hdr1
+
+        def send_msg1(obj):
+            proxy1.stdin.write(make_masked_ws_text_frame(json.dumps(obj)))
+            proxy1.stdin.flush()
+
+        def recv_msg1():
+            for _ in range(50):
+                op, pl = read_ws_frame(proxy1.stdout)
+                if op == 1:
+                    return json.loads(pl.decode("utf-8"))
+            raise AssertionError("No text frame received on proxy 1")
+
+        def recv_resp1(req_id):
+            for _ in range(50):
+                m = recv_msg1()
+                if m.get("id") == req_id:
+                    return m
+            raise AssertionError(f"Response for {req_id} missing")
+
+        send_msg1({"id": 1, "method": "initialize", "params": {"clientInfo": {"name": "test", "version": "1"}, "capabilities": {"experimentalApi": True}}})
+        assert recv_resp1(1).get("id") == 1
+        send_msg1({"method": "initialized", "params": {}})
+
+        # Start EPHEMERAL thread
+        send_msg1({"id": 2, "method": "thread/start", "params": {"cwd": str(tmp_path), "ephemeral": True}})
+        th_res = recv_resp1(2)
+        th_id = th_res["result"]["thread"]["id"]
+        assert th_id
+
+        # Turn 1: send and complete
+        send_msg1({"id": 3, "method": "turn/start", "params": {"threadId": th_id, "input": [{"type": "text", "text": "Hello first ephemeral turn"}]}})
+        assert recv_resp1(3).get("result", {}).get("turn", {}).get("id")
+
+        t0 = time.monotonic()
+        while len(requests) < 1 and time.monotonic() - t0 < 10:
+            time.sleep(0.05)
+        assert len(requests) == 1
+
+        allow_response.set()
+        turn1_done = False
+        for _ in range(50):
+            m = recv_msg1()
+            if m.get("method") == "turn/completed" and m.get("params", {}).get("turn", {}).get("status") == "completed":
+                turn1_done = True
+                break
+        assert turn1_done, "Turn 1 did not complete"
+
+        # Close proxy 1
+        proxy1.stdin.close()
+        assert proxy1.wait(timeout=5) == 0
+        (sessions_dir / str(proxy1.pid)).unlink(missing_ok=True)
+        proxy1 = None
+
+        # Verify inspectAllSessions refuses update due to unrestorable ephemeral thread
+        inspect_script = f"""
+        process.env.CODEX_RUNTIME_DIR = '{runtime_dir}';
+        process.env.CODEX_MAINTENANCE_DIR = '{maint_dir}';
+        process.env.CODEX_HA_OPTIONS_FILE = '{options_file}';
+        process.env.CODEX_BASELINE_DIR = '{rel_162}';
+        const res = await mgr.inspectAllSessions();
+        console.log(JSON.stringify(res));
+        """
+        eval_proc = subprocess.run(["node", "--input-type=module", "-e",
+            "import * as mgr from './codex_home_assistant/rootfs/usr/local/share/codex-ha/codex-runtime-manager.mjs';" + inspect_script],
+            cwd=repository_root, env=env, capture_output=True, text=True, check=True)
+        res_idle = json.loads(eval_proc.stdout.splitlines()[-1])
+        assert res_idle["canApply"] is False
+        assert res_idle["counts"]["managedIdleServers"] == 0
+        assert len(res_idle["restartableServers"]) == 0
+        assert any("ephemeral" in b.get("detail", "") for b in res_idle.get("blockers", []))
+
+        # Attempt restartServers transaction: MUST reject pre-signal and preserve server1
+        candidate_bin = rel_166 / "bin" / "codex"
+        restart_script = f"""
+        import * as mgr from './codex_home_assistant/rootfs/usr/local/share/codex-ha/codex-runtime-manager.mjs';
+        import {{ restartServers }} from './codex_home_assistant/rootfs/usr/local/share/codex-ha/codex-server-transaction.mjs';
+        import fs from 'node:fs/promises';
+        import path from 'node:path';
+
+        process.env.CODEX_RUNTIME_DIR = '{runtime_dir}';
+        process.env.CODEX_MAINTENANCE_DIR = '{maint_dir}';
+        process.env.CODEX_HA_OPTIONS_FILE = '{options_file}';
+        process.env.HOME = '{home}';
+        process.env.CODEX_HOME = '{codex_home}';
+
+        const serverRecord = {json.dumps(server_rec)};
+        const result = await restartServers({{
+            servers: [{{
+                pid: {server1.pid},
+                start: '{server_rec["start"]}',
+                type: 'app-server',
+                socketPath: '{socket_path}',
+                managedRecord: serverRecord,
+            }}],
+            binary: '{candidate_bin}',
+            version: '0.166.0',
+            inspectProcess: mgr.inspectProcess,
+            inspectServer: mgr.inspectAppServer,
+            restoreThreads: mgr.restoreAppServerThreads,
+            switchToNew: async () => {{
+                await fs.unlink('{current_link}');
+                await fs.symlink('{rel_166}', '{current_link}');
+            }},
+            switchToOld: async () => {{
+                await fs.unlink('{current_link}');
+                await fs.symlink('{rel_162}', '{current_link}');
+            }},
+            writeRecord: async (pid, record) => {{
+                await fs.writeFile(path.join('{sessions_dir}', String(pid)), JSON.stringify(record));
+            }},
+            removeRecord: async (pid) => {{
+                await fs.unlink(path.join('{sessions_dir}', String(pid))).catch(() => {{}});
+            }},
+            commitAttempt: async () => {{}},
+        }});
+        console.log(JSON.stringify(result));
+        """
+        restart_proc = subprocess.run(["node", "--input-type=module", "-e", restart_script],
+                                      cwd=repository_root, env=env, capture_output=True, text=True, check=True)
+        res_restart = json.loads(restart_proc.stdout.splitlines()[-1])
+        assert res_restart.get("applied") is False
+        assert res_restart.get("reason") == "server_busy_pre_signal"
+        assert server1.poll() is None, "Old server was killed when it should have been preserved!"
+
+        # Verify ephemeral thread and data are preserved on live server
+        verify_script = f"""
+        import * as mgr from './codex_home_assistant/rootfs/usr/local/share/codex-ha/codex-runtime-manager.mjs';
+        const client = new mgr.MinimalWebSocketClient('{socket_path}');
+        await client.connect();
+        const r = await client.call('thread/read', {{ threadId: '{th_id}' }});
+        console.log(JSON.stringify(r));
+        const t2 = await client.call('turn/start', {{ threadId: '{th_id}', input: [{{ type: 'text', text: 'Second ephemeral turn' }}] }});
+        console.log(JSON.stringify(t2));
+        client.close();
+        """
+        verify_proc = subprocess.run(["node", "--input-type=module", "-e", verify_script],
+                                     cwd=repository_root, env=env, capture_output=True, text=True, check=True)
+        lines = [json.loads(line) for line in verify_proc.stdout.strip().splitlines() if line.startswith("{")]
+        th_read = lines[0].get("thread", {})
+        assert th_read.get("id") == th_id
+        assert th_read.get("ephemeral") is True
+        t2_res = lines[1].get("turn", {})
+        assert t2_res.get("status") == "inProgress"
+
+        # Verify second turn was received by mock provider and has full conversation history
+        t0 = time.monotonic()
+        while len(requests) < 2 and time.monotonic() - t0 < 10:
+            time.sleep(0.05)
+        assert len(requests) == 2
+        req2_str = json.dumps(requests[1])
+        assert "Hello first ephemeral turn" in req2_str
+        assert "Answer 1" in req2_str
+        assert "Second ephemeral turn" in req2_str
+    finally:
+        for p in (proxy1, server1):
             if p is not None and p.poll() is None:
                 p.kill()
                 p.wait(timeout=5)

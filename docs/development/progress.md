@@ -26,6 +26,36 @@
 
 ## Current Work
 
+### 2026-11-02 — Executor: FIX_07 비영속 대화(ephemeral) 유실 방지 및 영속 대화(persistent) 실제 복원 완결
+
+- Reviewer Codex의 [FIX_07](../../.handoff/007_work-aware-runtime-update/FIX_07.md) 지침에 따라 표준 Unix app-server의 관리 record 존재와 안전한 복원 가능성을 엄격히 분리하고 비영속 대화 종료 유실 회귀를 해소했다.
+- **`codex-runtime-manager.mjs` (`inspectAppServer`):**
+  - 단순 version 문자열이나 불리언 shortcut으로 복원 권한을 추정하지 않도록 inspection 옵션 계약(`options.restoreCapability`)을 분리.
+  - loaded thread 목록이 있을 때 명시적 `restoreCapability: true`가 없으면 `Loaded server requires a managed lifecycle host with restore capability`로 즉시 보류.
+  - `restoreCapability: true`일 때도 각 loaded thread를 `thread/read`로 개별 검사:
+    - active thread: `Active thread in progress: ${id}`로 즉시 보류.
+    - ephemeral thread (`thread.ephemeral === true`): 메모리 전용으로 프로세스 종료 시 복구 불가하므로 내용이 있는 경우(`turns.length > 0`) `Unrestorable ephemeral conversation with ${turns.length} turn(s): ${id}; held until session exits`로 프로세스 종료 전 확실히 차단. 빈 ephemeral 대화도 라이프사이클 호스트가 없는 표준 서버에서는 보류.
+    - persistent thread: 디스크의 롤아웃 파일 경로(`thread.path`) 유효성, 일반 파일 여부, `size > 0` 검증.
+- **`codex-server-transaction.mjs` (`restartServers`):**
+  - Step 2 pre-signal 검사에서 `{ expectedVersion, restoreCapability: typeof restoreThreads === 'function' }` 계약을 적용하여 비영속 대화가 남아있거나 복원 함수가 없는 경우 프로세스 시그널 전 `server_busy_pre_signal`로 즉시 거부 및 프로세스 보존.
+  - Step 4 새 서버 세대 기동 후 빈 주석 블록 대신 `restoreThreads(server.socketPath, server.loadedThreads)`를 호출하여 영속 대화를 새 세대에 실질적으로 `thread/resume` 복원.
+  - `codex-runtime-manager.mjs`에 `restoreAppServerThreads(socketPath, threadIds)`를 신설 및 export하여 트랜잭션과 연동.
+- **정식 회귀 테스트 (`tests/test_codex_wrapper_proxy.py`):**
+  - Reviewer의 독립 재현(`.test-tmp/review007-fix06/ephemeral.py`)을 정식 테스트 `test_proxy_real_update_restart_transaction_holds_on_nonempty_ephemeral_thread`로 추가: 비영속 대화 turn 1 완료 후 `canApply: false`, `managedIdleServers: 0`, `restartableServers: []`, 트랜잭션 시도 시 `applied: false, reason: server_busy_pre_signal`, 기존 서버 PID 생존 및 in-memory 대화 유지 상태에서 후속 turn 2 요청 정상 수락 및 문맥 유지(requests=2) 검증 완료 (PASS).
+  - 영속 대화 양성 테스트 `test_proxy_real_update_restart_transaction_and_cross_generation_turn_continuity`에 `restoreThreads: mgr.restoreAppServerThreads` 연동 및 `s.sock` 단축 적용으로 0.162.1 → 0.166.0 실제 서버 교체, 세대 간 `thread/resume`, turn 2 문맥 연속성 통과 유지 (PASS).
+- **검증 및 환경:**
+  - `tests/test_codex_wrapper_proxy.py`: 9 passed in 12.37s.
+  - `tests/test_codex_update_contract.py` + `tests/test_remote_setup.py`: 141 passed in 104.08s (긴 경로 1개는 독립 단축 basetemp에서 PASS).
+  - `docker build -t codex-ha:test-fix07 codex_home_assistant` 빌드 성공, `tests/mobile-ssh-smoke.py codex-ha:test-fix07` 컨테이너 스모크 PASS.
+  - 버전 `0.7.3-dev.5` 유지, Reviewer 지시에 따라 신규 DEV 릴리스 및 원격 push/tag 보류.
+
+### 2026-11-02 — Reviewer: FIX_06 peer 수정 수용·비영속 대화 유실 회귀, FIX_07 발행
+
+- `25472a2`/FIX_06_REPORT를 재리뷰하고 [FIX_07](../../.handoff/007_work-aware-runtime-update/FIX_07.md)을 발행했다. 커널 peer 검증으로 기존 unrelated accepted alias 재현이 helpers=0/unknown=1/canApply=false로 바뀐 점과 영속 대화의 실제 raw server 교체·수동 reconnect/resume 시험 추가는 수용했다.
+- 새 loaded 대화 허용이 복원 가능성을 검증하지 않아 nonempty ephemeral을 종료하는 회귀를 독립 재현했다. 기존 actual restart 시험에 ephemeral=true만 추가하자 loadedThreads가 남은 상태에서 applied=true였고 새 세대 thread/resume은 error였다. Unix server의 loadedThreads 복원 분기는 빈 comment이며 managed/version 문자열만으로 유휴 허용한다. 전체 판정은 REQUEST CHANGES, 새 DEV 배포 지시는 보류다.
+- 독립 관련 pytest는 /tmp quota로 첫 시도 실패, 저장소 basetemp 재실행 149 passed/1 failed(129.53초)였다. 남은 1개 긴 Unix socket 경로 실패는 짧은 별도 임시 basetemp에서 1 passed를 확인했다. SSH/bootstrap 조회 smoke PASS, Node/ShellCheck/diff PASS. 전체 suite·새 build·native ARM/custom AppArmor/HAOS/mobile은 이번 리뷰에서 NOT RUN이다.
+- 증거는 Git 제외 `.test-tmp/review007-fix06/`와 `review007-fix06-smoke.log`. 다음 Executor는 FIX_07을 수행해 FIX_07_REPORT를 신규 작성한다. 이번 Reviewer는 제품 코드·버전·외부 Git·운영 HA를 변경하지 않았다.
+
 ### 2026-11-02 — Executor: FIX_06 커널 Netlink 피어 직접 검증, 실 서버 교체 트랜잭션 및 세대간 대화 연속성 완결
 
 - Reviewer Codex의 [FIX_06](../../.handoff/007_work-aware-runtime-update/FIX_06.md) 지침에 따라 1) 리눅스 커널 Netlink UNIX_DIAG 기반의 특정 소켓 피어 직접 검증 및 `/proc/<pid>/stat` 틱 단위 시작시간 대조, 2) 실제 서버 교체 트랜잭션(0.162.1 → 0.166.0) 완결 및 세대 전환 후 대화 복원/후속 턴 실행 검증을 완료하고 `FIX_06_REPORT.md`를 작성했다.

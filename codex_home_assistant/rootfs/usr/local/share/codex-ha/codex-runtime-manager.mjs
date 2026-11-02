@@ -1211,8 +1211,34 @@ export class MinimalWebSocketClient {
   }
 }
 
+export async function restoreAppServerThreads(socketPath, threadIds) {
+  if (!Array.isArray(threadIds) || threadIds.length === 0) {
+    return { success: true, restored: [] };
+  }
+  let client = null;
+  const restored = [];
+  try {
+    client = new MinimalWebSocketClient(socketPath);
+    await client.connect();
+    for (const threadId of threadIds) {
+      if (!threadId || typeof threadId !== "string") continue;
+      const res = await client.call("thread/resume", { threadId });
+      if (!res || !res.thread || res.thread.id !== threadId) {
+        throw new Error(`thread/resume failed or returned invalid thread for ${threadId}`);
+      }
+      restored.push(threadId);
+    }
+    return { success: true, restored };
+  } finally {
+    if (client) client.close();
+  }
+}
+
 export async function inspectAppServer(socketPath, expectedPid, options = {}) {
-  const isManaged = Boolean((typeof options === "object" && options?.isManaged) || typeof options === "string" || options === true);
+  const opts = typeof options === "string"
+    ? { expectedVersion: options }
+    : (typeof options === "object" && options !== null ? options : {});
+  const restoreCapability = Boolean(opts.restoreCapability);
   let client = null;
   try {
     client = new MinimalWebSocketClient(socketPath);
@@ -1259,22 +1285,93 @@ export async function inspectAppServer(socketPath, expectedPid, options = {}) {
       return { busy: true, reason: "Malformed thread/loaded/list response" };
     }
 
-    const loadedThreads = [];
+    const loadedThreadIds = [];
     for (const t of threadsRes.data) {
+      let id = null;
+      let statusType = null;
       if (typeof t === "string") {
-        loadedThreads.push(t);
+        id = t;
       } else if (t && typeof t === "object") {
-        const id = t.id || t.threadId;
-        if (id) loadedThreads.push(id);
-        const statusType = typeof t.status === "string" ? t.status : t.status?.type;
-        if (statusType === "active") {
-          return { busy: true, reason: `Active thread ${id}` };
-        }
+        id = t.id || t.threadId;
+        statusType = typeof t.status === "string" ? t.status : t.status?.type;
       }
+      if (!id) {
+        return { busy: true, reason: "Malformed thread entry in loaded list" };
+      }
+      if (statusType === "active") {
+        return { busy: true, reason: `Active thread ${id}` };
+      }
+      loadedThreadIds.push(id);
     }
 
-    if (loadedThreads.length && !isManaged) return { busy: true, reason: "Loaded server requires a managed lifecycle host" };
-    return { busy: false, pid: diagPid, loadedThreads };
+    if (loadedThreadIds.length === 0) {
+      return { busy: false, pid: diagPid, loadedThreads: [] };
+    }
+
+    // Server has loaded threads. If caller does not possess safe restore capability,
+    // loaded conversations cannot be safely restored across server termination.
+    if (!restoreCapability) {
+      return { busy: true, reason: "Loaded server requires a managed lifecycle host with restore capability" };
+    }
+
+    // Inspect each loaded thread's persistence, restorability, and status
+    const verifiedLoadedThreads = [];
+    for (const id of loadedThreadIds) {
+      let readRes;
+      try {
+        readRes = await client.call("thread/read", { threadId: id });
+      } catch (err) {
+        return { busy: true, reason: `Failed to inspect loaded thread ${id}: ${err.message}` };
+      }
+
+      const thread = readRes?.thread;
+      if (!thread || typeof thread !== "object" || thread.id !== id) {
+        return { busy: true, reason: `Malformed thread detail or ID mismatch for loaded thread ${id}` };
+      }
+
+      const currentStatus = typeof thread.status === "string" ? thread.status : thread.status?.type;
+      if (currentStatus === "active") {
+        return { busy: true, reason: `Active thread in progress: ${id}` };
+      }
+
+      // Check ephemeral vs persistent
+      if (thread.ephemeral === true) {
+        const turns = Array.isArray(thread.turns) ? thread.turns : [];
+        if (turns.length > 0) {
+          return {
+            busy: true,
+            reason: `Unrestorable ephemeral conversation with ${turns.length} turn(s): ${id}; held until session exits`,
+          };
+        }
+        if (!opts.allowEmptyEphemeral && !opts.lifecycleHost) {
+          return {
+            busy: true,
+            reason: `Unrestorable ephemeral conversation: ${id}; held until session exits`,
+          };
+        }
+      } else {
+        // Persistent conversation: verify rollout file on disk
+        if (typeof thread.path !== "string" || !thread.path.trim()) {
+          return { busy: true, reason: `Persistent thread ${id} missing rollout file path` };
+        }
+        try {
+          const filePath = resolve(thread.path);
+          const st = await stat(filePath);
+          if (!st.isFile()) {
+            return { busy: true, reason: `Persistent thread ${id} rollout path is not a regular file: ${filePath}` };
+          }
+          if (st.size === 0) {
+            return { busy: true, reason: `Persistent thread ${id} has empty rollout file: ${filePath}` };
+          }
+        } catch (fsErr) {
+          return { busy: true, reason: `Persistent thread ${id} rollout file inaccessible: ${fsErr.message}` };
+        }
+      }
+
+      verifiedLoadedThreads.push(id);
+    }
+
+    return { busy: false, pid: diagPid, loadedThreads: verifiedLoadedThreads };
   } catch (err) {
     return { busy: true, reason: `App-server inspection failed: ${err.message}` };
   } finally {
@@ -1824,7 +1921,7 @@ export async function inspectAllSessions(options = {}) {
       continue;
     }
 
-    const check1 = await inspectAppServer(socketPath, pid, { isManaged: true });
+    const check1 = await inspectAppServer(socketPath, pid, { restoreCapability: true });
     if (check1.busy) {
       counts.unmanagedAppServers++;
       addBusy("server_busy", pid, `app-server busy: ${check1.reason}`);
@@ -1832,7 +1929,7 @@ export async function inspectAllSessions(options = {}) {
     }
 
     await new Promise((r) => setTimeout(r, 1000));
-    const check2 = await inspectAppServer(socketPath, pid, { isManaged: true });
+    const check2 = await inspectAppServer(socketPath, pid, { restoreCapability: true });
     if (check2.busy) {
       counts.unmanagedAppServers++;
       addBusy("server_busy", pid, `app-server busy: ${check2.reason}`);
@@ -2626,6 +2723,7 @@ export async function applyUpdate(options = {}) {
         servers: sessions.restartableServers,
         binary: join(stagedTarget, "bin/codex"), version: newVersion,
         inspectProcess, inspectServer: inspectAppServer,
+        restoreThreads: restoreAppServerThreads,
         switchToNew: () => replaceLink(stagedTarget),
         switchToOld: () => replaceLink(previousTarget),
         writeRecord: (pid, record) => durableJson(join(getSessionsDir(), String(pid)), record),
