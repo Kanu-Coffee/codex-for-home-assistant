@@ -116,8 +116,15 @@ function versionMatches(binary, version, env) {
 
 // No ambient credentials, user shell hooks, loader variables or Node options.
 export function serverEnvironment() {
-  return { PATH: '/usr/local/bin:/usr/bin:/bin', HOME: '/data/home', CODEX_HOME: '/data/codex',
-    LANG: 'C.UTF-8', LC_ALL: 'C.UTF-8', HA_URL: 'http://supervisor/core/api', SUPERVISOR_URL: 'http://supervisor' };
+  return {
+    PATH: '/usr/local/bin:/usr/bin:/bin',
+    HOME: process.env.HOME || '/data/home',
+    CODEX_HOME: process.env.CODEX_HOME || '/data/codex',
+    LANG: 'C.UTF-8',
+    LC_ALL: 'C.UTF-8',
+    HA_URL: process.env.HA_URL || 'http://supervisor/core/api',
+    SUPERVISOR_URL: process.env.SUPERVISOR_URL || 'http://supervisor',
+  };
 }
 
 export async function restartServers({ servers, binary, version, inspectProcess, inspectServer,

@@ -20,10 +20,13 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { basename, dirname, join, resolve } from "node:path";
-import { spawn, spawnSync } from "node:child_process";
+import { execFile, spawn, spawnSync } from "node:child_process";
+import { promisify } from "node:util";
 import { createConnection } from "node:net";
 import { get as httpsGet } from "node:https";
 import { get as httpGet } from "node:http";
+
+const execFileAsync = promisify(execFile);
 
 export const BASELINE_VERSION = "0.162.1";
 export const APP_VERSION = "0.7.2";
@@ -31,6 +34,56 @@ export const DEFAULT_TIMEZONE = "Asia/Seoul";
 export const UPDATE_SLOTS = [3, 9, 15, 21];
 export const MAX_IDLE_CHECKS = 12;
 export const MAX_RESTART_ATTEMPTS = 1;
+
+export async function getUnixPeerMap() {
+  const pythonBin = process.env.PYTHON || (existsSync("/usr/bin/python3") ? "/usr/bin/python3" : "python3");
+  const pyCode = `
+import socket, struct, json, sys
+try:
+    nl = socket.socket(socket.AF_NETLINK, socket.SOCK_RAW, 4)
+    nl.bind((0, 0))
+    req = struct.pack("=IHHIIBBHIIIII", 40, 20, 0x301, 1, 0, 1, 0, 0, 0xffffffff, 0, 0x04, 0, 0)
+    nl.send(req)
+    peers = {}
+    while True:
+        data = nl.recv(65536)
+        offset = 0
+        done = False
+        while offset < len(data):
+            nl_len, nl_type, nl_flags, nl_seq, nl_pid = struct.unpack_from("=IHHII", data, offset)
+            if nl_type == 3:
+                done = True
+                break
+            if nl_type == 20:
+                msg = data[offset+16:offset+nl_len]
+                family, typ, state, ino, c1, c2 = struct.unpack_from("=BBBxIII", msg, 0)
+                attr_offset = 16
+                peer_ino = None
+                while attr_offset < len(msg):
+                    nla_len, nla_type = struct.unpack_from("=HH", msg, attr_offset)
+                    if nla_len < 4:
+                        break
+                    if nla_type == 2:
+                        peer_ino = struct.unpack_from("=I", msg, attr_offset + 4)[0]
+                    attr_offset += (nla_len + 3) & ~3
+                if peer_ino:
+                    peers[str(ino)] = peer_ino
+            offset += (nl_len + 3) & ~3
+        if done:
+            break
+    nl.close()
+    sys.stdout.write(json.dumps(peers))
+except Exception:
+    sys.stdout.write("{}")
+`;
+  try {
+    const { stdout } = await execFileAsync(pythonBin, ["-c", pyCode], { timeout: 3000 });
+    const parsed = JSON.parse(stdout || "{}");
+    return parsed;
+  } catch {
+    return null;
+  }
+}
 
 export function getBaseRuntimeDir() { return process.env.CODEX_RUNTIME_DIR || "/data/codex-runtime"; }
 export function getBaselineDir() { return process.env.CODEX_BASELINE_DIR || "/usr/local/lib/codex-ha/codex-baseline"; }
@@ -1158,7 +1211,8 @@ export class MinimalWebSocketClient {
   }
 }
 
-export async function inspectAppServer(socketPath, expectedPid) {
+export async function inspectAppServer(socketPath, expectedPid, options = {}) {
+  const isManaged = Boolean((typeof options === "object" && options?.isManaged) || typeof options === "string" || options === true);
   let client = null;
   try {
     client = new MinimalWebSocketClient(socketPath);
@@ -1219,7 +1273,7 @@ export async function inspectAppServer(socketPath, expectedPid) {
       }
     }
 
-    if (loadedThreads.length) return { busy: true, reason: "Loaded server requires a managed lifecycle host" };
+    if (loadedThreads.length && !isManaged) return { busy: true, reason: "Loaded server requires a managed lifecycle host" };
     return { busy: false, pid: diagPid, loadedThreads };
   } catch (err) {
     return { busy: true, reason: `App-server inspection failed: ${err.message}` };
@@ -1516,38 +1570,35 @@ export async function inspectAllSessions(options = {}) {
         continue;
       }
 
-      // Generation and retarget/rebind check vs proxy process start time
-      let proxyStartTime = 0;
-      try {
-        const pSt = await stat(`/proc/${pid}`);
-        proxyStartTime = pSt.mtimeMs;
-      } catch {}
-
-      if (proxyStartTime > 0 && targetLstat.isSymbolicLink() && targetLstat.mtimeMs > proxyStartTime + 50) {
-        e.kind = "unknown";
-        e.retargetedProxy = true;
-        continue;
-      }
-
-      if (proxyStartTime > 0 && targetStat.ctimeMs > proxyStartTime + 50) {
-        e.kind = "unknown";
-        e.reboundProxy = true;
-        continue;
-      }
-
-      // Check if proxy has open socket file descriptors
-      let proxyHasSocket = false;
+      // Check open socket file descriptors of the proxy process
+      const proxySocketInodes = new Set();
       try {
         const proxyFds = await readdir(`/proc/${pid}/fd`);
         for (const fd of proxyFds) {
           const link = await readlink(`/proc/${pid}/fd/${fd}`).catch(() => "");
-          if (link.startsWith("socket:[")) {
-            proxyHasSocket = true;
-            break;
-          }
+          const m = link.match(/^socket:\[(\d+)\]$/);
+          if (m) proxySocketInodes.add(parseInt(m[1], 10));
         }
-      } catch {}
+      } catch {
+        e.kind = "unknown";
+        e.orphanProxy = true;
+        continue;
+      }
 
+      if (proxySocketInodes.size === 0) {
+        e.kind = "unknown";
+        e.orphanProxy = true;
+        continue;
+      }
+
+      const peerMap = await getUnixPeerMap();
+      if (!peerMap) {
+        e.kind = "unknown";
+        e.orphanProxy = true;
+        continue;
+      }
+
+      const proxyStartTicks = BigInt(e.proc.startTime || 0);
       let ownerPid = null;
       for (const [sPid, sEntry] of entries) {
         if (sPid === pid) continue;
@@ -1556,41 +1607,32 @@ export async function inspectAllSessions(options = {}) {
           const realCandidate = await realpath(candidateSock).catch(() => resolve(candidateSock));
           if (realCandidate === realTarget || resolve(candidateSock) === resolve(targetSock)) {
             if (sEntry.kind === "app-server" || sEntry.kind === "cli") {
-              // Generation check: owner server must not have started after proxy
-              let ownerStartTime = 0;
-              try {
-                const oSt = await stat(`/proc/${sPid}`);
-                ownerStartTime = oSt.mtimeMs;
-              } catch {}
-              if (proxyStartTime > 0 && ownerStartTime > proxyStartTime + 100) {
+              const ownerStartTicks = BigInt(sEntry.proc.startTime || 0);
+              if (proxyStartTicks > 0n && ownerStartTicks > 0n && ownerStartTicks > proxyStartTicks) {
                 continue;
               }
 
-              // Active connection check: if proxy has an open socket, candidate owner must have accepted socket
-              if (proxyHasSocket) {
-                let ownerHasAcceptedSocket = false;
-                try {
-                  const oFds = await readdir(`/proc/${sPid}/fd`);
-                  const oSockInodes = new Set();
-                  for (const fd of oFds) {
-                    const lk = await readlink(`/proc/${sPid}/fd/${fd}`).catch(() => "");
-                    const m = lk.match(/^socket:\[(\d+)\]$/);
-                    if (m) oSockInodes.add(m[1]);
-                  }
-                  if (oSockInodes.size > 0) {
-                    const netUnix = await readFile("/proc/net/unix", "utf-8").catch(() => "");
-                    for (const line of netUnix.split("\n").slice(1)) {
-                      const parts = line.trim().split(/\s+/);
-                      if (parts.length >= 7 && parts[4] === "0001" && parts[5] === "03" && oSockInodes.has(parts[6])) {
-                        ownerHasAcceptedSocket = true;
-                        break;
-                      }
-                    }
-                  }
-                } catch {}
-                if (!ownerHasAcceptedSocket) {
-                  continue;
+              // Kernel peer verification: candidate owner must own the exact peer socket connected to proxy
+              let isDirectPeer = false;
+              try {
+                const oFds = await readdir(`/proc/${sPid}/fd`);
+                const oSockInodes = new Set();
+                for (const fd of oFds) {
+                  const lk = await readlink(`/proc/${sPid}/fd/${fd}`).catch(() => "");
+                  const m = lk.match(/^socket:\[(\d+)\]$/);
+                  if (m) oSockInodes.add(parseInt(m[1], 10));
                 }
+                for (const pIno of proxySocketInodes) {
+                  const peerIno = peerMap[String(pIno)];
+                  if (peerIno && oSockInodes.has(peerIno)) {
+                    isDirectPeer = true;
+                    break;
+                  }
+                }
+              } catch {}
+
+              if (!isDirectPeer) {
+                continue;
               }
 
               ownerPid = sPid;
@@ -1782,7 +1824,7 @@ export async function inspectAllSessions(options = {}) {
       continue;
     }
 
-    const check1 = await inspectAppServer(socketPath, pid);
+    const check1 = await inspectAppServer(socketPath, pid, { isManaged: true });
     if (check1.busy) {
       counts.unmanagedAppServers++;
       addBusy("server_busy", pid, `app-server busy: ${check1.reason}`);
@@ -1790,7 +1832,7 @@ export async function inspectAllSessions(options = {}) {
     }
 
     await new Promise((r) => setTimeout(r, 1000));
-    const check2 = await inspectAppServer(socketPath, pid);
+    const check2 = await inspectAppServer(socketPath, pid, { isManaged: true });
     if (check2.busy) {
       counts.unmanagedAppServers++;
       addBusy("server_busy", pid, `app-server busy: ${check2.reason}`);

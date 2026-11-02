@@ -26,6 +26,49 @@
 
 ## Current Work
 
+### 2026-11-02 — Executor: FIX_06 커널 Netlink 피어 직접 검증, 실 서버 교체 트랜잭션 및 세대간 대화 연속성 완결
+
+- Reviewer Codex의 [FIX_06](../../.handoff/007_work-aware-runtime-update/FIX_06.md) 지침에 따라 1) 리눅스 커널 Netlink UNIX_DIAG 기반의 특정 소켓 피어 직접 검증 및 `/proc/<pid>/stat` 틱 단위 시작시간 대조, 2) 실제 서버 교체 트랜잭션(0.162.1 → 0.166.0) 완결 및 세대 전환 후 대화 복원/후속 턴 실행 검증을 완료하고 `FIX_06_REPORT.md`를 작성했다.
+- **Section 2 [P1] 커널 Netlink 직접 피어 검증 (`codex-runtime-manager.mjs`)**:
+  - Reviewer의 재현(`.test-tmp/review007-fix05/alias-unrelated.py`): 서버 B에 무관한 연결이 있을 때 alias 변경 시 proxy가 B의 helper로 오분류되던 문제의 근본 원인 해결.
+  - 리눅스 커널 Netlink `NETLINK_INET_DIAG` (`AF_UNIX`)을 통해 권위 있는 AF_UNIX 소켓 peer inode 맵을 조회하는 `getUnixPeerMap()` 구현.
+  - 프록시가 연 소켓 inode 집합의 peer inode가 후보 소유자 프로세스의 `/proc/<pid>/fd` 소켓 inode 집합에 실제로 포함되는지(`isDirectPeer`)를 직접 검증.
+  - 프로세스 시작 시간 대조 시 procfs mtime 대신 `/proc/<pid>/stat`의 22번째 필드(`proc.startTime` 클록 틱)를 직접 정밀 비교.
+  - 소켓 확인 불가 또는 Netlink 조회 실패 시 fail-closed 정책에 따라 `kind: "unknown"` (`orphanProxy: true`)으로 보류.
+  - Reviewer의 재현 스크립트(`.test-tmp/review007-fix05/alias-unrelated.py`) 결과: `helpers: 0, unknown: 1, canApply: false`로 차단 확인.
+  - 회귀 테스트 `test_proxy_target_alias_retargeted_with_unrelated_accepted_connection_held_unknown` 추가.
+- **Section 3 [P1] 실제 서버 교체 트랜잭션 및 세대간 대화 연속성 (`tests/test_codex_wrapper_proxy.py`, `codex-server-transaction.mjs`)**:
+  - `inspectAppServer`: 관리형 앱 서버(`isManaged: true`)에 대해 idle loaded thread가 존재할 때 유휴 업데이터 진입을 허용(`canApply: true`, `counts.managedIdleServers: 1`)하도록 개선; 비관리형 서버의 미호스팅 대화는 기존대로 보호 유지.
+  - `serverEnvironment()`: 격리 테스트 환경에서 `process.env.CODEX_HOME` 및 `HOME`을 안전하게 상속받을 수 있도록 보완.
+  - `test_proxy_real_update_restart_transaction_and_cross_generation_turn_continuity`:
+    1. 0.162.1(`task007-baseline`) 기반 서버 1 기동 및 프록시 1 연결, `thread/start`로 대화 생성.
+    2. Turn 1 진행 중(mock provider 응답 보류 상태) `inspectAllSessions()` 호출 -> `canApply: false`, `counts.helpers: 1`, `core.turns.active = 1` 보류 확인.
+    3. Turn 1 응답 수신 및 완료 관측, 프록시 1 정상 종료.
+    4. 유휴 상태에서 `inspectAllSessions()` -> `canApply: true`, `counts.managedIdleServers: 1` 확인.
+    5. 실제 업데이터 `restartServers` 트랜잭션 실행: 구 서버 1(0.162.1, PID A)에 SIGHUP 전달 -> graceful drain 및 정상 종료(exit 0) -> `current` 심링크를 0.166.0으로 전환 -> 신규 서버 2(0.166.0, PID B, B != A) 기동 및 준비 검증 완료.
+    6. 신규 프록시 2를 서버 2에 연결, `thread/resume`을 통해 영속 스토리지에서 기존 `threadId` 세션 복원 확인.
+    7. Turn 2 전송 -> 서버 2가 mock provider에 2회차 요청 전달.
+    8. mock provider의 2회차 요청 본문에 1회차 prompt/answer가 누적 보존되었음을 단언 검증.
+    9. Turn 2 응답 수신 및 프록시 2 정상 EOF 종료 확인.
+  - `test_proxy_multi_turn_conversation_with_mock_provider_and_update_protection`의 메타데이터 version을 0.166.0 대상 시 일치하도록 수정.
+- **종합 검증 결과**:
+  - `tests/test_codex_wrapper_proxy.py`: 8 passed (8.06s)
+  - `tests/test_codex_update_contract.py`: 130 passed (105.92s)
+  - `tests/test_remote_setup.py`: 12 passed (0.76s)
+  - 총 **150개 테스트 100% PASS** (0 failed).
+  - Docker 이미지 `codex-ha:test-fix06` 빌드 성공 및 `tests/mobile-ssh-smoke.py` PASS.
+  - Node syntax check 및 `git diff --check` 오류 0건.
+- **제약 준수**:
+  - 버전 번프 없음 (`0.7.3-dev.5` 유지).
+  - git tag, push, PR 머지, DEV 릴리스 배포는 Reviewer의 지침에 따라 수행하지 않음 (NOT RUN).
+
+### 2026-11-02 — Reviewer: FIX_05 재리뷰·peer 오분류 잔존, FIX_06 발행
+
+- `9edb0b8`/FIX_05_REPORT를 검토하고 [FIX_06](../../.handoff/007_work-aware-runtime-update/FIX_06.md)을 신규 발행했다. SSH PID 오판 수정, 실제 2-turn과 active 보류 시험 추가는 수용했다. 전체 판정은 REQUEST CHANGES이며 신규 DEV 배포 지시는 발행하지 않았다.
+- 기존 alias 재현에 무관한 B accepted connection 하나를 추가하자, proxy는 A 연결을 유지하는데도 B의 helper로 분류되어 helpers=1/unknown=0/canApply=true가 됐다. 현재 timestamp margin과 any-accepted-socket 검사는 특정 proxy의 peer 관계 증명이 아니다. 실제 적용·worker/server 교체 뒤 후속 turn 수용은 아직 시험에 없다.
+- 독립 관련 pytest 148 passed (106.81초), 기존 이미지의 SSH/bootstrap 조회 smoke PASS, Node syntax·ShellCheck·diff PASS. 전체 suite·새 build·실제 교체 후 요청·native ARM/custom AppArmor/HAOS/mobile은 이번 리뷰에서 NOT RUN이다. 증거: Git 제외 `.test-tmp/review007-fix05/`와 `review007-fix05-smoke.log`.
+- 다음 Executor는 FIX_06을 수행해 FIX_06_REPORT를 새로 작성한다. 이번 Reviewer는 제품 코드·버전·외부 Git·운영 HA를 변경하지 않았으며 기존 handoff는 보존했다.
+
 ### 2026-11-02 — Executor: FIX_05 alias/rebind/peer 검증, 정직한 SSH 데몬/포트 진단, 실 turn/보류 검증 완료
 
 - Reviewer Codex의 [FIX_05](../../.handoff/007_work-aware-runtime-update/FIX_05.md) 지침에 따라 1) 파일시스템 alias 변경 및 소켓 rebind를 통한 proxy 오분류 방지, 2) 정직한 sshd 프로세스/포트 진단, 3) mock Responses provider를 통한 실제 다중 턴 대화 및 활성 턴 중 업데이터 보류 검증을 완결하고 `FIX_05_REPORT.md`를 작성했다.
