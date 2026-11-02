@@ -4,8 +4,8 @@
 
 ## Project Status
 
-- 상태: **Stable 0.7.3 릴리스 진행 중 (task 007 완료 승인, main 대상 PR #68 및 릴리스 배포 준비)**
-- 현재 마일스톤: **Stable 0.7.3 정식 릴리스 및 브랜치 정리**
+- 상태: **Stable 0.7.3 정식 배포 완료 (main PR #68 merge SHA `03c572de...`, tag `0.7.3`, Multi-arch OCI image `sha256:945a0538...`, GitHub Release 게시) / 불필요한 브랜치(로컬 32개, 원격 42개) 전체 정리 완료 / main & dev 동기화 완료**
+- 현재 마일스톤: **Stable 0.7.3 정식 배포 및 브랜치 정리 완료**
 - 마지막 문서 기준일: **2026-11-02**
 - 저장소: public `Kanu-Coffee/codex-for-home-assistant`, default branch `main`
 
@@ -26,23 +26,27 @@
 
 ## Current Work
 
-### 2026-11-02 — Executor: Stable 0.7.3 정식 릴리스 준비 및 계약 검증 완료
+### 2026-11-02 — Executor: Stable 0.7.3 정식 배포 및 브랜치 정리 완료
 
-- Reviewer Codex의 [FIX_09](../../.handoff/007_work-aware-runtime-update/FIX_09.md) 최종 인수 및 사용자의 정식 릴리스 승인 지시에 따라 task 007을 공식 종료([FIX_09_REPORT](../../.handoff/007_work-aware-runtime-update/FIX_09_REPORT.md))하고, 정식판 `0.7.3` 릴리스 준비를 완료했다.
-- **메타데이터 및 채널 계약 동기화:**
-  - `codex_home_assistant/config.yaml`: `version: "0.7.3"`, `name: Codex for Home Assistant`, `panel_title: Codex`, description DEV 접두사 제거, `stage: experimental` 생략(Supervisor 기본 stable 채널 적용).
-  - `repository.yaml`: `name: Codex for Home Assistant` (DEV 표식 제거).
-  - `codex_home_assistant/Dockerfile`: `ARG BUILD_VERSION=0.7.3`, OCI 라벨 DEV 표식 제거 및 Stable 설명 동기화.
-  - `codex_home_assistant/playwright/package.json` 및 `package-lock.json`: `0.7.3` 일치.
-  - `codex_home_assistant/CHANGELOG.md`: `## [0.7.3] - 2026-11-02` 정식 승격 릴리스 기록 추가.
-  - `codex-runtime-manager.mjs` 및 계약 테스트: `APP_VERSION = "0.7.3"` 일치 및 stable 계약 검사 활성화.
-  - README / DOCS (한국어, 영어): 정식판 `0.7.3` 배너 및 설치 안내 동기화.
-- **로컬 검증 결과:**
-  - 전체 pytest: **320 passed, 5 skipped** (137.86초).
-  - 계약 및 업데이트 검사: **149 passed** (100.44초).
-  - 마크다운 린트: `markdownlint-cli2` 53개 파일 0 errors PASS.
-  - 로컬 amd64 Docker 빌드: `codex-ha:0.7.3-test` 성공 및 OCI 라벨 일치 확인.
-  - `tests/mobile-ssh-smoke.py`: 실 컨테이너 내부 SSH 프록시 커널 Netlink 피어 식별(`helpers >= 1`, `unknown == 0`, `canApply: true`), 키 발급 및 폐기 정상 PASS.
+- Reviewer Codex의 [FIX_09](../../.handoff/007_work-aware-runtime-update/FIX_09.md) 최종 인수 및 사용자의 정식 릴리스·브랜치 정리 지시에 따라 task 007을 공식 종료([FIX_09_REPORT](../../.handoff/007_work-aware-runtime-update/FIX_09_REPORT.md))하고, 정식판 `0.7.3` 릴리스와 브랜치 정리를 완료했다.
+- **배포 산출물 및 식별자:**
+  - 정식 버전: `0.7.3` (사용자 수용 dev.6 런타임 승격)
+  - Release PR: [#68](https://github.com/Kanu-Coffee/codex-for-home-assistant/pull/68) (HEAD `432ba12`, PR CI & Builder 8 passed / 2 skipped / 0 failed)
+  - `main` Merge SHA: `03c572de01e4a733fd1b6d0e9da1f0bee4206ca9`
+  - `main` Exact Merge CI Run: [41399319847](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/41399319847) (SUCCESS: amd64 full smoke, aarch64 native smoke, app config, lint & unit 모두 통과)
+  - Annotated Tag: `0.7.3` (dereference: `03c572de01e4a733fd1b6d0e9da1f0bee4206ca9`)
+  - Tag Builder Run: [41400866614](https://github.com/Kanu-Coffee/codex-for-home-assistant/actions/runs/41400866614) (SUCCESS: SBOM, Critical 0, Cosign 서명, build provenance & SBOM attestation, multi-arch promotion 통과)
+  - Multi-arch Manifest Digest: `sha256:945a05386eb29cdffbb579550574632d4b287fe0421e5bc78eecd564bfa21eb1`
+    - `linux/amd64` Sub-manifest: `sha256:2b45b4e5e4284c9fe7358a57bb7a3433176767e7aae30edca601f381ad8cf9de`
+    - `linux/arm64` Sub-manifest: `sha256:6ddbe2a4da47aa3b6befe89cd9de53eede44cdc7f66591306833ec69daf7a0d1`
+  - GitHub Release: [0.7.3](https://github.com/Kanu-Coffee/codex-for-home-assistant/releases/tag/0.7.3) (`isDraft: false`, `isPrerelease: false`, `latest: true`)
+  - 공개 이미지 E2E 검증: `docker pull ghcr.io/kanu-coffee/codex-for-home-assistant:0.7.3` 다운로드 후 `tests/mobile-ssh-smoke.py` 실행 결과 커널 Netlink 피어 식별(`helpers: 1`, `unknown: 0`, `canApply: True`) 및 키 발급/폐기 PASS 확인.
+  - 공개 Raw 메타데이터 검증: `raw.githubusercontent.com/.../main/codex_home_assistant/config.yaml` 및 `repository.yaml` 익명 curl 확인 정상.
+- **브랜치 정리 결과:**
+  - `dev` 브랜치를 `main`(`03c572de01e4a733fd1b6d0e9da1f0bee4206ca9`)으로 fast-forward 동기화 및 원격 푸시 완료.
+  - 로컬 브랜치: 병합 완료된 과거 32개 브랜치 일괄 삭제 (`dev`, `main`만 보존).
+  - 원격 브랜치: `origin/main`에 병합 완료된 과거 42개 브랜치 안전 삭제 (`origin/main`, `origin/dev`, 활성 open PR인 7개 `dependabot/*` 브랜치만 보존).
+  - `git remote prune origin` 완료.
 
 ### 2026-11-02 — Reviewer: 운영 자체 점검·사용자 확인 반영, task 007 최종 인수
 
