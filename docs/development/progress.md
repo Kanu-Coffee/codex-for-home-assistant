@@ -26,6 +26,23 @@
 
 ## Current Work
 
+### 2026-11-02 — Executor: FIX_08 DEV 0.7.3-dev.6 배포 및 CI fixture·image peer gate 구축
+
+- Reviewer Codex의 [FIX_08](../../.handoff/007_work-aware-runtime-update/FIX_08.md) 지침에 따라 확정 버전 `0.7.3-dev.6` 배포를 위한 CI fixture 자동 프로비저닝, 이미지 피어 관측 게이트, 버전 및 문서 동기화를 진행 중이다.
+- 원격 태그/릴리스/GHCR 확인: `0.7.3-dev.6` 미할당 확인 완료.
+- 재현 가능한 공식 바이너리 프로비저닝 스크립트 `tests/prepare-test-binaries.sh` 신설: 공식 0.162.1 및 0.166.0의 아키텍처별 tar.gz 다운로드, SHA-256 검증, 안전한 권한 설정, 아카이브 격리 처리.
+- `tests/test_codex_wrapper_proxy.py` 아키텍처 독립화: 동적 아키텍처 접미사 및 환경 변수 우선 검색 연동.
+- CI 워크플로(`.github/workflows/ci.yaml`): pytest 전 `tests/prepare-test-binaries.sh` 실행 및 `CODEX_WIRE_PROBE_BINARY` 연결. Actionlint 통과.
+- `tests/mobile-ssh-smoke.py` 확장: 실제 컨테이너 내 SSH 프록시 연결 중 `inspectAllSessions()` 호출로 `helpers >= 1, unknown == 0, canApply: true` 게이트 검증.
+- 메타데이터 및 문서 갱신: `config.yaml`, `Dockerfile`, `playwright/package.json`, `package-lock.json`, `tests/test_addon_contract.py`, `CHANGELOG.md`, 한/영 README/DOCS `0.7.3-dev.6` 반영.
+
+### 2026-11-02 — Reviewer: FIX_07 로컬 구현 수용·DEV 배포 FIX_08 발행
+
+- `adfbaaa`/FIX_07_REPORT와 이전 수정 이력을 리뷰해 DEV 후보 게시 범위에서 수용했다. nonempty ephemeral의 pre-signal 보류·기존 대화 보존과 persistent의 실제 세대 교체·복원/후속 turn 시험을 확인했다. 실제 모바일 자동 reconnect/resume·HAOS·물리 ARM 수용 완료 판정은 아니다.
+- Reviewer 독립 전체 pytest 321 passed, 7 skipped (145.45초). `/home/lee` 아래 직접 만든 짧은 임시 basetemp를 사용하고 종료 후 정리했다. 실제 이미지의 SSH/S6/bootstrap 및 추가 peer inventory는 helpers=1/unknown=0/canApply=true로 PASS. image의 runtime manager/transaction SHA-256은 HEAD와 일치했다. Node syntax·ShellCheck·Gitleaks·diff도 PASS다.
+- [FIX_08](../../.handoff/007_work-aware-runtime-update/FIX_08.md)에 별도 Executor의 예정 0.7.3-dev.6 배포 절차를 발행했다. 신규 binary 교체 시험의 로컬 cache 의존을 해소하는 CI provisioning·실제 image peer gate, 메타데이터/문서, 최종 CI/merge/tag/Builder/익명 접근/prerelease와 보고 기준을 필수 단계로 기재했다.
+- 이번 Reviewer는 제품 버전·commit/push/PR/merge/tag/release·운영 HA를 변경하지 않았다. 증거는 Git 제외 `.test-tmp/review007-fix07/`에 있다. 다음 Executor는 FIX_08을 수행해 FIX_08_REPORT를 새로 작성한다.
+
 ### 2026-11-02 — Executor: FIX_07 비영속 대화(ephemeral) 유실 방지 및 영속 대화(persistent) 실제 복원 완결
 
 - Reviewer Codex의 [FIX_07](../../.handoff/007_work-aware-runtime-update/FIX_07.md) 지침에 따라 표준 Unix app-server의 관리 record 존재와 안전한 복원 가능성을 엄격히 분리하고 비영속 대화 종료 유실 회귀를 해소했다.

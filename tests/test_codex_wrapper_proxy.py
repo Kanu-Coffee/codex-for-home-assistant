@@ -2,14 +2,15 @@
 import base64
 import hashlib
 import http.server
-import threading
 import json
 import os
+import platform
 import select
 import shutil
 import signal
 import struct
 import subprocess
+import threading
 import time
 from pathlib import Path
 
@@ -18,21 +19,32 @@ import pytest
 REPOSITORY_ROOT = Path(__file__).resolve().parent.parent
 
 
+def get_test_binary(version: str) -> Path | None:
+    env_var = f"CODEX_TEST_BINARY_{version.replace('.', '_')}"
+    if os.environ.get(env_var):
+        p = Path(os.environ[env_var])
+        if p.exists() and os.access(p, os.X_OK):
+            return p.resolve()
+    default_dir = REPOSITORY_ROOT / (".test-tmp/task007-baseline" if version == "0.162.1" else ".test-tmp/resume-166")
+    candidate = default_dir / "bin/codex"
+    if candidate.exists() and os.access(candidate, os.X_OK):
+        return candidate.resolve()
+    return None
+
+
 def find_all_test_codex_binaries() -> list[Path]:
     env_bin = os.environ.get("CODEX_WIRE_PROBE_BINARY")
     if env_bin and Path(env_bin).exists():
         return [Path(env_bin).resolve()]
     found = []
     seen_hashes = set()
-    for candidate in [
-        REPOSITORY_ROOT / ".test-tmp/task007-baseline/bin/codex",
-        REPOSITORY_ROOT / ".test-tmp/resume-166/bin/codex",
-    ]:
-        if candidate.exists() and os.access(candidate, os.X_OK):
+    for v in ["0.162.1", "0.166.0"]:
+        candidate = get_test_binary(v)
+        if candidate and candidate.exists() and os.access(candidate, os.X_OK):
             h = hashlib.sha256(candidate.read_bytes()).hexdigest()
             if h not in seen_hashes:
                 seen_hashes.add(h)
-                found.append(candidate.resolve())
+                found.append(candidate)
     return found
 
 
@@ -491,9 +503,9 @@ stream_max_retries=0
 
 def test_proxy_real_update_restart_transaction_and_cross_generation_turn_continuity(repository_root: Path, tmp_path: Path) -> None:
     """Verifies full lifecycle: active turn holds updater, completion allows updater, real restart transaction upgrades server from 0.162.1 to 0.166.0, and new proxy resumes thread with full conversation context."""
-    bin_162 = repository_root / ".test-tmp/task007-baseline/bin/codex"
-    bin_166 = repository_root / ".test-tmp/resume-166/bin/codex"
-    assert bin_162.exists() and bin_166.exists(), "Official test binaries missing"
+    bin_162 = get_test_binary("0.162.1")
+    bin_166 = get_test_binary("0.166.0")
+    assert bin_162 and bin_162.exists() and bin_166 and bin_166.exists(), "Official test binaries missing"
 
     requests = []
     allow_response = threading.Event()
@@ -546,8 +558,10 @@ stream_max_retries=0
     options_file.write_text(json.dumps({"codex_auto_update": True}), encoding="utf-8")
 
     releases_dir = runtime_dir / "releases"
-    rel_162 = releases_dir / "0.162.1-x86_64-unknown-linux-musl"
-    rel_166 = releases_dir / "0.166.0-x86_64-unknown-linux-musl"
+    arch = platform.machine()
+    target_suffix = "aarch64-unknown-linux-musl" if arch in ("aarch64", "arm64") else "x86_64-unknown-linux-musl"
+    rel_162 = releases_dir / f"0.162.1-{target_suffix}"
+    rel_166 = releases_dir / f"0.166.0-{target_suffix}"
     shutil.copytree(bin_162.parent.parent, rel_162, dirs_exist_ok=True)
     shutil.copytree(bin_166.parent.parent, rel_166, dirs_exist_ok=True)
 
@@ -823,9 +837,9 @@ stream_max_retries=0
 
 def test_proxy_real_update_restart_transaction_holds_on_nonempty_ephemeral_thread(repository_root: Path, tmp_path: Path) -> None:
     """Verifies that an app-server with a nonempty ephemeral thread holds updater (canApply: false), rejects restart (applied: false), and preserves the live server process and conversation context."""
-    bin_162 = repository_root / ".test-tmp/task007-baseline/bin/codex"
-    bin_166 = repository_root / ".test-tmp/resume-166/bin/codex"
-    assert bin_162.exists() and bin_166.exists(), "Official test binaries missing"
+    bin_162 = get_test_binary("0.162.1")
+    bin_166 = get_test_binary("0.166.0")
+    assert bin_162 and bin_162.exists() and bin_166 and bin_166.exists(), "Official test binaries missing"
 
     requests = []
     allow_response = threading.Event()
@@ -878,8 +892,10 @@ stream_max_retries=0
     options_file.write_text(json.dumps({"codex_auto_update": True}), encoding="utf-8")
 
     releases_dir = runtime_dir / "releases"
-    rel_162 = releases_dir / "0.162.1-x86_64-unknown-linux-musl"
-    rel_166 = releases_dir / "0.166.0-x86_64-unknown-linux-musl"
+    arch = platform.machine()
+    target_suffix = "aarch64-unknown-linux-musl" if arch in ("aarch64", "arm64") else "x86_64-unknown-linux-musl"
+    rel_162 = releases_dir / f"0.162.1-{target_suffix}"
+    rel_166 = releases_dir / f"0.166.0-{target_suffix}"
     shutil.copytree(bin_162.parent.parent, rel_162, dirs_exist_ok=True)
     shutil.copytree(bin_166.parent.parent, rel_166, dirs_exist_ok=True)
 

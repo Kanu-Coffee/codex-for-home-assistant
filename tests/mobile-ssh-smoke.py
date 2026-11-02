@@ -272,6 +272,10 @@ try:
     assert config_res and 'result' in config_res, f'Unexpected config response: {config_res}'
 
     # 6. Clean client EOF termination
+    peer_inventory = execute("node --input-type=module -e \"import {inspectAllSessions} from '/usr/local/share/codex-ha/codex-runtime-manager.mjs'; const r=await inspectAllSessions(); console.log(JSON.stringify({helpers:r.counts.helpers,unknown:r.counts.unknown,canApply:r.canApply}));\"")
+    peer_result = json.loads(peer_inventory.stdout)
+    assert peer_result['helpers'] >= 1 and peer_result['unknown'] == 0, peer_result
+    print('PASS: actual image wrapper proxy mapped to kernel peer owner', peer_result)
     proc.stdin.close()
     proc.wait(timeout=5)
     assert proc.returncode == 0

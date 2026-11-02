@@ -1,4 +1,4 @@
-**DEV `0.7.3-dev.5`가 공개되었습니다. resume 복원 정상화와 모바일 SSH 간편 설정을 구현하며 HAOS 실기 수용은 아직 수행하지 않았습니다.**
+**DEV `0.7.3-dev.6`가 공개되었습니다. Netlink 커널 peer 식별, SSH wrapper proxy 분리, 영속 대화 복원 및 임시 대화 보호를 구현하며 HAOS 실기 수용은 아직 수행하지 않았습니다.**
 
 > 정식판 `0.7.2` — 실기기 수용을 마친 `0.7.2-dev.2`의 프로세스 분류·진단/버전 표시·종료 처리를 승격합니다. 설치 저장소는 `https://github.com/Kanu-Coffee/codex-for-home-assistant`입니다.
 
