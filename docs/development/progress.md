@@ -4,9 +4,9 @@
 
 ## Project Status
 
-- 상태: **Stable 0.7.3 정식 배포 완료 (main PR #68 merge SHA `03c572de...`, tag `0.7.3`, Multi-arch OCI image `sha256:945a0538...`, GitHub Release 게시) / 불필요한 브랜치(로컬 32개, 원격 42개) 전체 정리 완료 / main & dev 동기화 완료**
-- 현재 마일스톤: **Stable 0.7.3 정식 배포 및 브랜치 정리 완료**
-- 마지막 문서 기준일: **2026-11-02**
+- 상태: **Stable 0.7.3 정식 배포 완료 (main PR #68 merge SHA `03c572de...`, tag `0.7.3`, Multi-arch OCI image `sha256:945a0538...`, GitHub Release 게시) / 이슈 #71 개선 계획 작성, 구현 대기**
+- 현재 마일스톤: **이슈 #71 개선 계획 수립 → 0.7.4-dev.N 개발·검증 → Stable 0.7.4 승격 예정**
+- 마지막 문서 기준일: **2026-11-10**
 - 저장소: public `Kanu-Coffee/codex-for-home-assistant`, default branch `main`
 
 ## 완료된 결정
@@ -25,6 +25,15 @@
 - [x] interactive/Codex/S6 ambient `SUPERVISOR_TOKEN` 상속 제거와 private helper credential loader 구현
 
 ## Current Work
+
+### 2026-11-10 — Planner: 이슈 #71 검토 및 0.7.4 개선 계획
+
+- [신규 이슈 #71](https://github.com/Kanu-Coffee/codex-for-home-assistant/issues/71) 본문·댓글을 읽고 현재 소스와 대조했다. 조회 시 OPEN/enhancement이며 댓글은 없다. GitHub 생성 시각은 2026-11-09 21:00:48 UTC다.
+- [task 008 PLAN](../../.handoff/008_default-socket-update-observability/PLAN.md)에 기본 Unix 소켓·기본 SSH proxy 식별, EACCES 진단, 제한된 확인·초기화 이력, 연속 실행 데몬의 예산 날짜 전환, 소진 후 제한된 재확인과 호환성 검증을 정의한다.
+- 현재 `dev`/원격 `dev`는 `0506f7490fea09d9572bfdf8c6cd177573fc43b3`, `main`/원격 `main`은 `03c572de01e4a733fd1b6d0e9da1f0bee4206ca9`다. 기존 동기화 완료 기록과 달리 dev에 후속 문서 커밋 1개가 있으므로 Executor는 최신 Git을 다시 확인한다.
+- 공식 Codex App Server 문서의 경로 생략 Unix transport와 HA App의 image/version·stage 계약을 확인했다. 버전별 기본 소켓 경로와 proxy 기본값은 실제 지원 바이너리로 추가 검증해야 한다. 이슈의 운영 관측과 현재 코드상 후보 원인을 구분하며 데몬 과거 판정을 확정하지 않는다.
+- 진행 순서: `0.7.4-dev.N`에서 구현·회귀·공개 후보 검증 및 HAOS 수용 후 `0.7.4` Stable 후보로 승격한다. 이번 요청은 계획 작성이며 제품 코드·버전·운영 HA·외부 Git은 변경하지 않는다.
+- 검증: Git 상태·원격 refs와 소스·개발/릴리스 계약 검토, `git diff --check`, 두 문서 UTF-8·공백·코드 펜스·로컬 링크 및 PLAN의 이슈 수용 기준 8개 매핑 검사 PASS. Markdown linter는 로컬 미설치로 NOT RUN (`npx --no-install` 확인, 추가 설치 없음). 런타임 테스트·빌드·실기 시험은 이번 계획 작업에서 NOT RUN이다.
 
 ### 2026-11-02 — Executor: Stable 0.7.3 정식 배포 및 브랜치 정리 완료
 
