@@ -196,13 +196,15 @@ stream_max_retries=0
                 relay = subprocess.Popen(resume_command,stdin=slave,stdout=slave,stderr=slave,env=env,cwd=tmp_path,start_new_session=True)
                 os.close(slave)
                 screen.clear()
-                for _ in range(100):
+                for _ in range(150):
                     read_screen(.1)
                     assert relay.poll() is None, bytes(screen[-3000:])
-                    if b'Resume a previous session' in screen: break
-                assert b'Resume a previous session' in screen, bytes(screen[-3000:])
+                    if b'Resume a previous session' in screen and (b'first-marker' in screen or b'1 / 1' in screen): break
+                assert b'Resume a previous session' in screen and (b'first-marker' in screen or b'1 / 1' in screen), bytes(screen[-3000:])
                 os.write(master,b'\r')
-                read_screen(2)
+                for _ in range(50):
+                    read_screen(.1)
+                    if b'Resume a previous session' not in screen: break
                 assert relay.poll() is None, bytes(screen[-3000:])
                 os.write(master,b'resumed-marker');read_screen(.2);os.write(master,b'\r')
                 wait_answer('resumed-marker')
