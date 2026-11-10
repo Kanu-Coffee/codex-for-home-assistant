@@ -1,13 +1,16 @@
+import base64
 import functools
 import hashlib
 import http.server
 import io
-import shutil
 import json
 import os
+import select
+import shutil
 import subprocess
 import sys
 import tarfile
+import tempfile
 import threading
 import time
 from pathlib import Path
@@ -42,7 +45,13 @@ def run_node_eval(script: str, cwd: Path) -> dict:
     )
     if proc.returncode != 0:
         raise RuntimeError(f"Node execution failed (code {proc.returncode}):\n{proc.stderr}\n{proc.stdout}")
-    return json.loads(proc.stdout.strip()) if proc.stdout.strip() else {}
+    lines = [line.strip() for line in proc.stdout.strip().splitlines() if line.strip()]
+    for line in reversed(lines):
+        try:
+            return json.loads(line)
+        except json.JSONDecodeError:
+            continue
+    return {}
 
 
 def test_addon_config_declares_auto_update_options(addon_config: dict) -> None:
@@ -74,11 +83,11 @@ def test_translations_cover_auto_update_options(addon_root: Path) -> None:
 def test_timezone_and_slot_calculations(repository_root: Path) -> None:
     script = """
     const tzValid = mgr.isValidTimezone('Asia/Seoul') && mgr.isValidTimezone('UTC') && !mgr.isValidTimezone('Mars/Olympus');
-    
+
     // Test 10:15 KST -> active slot is 09:00
     const d1 = new Date('2026-10-13T10:15:00+09:00');
     const s1 = mgr.getCurrentSlotInfo(d1, 'Asia/Seoul');
-    
+
     // Test 02:30 KST -> active slot is 21:00 on previous day
     const d2 = new Date('2026-10-13T02:30:00+09:00');
     const s2 = mgr.getCurrentSlotInfo(d2, 'Asia/Seoul');
@@ -233,7 +242,7 @@ def test_target_architecture_resolution(repository_root: Path) -> None:
 
 def test_options_validation_fail_closed(repository_root: Path, tmp_path: Path) -> None:
     opt_file = tmp_path / "options.json"
-    
+
     # 1. Missing file: default ON, valid
     script_missing = f"""
     process.env.CODEX_HA_OPTIONS_FILE = '{opt_file}';
@@ -334,7 +343,7 @@ def test_status_output_scrubs_secrets_and_reports_honest_versions(
     console.log(JSON.stringify(status));
     """
     status = run_node_eval(script, repository_root)
-    assert status["appVersion"] == "0.7.3"
+    assert status["appVersion"] == "0.7.4-dev.1"
     assert status["bundledVersion"] == "0.162.1"
     assert status["selectedVersion"] == "0.162.1"
     assert status["runningVersion"] in ("none", "0.162.1")
@@ -414,9 +423,9 @@ def test_stale_state_overwrite_prevention(repository_root: Path, tmp_path: Path)
     script = f"""
     process.env.CODEX_RUNTIME_DIR = '{runtime_dir}';
     process.env.CODEX_MAINTENANCE_DIR = '{maint_dir}';
-    
+
     await mgr.initRuntime();
-    
+
     // Simulate checkUpdate setting stagedVersion
     await mgr.updateState((s) => {{
       s.stagedVersion = '0.163.0';
@@ -662,7 +671,7 @@ def test_app_server_inspection_fails_closed_on_malformed_and_missing_gauges(
           const accept = crypto.createHash('sha1')
             .update(key + '258EAFA5-E914-47DA-95CA-C5AB0DC85B11')
             .digest('base64');
-          
+
           socket.write(
             'HTTP/1.1 101 Switching Protocols\\r\\n' +
             'Upgrade: websocket\\r\\n' +
@@ -873,7 +882,7 @@ def test_server_graceful_restart_transaction_with_fixture_process(
           const accept = crypto.createHash('sha1')
             .update(key + '258EAFA5-E914-47DA-95CA-C5AB0DC85B11')
             .digest('base64');
-          
+
           socket.write(
             'HTTP/1.1 101 Switching Protocols\\r\\n' +
             'Upgrade: websocket\\r\\n' +
@@ -5803,3 +5812,1235 @@ echo "is_one_shot=${{is_one_shot}} managed=${{managed}} subcommand=${{codex_subc
     # Post '--' prompts are not treated as one-shot flags
     assert run_wrapper("--", "--version") == "is_one_shot=false managed=true subcommand="
     assert run_wrapper("--", "help") == "is_one_shot=false managed=true subcommand="
+
+
+def test_issue71_default_socket_and_proxy_attribution(repository_root: Path, tmp_path: Path) -> None:
+    # 1. resolveDefaultControlSocket test
+    script = """
+    const sock1 = mgr.resolveDefaultControlSocket({ CODEX_HOME: '/custom/codex' });
+    const sock2 = mgr.resolveDefaultControlSocket({ HOME: '/home/user' });
+    const sock3 = mgr.resolveDefaultControlSocket({});
+
+    // 2. parseCodexInvocation tests for default unix socket & proxy
+    const inv1 = mgr.parseCodexInvocation(["/bin/codex", "app-server", "--listen", "unix://"]);
+    const inv2 = mgr.parseCodexInvocation(["/bin/codex", "app-server", "--listen=unix://"]);
+    const inv3 = mgr.parseCodexInvocation(["/bin/codex", "app-server", "proxy"]);
+    const inv4 = mgr.parseCodexInvocation(["/bin/codex", "app-server", "proxy", "--sock", "unix:///tmp/custom.sock"]);
+    const inv5 = mgr.parseCodexInvocation(["/bin/codex", "app-server", "proxy", "--sock=/tmp/custom.sock"]);
+
+    console.log(JSON.stringify({
+      sock1, sock2, sock3,
+      inv1: { sub: inv1.subcommand, appCmd: inv1.appServerCommand, listen: inv1.listenSocket },
+      inv2: { sub: inv2.subcommand, appCmd: inv2.appServerCommand, listen: inv2.listenSocket },
+      inv3: { sub: inv3.subcommand, appCmd: inv3.appServerCommand, sock: inv3.proxySocket ?? null },
+      inv4: { sub: inv4.subcommand, appCmd: inv4.appServerCommand, sock: inv4.proxySocket },
+      inv5: { sub: inv5.subcommand, appCmd: inv5.appServerCommand, sock: inv5.proxySocket },
+    }));
+    """
+    res = run_node_eval(script, repository_root)
+    assert res["sock1"] == "/custom/codex/app-server-control/app-server-control.sock"
+    assert res["sock2"] == "/home/user/.codex/app-server-control/app-server-control.sock"
+    assert res["sock3"] is None
+    assert res["inv1"]["listen"] == "unix://"
+    assert res["inv2"]["listen"] == "unix://"
+    assert res["inv3"]["sub"] == "app-server"
+    assert res["inv3"]["appCmd"] == "proxy"
+    assert res["inv3"]["sock"] is None
+    assert res["inv4"]["sock"] == "/tmp/custom.sock"
+    assert res["inv5"]["sock"] == "/tmp/custom.sock"
+
+    # Wrapper recording check
+    wrapper_script = repository_root / "codex_home_assistant/rootfs/usr/local/bin/codex"
+    wrapper_content = wrapper_script.read_text(encoding="utf-8")
+    assert "default_control_sock=" in wrapper_content
+    assert "is_app_server_proxy" in wrapper_content
+
+
+def test_issue71_permission_denied_diagnosis(repository_root: Path, tmp_path: Path) -> None:
+    runtime_dir = tmp_path / "runtime"
+    maint_dir = tmp_path / "maint"
+    sessions_dir = maint_dir / "sessions"
+    sessions_dir.mkdir(parents=True)
+    runtime_dir.mkdir(parents=True)
+
+    # Register session 42421
+    (sessions_dir / "42421").write_text(
+        json.dumps({"pid": 42421, "start": "100", "type": "cli"}),
+        encoding="utf-8",
+    )
+
+    script = f"""
+    import {{ createRequire }} from "node:module";
+    const require = createRequire(import.meta.url);
+    const fs = require("node:fs");
+    const origReadFile = fs.promises.readFile;
+    const origReaddir = fs.promises.readdir;
+    const origReadlink = fs.promises.readlink;
+
+    // Injected EACCES hooks
+    fs.promises.readdir = async function(p, ...args) {{
+      if (p === "/proc") {{
+        // Return simulated unregistered PID 42422 in /proc scan (Pass 2)
+        return ["42422"];
+      }}
+      return origReaddir.call(this, p, ...args);
+    }};
+
+    fs.promises.readFile = async function(p, ...args) {{
+      const s = p.toString();
+      if (s === "/proc/42421/stat") {{
+        // Pass 1: Registered session with EACCES stat
+        const err = new Error("EACCES: permission denied");
+        err.code = "EACCES";
+        throw err;
+      }}
+      if (s === "/proc/42422/stat") {{
+        // Pass 2: Unregistered /proc process with EACCES stat
+        const err = new Error("EACCES: permission denied");
+        err.code = "EACCES";
+        throw err;
+      }}
+      return origReadFile.call(this, p, ...args);
+    }};
+
+    process.env.CODEX_RUNTIME_DIR = '{runtime_dir}';
+    process.env.CODEX_MAINTENANCE_DIR = '{maint_dir}';
+
+    const mgr = await import("./codex_home_assistant/rootfs/usr/local/share/codex-ha/codex-runtime-manager.mjs");
+    await mgr.initRuntime();
+
+    const codeAccepted = mgr.LAST_BLOCKER_CODES.includes("inspection_permission_denied");
+    const inspectRes = await mgr.inspectAllSessions();
+
+    const hasPass1Blocker = inspectRes.blockers.some(
+      b => b.type === "inspection_permission_denied" && b.pid === 42421
+    );
+    const hasPass2Blocker = inspectRes.blockers.some(
+      b => b.type === "inspection_permission_denied" && b.pid === 42422
+    );
+
+    console.log(JSON.stringify({{
+      codeAccepted,
+      canApply: inspectRes.canApply,
+      unknownCount: inspectRes.counts.unknown,
+      hasPass1Blocker,
+      hasPass2Blocker,
+    }}));
+    """
+    res = json.loads(
+        subprocess.check_output(
+            ["node", "--input-type=module", "-e", script],
+            cwd=repository_root,
+            text=True,
+        )
+    )
+    assert res["codeAccepted"] is True
+    assert res["canApply"] is False
+    assert res["unknownCount"] == 2
+    assert res["hasPass1Blocker"] is True
+    assert res["hasPass2Blocker"] is True
+
+
+def test_issue71_history_limits_and_sanitization(repository_root: Path, tmp_path: Path) -> None:
+    runtime_dir = tmp_path / "runtime"
+    maint_dir = tmp_path / "maint"
+    runtime_dir.mkdir(parents=True)
+    maint_dir.mkdir(parents=True)
+
+    script = f"""
+    process.env.CODEX_RUNTIME_DIR = '{runtime_dir}';
+    process.env.CODEX_MAINTENANCE_DIR = '{maint_dir}';
+    await mgr.initRuntime();
+
+    const state = await mgr.loadState();
+
+    // 1. Append valid and invalid events
+    mgr.appendHistoryRecord(state, {{
+      event: 'version_check',
+      source: 'scheduled',
+      outcome: 'up_to_date'
+    }});
+    mgr.appendHistoryRecord(state, {{
+      event: 'invalid_event_type',
+      source: 'test',
+      outcome: 'test'
+    }});
+    mgr.appendHistoryRecord(state, {{
+      event: 'idle_check',
+      source: 'pending',
+      blocker: 'cli',
+      outcome: 'deferred'
+    }});
+
+    // 2. Append > 100 events to verify MAX_HISTORY_ITEMS cap
+    for (let i = 0; i < 120; i++) {{
+      mgr.appendHistoryRecord(state, {{
+        event: 'idle_check',
+        source: 'pending',
+        blocker: 'server_busy',
+        outcome: 'deferred',
+        secret_token: 'secret-12345'
+      }});
+    }}
+
+    await mgr.saveState(state);
+    const loadedState = await mgr.loadState();
+    const status = await mgr.getStatus();
+
+    console.log(JSON.stringify({{
+      historyLength: loadedState.history.length,
+      maxItems: mgr.MAX_HISTORY_ITEMS,
+      latestEvent: loadedState.history[loadedState.history.length - 1],
+      hasInvalidEvent: loadedState.history.some(h => h.event === 'invalid_event_type'),
+      statusHistoryLength: status.history.length
+    }}));
+    """
+    res = run_node_eval(script, repository_root)
+    assert res["historyLength"] <= 100
+    assert res["historyLength"] == res["maxItems"]
+    assert res["hasInvalidEvent"] is False
+    assert res["statusHistoryLength"] == res["historyLength"]
+    assert "secret_token" not in res["latestEvent"]
+
+
+def test_issue71_daily_budget_rollover_and_low_frequency_checks(repository_root: Path, tmp_path: Path) -> None:
+    runtime_dir = tmp_path / "runtime"
+    maint_dir = tmp_path / "maint"
+    sessions_dir = maint_dir / "sessions"
+    sessions_dir.mkdir(parents=True)
+    runtime_dir.mkdir(parents=True)
+
+    # Active dummy session to force apply deferrals
+    pid = os.getpid()
+    stat_parts = Path(f"/proc/{pid}/stat").read_text().rsplit(")", 1)[1].split()
+    start_time = stat_parts[19]
+    (sessions_dir / str(pid)).write_text(
+        json.dumps({"pid": pid, "start": start_time, "type": "cli"}),
+        encoding="utf-8",
+    )
+    options_file = tmp_path / "options.json"
+    options_file.write_text(json.dumps({"codex_auto_update_timezone": "UTC"}), encoding="utf-8")
+
+    script = f"""
+    process.env.CODEX_RUNTIME_DIR = '{runtime_dir}';
+    process.env.CODEX_MAINTENANCE_DIR = '{maint_dir}';
+    process.env.CODEX_HA_OPTIONS_FILE = '{options_file}';
+    process.env.CODEX_TEST_CLOCK = '2026-10-15T10:00:00Z';
+
+    await mgr.initRuntime();
+
+    // Mock staged release
+    const releasesDir = mgr.getReleasesDir();
+    const candidateDir = releasesDir + '/0.163.0-x86_64-unknown-linux-musl';
+    await (await import('node:fs/promises')).mkdir(candidateDir + '/bin', {{ recursive: true }});
+    await (await import('node:fs/promises')).writeFile(candidateDir + '/bin/codex', '#!/bin/sh\\necho codex-cli 0.163.0\\n');
+    await (await import('node:fs/promises')).chmod(candidateDir + '/bin/codex', 0o755);
+    await (await import('node:fs/promises')).writeFile(
+      candidateDir + '/codex-package.json',
+      JSON.stringify({{ version: '0.163.0', target: 'x86_64-unknown-linux-musl', entrypoint: 'bin/codex' }})
+    );
+    await sealFixture(candidateDir);
+    await (await import('node:fs/promises')).symlink(candidateDir, mgr.getStagedLink());
+
+    await mgr.updateState((s) => {{
+      s.stagedVersion = '0.163.0';
+      s.candidateVersion = '0.163.0';
+      s.status = 'ready_to_apply';
+      s.budgetDate = '2026-10-15';
+      s.idleCheckCount = 0;
+      s.lowFrequencyCheckCount = 0;
+    }});
+
+    // Exhaust 12 fast checks
+    for (let i = 0; i < 12; i++) {{
+      await mgr.applyUpdate();
+    }}
+
+    const stateAfter12 = await mgr.loadState();
+
+    // Attempt low-frequency check immediately (before 60 min elapsed)
+    const earlyLowFreq = await mgr.applyUpdate({{ isLowFrequency: true }});
+
+    // Advance clock by 61 minutes
+    process.env.CODEX_TEST_CLOCK = '2026-10-15T11:01:00Z';
+    const lowFreq1 = await mgr.applyUpdate({{ isLowFrequency: true }});
+    const stateAfterLf1 = await mgr.loadState();
+
+    // Advance 60 min each for 3 more low-frequency checks (total 4)
+    process.env.CODEX_TEST_CLOCK = '2026-10-15T12:02:00Z';
+    await mgr.applyUpdate({{ isLowFrequency: true }});
+    process.env.CODEX_TEST_CLOCK = '2026-10-15T13:03:00Z';
+    await mgr.applyUpdate({{ isLowFrequency: true }});
+    process.env.CODEX_TEST_CLOCK = '2026-10-15T14:04:00Z';
+    await mgr.applyUpdate({{ isLowFrequency: true }});
+
+    const stateAfterLf4 = await mgr.loadState();
+
+    // 5th low-frequency attempt should be paused_busy (budget exhausted)
+    process.env.CODEX_TEST_CLOCK = '2026-10-15T15:05:00Z';
+    const lowFreq5 = await mgr.applyUpdate({{ isLowFrequency: true }});
+
+    // Advance to next day 03:05 UTC (date rollover)
+    process.env.CODEX_TEST_CLOCK = '2026-10-16T03:05:00Z';
+    const fixtureRelease = {{
+      tag_name: 'rust-v0.163.0',
+      assets: [{{
+        name: 'codex-package-x86_64-unknown-linux-musl.tar.gz',
+        digest: 'sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+      }}]
+    }};
+    const rolloverCheck = await mgr.checkUpdate('0.163.0', {{ fixtureRelease, slotKey: '2026-10-16T03:00' }});
+    const stateAfterRollover = await mgr.loadState();
+
+    console.log(JSON.stringify({{
+      stateAfter12Status: stateAfter12.status,
+      stateAfter12IdleCount: stateAfter12.idleCheckCount,
+      stateAfter12LfCount: stateAfter12.lowFrequencyCheckCount,
+      earlyLowFreqReason: earlyLowFreq.reason,
+      lowFreq1Reason: lowFreq1.reason,
+      stateAfterLf1LfCount: stateAfterLf1.lowFrequencyCheckCount,
+      stateAfterLf4LfCount: stateAfterLf4.lowFrequencyCheckCount,
+      stateAfterLf4NextLfRetry: stateAfterLf4.nextLowFrequencyRetryAt,
+      lowFreq5Reason: lowFreq5.reason,
+      rolloverBudgetReset: stateAfterRollover.idleCheckCount === 0 && stateAfterRollover.lowFrequencyCheckCount === 0,
+      stateAfterRolloverDate: stateAfterRollover.budgetDate,
+      hasResetEvent: stateAfterRollover.history.some(h => h.event === 'budget_reset')
+    }}));
+    """
+    res = run_node_eval(script, repository_root)
+    assert res["stateAfter12Status"] == "paused_busy"
+    assert res["stateAfter12IdleCount"] == 12
+    assert res["stateAfter12LfCount"] == 0
+    assert res["earlyLowFreqReason"] == "interval_not_reached"
+    assert res["stateAfterLf1LfCount"] == 1
+    assert res["stateAfterLf4LfCount"] == 4
+    assert res["stateAfterLf4NextLfRetry"] is None
+    assert res["lowFreq5Reason"] == "paused_busy"
+    assert res["rolloverBudgetReset"] is True
+    assert res["stateAfterRolloverDate"] == "2026-10-16"
+    assert res["hasResetEvent"] is True
+
+
+def test_issue71_legacy_paused_state_migration(repository_root: Path, tmp_path: Path) -> None:
+    runtime_dir = tmp_path / "runtime"
+    maint_dir = tmp_path / "maint"
+    runtime_dir.mkdir(parents=True)
+    maint_dir.mkdir(parents=True)
+
+    script = f"""
+    process.env.CODEX_RUNTIME_DIR = '{runtime_dir}';
+    process.env.CODEX_MAINTENANCE_DIR = '{maint_dir}';
+    process.env.CODEX_TEST_CLOCK = '2026-10-15T12:00:00Z';
+
+    await mgr.initRuntime();
+
+    // 1. Simulate 0.7.3 legacy paused state: paused_busy, 12 checks, nextLowFrequencyRetryAt missing
+    await mgr.updateState((s) => {{
+      s.status = 'paused_busy';
+      s.stagedVersion = '0.163.0';
+      s.idleCheckCount = 12;
+      s.lowFrequencyCheckCount = 0;
+      s.lastCheckAt = '2026-10-15T11:30:00Z';
+      delete s.nextLowFrequencyRetryAt;
+    }});
+
+    // Call reconcileLegacyPausedState
+    const stateMigrated = await mgr.reconcileLegacyPausedState();
+
+    // 2. Case where lowFrequencyCheckCount already reached max (4)
+    await mgr.updateState((s) => {{
+      s.status = 'paused_busy';
+      s.stagedVersion = '0.163.0';
+      s.idleCheckCount = 12;
+      s.lowFrequencyCheckCount = 4;
+      delete s.nextLowFrequencyRetryAt;
+    }});
+    const stateExhausted = await mgr.reconcileLegacyPausedState();
+
+    // 3. Case where nextLowFrequencyRetryAt already exists
+    const existingRetry = '2026-10-15T15:00:00Z';
+    await mgr.updateState((s) => {{
+      s.status = 'paused_busy';
+      s.stagedVersion = '0.163.0';
+      s.idleCheckCount = 12;
+      s.lowFrequencyCheckCount = 1;
+      s.nextLowFrequencyRetryAt = existingRetry;
+    }});
+    const stateExisting = await mgr.reconcileLegacyPausedState();
+
+    console.log(JSON.stringify({{
+      migratedRetryAt: stateMigrated.nextLowFrequencyRetryAt,
+      exhaustedRetryAt: stateExhausted.nextLowFrequencyRetryAt ?? null,
+      existingRetryAt: stateExisting.nextLowFrequencyRetryAt,
+    }}));
+    """
+    res = run_node_eval(script, repository_root)
+    # FIX_02: Never substitute version query time (11:30) for idle exhaustion time;
+    # Schedule first retry 60 min from current migration time (12:00 -> 13:00)
+    assert res["migratedRetryAt"] == "2026-10-15T13:00:00.000Z"
+    assert res["exhaustedRetryAt"] is None
+    assert res["existingRetryAt"] == "2026-10-15T15:00:00Z"
+
+
+def test_issue71_daemon_sleep_and_rollover_harness(repository_root: Path, tmp_path: Path) -> None:
+    # Verify mathematically and via slot calculation that low-frequency sleep
+    # never eclipses the 03:00 rollover slot.
+    script = """
+    // Scenario: Clock is 02:50:00 UTC (10 min before 03:00 slot)
+    const now = new Date('2026-10-15T02:50:00.000Z');
+    const slotInfo = mgr.getCurrentSlotInfo(now, 'UTC');
+    // next slot is 03:00 UTC -> 600,000 ms away
+    const msUntilNextSlot = slotInfo.msUntilNextSlot;
+
+    // Suppose low frequency retry is scheduled for 03:50:00 UTC (3,600,000 ms away)
+    const nextLowFreqRetryAt = '2026-10-15T03:50:00.000Z';
+    const msUntilLowFreq = new Date(nextLowFreqRetryAt).getTime() - now.getTime();
+
+    // Old buggy calculation: Math.min(msUntilLowFreq, 3600 * 1000) => 3,600,000 (overslept by 50 min!)
+    const buggySleepMs = Math.min(msUntilLowFreq, 3600 * 1000);
+
+    // Fixed calculation: Math.min(lowFreqSleep, defaultSlotSleep) where defaultSlotSleep is Math.min(msUntilNextSlot, 3600 * 1000)
+    const defaultSlotSleep = Math.min(msUntilNextSlot, 3600 * 1000);
+    const lowFreqSleep = msUntilLowFreq > 0 ? msUntilLowFreq : 5000;
+    const fixedSleepMs = Math.min(lowFreqSleep, defaultSlotSleep);
+
+    console.log(JSON.stringify({
+      msUntilNextSlot,
+      msUntilLowFreq,
+      buggySleepMs,
+      fixedSleepMs,
+      wakesAtOrBeforeNextSlot: fixedSleepMs <= msUntilNextSlot,
+    }));
+    """
+    res = run_node_eval(script, repository_root)
+    assert res["msUntilNextSlot"] == 600000
+    assert res["msUntilLowFreq"] == 3600000
+    assert res["buggySleepMs"] == 3600000
+    assert res["fixedSleepMs"] == 600000
+    assert res["wakesAtOrBeforeNextSlot"] is True
+
+
+def test_issue71_version_check_history_and_7day_purge(repository_root: Path, tmp_path: Path) -> None:
+    runtime_dir = tmp_path / "runtime"
+    maint_dir = tmp_path / "maint"
+    runtime_dir.mkdir(parents=True)
+    maint_dir.mkdir(parents=True)
+
+    script = f"""
+    process.env.CODEX_RUNTIME_DIR = '{runtime_dir}';
+    process.env.CODEX_MAINTENANCE_DIR = '{maint_dir}';
+    process.env.CODEX_TEST_CLOCK = '2026-10-15T12:00:00Z';
+
+    await mgr.initRuntime();
+
+    // 1. checkUpdate when up to date (currentVersion == release version)
+    const fixtureReleaseSame = {{
+      tag_name: 'rust-v0.162.1',
+      assets: [{{
+        name: 'codex-package-x86_64-unknown-linux-musl.tar.gz',
+        digest: 'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+      }}]
+    }};
+    const resSame = await mgr.checkUpdate('0.162.1', {{ fixtureRelease: fixtureReleaseSame, slotKey: '2026-10-15T12:00' }});
+    const stateSame = await mgr.loadState();
+    const upToDateEvent = stateSame.history.find(h => h.event === 'version_check' && h.outcome === 'up_to_date');
+
+    // 2. Add an event older than 7 days (e.g. 8 days old: 2026-10-07)
+    await mgr.updateState((s) => {{
+      s.history.unshift({{
+        event: 'version_check',
+        timestamp: '2026-10-07T00:00:00.000Z',
+        source: 'scheduled',
+        outcome: 'up_to_date',
+        currentVersion: '0.160.0',
+      }});
+      // Also add an invalid source and invalid outcome event to test schema sanitization
+      s.history.push({{
+        event: 'version_check',
+        timestamp: '2026-10-15T12:05:00.000Z',
+        source: 'hack_injection',
+        outcome: 'invalid_status',
+      }});
+    }});
+
+    // Append a new record; sanitizeHistory should purge >7 days and fix/drop invalid enums
+    await mgr.updateState((s) => {{
+      mgr.appendHistoryRecord(s, {{
+        event: 'version_check',
+        source: 'manual',
+        outcome: 'up_to_date',
+        currentVersion: '0.162.1',
+      }});
+    }});
+
+    const statePurged = await mgr.loadState();
+    const hasOldEvent = statePurged.history.some(h => h.timestamp === '2026-10-07T00:00:00.000Z');
+    const hasInvalidSource = statePurged.history.some(h => h.source === 'hack_injection');
+    const hasInvalidOutcome = statePurged.history.some(h => h.outcome === 'invalid_status');
+
+    console.log(JSON.stringify({{
+      hasUpToDateEvent: Boolean(upToDateEvent),
+      upToDateEventOutcome: upToDateEvent ? upToDateEvent.outcome : null,
+      hasOldEvent,
+      hasInvalidSource,
+      hasInvalidOutcome,
+      historyCount: statePurged.history.length,
+    }}));
+    """
+    res = run_node_eval(script, repository_root)
+    assert res["hasUpToDateEvent"] is True
+    assert res["upToDateEventOutcome"] == "up_to_date"
+    assert res["hasOldEvent"] is False
+    assert res["hasInvalidSource"] is False
+    assert res["hasInvalidOutcome"] is False
+
+
+def test_issue71_official_binaries_probe(repository_root: Path) -> None:
+    binaries = {
+        "0.162.1": repository_root / ".test-tmp/task007-baseline/bin/codex",
+        "0.166.0": repository_root / ".test-tmp/resume-166/bin/codex",
+        "0.167.0": repository_root / ".test-tmp/candidate-167/bin/codex",
+    }
+    for ver, path in binaries.items():
+        if not path.is_file():
+            continue
+        out = subprocess.check_output([str(path), "--version"], text=True)
+        assert f"codex-cli {ver}" in out
+
+        # Test command parser with binary path
+        script = f"""
+        const invDefault = mgr.parseCodexInvocation(['{path}', 'app-server', '--listen', 'unix://']);
+        const invProxy = mgr.parseCodexInvocation(['{path}', 'app-server', 'proxy']);
+        console.log(JSON.stringify({{
+          invDefaultSub: invDefault.subcommand,
+          invDefaultListen: invDefault.listenSocket,
+          invProxySub: invProxy.subcommand,
+          invProxyAppCmd: invProxy.appServerCommand,
+        }}));
+        """
+        res = run_node_eval(script, repository_root)
+        assert res["invDefaultSub"] == "app-server"
+        assert res["invDefaultListen"] == "unix://"
+        assert res["invProxySub"] == "app-server"
+        assert res["invProxyAppCmd"] == "proxy"
+
+
+def test_issue71_real_daemon_continuous_lifecycle(repository_root: Path, tmp_path: Path) -> None:
+    runtime_dir = tmp_path / "runtime"
+    maint_dir = tmp_path / "maint"
+    sessions_dir = maint_dir / "sessions"
+    sessions_dir.mkdir(parents=True)
+    runtime_dir.mkdir(parents=True)
+    options_file = tmp_path / "options.json"
+    options_file.write_text(json.dumps({"codex_auto_update": True, "codex_auto_update_timezone": "UTC"}), encoding="utf-8")
+
+    # Start a live, controllable busy fixture process
+    dummy_proc = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(120)"])
+    live_pid = dummy_proc.pid
+    try:
+        with open(f"/proc/{live_pid}/stat", "r", encoding="utf-8") as f:
+            stat_content = f.read()
+            last_paren = stat_content.rfind(")")
+            stat_parts = stat_content[last_paren + 1:].strip().split()
+            live_start_time = stat_parts[19]
+    except Exception:
+        live_start_time = "10"
+
+    try:
+        script = f"""
+        process.env.CODEX_RUNTIME_DIR = '{runtime_dir}';
+        process.env.CODEX_MAINTENANCE_DIR = '{maint_dir}';
+        process.env.CODEX_HA_OPTIONS_FILE = '{options_file}';
+        process.env.CODEX_TEST_CLOCK = '2026-10-15T03:05:00Z';
+        process.env.CODEX_TEST_DAEMON_NO_AUTO_START = 'true';
+
+        await mgr.initRuntime();
+
+        // 1. Prepare candidate update in releases
+        const releasesDir = mgr.getReleasesDir();
+        const candidateDir = releasesDir + '/0.163.0-x86_64-unknown-linux-musl';
+        await (await import('node:fs/promises')).mkdir(candidateDir + '/bin', {{ recursive: true }});
+        await (await import('node:fs/promises')).writeFile(candidateDir + '/bin/codex', '#!/bin/sh\\necho codex-cli 0.163.0\\n');
+        await (await import('node:fs/promises')).chmod(candidateDir + '/bin/codex', 0o755);
+        await (await import('node:fs/promises')).writeFile(
+          candidateDir + '/codex-package.json',
+          JSON.stringify({{ version: '0.163.0', target: 'x86_64-unknown-linux-musl', entrypoint: 'bin/codex' }})
+        );
+        await sealFixture(candidateDir);
+        await (await import('node:fs/promises')).symlink(candidateDir, mgr.getStagedLink());
+
+        // 2. Set up 0.7.3 legacy paused state lacking nextLowFrequencyRetryAt
+        const curSlotKey = mgr.getCurrentSlotInfo(mgr.getNow(), 'UTC').slotKey;
+        await mgr.updateState((s) => {{
+          s.stagedVersion = '0.163.0';
+          s.candidateVersion = '0.163.0';
+          s.status = 'paused_busy';
+          s.budgetDate = '2026-10-15';
+          s.lastCheckSlot = curSlotKey;
+          s.idleCheckCount = 12;
+          s.lowFrequencyCheckCount = 0;
+          delete s.nextLowFrequencyRetryAt;
+        }});
+
+        // 3. Register live, verifiable dummy session to keep candidate deferred
+        const sessionRecordPath = '{sessions_dir}/{live_pid}';
+        await (await import('node:fs/promises')).writeFile(
+          sessionRecordPath,
+          JSON.stringify({{ pid: {live_pid}, start: '{live_start_time}', type: 'cli' }})
+        );
+
+        // 4. Import daemon and establish continuous lifecycle test sleep hook
+        const daemon = await import('./codex_home_assistant/rootfs/usr/local/share/codex-ha/codex-updater-daemon.mjs');
+        daemon.setTestPolicyProbe(async () => ({{ valid: true }}));
+        daemon.setTestCheckHook(async () => ({{ upToDate: false, stagedVersion: '0.163.0', currentVersion: '0.162.1' }}));
+        const steps = [];
+        let step = 0;
+
+        daemon.setTestSleepHook(async (sleepMs) => {{
+          step++;
+          const curState = await mgr.loadState();
+          steps.push({{
+            step,
+            clock: process.env.CODEX_TEST_CLOCK,
+            sleepMs,
+            status: curState.status,
+            lfCount: curState.lowFrequencyCheckCount,
+            idleCount: curState.idleCheckCount,
+            budgetDate: curState.budgetDate,
+            nextLowFrequencyRetryAt: curState.nextLowFrequencyRetryAt,
+            nextRetryAt: curState.nextRetryAt,
+          }});
+
+          if (step === 1) {{
+            // Migration completed: nextLowFrequencyRetryAt set to 1 hour from migration (04:05)
+            // Advance clock to 03:30: before 60m retry, verify no premature check occurs
+            process.env.CODEX_TEST_CLOCK = '2026-10-15T03:30:00Z';
+          }} else if (step === 2) {{
+            // Advance clock to 04:05: trigger low-frequency check #1
+            process.env.CODEX_TEST_CLOCK = '2026-10-15T04:05:00Z';
+          }} else if (step === 3) {{
+            // Advance clock to 05:05: trigger low-frequency check #2
+            process.env.CODEX_TEST_CLOCK = '2026-10-15T05:05:00Z';
+          }} else if (step === 4) {{
+            // Advance clock to 06:05: trigger low-frequency check #3
+            process.env.CODEX_TEST_CLOCK = '2026-10-15T06:05:00Z';
+          }} else if (step === 5) {{
+            // Advance clock to 07:05: trigger low-frequency check #4 (exhaustion!)
+            process.env.CODEX_TEST_CLOCK = '2026-10-15T07:05:00Z';
+          }} else if (step === 6) {{
+            // Low-frequency budget exhausted (4/4). Advance clock to 08:00 to verify NO 5th check
+            process.env.CODEX_TEST_CLOCK = '2026-10-15T08:00:00Z';
+          }} else if (step === 7) {{
+            // Advance clock across midnight to 2026-10-16T03:05:00Z (date rollover slot check)
+            process.env.CODEX_TEST_CLOCK = '2026-10-16T03:05:00Z';
+          }} else if (step === 8) {{
+            // Clean up session fixture to allow candidate update to apply
+            try {{ await (await import('node:fs/promises')).unlink(sessionRecordPath); }} catch {{}}
+            // Trigger apply pass for pending staged update
+            process.env.CODEX_TEST_CLOCK = '2026-10-16T03:10:00Z';
+          }} else if (step === 9) {{
+            // Verification complete: signal daemon to stop
+            daemon.stopOnSignal();
+          }}
+        }});
+
+        // 5. Actually run daemon.loop()!
+        const loopPromise = daemon.loop();
+        await loopPromise;
+
+        const finalState = await mgr.loadState();
+        console.log(JSON.stringify({{
+          loopExecuted: true,
+          totalSteps: step,
+          steps,
+          migrationRetryAt: steps[0]?.nextLowFrequencyRetryAt,
+          prematureNoCheck: steps[1]?.lfCount === 0,
+          lf1Count: steps[2]?.lfCount,
+          lf2Count: steps[3]?.lfCount,
+          lf3Count: steps[4]?.lfCount,
+          lf4Count: steps[5]?.lfCount,
+          exhaustedRetryAt: steps[5]?.nextLowFrequencyRetryAt,
+          no5thCheck: steps[6]?.lfCount === 4,
+          rolloverBudgetDate: steps[7]?.budgetDate,
+          rolloverIdleCount: steps[7]?.idleCount,
+          rolloverLfCount: steps[7]?.lfCount,
+          finalVersion: finalState.selectedVersion,
+          finalStatus: finalState.status,
+          isRunningAfterStop: daemon.isRunning,
+        }}));
+        """
+        res = run_node_eval(script, repository_root)
+        assert res["loopExecuted"] is True
+        assert res["migrationRetryAt"] == "2026-10-15T04:05:00.000Z"
+        assert res["prematureNoCheck"] is True
+        assert res["lf1Count"] == 1
+        assert res["lf2Count"] == 2
+        assert res["lf3Count"] == 3
+        assert res["lf4Count"] == 4
+        assert res["exhaustedRetryAt"] is None
+        assert res["no5thCheck"] is True
+        assert res["rolloverBudgetDate"] == "2026-10-16"
+        assert res["rolloverIdleCount"] == 1
+        assert res["rolloverLfCount"] == 0
+        assert res["finalVersion"] == "0.163.0"
+        assert res["finalStatus"] == "applied"
+        assert res["isRunningAfterStop"] is False
+    finally:
+        dummy_proc.terminate()
+        try:
+            dummy_proc.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            dummy_proc.kill()
+            dummy_proc.wait()
+
+
+def test_issue71_real_binary_default_proxy_e2e(repository_root: Path, tmp_path: Path) -> None:
+    binaries = {
+        "0.162.1": repository_root / ".test-tmp/task007-baseline/bin/codex",
+        "0.166.0": repository_root / ".test-tmp/resume-166/bin/codex",
+        "0.167.0": repository_root / ".test-tmp/candidate-167/bin/codex",
+    }
+    existing_binaries = {k: v for k, v in binaries.items() if v.is_file()}
+    if not existing_binaries:
+        if os.environ.get("CI"):
+            pytest.fail("Official Codex binaries missing in CI environment")
+        pytest.skip("Official Codex binaries not provisioned locally")
+
+    for version_tag, binary_path in existing_binaries.items():
+        # Linux sockaddr_un sun_path is limited to 108 chars; use short tempdir
+        run_dir = Path(tempfile.mkdtemp(prefix="p71-", dir="/tmp"))
+        codex_home = run_dir / "c"
+        codex_home.mkdir(parents=True)
+        maint_dir = run_dir / "m"
+        sessions_dir = maint_dir / "sessions"
+        sessions_dir.mkdir(parents=True)
+        runtime_dir = run_dir / "r"
+        runtime_dir.mkdir(parents=True)
+
+        env = {
+            "PATH": os.environ["PATH"],
+            "HOME": str(run_dir),
+            "CODEX_HOME": str(codex_home),
+            "HTTP_PROXY": "http://127.0.0.1:9",
+            "HTTPS_PROXY": "http://127.0.0.1:9",
+        }
+        sock_path = codex_home / "app-server-control/app-server-control.sock"
+
+        server = None
+        proxy = None
+        try:
+            # 1. Start real server with --listen unix://
+            server = subprocess.Popen(
+                [str(binary_path), "app-server", "--listen", "unix://"],
+                env=env,
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            for _ in range(100):
+                if sock_path.exists():
+                    break
+                assert server.poll() is None, f"Server {version_tag} died unexpectedly"
+                time.sleep(0.05)
+            assert sock_path.exists(), f"Server {version_tag} failed to create {sock_path}"
+
+            # 2. Start real proxy with default socket
+            proxy = subprocess.Popen(
+                [str(binary_path), "app-server", "proxy"],
+                env=env,
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,
+            )
+            key = base64.b64encode(os.urandom(16))
+            proxy.stdin.write(
+                b"GET / HTTP/1.1\r\nHost: localhost\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n"
+                b"Sec-WebSocket-Key: " + key + b"\r\nSec-WebSocket-Version: 13\r\n\r\n"
+            )
+            proxy.stdin.flush()
+            hdr = b""
+            while not hdr.endswith(b"\r\n\r\n"):
+                rlist, _, _ = select.select([proxy.stdout], [], [], 10)
+                assert rlist, f"Timeout waiting for WebSocket handshake on {version_tag} proxy"
+                b = os.read(proxy.stdout.fileno(), 1)
+                assert b, "Unexpected EOF on proxy stdout"
+                hdr += b
+            assert hdr.startswith(b"HTTP/1.1 101"), f"Expected 101 Switching Protocols, got: {hdr}"
+
+            # 3. Create launch records (mimicking wrapper behavior)
+            for proc, kind, managed in [(server, "app-server", True), (proxy, "app-server-proxy", False)]:
+                stat_parts = Path(f"/proc/{proc.pid}/stat").read_text(encoding="utf-8").rsplit(")", 1)[1].split()
+                start_ticks = stat_parts[19]
+                record = {
+                    "pid": proc.pid,
+                    "start": start_ticks,
+                    "type": kind,
+                    "managed": managed,
+                    "socketPath": str(sock_path),
+                    "exe": str(binary_path),
+                    "version": version_tag,
+                    "cwd": str(run_dir),
+                    "args": ["app-server", "--listen", "unix://"] if managed else ["app-server", "proxy"],
+                }
+                (sessions_dir / str(proc.pid)).write_text(json.dumps(record), encoding="utf-8")
+
+            # 4. Test in s6-like inspector environment (CODEX_HOME deleted, HOME=/root)
+            inspector_env = {
+                **env,
+                "HOME": "/root",
+                "CODEX_BASELINE_DIR": str(binary_path.parent.parent),
+                "CODEX_MAINTENANCE_DIR": str(maint_dir),
+                "CODEX_RUNTIME_DIR": str(runtime_dir),
+            }
+            inspector_env.pop("CODEX_HOME", None)
+
+            eval_code = (
+                "import * as m from './codex_home_assistant/rootfs/usr/local/share/codex-ha/codex-runtime-manager.mjs';"
+                "const r = await m.inspectAllSessions({ readOnly: true });"
+                "console.log(JSON.stringify({ helpers: r.counts.helpers, unknown: r.counts.unknown, canApply: r.canApply, types: r.blockers.map(b => b.type), details: r.blockers.map(b => b.detail) }));"
+            )
+            out = subprocess.check_output(
+                ["node", "--input-type=module", "-e", eval_code],
+                cwd=repository_root,
+                env=inspector_env,
+                text=True,
+            )
+            res = json.loads(out)
+            assert res["helpers"] == 1, f"Expected 1 helper, got {res} on {version_tag}"
+            assert res["unknown"] == 0, f"Expected 0 unknown, got {res} on {version_tag}"
+            assert res["canApply"] is True, f"Expected canApply=true, got {res} on {version_tag}"
+
+            # 5. Negative tests:
+            # 5a. Forged record (different socketPath) -> proxyTargetMismatch, unknown=1, canApply=false
+            bad_record = {
+                "pid": proxy.pid,
+                "start": start_ticks,
+                "type": "app-server-proxy",
+                "managed": False,
+                "socketPath": "/tmp/forged_nonexistent.sock",
+                "exe": str(binary_path),
+                "version": version_tag,
+                "cwd": str(run_dir),
+                "args": ["app-server", "proxy"],
+            }
+            (sessions_dir / str(proxy.pid)).write_text(json.dumps(bad_record), encoding="utf-8")
+            out_bad = subprocess.check_output(
+                ["node", "--input-type=module", "-e", eval_code],
+                cwd=repository_root,
+                env=inspector_env,
+                text=True,
+            )
+            res_bad = json.loads(out_bad)
+            assert res_bad["unknown"] >= 1
+            assert any("proxy argv target socket does not match" in d for d in res_bad["details"])
+            assert res_bad["canApply"] is False
+
+            # 5b. Old empty record (socketPath missing) -> missingTargetSocket, unknown=1, canApply=false
+            empty_record = {
+                "pid": proxy.pid,
+                "start": start_ticks,
+                "type": "app-server-proxy",
+                "managed": False,
+                "exe": str(binary_path),
+                "version": version_tag,
+                "cwd": str(run_dir),
+                "args": ["app-server", "proxy"],
+            }
+            (sessions_dir / str(proxy.pid)).write_text(json.dumps(empty_record), encoding="utf-8")
+            out_empty = subprocess.check_output(
+                ["node", "--input-type=module", "-e", eval_code],
+                cwd=repository_root,
+                env=inspector_env,
+                text=True,
+            )
+            res_empty = json.loads(out_empty)
+            assert res_empty["unknown"] >= 1
+            assert any("target socket is missing" in d or "missing" in d for d in res_empty["details"])
+            assert res_empty["canApply"] is False
+
+            # 6. Session exit test: Terminate proxy and remove its record, leaving idle server
+            (sessions_dir / str(proxy.pid)).unlink(missing_ok=True)
+            proxy.terminate()
+            proxy.wait(timeout=2)
+            proxy = None
+            time.sleep(1.2)  # Allow server to complete idle diagnostic window
+
+            out_idle = subprocess.check_output(
+                ["node", "--input-type=module", "-e", eval_code],
+                cwd=repository_root,
+                env=inspector_env,
+                text=True,
+            )
+            res_idle = json.loads(out_idle)
+            assert res_idle["unknown"] == 0, f"Expected 0 unknown after proxy exit, got {res_idle}"
+            assert res_idle["canApply"] is True, f"Expected canApply=true after proxy exit, got {res_idle}"
+
+        finally:
+            for proc in [proxy, server]:
+                if proc:
+                    proc.terminate()
+                    try:
+                        proc.wait(timeout=2)
+                    except subprocess.TimeoutExpired:
+                        proc.kill()
+                        proc.wait()
+            shutil.rmtree(run_dir, ignore_errors=True)
+
+
+def test_issue71_default_proxy_apparmor_denied_environ(repository_root: Path, tmp_path: Path) -> None:
+    """Verify that when AppArmor denies /proc/<pid>/environ reads (EACCES),
+    Pass 3 standard path convention and Pass 4 kernel peer socket mapping
+    safely attribute the default proxy helper without inspector env dependency."""
+    binary_path = repository_root / ".test-tmp/candidate-167/bin/codex"
+    if not binary_path.exists():
+        pytest.skip("0.167.0 official binary not available")
+
+    run_dir = Path(tempfile.mkdtemp(prefix="p71-aa-", dir="/tmp"))
+    server = None
+    proxy = None
+    try:
+        codex_home = run_dir / "codex_home"
+        runtime_dir = run_dir / "runtime"
+        maint_dir = run_dir / "maint"
+        sessions_dir = maint_dir / "sessions"
+        sessions_dir.mkdir(parents=True)
+        runtime_dir.mkdir(parents=True)
+        codex_home.mkdir(parents=True)
+
+        env = {
+            "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
+            "HOME": str(run_dir),
+            "CODEX_HOME": str(codex_home),
+        }
+
+        # 1. Start server with default unix socket
+        server = subprocess.Popen(
+            [str(binary_path), "app-server", "--listen", "unix://"],
+            cwd=run_dir,
+            env=env,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        sock_path = codex_home / "app-server-control/app-server-control.sock"
+        deadline = time.time() + 5.0
+        while time.time() < deadline and not sock_path.exists():
+            time.sleep(0.05)
+        assert sock_path.exists(), f"Socket not created at {sock_path}"
+
+        # 2. Start proxy helper connected to default socket
+        proxy = subprocess.Popen(
+            [str(binary_path), "app-server", "proxy"],
+            cwd=run_dir,
+            env=env,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+        )
+        key = base64.b64encode(os.urandom(16))
+        proxy.stdin.write(
+            b"GET / HTTP/1.1\r\nHost: localhost\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n"
+            b"Sec-WebSocket-Key: " + key + b"\r\nSec-WebSocket-Version: 13\r\n\r\n"
+        )
+        proxy.stdin.flush()
+        hdr = b""
+        while not hdr.endswith(b"\r\n\r\n"):
+            rlist, _, _ = select.select([proxy.stdout], [], [], 10)
+            assert rlist, "Timeout waiting for WebSocket handshake on proxy"
+            b = os.read(proxy.stdout.fileno(), 1)
+            assert b, "Unexpected EOF on proxy stdout"
+            hdr += b
+        assert hdr.startswith(b"HTTP/1.1 101")
+
+        # 3. Write launch records
+        for proc, kind, managed in [(server, "app-server", True), (proxy, "app-server-proxy", False)]:
+            stat_parts = Path(f"/proc/{proc.pid}/stat").read_text(encoding="utf-8").rsplit(")", 1)[1].split()
+            start_ticks = stat_parts[19]
+            record = {
+                "pid": proc.pid,
+                "start": start_ticks,
+                "type": kind,
+                "managed": managed,
+                "socketPath": str(sock_path),
+                "exe": str(binary_path),
+                "version": "0.167.0",
+                "cwd": str(run_dir),
+                "args": ["app-server", "--listen", "unix://"] if managed else ["app-server", "proxy"],
+            }
+            (sessions_dir / str(proc.pid)).write_text(json.dumps(record), encoding="utf-8")
+
+        # 4. Run inspection under AppArmor simulated EACCES for /proc/*/environ
+        inspector_env = {
+            **env,
+            "HOME": "/root",
+            "CODEX_BASELINE_DIR": str(binary_path.parent.parent),
+            "CODEX_MAINTENANCE_DIR": str(maint_dir),
+            "CODEX_RUNTIME_DIR": str(runtime_dir),
+        }
+        inspector_env.pop("CODEX_HOME", None)
+
+        eval_code = """
+        import * as m from './codex_home_assistant/rootfs/usr/local/share/codex-ha/codex-runtime-manager.mjs';
+
+        // Simulate AppArmor deny on /proc/<pid>/environ: inspectProcess succeeds for stat/exe/cmdline, but env is empty and envError = "EACCES"
+        const apparmorInspectProcess = async (pid) => {
+          const proc = await m.inspectProcess(pid);
+          if (proc) {
+            return {
+              ...proc,
+              env: Object.freeze({}),
+              envError: "EACCES",
+            };
+          }
+          return proc;
+        };
+
+        const r = await m.inspectAllSessions({ readOnly: true, inspectProcess: apparmorInspectProcess });
+        console.log(JSON.stringify({
+          helpers: r.counts.helpers,
+          unknown: r.counts.unknown,
+          canApply: r.canApply,
+          types: r.blockers.map(b => b.type),
+        }));
+        """
+        out = subprocess.check_output(
+            ["node", "--input-type=module", "-e", eval_code],
+            cwd=repository_root,
+            env=inspector_env,
+            text=True,
+        )
+        res = json.loads(out.strip().splitlines()[-1])
+        assert res["helpers"] == 1, f"Expected 1 helper under AppArmor deny, got {res}"
+        assert res["unknown"] == 0, f"Expected 0 unknown under AppArmor deny, got {res}"
+        assert res["canApply"] is True, f"Expected canApply=true under AppArmor deny, got {res}"
+
+    finally:
+        for proc in [proxy, server]:
+            if proc:
+                proc.terminate()
+                try:
+                    proc.wait(timeout=2)
+                except subprocess.TimeoutExpired:
+                    proc.kill()
+                    proc.wait()
+
+
+def test_issue71_budget_resilience_across_clock_skew_and_timezone_shifts(
+    repository_root: Path, tmp_path: Path
+) -> None:
+    runtime_dir = tmp_path / "runtime"
+    maint_dir = tmp_path / "maint"
+    options_file = tmp_path / "options.json"
+    options_file.write_text(json.dumps({"codex_auto_update": True, "codex_auto_update_timezone": "Asia/Seoul"}), encoding="utf-8")
+
+    script = f"""
+    process.env.CODEX_RUNTIME_DIR = '{runtime_dir}';
+    process.env.CODEX_MAINTENANCE_DIR = '{maint_dir}';
+    process.env.CODEX_HA_OPTIONS_FILE = '{options_file}';
+    process.env.CODEX_TEST_CLOCK = '2026-11-10T12:00:00Z';
+
+    await mgr.initRuntime();
+    const candidateDir = mgr.getReleasesDir() + '/0.163.0-x86_64-unknown-linux-musl';
+    await (await import('node:fs/promises')).mkdir(candidateDir + '/bin', {{ recursive: true }});
+    await (await import('node:fs/promises')).chmod(candidateDir, 0o755);
+    await (await import('node:fs/promises')).chmod(candidateDir + '/bin', 0o755);
+    await (await import('node:fs/promises')).writeFile(candidateDir + '/bin/codex', '#!/bin/sh\\necho codex-cli 0.163.0\\n', {{ mode: 0o755 }});
+    await (await import('node:fs/promises')).writeFile(
+      candidateDir + '/codex-package.json',
+      JSON.stringify({{ version: '0.163.0', target: 'x86_64-unknown-linux-musl', entrypoint: 'bin/codex' }}),
+      {{ mode: 0o644 }}
+    );
+    const ledger = await import('./codex_home_assistant/rootfs/usr/local/share/codex-ha/codex-package-integrity.mjs');
+    await ledger.recordPackage(candidateDir, mgr.getBaseRuntimeDir(), 'b'.repeat(64), await ledger.packageInventory(candidateDir));
+    await (await import('node:fs/promises')).symlink(candidateDir, mgr.getStagedLink());
+
+    await mgr.updateState(s => {{
+      s.budgetDate = mgr.getCurrentSlotInfo(mgr.getNow(), 'Asia/Seoul').slotDate;
+      s.stagedVersion = '0.163.0';
+      s.candidateVersion = '0.163.0';
+      s.candidateDigest = 'b'.repeat(64);
+    }});
+
+    const fixtureRelease = {{ tag_name: 'rust-v0.163.0', assets: [{{ name: 'codex-package-x86_64-unknown-linux-musl.tar.gz', digest: 'sha256:' + 'b'.repeat(64) }}] }};
+    await mgr.checkUpdate('0.163.0', {{ fixtureRelease }});
+
+    // Exhaust daily budgets
+    await mgr.updateState(s => {{
+      s.status = 'paused_busy';
+      s.idleCheckCount = 12;
+      s.lowFrequencyCheckCount = 4;
+      s.nextLowFrequencyRetryAt = null;
+    }});
+
+    // 1. Clock skew backwards: Nov 10 -> Nov 09
+    process.env.CODEX_TEST_CLOCK = '2026-11-09T12:00:00Z';
+    await mgr.checkUpdate('0.163.0', {{ fixtureRelease }});
+    const stateBack = await mgr.loadState();
+
+    // 2. Return to original date: Nov 10
+    process.env.CODEX_TEST_CLOCK = '2026-11-10T12:00:00Z';
+    await mgr.checkUpdate('0.163.0', {{ fixtureRelease }});
+    const stateReturn = await mgr.loadState();
+
+    // 3. Timezone toggle at same instant (2026-11-10T02:30:00Z)
+    process.env.CODEX_TEST_CLOCK = '2026-11-10T02:30:00Z';
+    await (await import('node:fs/promises')).writeFile('{options_file}', JSON.stringify({{ codex_auto_update_timezone: 'UTC' }}));
+    await mgr.checkUpdate('0.163.0', {{ fixtureRelease }});
+    const stateUtc = await mgr.loadState();
+
+    await (await import('node:fs/promises')).writeFile('{options_file}', JSON.stringify({{ codex_auto_update_timezone: 'Asia/Seoul' }}));
+    await mgr.checkUpdate('0.163.0', {{ fixtureRelease }});
+    const stateSeoul = await mgr.loadState();
+
+    // 4. Advance clock to genuine next day 03:05 Asia/Seoul (2026-11-10T18:05:00Z)
+    process.env.CODEX_TEST_CLOCK = '2026-11-10T18:05:00Z';
+    await mgr.checkUpdate('0.163.0', {{ fixtureRelease }});
+    const stateRollover = await mgr.loadState();
+
+    console.log(JSON.stringify({{
+      back: {{ fast: stateBack.idleCheckCount, low: stateBack.lowFrequencyCheckCount }},
+      ret: {{ fast: stateReturn.idleCheckCount, low: stateReturn.lowFrequencyCheckCount }},
+      utc: {{ fast: stateUtc.idleCheckCount, low: stateUtc.lowFrequencyCheckCount }},
+      seoul: {{ fast: stateSeoul.idleCheckCount, low: stateSeoul.lowFrequencyCheckCount }},
+      rollover: {{ date: stateRollover.budgetDate, fast: stateRollover.idleCheckCount, low: stateRollover.lowFrequencyCheckCount }},
+      rolloverResets: stateRollover.history.filter(h => h.event === 'budget_reset').length,
+    }}));
+    """
+    res = run_node_eval(script, repository_root)
+    assert res["back"] == {"fast": 12, "low": 4}, f"Backward clock reset exhausted budget: {res}"
+    assert res["ret"] == {"fast": 12, "low": 4}, f"Returning to date reset exhausted budget: {res}"
+    assert res["utc"] == {"fast": 12, "low": 4}, f"Timezone shift to UTC reset budget: {res}"
+    assert res["seoul"] == {"fast": 12, "low": 4}, f"Timezone shift to Seoul reset budget: {res}"
+    assert res["rollover"]["date"] == "2026-11-11", f"Expected rollover date 2026-11-11, got {res}"
+    assert res["rollover"]["fast"] == 0, f"Expected rollover fast 0, got {res}"
+    assert res["rollover"]["low"] == 0, f"Expected rollover low 0, got {res}"
+    assert res["rolloverResets"] == 1, f"Expected exactly 1 budget_reset event across entire cycle, got {res}"
+
+
+def test_issue71_budget_legacy_migration_and_cross_timezone_transitions(
+    repository_root: Path, tmp_path: Path
+) -> None:
+    runtime_dir = tmp_path / "runtime"
+    maint_dir = tmp_path / "maint"
+    options_file = tmp_path / "options.json"
+    options_file.write_text(json.dumps({"codex_auto_update": True, "codex_auto_update_timezone": "UTC"}), encoding="utf-8")
+
+    script = f"""
+    process.env.CODEX_RUNTIME_DIR = '{runtime_dir}';
+    process.env.CODEX_MAINTENANCE_DIR = '{maint_dir}';
+    process.env.CODEX_HA_OPTIONS_FILE = '{options_file}';
+    await mgr.initRuntime();
+    const release = {{ tag_name: 'rust-v0.162.1' }};
+
+    // A. Legacy 0.7.3 state without nextBudgetResetAt inspected after 03:00 on new day
+    process.env.CODEX_TEST_CLOCK = '2026-11-11T03:05:00Z';
+    await mgr.updateState(s => {{
+      s.selectedVersion = '0.162.1';
+      s.budgetDate = '2026-11-10';
+      s.timezone = 'UTC';
+      s.idleCheckCount = 12;
+      s.lowFrequencyCheckCount = 4;
+      s.status = 'paused_busy';
+      s.nextRetryAt = '2026-11-11T03:00:00Z';
+      s.nextBudgetResetAt = null;
+      s.lastBudgetResetAt = null;
+    }});
+    await mgr.checkUpdate(null, {{ fixtureRelease: release }});
+    const stateLegacy = await mgr.loadState();
+
+    // B. Westward timezone shift (Asia/Seoul -> UTC) and subsequent 03:00 boundary
+    process.env.CODEX_TEST_CLOCK = '2026-11-10T19:00:00Z'; // 04:00 KST on Nov 11
+    await (await import('node:fs/promises')).writeFile('{options_file}', JSON.stringify({{ codex_auto_update_timezone: 'Asia/Seoul' }}));
+    await mgr.updateState(s => {{
+      s.budgetDate = '2026-11-11';
+      s.timezone = 'Asia/Seoul';
+      s.idleCheckCount = 12;
+      s.lowFrequencyCheckCount = 4;
+      s.status = 'paused_busy';
+      s.lastBudgetResetAt = '2026-11-10T18:00:00Z'; // 03:00 KST
+      s.nextBudgetResetAt = '2026-11-11T18:00:00Z'; // next day 03:00 KST
+    }});
+    // Switch options to UTC at same instant
+    await (await import('node:fs/promises')).writeFile('{options_file}', JSON.stringify({{ codex_auto_update_timezone: 'UTC' }}));
+    const switchState = await mgr.loadState();
+    mgr.reconcileDailyBudget(switchState, 'UTC', 'scheduled', mgr.getNow());
+    await mgr.saveState(switchState);
+
+    // Now advance to 03:05Z in UTC (next boundary reached)
+    process.env.CODEX_TEST_CLOCK = '2026-11-11T03:05:00Z';
+    await mgr.checkUpdate(null, {{ fixtureRelease: release }});
+    const stateWestRollover = await mgr.loadState();
+
+    // C. Timezone shift parity between direct helper, checkUpdate, and applyUpdate
+    process.env.CODEX_TEST_CLOCK = '2026-11-11T04:00:00Z';
+    await (await import('node:fs/promises')).writeFile('{options_file}', JSON.stringify({{ codex_auto_update_timezone: 'Asia/Seoul', auto_update: true }}));
+    await mgr.updateState(s => {{
+      s.budgetDate = '2026-11-10';
+      s.timezone = 'UTC';
+      s.idleCheckCount = 12;
+      s.lowFrequencyCheckCount = 4;
+      s.status = 'paused_busy';
+      s.lastBudgetResetAt = '2026-11-10T03:00:00Z';
+      s.nextBudgetResetAt = '2026-11-11T03:00:00Z';
+    }});
+    const directHelperCopy = await mgr.loadState();
+    mgr.reconcileDailyBudget(directHelperCopy, 'Asia/Seoul', 'scheduled', mgr.getNow());
+
+    await mgr.checkUpdate(null, {{ fixtureRelease: release }});
+    const checkUpdateState = await mgr.loadState();
+
+    // D. Status nextBudgetResetAt consistency across clock backwards
+    process.env.CODEX_TEST_CLOCK = '2026-11-10T04:00:00Z'; // clock jumps back
+    const statusAtJumpBack = await mgr.getStatus();
+    const persistedAtJumpBack = await mgr.loadState();
+
+    console.log(JSON.stringify({{
+      legacy: {{
+        budgetDate: stateLegacy.budgetDate,
+        fast: stateLegacy.idleCheckCount,
+        low: stateLegacy.lowFrequencyCheckCount,
+        next: stateLegacy.nextBudgetResetAt,
+      }},
+      westSwitch: {{
+        budgetDate: switchState.budgetDate,
+        fast: switchState.idleCheckCount,
+        low: switchState.lowFrequencyCheckCount,
+        next: switchState.nextBudgetResetAt,
+      }},
+      westRollover: {{
+        budgetDate: stateWestRollover.budgetDate,
+        fast: stateWestRollover.idleCheckCount,
+        low: stateWestRollover.lowFrequencyCheckCount,
+        next: stateWestRollover.nextBudgetResetAt,
+      }},
+      parity: {{
+        direct: {{ fast: directHelperCopy.idleCheckCount, low: directHelperCopy.lowFrequencyCheckCount, next: directHelperCopy.nextBudgetResetAt }},
+        check: {{ fast: checkUpdateState.idleCheckCount, low: checkUpdateState.lowFrequencyCheckCount, next: checkUpdateState.nextBudgetResetAt }},
+      }},
+      statusConsistency: {{
+        persisted: persistedAtJumpBack.nextBudgetResetAt,
+        status: statusAtJumpBack.nextBudgetResetAt,
+      }},
+    }}));
+    """
+    res = run_node_eval(script, repository_root)
+    # A. Legacy migration: Rollover on 11-11 at 03:05 without postponing
+    assert res["legacy"]["budgetDate"] == "2026-11-11"
+    assert res["legacy"]["fast"] == 0
+    assert res["legacy"]["low"] == 0
+    assert res["legacy"]["next"] == "2026-11-12T03:00:00.000Z"
+    # B. Westward timezone shift: Preserves consumed budget at switch, rolls over at next boundary
+    assert res["westSwitch"]["fast"] == 12
+    assert res["westSwitch"]["low"] == 4
+    assert res["westSwitch"]["next"] == "2026-11-11T03:00:00.000Z"
+    assert res["westRollover"]["budgetDate"] == "2026-11-11"
+    assert res["westRollover"]["fast"] == 0
+    assert res["westRollover"]["low"] == 0
+    assert res["westRollover"]["next"] == "2026-11-12T03:00:00.000Z"
+    # C. Timezone shift parity: checkUpdate matches direct reconcileDailyBudget
+    assert res["parity"]["direct"] == res["parity"]["check"]
+    assert res["parity"]["check"]["fast"] == 12
+    assert res["parity"]["check"]["low"] == 4
+    assert res["parity"]["check"]["next"] == "2026-11-11T18:00:00.000Z"
+    # D. Status consistency: Persisted boundary matches status display even after clock jump
+    assert res["statusConsistency"]["persisted"] == res["statusConsistency"]["status"]
+    assert res["statusConsistency"]["status"] == "2026-11-11T18:00:00.000Z"

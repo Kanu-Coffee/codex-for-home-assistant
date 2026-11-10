@@ -170,11 +170,14 @@ stream_max_retries=0
                     assert relay.poll() is None,bytes(screen[-1500:])
                     if any(marker in json.dumps(r) for r in requests):
                         state=control({'cmd':'inspect'})
-                        if not state['busy']:return state
+                        if not state['busy'] and state.get('rolloutReady') is True:
+                            return state
                 raise AssertionError(bytes(screen[-2000:]))
             before=wait_answer('first-marker')
             applied=manager("const r=await mgr.applyUpdate({isManual:false,policyProbe:async()=>({valid:true})});console.log(JSON.stringify({applied:r.applied,reason:r.reason,stateReason:r.state?.reason}));")
             assert applied['applied'],(applied,control({'cmd':'inspect'}))
+            persisted=manager("const s=await mgr.loadState();console.log(JSON.stringify({activeCheck:s.activeCheck,status:s.status}));")
+            assert persisted['activeCheck'] is None, f"activeCheck remained on disk after successful apply: {persisted}"
             after=control({'cmd':'inspect'})
             assert after['workerPid']!=before['workerPid'] and after['version']==candidate_version
             read_screen(.5);os.write(master,b'second-marker');read_screen(.2);os.write(master,b'\r')

@@ -1,12 +1,19 @@
+import { fileURLToPath } from "node:url";
+import { resolve } from "node:path";
 import {
   applyUpdate,
+  appendHistoryRecord,
   checkUpdate,
   getCurrentSlotInfo,
   getNow,
   initRuntime,
   loadState,
   readOptions,
+  reconcileDailyBudget,
+  reconcileLegacyPausedState,
   updateState,
+  MAX_IDLE_CHECKS,
+  MAX_LOW_FREQUENCY_CHECKS,
 } from "./codex-runtime-manager.mjs";
 
 delete process.env.SUPERVISOR_TOKEN;
@@ -15,11 +22,34 @@ let isRunning = true;
 const PENDING_RETRY_INTERVAL_MS = 300 * 1000; // 5 minutes
 let wakeSleep = null;
 let activeAbortController = null;
+let testSleepHook = null;
+let testPolicyProbe = null;
+let testCheckOptions = null;
+let testCheckHook = null;
+
+export function setTestSleepHook(hook) {
+  testSleepHook = hook;
+}
+
+export function setTestPolicyProbe(probe) {
+  testPolicyProbe = probe;
+}
+
+export function setTestCheckOptions(opts) {
+  testCheckOptions = opts;
+}
+
+export function setTestCheckHook(hook) {
+  testCheckHook = hook;
+}
 
 // Between slot checks the loop can sleep up to an hour. A pending signal must
 // shorten that wait instead of only flipping a flag the sleeping process will
 // observe up to 3600s later, which made every stop escalate to SIGKILL.
 function sleepBeforeNextPass(ms) {
+  if (typeof testSleepHook === "function") {
+    return testSleepHook(ms);
+  }
   return new Promise((resolve) => {
     const timer = setTimeout(resolve, ms);
     wakeSleep = () => {
@@ -40,7 +70,7 @@ function log(event, details = {}) {
   console.log(JSON.stringify(payload));
 }
 
-async function loop() {
+export async function loop() {
   log("updater_started");
 
   try {
@@ -67,19 +97,24 @@ async function loop() {
         sleepMs = Math.min(nextSlot.msUntilNextSlot, 3600 * 1000);
       } else {
         const slotInfo = getCurrentSlotInfo(getNow(), options.timezone);
-        const state = await loadState();
+        let state = await loadState();
 
-        // Automatic recovery on date rollover while daemon runs continuously
-        if (state.budgetDate && state.budgetDate !== slotInfo.slotDate) {
-          await updateState((s) => {
-            s.budgetDate = slotInfo.slotDate;
-            s.idleCheckCount = 0;
-            if (s.status === "paused_busy") {
-              s.status = "ready_to_apply";
-              s.reason = "New day budget initialized; resuming candidate apply";
-            }
-          });
+        // Automatic migration for 0.7.3 paused state lacking nextLowFrequencyRetryAt
+        if (
+          state.status === "paused_busy" &&
+          state.stagedVersion &&
+          !state.blockedReason &&
+          (state.idleCheckCount || 0) >= MAX_IDLE_CHECKS &&
+          (state.lowFrequencyCheckCount || 0) < MAX_LOW_FREQUENCY_CHECKS &&
+          !state.nextLowFrequencyRetryAt
+        ) {
+          state = await reconcileLegacyPausedState();
         }
+
+        // Automatic recovery on genuine date rollover while daemon runs continuously
+        await updateState((s) => {
+          reconcileDailyBudget(s, options.timezone, "scheduled", getNow());
+        });
 
         if (state.lastCheckSlot !== slotInfo.slotKey) {
           log("slot_check_start", {
@@ -89,10 +124,13 @@ async function loop() {
 
           activeAbortController = new AbortController();
           try {
-            const checkRes = await checkUpdate(null, {
-              slotKey: slotInfo.slotKey,
-              signal: activeAbortController.signal,
-            });
+            const checkRes = testCheckHook
+              ? await testCheckHook(slotInfo, activeAbortController.signal)
+              : await checkUpdate(null, {
+                  slotKey: slotInfo.slotKey,
+                  signal: activeAbortController.signal,
+                  ...(testCheckOptions || {}),
+                });
 
             if (!checkRes.upToDate && !checkRes.blocked && !checkRes.paused) {
               log("update_staged", {
@@ -100,7 +138,10 @@ async function loop() {
                 current: checkRes.currentVersion,
               });
 
-              const applyRes = await applyUpdate({ signal: activeAbortController.signal });
+              const applyRes = await applyUpdate({
+                signal: activeAbortController.signal,
+                policyProbe: testPolicyProbe || undefined,
+              });
               if (applyRes.applied) {
                 log("update_applied", { version: applyRes.version });
               } else {
@@ -131,7 +172,10 @@ async function loop() {
           log("pending_apply_check");
           activeAbortController = new AbortController();
           try {
-            const applyRes = await applyUpdate({ signal: activeAbortController.signal });
+            const applyRes = await applyUpdate({
+              signal: activeAbortController.signal,
+              policyProbe: testPolicyProbe || undefined,
+            });
             if (applyRes.applied) {
               log("update_applied", { version: applyRes.version });
             } else {
@@ -145,15 +189,60 @@ async function loop() {
           } finally {
             activeAbortController = null;
           }
+        } else if (
+          state.stagedVersion &&
+          !state.blockedReason &&
+          state.status === "paused_busy" &&
+          (state.lowFrequencyCheckCount || 0) < MAX_LOW_FREQUENCY_CHECKS &&
+          state.nextLowFrequencyRetryAt &&
+          getNow().getTime() >= new Date(state.nextLowFrequencyRetryAt).getTime()
+        ) {
+          log("low_frequency_apply_check", {
+            attempt: (state.lowFrequencyCheckCount || 0) + 1,
+            maxAttempts: MAX_LOW_FREQUENCY_CHECKS,
+          });
+          activeAbortController = new AbortController();
+          try {
+            const applyRes = await applyUpdate({
+              isLowFrequency: true,
+              signal: activeAbortController.signal,
+              policyProbe: testPolicyProbe || undefined,
+            });
+            if (applyRes.applied) {
+              log("update_applied", { version: applyRes.version });
+            } else {
+              log("low_frequency_deferred", {
+                reason: applyRes.reason,
+                busy: applyRes.busyReasons,
+              });
+            }
+          } catch (err) {
+            log("low_frequency_error", { error: err.message });
+          } finally {
+            activeAbortController = null;
+          }
         }
       }
 
       const refreshedState = await loadState();
+      const nextSlot = getCurrentSlotInfo(getNow(), options.timezone);
+      const defaultSlotSleep = Math.min(nextSlot.msUntilNextSlot, 3600 * 1000);
+
       if (refreshedState.stagedVersion && !refreshedState.blockedReason && refreshedState.status !== "paused_busy") {
-        sleepMs = PENDING_RETRY_INTERVAL_MS;
+        sleepMs = Math.min(PENDING_RETRY_INTERVAL_MS, defaultSlotSleep);
+      } else if (
+        refreshedState.stagedVersion &&
+        !refreshedState.blockedReason &&
+        refreshedState.status === "paused_busy" &&
+        (refreshedState.lowFrequencyCheckCount || 0) < MAX_LOW_FREQUENCY_CHECKS &&
+        refreshedState.nextLowFrequencyRetryAt
+      ) {
+        const msUntilLowFreq = new Date(refreshedState.nextLowFrequencyRetryAt).getTime() - getNow().getTime();
+        const lowFreqSleep = msUntilLowFreq > 0 ? msUntilLowFreq : 5000;
+        // Never miss the 03:00 rollover slot check while sleeping for low-frequency retry
+        sleepMs = Math.min(lowFreqSleep, defaultSlotSleep);
       } else {
-        const nextSlot = getCurrentSlotInfo(getNow(), options.timezone);
-        sleepMs = Math.min(nextSlot.msUntilNextSlot, 3600 * 1000);
+        sleepMs = defaultSlotSleep;
         if (refreshedState.nextRetryAt) {
           const msUntilRetry = new Date(refreshedState.nextRetryAt).getTime() - getNow().getTime();
           if (msUntilRetry > 0) {
@@ -173,7 +262,7 @@ async function loop() {
   log("updater_stopped");
 }
 
-function stopOnSignal() {
+export function stopOnSignal() {
   isRunning = false;
   if (activeAbortController) {
     activeAbortController.abort();
@@ -184,4 +273,8 @@ function stopOnSignal() {
 process.on("SIGTERM", stopOnSignal);
 process.on("SIGINT", stopOnSignal);
 
-loop();
+export { isRunning };
+
+if (!process.env.CODEX_TEST_DAEMON_NO_AUTO_START) {
+  loop();
+}

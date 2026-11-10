@@ -1,3 +1,5 @@
+**DEV `0.7.4-dev.1` is published with default Unix domain socket proxy attribution, two-tier recheck schedule/daemon lifecycle, and timezone/clock skew budget resilience. HAOS acceptance remains pending.**
+
 > Stable `0.7.3` promotes the user-accepted `0.7.3-dev.6` runtime with mobile SSH proxy separation, kernel Netlink peer verification, runtime auto-update thread restoration, and persistent key setup. Install from `https://github.com/Kanu-Coffee/codex-for-home-assistant`.
 
 <p align="right">

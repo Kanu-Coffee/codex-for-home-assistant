@@ -39,16 +39,16 @@ def test_release_is_multiarch_with_generic_registry_image(
         == "ghcr.io/kanu-coffee/codex-for-home-assistant"
     )
     assert "{arch}" not in addon_config["image"]
-    assert "stage" not in addon_config
+    assert addon_config["stage"] == "experimental"
 
 
-def test_stable_release_is_visible_in_home_assistant_and_image(
+def test_development_candidate_is_visible_in_home_assistant_and_image(
     addon_config: dict, addon_root: Path, repository_root: Path
 ) -> None:
-    assert addon_config["name"] == "Codex for Home Assistant"
-    assert addon_config["version"] == "0.7.3"
-    assert not addon_config["description"].startswith("[DEV] ")
-    assert addon_config["panel_title"] == "Codex"
+    assert addon_config["name"] == "Codex for Home Assistant (DEV)"
+    assert addon_config["version"] == "0.7.4-dev.1"
+    assert addon_config["description"].startswith("[DEV] ")
+    assert addon_config["panel_title"] == "Codex DEV"
     assert addon_config["slug"] == "codex_home_assistant"
     assert (
         addon_config["image"]
@@ -58,16 +58,16 @@ def test_stable_release_is_visible_in_home_assistant_and_image(
     repository = yaml.safe_load(
         (repository_root / "repository.yaml").read_text(encoding="utf-8")
     )
-    assert repository["name"] == "Codex for Home Assistant"
+    assert repository["name"] == "Codex for Home Assistant (DEV)"
 
     dockerfile = (addon_root / "Dockerfile").read_text(encoding="utf-8")
     assert (
         'org.opencontainers.image.title="Home Assistant App: '
-        'Codex for Home Assistant"' in dockerfile
+        'Codex for Home Assistant (DEV)"' in dockerfile
     )
     assert 'org.opencontainers.image.version="${BUILD_VERSION}"' in dockerfile
     motd = (addon_root / "rootfs/etc/motd").read_text(encoding="utf-8")
-    assert motd.startswith("Codex for Home Assistant\n")
+    assert motd.startswith("Codex for Home Assistant (DEV)\n")
 
 
 def _builder_validation_script(repository_root: Path) -> str:
@@ -567,9 +567,10 @@ def test_app_and_dockerfile_versions_match(
     assert f'ARG BUILD_VERSION={addon_config["version"]}' in dockerfile
 
     changelog = (addon_root / "CHANGELOG.md").read_text(encoding="utf-8")
-    newest_heading = re.search(r"^## \[([^]]+)]", changelog, re.MULTILINE)
-    assert newest_heading
-    assert newest_heading.group(1) == addon_config["version"]
+    headings = re.findall(r"^## \[([^]]+)]", changelog, re.MULTILINE)
+    version_headings = [h for h in headings if h.strip().lower() != "unreleased"]
+    assert version_headings, "No release version heading found in CHANGELOG.md"
+    assert version_headings[0] == addon_config["version"]
 
     package = json.loads(
         (addon_root / "playwright/package.json").read_text(encoding="utf-8")
