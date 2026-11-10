@@ -71,7 +71,9 @@ jobs:
 
       - name: Run Python policy and helper tests
         env:
-          CODEX_WIRE_PROBE_BINARY: ${{ github.workspace }}/.test-tmp/task007-baseline/bin/codex
+          CODEX_WIRE_PROBE_BINARY: ${{ github.workspace }}/.test-tmp/candidate-167/bin/codex
+          CODEX_HANDOVER_BASELINE: ${{ github.workspace }}/.test-tmp/task007-baseline/bin/codex
+          CODEX_HANDOVER_CANDIDATE: ${{ github.workspace }}/.test-tmp/candidate-167/bin/codex
         run: python -m pytest -ra
 
       - name: Remove installed runtime test dependencies before repository lint
