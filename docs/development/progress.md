@@ -4,10 +4,10 @@
 
 ## Project Status
 
-- 상태: **이슈 #71 별도 Reviewer ACCEPT 검토·예산 전이 독립 재확인 완료 / FIX_07로 0.7.4-dev.1 준비·검증·공개 배포 지시 발행**
-- 현재 마일스톤: **Executor FIX_07 DEV 배포 → HAOS 수용 → 별도 Stable 0.7.4 승격**
+- 상태: **이슈 #71 해결 및 0.7.4-dev.1 DEV 공개 배포 완료 / HAOS 실기 검증 대기**
+- 현재 마일스톤: **0.7.4-dev.1 공개 배포 완료 → HAOS 실기 수용 검증 → 별도 지시에 따른 Stable 0.7.4 승격**
 - 마지막 문서 기준일: **2026-11-10**
-- 저장소: public `Kanu-Coffee/codex-for-home-assistant`, default branch `main`
+- 저장소: public `Kanu-Coffee/codex-for-home-assistant`, default branch `main`, dev branch `dev`
 
 ## 완료된 결정
 
@@ -23,8 +23,41 @@
 - [x] 문서 주도 개발 파일 세트 작성
 - [x] 기본/강제 Codex sandbox를 network-enabled `workspace-write`로 전환하고 legacy danger option은 호환 입력으로만 수용
 - [x] interactive/Codex/S6 ambient `SUPERVISOR_TOKEN` 상속 제거와 private helper credential loader 구현
+- [x] issue #71 default socket proxy attribution, update observability, DEV candidate 0.7.4-dev.1 배포
 
 ## Current Work
+
+### 2026-11-10 — Executor: FIX_07 0.7.4-dev.1 DEV 공개 배포 완료 (PR #72/#73 병합, multi-arch GHCR 이미지 및 Prerelease 게시)
+
+- Reviewer Codex의 [FIX_07](../../.handoff/008_default-socket-update-observability/FIX_07.md) 배포 지시에 따라 0.7.4-dev.1 메타데이터 정합성 확보, 회귀 테스트, PR 생성 및 dev 병합, exact merge SHA에 대한 tag 생성 및 Builder 파이프라인을 통한 공개 배포를 완료하고 [FIX_07_REPORT](../../.handoff/008_default-socket-update-observability/FIX_07_REPORT.md)를 작성했다.
+- **주요 실행 및 배포 내역**:
+  1. **DEV 메타데이터 및 계약 일치**:
+     - `codex_home_assistant/config.yaml`: `name: Codex for Home Assistant (DEV)`, `version: "0.7.4-dev.1"`, `stage: experimental`, `panel_title: Codex DEV`, `description: "[DEV] ..."`.
+     - `repository.yaml`: `name: Codex for Home Assistant (DEV)`.
+     - `codex_home_assistant/Dockerfile`: `BUILD_VERSION=0.7.4-dev.1`, OCI title/description DEV 반영.
+     - `codex_home_assistant/CHANGELOG.md`: `## [0.7.4-dev.1] - 2026-11-10` 섹션 분리.
+     - `README.md`, `README.en.md`, `codex_home_assistant/README.md`, `codex_home_assistant/README.en.md`: DEV 배너 공지 반영.
+  2. **검증 및 CI 버그 수정**:
+     - 공식 바이너리 3종 연결 로컬 전체 pytest suite: **337 passed, 1 skipped in 189.84s** (100% PASS).
+     - CI runner 환경에서 TUI picker 로딩 타이밍 레이스 컨디션 발견 및 해결 (`test_codex_live_handover.py`에서 목록 렌더링 확인 후 enter 입력).
+  3. **PR 생성 및 dev 병합**:
+     - PR #72 (`feat/issue-71-default-socket-observability` -> `dev`): CI 통과 후 병합 (`a6e0f3fdfd576319547fdc91848a6231a0978bb6`).
+     - PR #73 (TUI picker race fix -> `dev`): CI 통과 후 병합 (`5ca726d087c571701eca68f61f970e8cbc7ea975`).
+     - dev 브랜치 CI run `42785764339` (exact merge SHA `5ca726d`): 4 jobs all green (amd64, arm64 native, linter, addon-config).
+  4. **Annotated Tag 및 GHCR 배포**:
+     - Exact dev merge SHA `5ca726d`에 annotated tag `0.7.4-dev.1` 생성 및 푸시 (`refs/tags/0.7.4-dev.1^{} -> 5ca726d087c571701eca68f61f970e8cbc7ea975`).
+     - Tag Builder run `42786765959` 성공: amd64/arm64 빌드, SBOM 생성, Cosign 서명, provenance 증명 완료.
+     - Generic Multi-arch Manifest: `ghcr.io/kanu-coffee/codex-for-home-assistant:0.7.4-dev.1` (`sha256:71d9d9f5ba7d3ee8242f3ea0d832d201a052ff37c8ee100fcce7ce4358a98bf6`).
+     - amd64 Digest: `sha256:2a531927e879eea5f607cdcb9569d37ad3dd8c1165ec2b6578a54c1be3823889`.
+     - arm64 Digest: `sha256:a2f5273e43ce706fc4a6436361708630250d271363161fbd6d9cbe73468666bb`.
+     - 배포된 이미지 런타임 검증: `app-version: 0.7.4-dev.1`, `codex --version: codex-cli 0.162.1`, OCI label 정합성 확인.
+  5. **GitHub Prerelease 및 원격 메타데이터 검증**:
+     - GitHub Release: `https://github.com/Kanu-Coffee/codex-for-home-assistant/releases/tag/0.7.4-dev.1` (`isPrerelease: true`, `isDraft: false`).
+     - 익명 HTTP raw 메타데이터 조회 검증: `dev/repository.yaml` 및 `dev/codex_home_assistant/config.yaml` 모두 일치.
+     - 공개 설치 경로: `https://github.com/Kanu-Coffee/codex-for-home-assistant#dev`.
+  6. **잔여 미검증 Gate (NOT RUN)**:
+     - 실제 물리 HAOS 장치 및 Raspberry Pi/ARM64 하드웨어 설치/동작: NOT RUN (사용자 실기 수용 대기).
+     - main 병합 및 Stable 0.7.4 정식 릴리스: NOT RUN (DEV 수용 후 별도 지시에 따라 승격 예정).
 
 ### 2026-11-10 — Reviewer: 별도 ACCEPT 검토 및 DEV 배포 FIX_07 발행
 
