@@ -4,9 +4,9 @@
 
 ## Project Status
 
-- 상태: **이슈 #71 해결 및 0.7.4-dev.1 DEV 공개 배포 완료 / HAOS 실기 검증 대기**
-- 현재 마일스톤: **0.7.4-dev.1 공개 배포 완료 → HAOS 실기 수용 검증 → 별도 지시에 따른 Stable 0.7.4 승격**
-- 마지막 문서 기준일: **2026-11-10**
+- 상태: **0.7.4-dev.1 사용자 설치·실기 테스트 수용 완료 / Stable 0.7.4 실제 배포 FIX_08 발행**
+- 현재 마일스톤: **DEV 사용자 수용 완료 → FIX_08에 따른 main 병합·Stable 0.7.4 image 및 정식 Release 공개·검증**
+- 마지막 문서 기준일: **2026-11-11**
 - 저장소: public `Kanu-Coffee/codex-for-home-assistant`, default branch `main`, dev branch `dev`
 
 ## 완료된 결정
@@ -26,6 +26,13 @@
 - [x] issue #71 default socket proxy attribution, update observability, DEV candidate 0.7.4-dev.1 배포
 
 ## Current Work
+
+### 2026-11-11 — Reviewer: 사용자 DEV 실기 수용 및 Stable 0.7.4 실제 배포 FIX_08 발행
+
+- 사용자가 DEV 버전을 직접 설치하고 테스트를 완료했으며 이상 없다고 확인했다. 이를 **사용자 보고에 따른 실기 수용 완료**로 기록한다. 장치 architecture·개별 테스트 목록·장시간/모바일 시나리오·설치 digest까지 확인한 것으로 확대하지 않는다. 아래 11월 10일 실기 대기 기록은 당시 상태다.
+- GitHub API에서 DEV source `5ca726d087c571701eca68f61f970e8cbc7ea975`의 CI `42785764339`와 tag Builder `42786765959` completed/success, 공개 DEV prerelease를 재확인했다. 현재 dev HEAD `aee4f15`는 DEV tag 이후 FIX_07_REPORT와 progress만 추가됐다. 원격 main은 `03c572d` (Stable 0.7.3), 조회 당시 원격 `0.7.4` tag는 없었다.
+- [FIX_08](../../.handoff/008_default-socket-update-observability/FIX_08.md)에 **Stable 0.7.4 메타데이터 전환·최종 회귀/image 검증·base=main PR/merge·exact SHA annotated tag·GHCR 공개·정식 최신 GitHub Release 게시**를 지시했다. 실행 직전 version 충돌 재확인, immutable artifact 보존, 독립 서명/attestation 검증과 공개 main metadata 확인을 필수 gate로 둔다.
+- 이번 변경은 FIX 발행과 진행 상태 기록이다. 전체 suite/image smoke 재실행·commit/push·main 병합·Stable 배포·실제 사용자 HA 변경은 수행하지 않았다. Executor는 FIX_08을 수행하고 FIX_08_REPORT를 신규 작성한다. DEV→main 자동 데이터 이전은 이 지시의 범위 밖이다.
 
 ### 2026-11-10 — Executor: FIX_07 0.7.4-dev.1 DEV 공개 배포 완료 (PR #72/#73 병합, multi-arch GHCR 이미지 및 Prerelease 게시)
 
