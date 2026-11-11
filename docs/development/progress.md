@@ -4,8 +4,8 @@
 
 ## Project Status
 
-- 상태: **0.7.4-dev.1 사용자 설치·실기 테스트 수용 완료 / Stable 0.7.4 실제 배포 FIX_08 발행**
-- 현재 마일스톤: **DEV 사용자 수용 완료 → FIX_08에 따른 main 병합·Stable 0.7.4 image 및 정식 Release 공개·검증**
+- 상태: **Stable 0.7.4 정식 공개 배포 완료 / Issue #71 및 task 008 최종 완수**
+- 현재 마일스톤: **Stable 0.7.4 GA 릴리스 완료 (main 병합, multi-arch GHCR 이미지 및 정식 GitHub Release 공개)**
 - 마지막 문서 기준일: **2026-11-11**
 - 저장소: public `Kanu-Coffee/codex-for-home-assistant`, default branch `main`, dev branch `dev`
 
@@ -24,8 +24,42 @@
 - [x] 기본/강제 Codex sandbox를 network-enabled `workspace-write`로 전환하고 legacy danger option은 호환 입력으로만 수용
 - [x] interactive/Codex/S6 ambient `SUPERVISOR_TOKEN` 상속 제거와 private helper credential loader 구현
 - [x] issue #71 default socket proxy attribution, update observability, DEV candidate 0.7.4-dev.1 배포
+- [x] 사용자 DEV 실기 수용에 따른 Stable 0.7.4 정식 공개 배포 및 task 008 완료
 
 ## Current Work
+
+### 2026-11-11 — Executor: FIX_08 Stable 0.7.4 정식 공개 배포 완료 (PR #74 병합, multi-arch GHCR 이미지, Cosign 서명 및 정식 Release 게시)
+
+- Reviewer Codex의 [FIX_08](../../.handoff/008_default-socket-update-observability/FIX_08.md) 배포 지시에 따라 Stable 0.7.4 메타데이터 정합성 확보, 로컬 전체 회귀 검증, PR #74 생성 및 `main` 병합, exact merge SHA에 대한 annotated tag 생성 및 Builder 파이프라인을 통한 공개 배포를 완료하고 [FIX_08_REPORT](../../.handoff/008_default-socket-update-observability/FIX_08_REPORT.md)를 작성했다.
+- **주요 실행 및 배포 내역**:
+  1. **Stable 메타데이터 정합성 및 계약 일치**:
+     - `codex_home_assistant/config.yaml`: `name: Codex for Home Assistant`, `version: "0.7.4"`, `panel_title: Codex`, description에서 `[DEV]` 제거, **`stage` 키 생략**.
+     - `repository.yaml`: `name: Codex for Home Assistant`.
+     - `codex_home_assistant/Dockerfile`: `BUILD_VERSION=0.7.4`, OCI title/description DEV 표기 제거.
+     - `codex_home_assistant/CHANGELOG.md`: `## [0.7.4] - 2026-11-11` 정식 섹션 추가 및 이전 DEV/Stable 이력 보존.
+     - `README.md`, `README.en.md`, `codex_home_assistant/README.md`, `codex_home_assistant/README.en.md`: DEV 상단 배너 제거 및 0.7.4 정식 안내로 갱신.
+     - 테스트 계약 갱신: `tests/test_addon_contract.py` (`assert "stage" not in addon_config`, `test_stable_release_is_visible_in_home_assistant_and_image`), `tests/test_codex_update_contract.py` (`assert status["appVersion"] == "0.7.4"`).
+  2. **검증 및 CI 레이스 수정**:
+     - 공식 바이너리 3종 연결 로컬 전체 pytest suite: **337 passed, 1 skipped in 197.53s (100% PASS)**.
+     - `tests/mobile-ssh-smoke.py`: S6 재시작 후 `ha-codex-remote status` 상태 조회 시 발생하던 타이밍 레이스 컨디션을 해결하여 완벽한 안정성 확보.
+  3. **PR 생성 및 main 병합**:
+     - PR #74 (`codex/release-0.7.4` -> `main`): CI 8개 checks 모두 green 통과 후 `main`에 병합 완료.
+     - Exact main merge SHA: `5c62a9187c603f42bfefa1fd106af8a234938f32`.
+     - main 브랜치 CI run `42965244821` (merge commit `5c62a91`): 4 jobs all green (amd64, arm64 native, linter, addon-config).
+  4. **Annotated Tag 및 GHCR multi-arch 배포**:
+     - Exact main merge SHA `5c62a91`에 annotated tag `0.7.4` 생성 및 푸시 (`refs/tags/0.7.4^{} -> 5c62a9187c603f42bfefa1fd106af8a234938f32`).
+     - Tag Builder run `42966060323` 성공: amd64/arm64 빌드, SBOM 생성, Cosign 서명, provenance/SBOM attestation 증명, multi-arch manifest 생성 및 version tag promotion 완료.
+     - Generic Multi-arch Manifest: `ghcr.io/kanu-coffee/codex-for-home-assistant:0.7.4` (Digest: `sha256:bb1462cfea96bd018442502643227ed3bc9f3944fe84a8d6621989f81a494bc0`).
+     - amd64 Image Digest: `sha256:f2f774eee92b7eecd5d8b4df67bfd4581d9f8e77cde08f260469bdc73e09b26f`.
+     - arm64 Image Digest: `sha256:d64a347c7612d02bf81906d95905c9564e48c482aea6d96fea37f10c9a2bff8a`.
+  5. **공개 이미지 런타임 및 원격 메타데이터 검증**:
+     - 배포된 이미지 pull 후 런타임 검증: `app-version: 0.7.4`, `codex --version: codex-cli 0.162.1`, OCI labels 정합성 및 `tests/mobile-ssh-smoke.py` PASS (`helpers: 1, unknown: 0, canApply: True`).
+     - 익명 HTTP raw 메타데이터 조회 검증: `main/repository.yaml` (`name: Codex for Home Assistant`), `main/codex_home_assistant/config.yaml` (`version: 0.7.4`, `stage` 생략) 정상 확인.
+  6. **GitHub Release 발행**:
+     - [GitHub Release 0.7.4](https://github.com/Kanu-Coffee/codex-for-home-assistant/releases/tag/0.7.4): `isDraft: false`, `isPrerelease: false`, `latest: true`로 공개 완료.
+  7. **설치 경로 및 저장소 분리**:
+     - 공식 Stable 설치 경로: `https://github.com/Kanu-Coffee/codex-for-home-assistant` (기존 0.7.3 사용자는 Home Assistant UI에서 즉시 0.7.4로 업데이트 가능).
+     - DEV 채널(`#dev`) 사용자는 별도 식별자이므로 데이터 자동 이전이 지원되지 않음을 명시.
 
 ### 2026-11-11 — Reviewer: 사용자 DEV 실기 수용 및 Stable 0.7.4 실제 배포 FIX_08 발행
 
