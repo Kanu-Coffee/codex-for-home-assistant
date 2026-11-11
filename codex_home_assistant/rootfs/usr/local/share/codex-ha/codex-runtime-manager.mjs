@@ -29,11 +29,14 @@ import { get as httpGet } from "node:http";
 const execFileAsync = promisify(execFile);
 
 export const BASELINE_VERSION = "0.162.1";
-export const APP_VERSION = "0.7.3";
+export const APP_VERSION = "0.7.4";
 export const DEFAULT_TIMEZONE = "Asia/Seoul";
 export const UPDATE_SLOTS = [3, 9, 15, 21];
 export const MAX_IDLE_CHECKS = 12;
+export const MAX_LOW_FREQUENCY_CHECKS = 4;
 export const MAX_RESTART_ATTEMPTS = 1;
+export const MAX_HISTORY_ITEMS = 100;
+export const MAX_HISTORY_DAYS = 7;
 
 export async function getUnixPeerMap() {
   const pythonBin = process.env.PYTHON || (existsSync("/usr/bin/python3") ? "/usr/bin/python3" : "python3");
@@ -98,6 +101,12 @@ export function getStateFile() { return join(getBaseRuntimeDir(), "state.json");
 export function getTransactionFile() { return join(getBaseRuntimeDir(), "transaction.json"); }
 export function getGateLockFile() { return join(getMaintenanceDir(), "gate.lock"); }
 export function getSessionsDir() { return join(getMaintenanceDir(), "sessions"); }
+
+export function resolveDefaultControlSocket(env = process.env) {
+  const codexHome = env.CODEX_HOME || (env.HOME ? join(env.HOME, ".codex") : null);
+  if (!codexHome) return null;
+  return join(codexHome, "app-server-control", "app-server-control.sock");
+}
 
 async function hasPendingTransaction() {
   try { await lstat(getTransactionFile()); return true; }
@@ -222,11 +231,102 @@ export function getNextDayFirstSlotTime(now = getNow(), timezone = DEFAULT_TIMEZ
   return zonedDateTimeToUtc(nextDate.year, nextDate.month, nextDate.day, 3, 0, 0, tz);
 }
 
+export function getNextSlotTimeAfterDate(dateStr, timezone = DEFAULT_TIMEZONE) {
+  const tz = isValidTimezone(timezone) ? timezone.trim() : DEFAULT_TIMEZONE;
+  if (!dateStr || typeof dateStr !== "string") return null;
+  const parts = dateStr.split("-").map(Number);
+  if (parts.length !== 3 || parts.some(n => isNaN(n))) return null;
+  const nextDate = shiftCalendarDate(parts[0], parts[1], parts[2], 1);
+  return zonedDateTimeToUtc(nextDate.year, nextDate.month, nextDate.day, 3, 0, 0, tz);
+}
+
 export function resolveTargetArchitecture(machine) {
   const m = machine || process.arch;
   if (m === "x64" || m === "x86_64") return "x86_64-unknown-linux-musl";
   if (m === "arm64" || m === "aarch64") return "aarch64-unknown-linux-musl";
   throw new Error(`Unsupported architecture: ${m}`);
+}
+
+export function reconcileDailyBudget(state, tz, source = "scheduled", now = getNow()) {
+  const targetTz = isValidTimezone(tz) ? tz.trim() : DEFAULT_TIMEZONE;
+  const slotInfo = getCurrentSlotInfo(now, targetTz);
+  const currentDate = slotInfo.slotDate;
+  const nowMs = now.getTime();
+
+  // 1. Initial adoption for brand-new or uninitialized state
+  if (!state.budgetDate) {
+    state.budgetDate = currentDate;
+    state.timezone = targetTz;
+    state.lastBudgetResetAt = state.lastBudgetResetAt || now.toISOString();
+    state.nextBudgetResetAt = state.nextBudgetResetAt || getNextDayFirstSlotTime(now, targetTz).toISOString();
+    return false;
+  }
+
+  // 2. Ensure nextBudgetResetAt exists for legacy states (e.g. upgraded from 0.7.3)
+  // Derive genuine reset boundary of the recorded budgetDate period instead of postponing by 24h.
+  if (!state.nextBudgetResetAt) {
+    const legacyTz = state.timezone && isValidTimezone(state.timezone) ? state.timezone.trim() : targetTz;
+    let expectedResetDate = null;
+    if (state.nextRetryAt) {
+      const parsedRetry = new Date(state.nextRetryAt);
+      if (isFinite(parsedRetry.getTime())) {
+        expectedResetDate = parsedRetry;
+      }
+    }
+    if (!expectedResetDate && state.budgetDate) {
+      expectedResetDate = getNextSlotTimeAfterDate(state.budgetDate, legacyTz);
+    }
+    if (!expectedResetDate) {
+      expectedResetDate = getNextDayFirstSlotTime(now, legacyTz);
+    }
+    state.nextBudgetResetAt = expectedResetDate.toISOString();
+  }
+
+  // 3. Timezone change without actual date rollover: preserve consumed budget!
+  if (state.timezone && state.timezone !== targetTz) {
+    state.timezone = targetTz;
+    // Align budgetDate to current target timezone's slotDate so display reflects the new local timezone
+    state.budgetDate = currentDate;
+    state.nextBudgetResetAt = getNextDayFirstSlotTime(now, targetTz).toISOString();
+    return false;
+  }
+  state.timezone = targetTz;
+
+  // 4. Authoritative boundary check for normal date rollover:
+  // a) Clock must reach or pass the authoritative reset threshold (nextBudgetResetAt)
+  // b) Clock must NOT have jumped backwards before the recorded lastBudgetResetAt
+  const resetThresholdMs = new Date(state.nextBudgetResetAt).getTime();
+  const lastResetMs = state.lastBudgetResetAt ? new Date(state.lastBudgetResetAt).getTime() : 0;
+  const isResetTimeReached = isFinite(resetThresholdMs) && nowMs >= resetThresholdMs;
+  const isClockSkewBackward = isFinite(lastResetMs) && lastResetMs > 0 && nowMs < lastResetMs;
+
+  if (isResetTimeReached && !isClockSkewBackward) {
+    state.budgetDate = currentDate;
+    state.idleCheckCount = 0;
+    state.lowFrequencyCheckCount = 0;
+    state.nextLowFrequencyRetryAt = null;
+    state.lastBudgetResetAt = now.toISOString();
+    state.nextBudgetResetAt = getNextDayFirstSlotTime(now, targetTz).toISOString();
+    if (state.status === "paused_busy") {
+      state.status = "ready_to_apply";
+      state.reason = "New day budget initialized; resuming candidate apply";
+    }
+    appendHistoryRecord(state, {
+      event: "budget_reset",
+      source: source || "scheduled",
+      timezone: targetTz,
+      budgetDate: currentDate,
+      checkNumber: state.currentCheckNumber || 0,
+      idleCheckCount: 0,
+      lowFrequencyCheckCount: 0,
+      outcome: "reset",
+    });
+    return true;
+  }
+
+  // 5. Clock backward (nowMs < lastResetMs or nowMs < nextBudgetResetAt):
+  // Strictly prevent reset! Preserve consumed budget counts.
+  return false;
 }
 
 export function getCurrentSlotInfo(date = getNow(), timezone = DEFAULT_TIMEZONE) {
@@ -626,12 +726,119 @@ export async function readOptions() {
 
 export const LAST_BLOCKER_CODES = Object.freeze([
   "cli", "remote_stdio", "unmanaged_server", "bad_socket", "socket_inaccessible",
-  "server_busy", "unknown", "inspection_failed", "daily_budget_exhausted",
-  "restart_cooldown", "compatibility_unverified",
+  "server_busy", "unknown", "inspection_failed", "inspection_permission_denied",
+  "daily_budget_exhausted", "restart_cooldown", "compatibility_unverified",
+  "fetch_error", "invalid_release_tag", "staging_failed", "unclean_shutdown", "aborted",
+  "blocked_integrity", "blocked_policy", "blocked_verification",
 ]);
 
 function sanitizeLastBlocker(value) {
   return typeof value === "string" && LAST_BLOCKER_CODES.includes(value) ? value : null;
+}
+
+export const ALLOWED_EVENT_TYPES = Object.freeze([
+  "version_check", "check_completed", "idle_check", "apply_result",
+  "apply_deferred", "apply_success", "rollback", "budget_reset",
+  "low_frequency_recheck", "low_frequency_check"
+]);
+
+export const ALLOWED_SOURCES = Object.freeze(["scheduled", "pending", "low_frequency", "manual"]);
+export const ALLOWED_OUTCOMES = Object.freeze([
+  "up_to_date", "staged", "applied", "deferred", "paused", "failed", "rollback", "reset", "blocked"
+]);
+
+function sanitizeHistory(history, now = getNow()) {
+  if (!Array.isArray(history)) return [];
+  const cutoffMs = now.getTime() - MAX_HISTORY_DAYS * 24 * 60 * 60 * 1000;
+  const sanitized = [];
+  for (const item of history) {
+    if (!item || typeof item !== "object") continue;
+    if (typeof item.event !== "string" || !ALLOWED_EVENT_TYPES.includes(item.event)) continue;
+    if (typeof item.timestamp !== "string") continue;
+    const timeMs = new Date(item.timestamp).getTime();
+    if (isNaN(timeMs) || timeMs < cutoffMs) continue;
+
+    let sanitizedNextRetryAt = null;
+    if (typeof item.nextRetryAt === "string") {
+      const nrMs = new Date(item.nextRetryAt).getTime();
+      if (!isNaN(nrMs)) {
+        sanitizedNextRetryAt = new Date(nrMs).toISOString();
+      }
+    }
+
+    const tz = typeof item.timezone === "string" && isValidTimezone(item.timezone) ? item.timezone : "UTC";
+    const bDate = typeof item.budgetDate === "string" && /^\d{4}-\d{2}-\d{2}$/.test(item.budgetDate) ? item.budgetDate : null;
+
+    sanitized.push({
+      timestamp: new Date(timeMs).toISOString(),
+      event: item.event,
+      source: ALLOWED_SOURCES.includes(item.source) ? item.source : "scheduled",
+      timezone: tz,
+      budgetDate: bDate,
+      sequence: typeof item.sequence === "number" && isFinite(item.sequence) ? Math.max(0, Math.floor(item.sequence)) : undefined,
+      checkNumber: typeof item.checkNumber === "number" && isFinite(item.checkNumber) ? Math.max(0, Math.floor(item.checkNumber)) : 0,
+      idleCheckCount: typeof item.idleCheckCount === "number" && isFinite(item.idleCheckCount) ? Math.max(0, Math.floor(item.idleCheckCount)) : 0,
+      lowFrequencyCheckCount: typeof item.lowFrequencyCheckCount === "number" && isFinite(item.lowFrequencyCheckCount) ? Math.max(0, Math.floor(item.lowFrequencyCheckCount)) : 0,
+      blocker: sanitizeLastBlocker(item.blocker),
+      outcome: ALLOWED_OUTCOMES.includes(item.outcome) ? item.outcome : "deferred",
+      nextRetryAt: sanitizedNextRetryAt,
+    });
+  }
+  return sanitized.slice(-MAX_HISTORY_ITEMS);
+}
+
+export function appendHistoryRecord(state, record) {
+  if (!record || typeof record !== "object") return;
+  state.historySequence = (state.historySequence || 0) + 1;
+  const currentHistory = Array.isArray(state.history) ? state.history : [];
+  currentHistory.push({
+    timestamp: getNow().toISOString(),
+    event: record.event,
+    source: ALLOWED_SOURCES.includes(record.source) ? record.source : "scheduled",
+    timezone: record.timezone || state.timezone || "UTC",
+    budgetDate: record.budgetDate || state.budgetDate || null,
+    sequence: state.historySequence,
+    checkNumber: typeof record.checkNumber === "number" ? record.checkNumber : (state.currentCheckNumber || state.historySequence),
+    idleCheckCount: typeof record.idleCheckCount === "number" ? Math.max(0, Math.floor(record.idleCheckCount)) : (state.idleCheckCount || 0),
+    lowFrequencyCheckCount: typeof record.lowFrequencyCheckCount === "number" ? Math.max(0, Math.floor(record.lowFrequencyCheckCount)) : (state.lowFrequencyCheckCount || 0),
+    blocker: sanitizeLastBlocker(record.blocker || state.lastBlocker),
+    outcome: ALLOWED_OUTCOMES.includes(record.outcome) ? record.outcome : "deferred",
+    nextRetryAt: record.nextRetryAt || (state.status === "paused_busy" && state.nextLowFrequencyRetryAt ? state.nextLowFrequencyRetryAt : state.nextRetryAt) || null,
+  });
+  state.history = sanitizeHistory(currentHistory);
+}
+
+export async function reconcileLegacyPausedState() {
+  return withGateLock("exclusive", 15, async () => {
+    const state = await loadState();
+    if (
+      state.status === "paused_busy" &&
+      state.stagedVersion &&
+      !state.blockedReason &&
+      (state.idleCheckCount || 0) >= MAX_IDLE_CHECKS &&
+      (state.lowFrequencyCheckCount || 0) < MAX_LOW_FREQUENCY_CHECKS &&
+      !state.nextLowFrequencyRetryAt
+    ) {
+      const nowMs = getNow().getTime();
+      let retryMs;
+      if (state.lastIdleCheckAt) {
+        const idleMs = new Date(state.lastIdleCheckAt).getTime();
+        if (!isNaN(idleMs)) {
+          retryMs = Math.max(idleMs + 3600 * 1000, nowMs);
+        } else {
+          retryMs = nowMs + 3600 * 1000;
+        }
+      } else {
+        // Legacy 0.7.3 states do not record lastIdleCheckAt.
+        // Never substitute version query time (lastCheckAt) for idle exhaustion time;
+        // schedule the first low-frequency retry 60 minutes from current migration time.
+        retryMs = nowMs + 3600 * 1000;
+      }
+      state.nextLowFrequencyRetryAt = new Date(retryMs).toISOString();
+      await saveState(state);
+    }
+    return state;
+  });
 }
 
 export async function loadState() {
@@ -654,7 +861,12 @@ export async function loadState() {
       candidateVersion: data.candidateVersion || null,
       candidateDigest: data.candidateDigest || null,
       budgetDate: data.budgetDate || null,
+      timezone: typeof data.timezone === "string" && isValidTimezone(data.timezone) ? data.timezone : null,
       idleCheckCount: typeof data.idleCheckCount === "number" ? data.idleCheckCount : 0,
+      lowFrequencyCheckCount: typeof data.lowFrequencyCheckCount === "number" ? data.lowFrequencyCheckCount : 0,
+      nextLowFrequencyRetryAt: data.nextLowFrequencyRetryAt || null,
+      lastBudgetResetAt: data.lastBudgetResetAt || null,
+      nextBudgetResetAt: data.nextBudgetResetAt || null,
       restartAttemptCount: typeof data.restartAttemptCount === "number" ? data.restartAttemptCount : 0,
       lastRestartAt: data.lastRestartAt || null,
       nextRestartAllowedAt: data.nextRestartAllowedAt || null,
@@ -663,10 +875,20 @@ export async function loadState() {
       lastCheckAt: data.lastCheckAt || null,
       lastCheckSlot: data.lastCheckSlot || null,
       lastApplyAt: data.lastApplyAt || null,
+      lastIdleCheckAt: data.lastIdleCheckAt || null,
+      lastVersionCheckAt: data.lastVersionCheckAt || null,
+      activeCheck: data.activeCheck && typeof data.activeCheck === "object" ? {
+        checkNumber: typeof data.activeCheck.checkNumber === "number" ? data.activeCheck.checkNumber : 0,
+        type: typeof data.activeCheck.type === "string" ? data.activeCheck.type : "version_check",
+        startedAt: typeof data.activeCheck.startedAt === "string" ? data.activeCheck.startedAt : null,
+      } : null,
+      historySequence: typeof data.historySequence === "number" ? data.historySequence : 0,
+      currentCheckNumber: typeof data.currentCheckNumber === "number" ? data.currentCheckNumber : 0,
       status: data.status || "idle",
       reason: data.reason || null,
       lastError: data.lastError || null,
       lastBlocker: sanitizeLastBlocker(data.lastBlocker),
+      history: sanitizeHistory(data.history),
     };
   } catch {
     return {
@@ -678,7 +900,12 @@ export async function loadState() {
       candidateVersion: null,
       candidateDigest: null,
       budgetDate: null,
+      timezone: null,
       idleCheckCount: 0,
+      lowFrequencyCheckCount: 0,
+      nextLowFrequencyRetryAt: null,
+      lastBudgetResetAt: null,
+      nextBudgetResetAt: null,
       restartAttemptCount: 0,
       lastRestartAt: null,
       nextRestartAllowedAt: null,
@@ -687,10 +914,15 @@ export async function loadState() {
       lastCheckAt: null,
       lastCheckSlot: null,
       lastApplyAt: null,
+      lastIdleCheckAt: null,
+      lastVersionCheckAt: null,
+      activeCheck: null,
+      historySequence: 0,
       status: "idle",
       reason: null,
       lastError: null,
       lastBlocker: null,
+      history: [],
     };
   }
 }
@@ -708,7 +940,13 @@ export async function saveState(state) {
     candidateVersion: state.candidateVersion || null,
     candidateDigest: state.candidateDigest || null,
     budgetDate: state.budgetDate || null,
+    timezone: typeof state.timezone === "string" && isValidTimezone(state.timezone) ? state.timezone : null,
+    currentCheckNumber: typeof state.currentCheckNumber === "number" ? state.currentCheckNumber : 0,
     idleCheckCount: typeof state.idleCheckCount === "number" ? state.idleCheckCount : 0,
+    lowFrequencyCheckCount: typeof state.lowFrequencyCheckCount === "number" ? state.lowFrequencyCheckCount : 0,
+    nextLowFrequencyRetryAt: state.nextLowFrequencyRetryAt || null,
+    lastBudgetResetAt: state.lastBudgetResetAt || null,
+    nextBudgetResetAt: state.nextBudgetResetAt || null,
     restartAttemptCount: typeof state.restartAttemptCount === "number" ? state.restartAttemptCount : 0,
     lastRestartAt: state.lastRestartAt || null,
     nextRestartAllowedAt: state.nextRestartAllowedAt || null,
@@ -717,10 +955,19 @@ export async function saveState(state) {
     lastCheckAt: state.lastCheckAt || null,
     lastCheckSlot: state.lastCheckSlot || null,
     lastApplyAt: state.lastApplyAt || null,
+    lastIdleCheckAt: state.lastIdleCheckAt || null,
+    lastVersionCheckAt: state.lastVersionCheckAt || null,
+    activeCheck: state.activeCheck && typeof state.activeCheck === "object" ? {
+      checkNumber: typeof state.activeCheck.checkNumber === "number" ? state.activeCheck.checkNumber : 0,
+      type: typeof state.activeCheck.type === "string" ? state.activeCheck.type : "version_check",
+      startedAt: typeof state.activeCheck.startedAt === "string" ? state.activeCheck.startedAt : null,
+    } : null,
+    historySequence: typeof state.historySequence === "number" ? state.historySequence : 0,
     status: state.status || "idle",
     reason: typeof state.reason === "string" ? state.reason.slice(0, 256) : null,
     lastError: typeof state.lastError === "string" ? state.lastError.slice(0, 256) : null,
     lastBlocker: sanitizeLastBlocker(state.lastBlocker),
+    history: sanitizeHistory(state.history),
   };
   await durableJson(getStateFile(), sanitized);
 }
@@ -783,6 +1030,10 @@ export async function initRuntime() {
     }
 
     const state = await loadState();
+    const opts = await readOptions();
+    if (opts.valid && opts.timezone) {
+      state.timezone = opts.timezone;
+    }
     let currentVersion = getBundledVersion();
     try {
       const pkgJson = JSON.parse(await readFile(join(getCurrentLink(), "codex-package.json"), "utf-8"));
@@ -795,6 +1046,41 @@ export async function initRuntime() {
       state.status = "recovered_baseline";
       state.reason = "Invalid or missing selected runtime; using image baseline";
     }
+
+    if (
+      state.status === "paused_busy" &&
+      state.stagedVersion &&
+      !state.blockedReason &&
+      (state.idleCheckCount || 0) >= MAX_IDLE_CHECKS &&
+      (state.lowFrequencyCheckCount || 0) < MAX_LOW_FREQUENCY_CHECKS &&
+      !state.nextLowFrequencyRetryAt
+    ) {
+      const nowMs = getNow().getTime();
+      let retryMs;
+      if (state.lastIdleCheckAt) {
+        const idleMs = new Date(state.lastIdleCheckAt).getTime();
+        if (!isNaN(idleMs)) {
+          retryMs = Math.max(idleMs + 3600 * 1000, nowMs);
+        } else {
+          retryMs = nowMs + 3600 * 1000;
+        }
+      } else {
+        retryMs = nowMs + 3600 * 1000;
+      }
+      state.nextLowFrequencyRetryAt = new Date(retryMs).toISOString();
+    }
+
+    if (state.activeCheck && typeof state.activeCheck === "object") {
+      appendHistoryRecord(state, {
+        event: state.activeCheck.type || "version_check",
+        source: "scheduled",
+        checkNumber: state.activeCheck.checkNumber || state.currentCheckNumber,
+        outcome: "failed",
+        blocker: "unclean_shutdown",
+      });
+      state.activeCheck = null;
+    }
+
     await saveState(state);
     return state;
   });
@@ -916,7 +1202,8 @@ export function parseCodexInvocation(cmdline, startIndex = 1) {
       if (token.startsWith("--") && token.includes("=")) {
         if (token.startsWith("--listen=")) {
           const value = token.slice("--listen=".length);
-          if (value.startsWith("unix://")) listenSocket = value.slice(7);
+          if (value === "unix://") listenSocket = "unix://";
+          else if (value.startsWith("unix://")) listenSocket = value.slice(7);
           else listenSocket = value;
         } else if (token.startsWith("--sock=")) {
           const value = token.slice("--sock=".length);
@@ -929,7 +1216,8 @@ export function parseCodexInvocation(cmdline, startIndex = 1) {
         if (OPTION_WITH_VALUE.has(token)) {
           const value = cmdline[i + 1];
           if (token === "--listen" && typeof value === "string") {
-            if (value.startsWith("unix://")) listenSocket = value.slice(7);
+            if (value === "unix://") listenSocket = "unix://";
+            else if (value.startsWith("unix://")) listenSocket = value.slice(7);
             else listenSocket = value;
           } else if (token === "--sock" && typeof value === "string") {
             if (value.startsWith("unix://")) proxySocket = value.slice(7);
@@ -985,15 +1273,41 @@ export async function inspectProcess(pid) {
     if (state === "Z") return null;
 
     let exe = "";
+    let exeError = null;
     try {
       exe = await readlink(`/proc/${pid}/exe`);
-    } catch {}
+    } catch (err) {
+      exeError = err.code || err.message;
+    }
 
     let cmdline = [];
+    let cmdlineError = null;
     try {
       const raw = await readFile(`/proc/${pid}/cmdline`);
       cmdline = raw.toString().split("\0").filter(Boolean);
-    } catch {}
+    } catch (err) {
+      cmdlineError = err.code || err.message;
+    }
+
+    let env = {};
+    let envError = null;
+    try {
+      const rawEnv = await readFile(`/proc/${pid}/environ`);
+      const envEntries = rawEnv.toString().split("\0");
+      for (const entry of envEntries) {
+        const eq = entry.indexOf("=");
+        if (eq > 0) {
+          const k = entry.slice(0, eq);
+          // Only extract relevant directory environment variables.
+          // Never extract tokens, secrets, credentials, or SUPERVISOR_TOKEN!
+          if (k === "CODEX_HOME" || k === "HOME") {
+            env[k] = entry.slice(eq + 1);
+          }
+        }
+      }
+    } catch (err) {
+      envError = err.code || err.message;
+    }
 
     return {
       pid,
@@ -1003,6 +1317,10 @@ export async function inspectProcess(pid) {
       ppid: parts[1],
       exe,
       cmdline,
+      env: Object.freeze(env),
+      exeError,
+      cmdlineError,
+      envError,
     };
   } catch (err) {
     if (err.code === "ENOENT") {
@@ -1011,7 +1329,7 @@ export async function inspectProcess(pid) {
     return {
       pid,
       unknown: true,
-      error: err.message,
+      error: err.code || err.message,
     };
   }
 }
@@ -1504,13 +1822,28 @@ export async function inspectAllSessions(options = {}) {
             continue;
           }
           const content = JSON.parse(await readFile(filePath, "utf-8"));
-          const proc = await inspectProcess(pid);
+          const proc = await (options.inspectProcess || inspectProcess)(pid);
           if (!proc) {
             if (!readOnly) await unlink(filePath).catch(() => {});
             continue;
           }
           if (proc.unknown) {
-            entries.set(pid, { proc, kind: "unknown", registered: true });
+            entries.set(pid, {
+              proc,
+              kind: "unknown",
+              registered: true,
+              record: content,
+              permissionDenied: proc.error === "EACCES" || proc.error === "EPERM",
+            });
+            continue;
+          }
+          if (
+            proc.exeError === "EACCES" ||
+            proc.exeError === "EPERM" ||
+            proc.cmdlineError === "EACCES" ||
+            proc.cmdlineError === "EPERM"
+          ) {
+            entries.set(pid, { proc, kind: "unknown", registered: true, record: content, permissionDenied: true });
             continue;
           }
           if (String(proc.startTime) !== String(content.start)) {
@@ -1540,10 +1873,14 @@ export async function inspectAllSessions(options = {}) {
     if (!/^\d+$/.test(entry)) continue;
     const pid = parseInt(entry, 10);
     if (pid === process.pid || entries.has(pid)) continue;
-    const proc = await inspectProcess(pid);
+    const proc = await (options.inspectProcess || inspectProcess)(pid);
     if (!proc) continue;
     if (proc.unknown) {
-      entries.set(pid, { proc, kind: "unknown" });
+      entries.set(pid, {
+        proc,
+        kind: "unknown",
+        permissionDenied: proc.error === "EACCES" || proc.error === "EPERM",
+      });
       continue;
     }
     const exeName = basename((proc.exe || "").replace(/\s+\(deleted\)$/, ""));
@@ -1585,20 +1922,51 @@ export async function inspectAllSessions(options = {}) {
       } else {
         // Both invocation and record agree this is a proxy.
         // Verify that the argv target socket and record target socket match!
-        const argvSock = invocation.proxySocket || null;
         const recSock = record.socketPath || record.targetSocket || null;
-        if (!argvSock || !recSock || resolve(argvSock) !== resolve(recSock)) {
+        if (!recSock) {
+          // Old empty record lacking socketPath/targetSocket must never be promoted to managed using inspector env
           e.kind = "unknown";
-          e.proxyTargetMismatch = true;
+          e.missingTargetSocket = true;
+        } else if (invocation.proxySocket) {
+          // Explicit --sock argument was specified on command line
+          if (resolve(invocation.proxySocket) !== resolve(recSock)) {
+            e.kind = "unknown";
+            e.proxyTargetMismatch = true;
+          } else {
+            e.kind = "proxy";
+            e.targetSocket = invocation.proxySocket;
+            e.proxyRecord = record;
+          }
         } else {
-          e.kind = "proxy";
-          e.targetSocket = argvSock;
-          e.proxyRecord = record;
+          // Default proxy invocation without explicit --sock flag.
+          // Resolve default socket from target process's verified launch environment (e.proc.env),
+          // NEVER from inspector process.env!
+          const procDefaultSock = resolveDefaultControlSocket(e.proc?.env);
+          const isStandardDefaultPath = resolve(recSock).endsWith("/app-server-control/app-server-control.sock");
+
+          if (procDefaultSock && resolve(procDefaultSock) !== resolve(recSock)) {
+            e.kind = "unknown";
+            e.proxyTargetMismatch = true;
+          } else if (!isStandardDefaultPath) {
+            e.kind = "unknown";
+            e.proxyTargetMismatch = true;
+          } else {
+            // Consistent with verified default socket convention.
+            // Delegate actual attribution to Pass 4 kernel peer socket inode verification!
+            e.kind = "proxy";
+            e.targetSocket = recSock;
+            e.proxyRecord = record;
+          }
         }
       }
     } else if (serverByArgv || serverByRecord) {
       e.kind = "app-server";
-      e.socketPath = record?.socketPath || invocation.listenSocket;
+      let sPath = record?.socketPath || invocation.listenSocket;
+      if (sPath === "unix://") {
+        const procDefaultSock = resolveDefaultControlSocket(e.proc?.env);
+        sPath = procDefaultSock || (record?.socketPath && record.socketPath !== "unix://" ? record.socketPath : null);
+      }
+      e.socketPath = sPath;
     } else if (!record && identity && identity.role === "companion") {
       e.kind = "companion";
     } else if (!record && identity && identity.role !== "primary" && identity.role !== "companion") {
@@ -1654,16 +2022,23 @@ export async function inspectAllSessions(options = {}) {
       let realTarget = null;
       let targetStat = null;
       let targetLstat = null;
+      let targetError = null;
       try {
         targetLstat = await lstat(targetSock);
         targetStat = await stat(targetSock);
         isSocket = targetStat.isSocket();
         realTarget = await realpath(targetSock).catch(() => resolve(targetSock));
-      } catch {}
+      } catch (err) {
+        targetError = err.code || err.message;
+      }
 
       if (!isSocket || !realTarget || !targetStat || !targetLstat) {
         e.kind = "unknown";
-        e.missingTargetSocket = true;
+        if (targetError === "EACCES" || targetError === "EPERM") {
+          e.permissionDenied = true;
+        } else {
+          e.missingTargetSocket = true;
+        }
         continue;
       }
 
@@ -1672,13 +2047,20 @@ export async function inspectAllSessions(options = {}) {
       try {
         const proxyFds = await readdir(`/proc/${pid}/fd`);
         for (const fd of proxyFds) {
-          const link = await readlink(`/proc/${pid}/fd/${fd}`).catch(() => "");
+          const link = await readlink(`/proc/${pid}/fd/${fd}`).catch((err) => {
+            if (err.code === "EACCES" || err.code === "EPERM") e.permissionDenied = true;
+            return "";
+          });
           const m = link.match(/^socket:\[(\d+)\]$/);
           if (m) proxySocketInodes.add(parseInt(m[1], 10));
         }
-      } catch {
+      } catch (err) {
         e.kind = "unknown";
-        e.orphanProxy = true;
+        if (err.code === "EACCES" || err.code === "EPERM") {
+          e.permissionDenied = true;
+        } else {
+          e.orphanProxy = true;
+        }
         continue;
       }
 
@@ -1715,7 +2097,10 @@ export async function inspectAllSessions(options = {}) {
                 const oFds = await readdir(`/proc/${sPid}/fd`);
                 const oSockInodes = new Set();
                 for (const fd of oFds) {
-                  const lk = await readlink(`/proc/${sPid}/fd/${fd}`).catch(() => "");
+                  const lk = await readlink(`/proc/${sPid}/fd/${fd}`).catch((err) => {
+                    if (err.code === "EACCES" || err.code === "EPERM") sEntry.permissionDenied = true;
+                    return "";
+                  });
                   const m = lk.match(/^socket:\[(\d+)\]$/);
                   if (m) oSockInodes.add(parseInt(m[1], 10));
                 }
@@ -1726,7 +2111,11 @@ export async function inspectAllSessions(options = {}) {
                     break;
                   }
                 }
-              } catch {}
+              } catch (err) {
+                if (err.code === "EACCES" || err.code === "EPERM") {
+                  sEntry.permissionDenied = true;
+                }
+              }
 
               if (!isDirectPeer) {
                 continue;
@@ -1766,9 +2155,23 @@ export async function inspectAllSessions(options = {}) {
   // transaction preconditions: launch record, unix socket, and two idle
   // diagnostics one second apart.
   for (const [pid, e] of entries) {
+    if (e.permissionDenied) {
+      counts.unknown++;
+      addBusy("inspection_permission_denied", pid, "process inspection restricted by permissions; held for review");
+      continue;
+    }
     if (e.kind === "unknown") {
       counts.unknown++;
-      if (e.proc.unknown) {
+      if (
+        e.proc.exeError === "EACCES" ||
+        e.proc.exeError === "EPERM" ||
+        e.proc.cmdlineError === "EACCES" ||
+        e.proc.cmdlineError === "EPERM" ||
+        e.proc.error === "EACCES" ||
+        e.proc.error === "EPERM"
+      ) {
+        addBusy("inspection_permission_denied", pid, "process inspection restricted by permissions; held for review");
+      } else if (e.proc.unknown) {
         addBusy("inspection_failed", pid, `process state unknown: ${e.proc.error}`);
       } else if (e.orphanCompanion) {
         addBusy("unknown", pid, "codex package companion without verifiable owner; held for manual review");
@@ -1894,11 +2297,16 @@ export async function inspectAllSessions(options = {}) {
       } catch {}
     }
 
+    const defaultCtrlSock = resolveDefaultControlSocket(process.env);
+    const expectedSocketPath = (socketPath && defaultCtrlSock && resolve(socketPath) === resolve(defaultCtrlSock))
+      ? [socketPath, defaultCtrlSock, ""]
+      : [socketPath];
+
     if (
       !managedRecord ||
       managedRecord.managed !== true ||
       managedRecord.type !== "app-server" ||
-      managedRecord.socketPath !== socketPath ||
+      !expectedSocketPath.includes(managedRecord.socketPath) ||
       managedRecord.pid !== pid ||
       String(managedRecord.start) !== String(e.proc.startTime)
     ) {
@@ -2383,125 +2791,232 @@ export async function checkUpdate(targetVersion = null, options = {}) {
     const slotInfo = getCurrentSlotInfo(getNow(), tz);
     const currentDate = slotInfo.slotDate;
 
+    state.currentCheckNumber = (state.currentCheckNumber || 0) + 1;
+    state.activeCheck = {
+      checkNumber: state.currentCheckNumber,
+      type: "version_check",
+      startedAt: getNow().toISOString(),
+    };
+
     if (options.slotKey) {
       state.lastCheckSlot = options.slotKey;
     }
 
-    // Reset daily budget when date changes
-    if (state.budgetDate !== currentDate) {
-      state.budgetDate = currentDate;
-      state.idleCheckCount = 0;
-      if (state.status === "paused_busy") {
-        state.status = "ready_to_apply";
-        state.reason = "New day budget initialized; resuming candidate apply";
-      }
-    }
+    // Reconcile daily budget safely against timezone shifts and clock skews
+    reconcileDailyBudget(state, tz, options.isManualRetry ? "manual" : "scheduled", getNow());
 
-    let releaseData;
-    if (options.fixtureRelease) {
-      releaseData = options.fixtureRelease;
-    } else {
-      const url =
-        options.releaseUrl ||
-        (targetVersion
-          ? `https://api.github.com/repos/openai/codex/releases/tags/rust-v${targetVersion}`
-          : "https://api.github.com/repos/openai/codex/releases/latest");
-      releaseData = await fetchJson(url, options);
-    }
-
-    if (releaseData.prerelease || releaseData.draft) {
-      state.status = "up_to_date";
-      state.reason = "Latest release is draft or prerelease; skipped";
-      await saveState(state);
-      return { upToDate: true, currentVersion, state };
-    }
-
-    const tagName = releaseData.tag_name || releaseData.name || "";
-    const versionMatch = tagName.match(/^rust-v?([0-9]+\.[0-9]+\.[0-9]+)$/);
-    if (!versionMatch) {
-      throw new Error(`Release tag ${tagName} is not a valid production stable release`);
-    }
-    const latestVersion = versionMatch[1];
-
-    if (compareSemver(latestVersion, currentVersion) < 0) {
-      state.status = "up_to_date";
-      state.reason = `Upstream release ${latestVersion} would downgrade current ${currentVersion}`;
-      await saveState(state);
-      return { upToDate: true, currentVersion, targetVersion: latestVersion, state };
-    }
-
-    if (latestVersion === currentVersion) {
-      state.status = "up_to_date";
-      state.reason = `Already running latest stable version ${currentVersion}`;
-      state.lastCheckAt = getNow().toISOString();
-      await saveState(state);
-      return { upToDate: true, currentVersion, state };
-    }
-
-    const targetArch = resolveTargetArchitecture();
-    const targetAsset = releaseData.assets?.find((a) => a.name === `codex-package-${targetArch}.tar.gz`);
-    const expectedDigest = targetAsset?.digest?.startsWith("sha256:")
-      ? targetAsset.digest.slice(7)
-      : options.expectedSha256 || releaseData.expectedSha256;
-
-    if (state.candidateVersion === latestVersion) {
-      if (state.candidateDigest && expectedDigest && state.candidateDigest !== expectedDigest) {
-        state.status = "failed";
-        state.blockedReason = "candidate_digest_mismatch";
-        state.reason = `Candidate digest changed unexpectedly for version ${latestVersion}`;
-        await saveState(state);
-        return { upToDate: false, stagedVersion: state.stagedVersion, blocked: true, blockedReason: state.blockedReason, state };
-      }
-
-      if (state.blockedReason && !options.isManualRetry) {
-        await saveState(state);
-        return { upToDate: false, stagedVersion: state.stagedVersion, blocked: true, blockedReason: state.blockedReason, state };
-      }
-
-      if (options.isManualRetry) {
-        state.idleCheckCount = 0;
-        state.blockedReason = null;
-        if (state.status === "paused_busy" || state.status === "failed") {
-          state.status = "ready_to_apply";
-        }
-      } else if (state.status === "paused_busy") {
-        await saveState(state);
-        return { upToDate: false, stagedVersion: state.stagedVersion, paused: true, state };
-      }
-    } else {
-      state.candidateVersion = latestVersion;
-      state.candidateDigest = expectedDigest;
-      state.idleCheckCount = 0;
-      state.restartAttemptCount = 0;
-      state.blockedReason = null;
-      state.budgetDate = currentDate;
-    }
-
-    const stagedCheck = await validateSymlinkContainment(getStagedLink());
-    if (!stagedCheck.valid || state.stagedVersion !== latestVersion) {
-      await downloadAndStagePackage(
-        {
-          version: latestVersion,
-          assets: releaseData.assets,
-          expectedSha256: expectedDigest,
-        },
-        options.downloadUrl,
-        options
-      );
-    }
-
-    state.stagedVersion = latestVersion;
-    state.lastCheckAt = getNow().toISOString();
-    state.status = "ready_to_apply";
-    state.reason = `Staged version ${latestVersion}; waiting for idle sessions`;
+    // Persist check start and current check number durably under gate lock
     await saveState(state);
 
-    return {
-      upToDate: false,
-      stagedVersion: latestVersion,
-      currentVersion,
-      state,
-    };
+    try {
+      let releaseData;
+      if (options.fixtureRelease) {
+        releaseData = options.fixtureRelease;
+      } else {
+        const url =
+          options.releaseUrl ||
+          (targetVersion
+            ? `https://api.github.com/repos/openai/codex/releases/tags/rust-v${targetVersion}`
+            : "https://api.github.com/repos/openai/codex/releases/latest");
+        releaseData = await fetchJson(url, options);
+      }
+
+      if (releaseData.prerelease || releaseData.draft) {
+        state.activeCheck = null;
+        state.status = "up_to_date";
+        state.reason = "Latest release is draft or prerelease; skipped";
+        state.lastCheckAt = getNow().toISOString();
+        state.lastVersionCheckAt = getNow().toISOString();
+        appendHistoryRecord(state, {
+          event: "version_check",
+          source: options.isManualRetry ? "manual" : "scheduled",
+          timezone: tz,
+          budgetDate: currentDate,
+          checkNumber: state.currentCheckNumber,
+          outcome: "up_to_date",
+        });
+        await saveState(state);
+        return { upToDate: true, currentVersion, state };
+      }
+
+      const tagName = releaseData.tag_name || releaseData.name || "";
+      const versionMatch = tagName.match(/^rust-v?([0-9]+\.[0-9]+\.[0-9]+)$/);
+      if (!versionMatch) {
+        throw new Error(`Release tag ${tagName} is not a valid production stable release`);
+      }
+      const latestVersion = versionMatch[1];
+
+      if (compareSemver(latestVersion, currentVersion) < 0) {
+        state.activeCheck = null;
+        state.status = "up_to_date";
+        state.reason = `Upstream release ${latestVersion} would downgrade current ${currentVersion}`;
+        state.lastCheckAt = getNow().toISOString();
+        state.lastVersionCheckAt = getNow().toISOString();
+        appendHistoryRecord(state, {
+          event: "version_check",
+          source: options.isManualRetry ? "manual" : "scheduled",
+          timezone: tz,
+          budgetDate: currentDate,
+          checkNumber: state.currentCheckNumber,
+          outcome: "up_to_date",
+        });
+        await saveState(state);
+        return { upToDate: true, currentVersion, targetVersion: latestVersion, state };
+      }
+
+      if (latestVersion === currentVersion) {
+        state.activeCheck = null;
+        state.status = "up_to_date";
+        state.reason = `Already running latest stable version ${currentVersion}`;
+        state.lastCheckAt = getNow().toISOString();
+        state.lastVersionCheckAt = getNow().toISOString();
+        appendHistoryRecord(state, {
+          event: "version_check",
+          source: options.isManualRetry ? "manual" : "scheduled",
+          timezone: tz,
+          budgetDate: currentDate,
+          checkNumber: state.currentCheckNumber,
+          outcome: "up_to_date",
+        });
+        await saveState(state);
+        return { upToDate: true, currentVersion, state };
+      }
+
+      const targetArch = resolveTargetArchitecture();
+      const targetAsset = releaseData.assets?.find((a) => a.name === `codex-package-${targetArch}.tar.gz`);
+      const expectedDigest = targetAsset?.digest?.startsWith("sha256:")
+        ? targetAsset.digest.slice(7)
+        : options.expectedSha256 || releaseData.expectedSha256;
+
+      if (state.candidateVersion === latestVersion) {
+        if (state.candidateDigest && expectedDigest && state.candidateDigest !== expectedDigest) {
+          state.activeCheck = null;
+          state.status = "failed";
+          state.blockedReason = "candidate_digest_mismatch";
+          state.reason = `Candidate digest changed unexpectedly for version ${latestVersion}`;
+          state.lastCheckAt = getNow().toISOString();
+          state.lastVersionCheckAt = getNow().toISOString();
+          appendHistoryRecord(state, {
+            event: "version_check",
+            source: options.isManualRetry ? "manual" : "scheduled",
+            timezone: tz,
+            budgetDate: currentDate,
+            checkNumber: state.currentCheckNumber,
+            outcome: "blocked",
+            blocker: "inspection_failed",
+          });
+          await saveState(state);
+          return { upToDate: false, stagedVersion: state.stagedVersion, blocked: true, blockedReason: state.blockedReason, state };
+        }
+
+        if (state.blockedReason && !options.isManualRetry) {
+          state.activeCheck = null;
+          state.lastCheckAt = getNow().toISOString();
+          state.lastVersionCheckAt = getNow().toISOString();
+          appendHistoryRecord(state, {
+            event: "version_check",
+            source: options.isManualRetry ? "manual" : "scheduled",
+            timezone: tz,
+            budgetDate: currentDate,
+            checkNumber: state.currentCheckNumber,
+            outcome: "blocked",
+            blocker: sanitizeLastBlocker(state.blockedReason),
+          });
+          await saveState(state);
+          return { upToDate: false, stagedVersion: state.stagedVersion, blocked: true, blockedReason: state.blockedReason, state };
+        }
+
+        if (options.isManualRetry) {
+          state.idleCheckCount = 0;
+          state.blockedReason = null;
+          if (state.status === "paused_busy" || state.status === "failed") {
+            state.status = "ready_to_apply";
+          }
+        } else if (state.status === "paused_busy") {
+          state.activeCheck = null;
+          state.lastCheckAt = getNow().toISOString();
+          state.lastVersionCheckAt = getNow().toISOString();
+          appendHistoryRecord(state, {
+            event: "version_check",
+            source: options.isManualRetry ? "manual" : "scheduled",
+            timezone: tz,
+            budgetDate: currentDate,
+            checkNumber: state.currentCheckNumber,
+            outcome: "paused",
+            blocker: "daily_budget_exhausted",
+          });
+          await saveState(state);
+          return { upToDate: false, stagedVersion: state.stagedVersion, paused: true, state };
+        }
+      } else {
+        state.candidateVersion = latestVersion;
+        state.candidateDigest = expectedDigest;
+        state.idleCheckCount = 0;
+        state.restartAttemptCount = 0;
+        state.blockedReason = null;
+        state.budgetDate = currentDate;
+      }
+
+      const stagedCheck = await validateSymlinkContainment(getStagedLink());
+      if (!stagedCheck.valid || state.stagedVersion !== latestVersion) {
+        await downloadAndStagePackage(
+          {
+            version: latestVersion,
+            assets: releaseData.assets,
+            expectedSha256: expectedDigest,
+          },
+          options.downloadUrl,
+          options
+        );
+      }
+
+      state.activeCheck = null;
+      state.stagedVersion = latestVersion;
+      state.lastCheckAt = getNow().toISOString();
+      state.lastVersionCheckAt = getNow().toISOString();
+      state.status = "ready_to_apply";
+      state.reason = `Staged version ${latestVersion}; waiting for idle sessions`;
+      appendHistoryRecord(state, {
+        event: "version_check",
+        source: options.isManualRetry ? "manual" : "scheduled",
+        timezone: tz,
+        budgetDate: currentDate,
+        checkNumber: state.currentCheckNumber,
+        outcome: "staged",
+        candidateVersion: latestVersion,
+      });
+      await saveState(state);
+
+      return {
+        upToDate: false,
+        stagedVersion: latestVersion,
+        currentVersion,
+        state,
+      };
+    } catch (err) {
+      state.activeCheck = null;
+      let failureCode = "fetch_error";
+      if (err.name === "AbortError" || options.signal?.aborted) {
+        failureCode = "aborted";
+      } else if (err.message && err.message.includes("is not a valid production stable release")) {
+        failureCode = "invalid_release_tag";
+      } else if (err.message && (err.message.includes("staging") || err.message.includes("download") || err.message.includes("Digest"))) {
+        failureCode = "staging_failed";
+      }
+      state.lastError = failureCode;
+      state.lastBlocker = failureCode;
+      appendHistoryRecord(state, {
+        event: "version_check",
+        source: options.isManualRetry ? "manual" : "scheduled",
+        timezone: tz,
+        budgetDate: currentDate,
+        checkNumber: state.currentCheckNumber,
+        outcome: "failed",
+        blocker: failureCode,
+      });
+      await saveState(state);
+      throw err;
+    }
   });
 }
 
@@ -2514,6 +3029,7 @@ export async function applyUpdate(options = {}) {
       throw new Error("Operation aborted");
     }
     const isManual = options.isManual === true;
+    const isLowFrequency = options.isLowFrequency === true;
     const state = await loadState();
 
     if (await hasPendingTransaction()) {
@@ -2529,13 +3045,9 @@ export async function applyUpdate(options = {}) {
     const slotInfo = getCurrentSlotInfo(getNow(), tz);
     const currentDate = slotInfo.slotDate;
 
-    if (state.budgetDate !== currentDate) {
-      state.budgetDate = currentDate;
-      state.idleCheckCount = 0;
-      if (state.status === "paused_busy") {
-        state.status = "ready_to_apply";
-        state.reason = "New day budget initialized; resuming candidate apply";
-      }
+    const resetOccurred = reconcileDailyBudget(state, tz, isManual ? "manual" : "scheduled", getNow());
+    if (resetOccurred) {
+      await saveState(state);
     }
 
     if (!isManual) {
@@ -2556,9 +3068,20 @@ export async function applyUpdate(options = {}) {
     const stagedCheck = await validateSymlinkContainment(getStagedLink());
     if (!stagedCheck.valid || !existsSync(stagedCheck.target)) {
       if (state.stagedVersion) {
+        state.currentCheckNumber = (state.currentCheckNumber || 0) + 1;
         state.status = "failed";
         state.blockedReason = "blocked_integrity";
+        state.lastBlocker = "blocked_integrity";
         state.reason = "Staged package failed integrity verification";
+        appendHistoryRecord(state, {
+          event: isLowFrequency ? "low_frequency_recheck" : "apply_result",
+          source: isManual ? "manual" : (isLowFrequency ? "low_frequency" : "pending"),
+          timezone: tz,
+          budgetDate: currentDate,
+          checkNumber: state.currentCheckNumber,
+          outcome: "blocked",
+          blocker: "blocked_integrity",
+        });
         await saveState(state);
         return { applied: false, reason: "blocked_integrity", state };
       }
@@ -2578,22 +3101,71 @@ export async function applyUpdate(options = {}) {
         state.blockedReason = null;
       }
       state.idleCheckCount = 0;
+      state.lowFrequencyCheckCount = 0;
+      state.nextLowFrequencyRetryAt = null;
       if (state.status === "paused_busy") {
         state.status = "ready_to_apply";
       }
     }
 
-    if (!isManual && state.idleCheckCount >= MAX_IDLE_CHECKS) {
+    if (!isManual && !isLowFrequency && state.idleCheckCount >= MAX_IDLE_CHECKS) {
       // Skipped before inspection: keep the last inspected process blocker.
       // Budget exhaustion itself is visible in status/idleCheckCount/nextRetryAt.
       state.status = "paused_busy";
       state.reason = `Daily idle check budget exhausted for ${state.budgetDate}`;
       state.nextRetryAt = getNextDayFirstSlotTime(getNow(), tz).toISOString();
+      if (!state.nextLowFrequencyRetryAt && (state.lowFrequencyCheckCount || 0) < MAX_LOW_FREQUENCY_CHECKS) {
+        state.nextLowFrequencyRetryAt = new Date(getNow().getTime() + 60 * 60 * 1000).toISOString();
+      }
+      appendHistoryRecord(state, {
+        event: "idle_check",
+        source: isManual ? "manual" : "pending",
+        outcome: "paused",
+        blocker: sanitizeLastBlocker(state.lastBlocker) || "daily_budget_exhausted",
+      });
       await saveState(state);
       return { applied: false, reason: "paused_busy", state };
     }
 
-    const sessions = await inspectAllSessions();
+    if (isLowFrequency) {
+      if ((state.lowFrequencyCheckCount || 0) >= MAX_LOW_FREQUENCY_CHECKS) {
+        state.status = "paused_busy";
+        state.reason = `Daily low-frequency recheck budget exhausted (${MAX_LOW_FREQUENCY_CHECKS}/${MAX_LOW_FREQUENCY_CHECKS}) for ${state.budgetDate}`;
+        state.nextRetryAt = getNextDayFirstSlotTime(getNow(), tz).toISOString();
+        state.nextLowFrequencyRetryAt = null;
+        appendHistoryRecord(state, {
+          event: "low_frequency_recheck",
+          source: "low_frequency",
+          outcome: "paused",
+          blocker: sanitizeLastBlocker(state.lastBlocker) || "daily_budget_exhausted",
+        });
+        await saveState(state);
+        return { applied: false, reason: "paused_busy", state };
+      }
+      if (state.nextLowFrequencyRetryAt && new Date(state.nextLowFrequencyRetryAt).getTime() > getNow().getTime()) {
+        state.reason = `Low-frequency re-check interval not reached; waiting until ${state.nextLowFrequencyRetryAt}`;
+        await saveState(state);
+        return { applied: false, reason: "interval_not_reached", state };
+      }
+      state.lowFrequencyCheckCount = (state.lowFrequencyCheckCount || 0) + 1;
+      if (state.lowFrequencyCheckCount < MAX_LOW_FREQUENCY_CHECKS) {
+        state.nextLowFrequencyRetryAt = new Date(getNow().getTime() + 60 * 60 * 1000).toISOString();
+      } else {
+        state.nextLowFrequencyRetryAt = null;
+      }
+    }
+
+    state.currentCheckNumber = (state.currentCheckNumber || 0) + 1;
+    state.activeCheck = {
+      checkNumber: state.currentCheckNumber,
+      type: isLowFrequency ? "low_frequency_check" : "idle_check",
+      startedAt: getNow().toISOString(),
+    };
+    await saveState(state);
+
+    try {
+      const sessions = await inspectAllSessions();
+      state.lastIdleCheckAt = getNow().toISOString();
 
     let previousTarget = null;
     try {
@@ -2606,9 +3178,17 @@ export async function applyUpdate(options = {}) {
     const newVersion = stagedPkgJson.version;
     const integrity = await verifyPackage(stagedTarget, getBaseRuntimeDir(), state.candidateDigest);
     if (!state.candidateDigest || state.candidateVersion !== newVersion || !integrity.valid) {
+      state.activeCheck = null;
       state.status = "failed";
       state.blockedReason = "blocked_integrity";
+      state.lastBlocker = "blocked_integrity";
       state.reason = "Candidate bytes or digest do not match verified journal";
+      appendHistoryRecord(state, {
+        event: isLowFrequency ? "low_frequency_recheck" : "apply_result",
+        source: isManual ? "manual" : (isLowFrequency ? "low_frequency" : "pending"),
+        outcome: "blocked",
+        blocker: "blocked_integrity",
+      });
       await saveState(state);
       return { applied: false, reason: "blocked_integrity", state };
     }
@@ -2626,13 +3206,23 @@ export async function applyUpdate(options = {}) {
         new Date(state.nextRestartAllowedAt).getTime() > now;
 
       if (cooldownActive) {
-        if (!isManual) {
+        state.activeCheck = null;
+        if (!isManual && !isLowFrequency) {
           state.idleCheckCount = (state.idleCheckCount || 0) + 1;
           if (state.idleCheckCount >= MAX_IDLE_CHECKS) {
             state.status = "paused_busy";
             state.lastBlocker = "daily_budget_exhausted";
             state.reason = `Candidate ${state.stagedVersion} reached daily idle check limit (${MAX_IDLE_CHECKS} checks for ${state.budgetDate}); restart cooldown active until ${state.nextRestartAllowedAt}`;
             state.nextRetryAt = getNextDayFirstSlotTime(getNow(), tz).toISOString();
+            if (!state.nextLowFrequencyRetryAt && (state.lowFrequencyCheckCount || 0) < MAX_LOW_FREQUENCY_CHECKS) {
+              state.nextLowFrequencyRetryAt = new Date(getNow().getTime() + 60 * 60 * 1000).toISOString();
+            }
+            appendHistoryRecord(state, {
+              event: "idle_check",
+              source: "pending",
+              outcome: "paused",
+              blocker: "daily_budget_exhausted",
+            });
             await saveState(state);
             return { applied: false, reason: "paused_busy", state };
           }
@@ -2641,25 +3231,44 @@ export async function applyUpdate(options = {}) {
         state.lastBlocker = "restart_cooldown";
         state.reason = `Restart cooldown active until ${state.nextRestartAllowedAt}; waiting for session exit (${state.idleCheckCount}/${MAX_IDLE_CHECKS} checks for ${state.budgetDate})`;
         state.nextRetryAt = state.nextRestartAllowedAt;
+        appendHistoryRecord(state, {
+          event: isLowFrequency ? "low_frequency_recheck" : "idle_check",
+          source: isManual ? "manual" : (isLowFrequency ? "low_frequency" : "pending"),
+          outcome: "deferred",
+          blocker: "restart_cooldown",
+        });
         await saveState(state);
         return { applied: false, reason: "restart_cooldown", state };
       }
     } else if (!sessions.isIdle) {
-      if (!isManual) {
+      if (!isManual && !isLowFrequency) {
         state.idleCheckCount = (state.idleCheckCount || 0) + 1;
         if (state.idleCheckCount >= MAX_IDLE_CHECKS) {
           state.status = "paused_busy";
           state.reason = `Candidate ${state.stagedVersion} reached daily idle check limit (${MAX_IDLE_CHECKS} checks for ${state.budgetDate}). Fast checks paused until next scheduled date or run 'ha-codex-update apply' manually.`;
           state.nextRetryAt = getNextDayFirstSlotTime(getNow(), tz).toISOString();
+          if (!state.nextLowFrequencyRetryAt && (state.lowFrequencyCheckCount || 0) < MAX_LOW_FREQUENCY_CHECKS) {
+            state.nextLowFrequencyRetryAt = new Date(getNow().getTime() + 60 * 60 * 1000).toISOString();
+          }
         } else {
           state.status = "pending_busy";
           state.reason = `Deferred (${state.idleCheckCount}/${MAX_IDLE_CHECKS} checks for ${state.budgetDate}): ${sessions.busyReasons.join(", ")}`;
         }
+      } else if (isLowFrequency) {
+        state.status = "paused_busy";
+        state.reason = `Deferred low-frequency check (${state.lowFrequencyCheckCount}/${MAX_LOW_FREQUENCY_CHECKS} for ${state.budgetDate}): ${sessions.busyReasons.join(", ")}`;
       } else {
         state.status = "pending_busy";
         state.reason = `Deferred: ${sessions.busyReasons.join(", ")}`;
       }
       state.lastBlocker = sessions.blockers[0]?.type || "unknown";
+      state.activeCheck = null;
+      appendHistoryRecord(state, {
+        event: isLowFrequency ? "low_frequency_recheck" : "idle_check",
+        source: isManual ? "manual" : (isLowFrequency ? "low_frequency" : "pending"),
+        outcome: state.status === "paused_busy" ? "paused" : "deferred",
+        blocker: sanitizeLastBlocker(state.lastBlocker),
+      });
       await saveState(state);
       return {
         applied: false,
@@ -2674,9 +3283,17 @@ export async function applyUpdate(options = {}) {
     // Run candidate managed policy probe right before applying!
     const policy = await (options.policyProbe || verifyManagedPolicy)(stagedTarget);
     if (!policy.valid) {
+      state.activeCheck = null;
       state.status = "blocked_policy";
       state.blockedReason = "blocked_policy";
+      state.lastBlocker = "blocked_policy";
       state.reason = policy.reason || "managed_policy_probe_failed";
+      appendHistoryRecord(state, {
+        event: isLowFrequency ? "low_frequency_recheck" : "apply_result",
+        source: isManual ? "manual" : (isLowFrequency ? "low_frequency" : "pending"),
+        outcome: "blocked",
+        blocker: "blocked_policy",
+      });
       await saveState(state);
       return { applied: false, reason: "blocked_policy", state };
     }
@@ -2690,9 +3307,17 @@ export async function applyUpdate(options = {}) {
         expectedTarget: targetArch,
       });
       if (!treeCheck.valid) {
+        state.activeCheck = null;
         state.status = "failed";
         state.blockedReason = "blocked_policy";
+        state.lastBlocker = "blocked_policy";
         state.reason = `Pre-restart candidate package validation failed: ${treeCheck.error}`;
+        appendHistoryRecord(state, {
+          event: isLowFrequency ? "low_frequency_recheck" : "apply_result",
+          source: isManual ? "manual" : (isLowFrequency ? "low_frequency" : "pending"),
+          outcome: "blocked",
+          blocker: "blocked_policy",
+        });
         await saveState(state);
         return { applied: false, reason: "pre_restart_validation_failed", state };
       }
@@ -2704,9 +3329,17 @@ export async function applyUpdate(options = {}) {
         encoding: "utf-8",
       });
       if (testPre.status !== 0 || !testPre.stdout.includes(`codex-cli ${newVersion}`)) {
+        state.activeCheck = null;
         state.status = "failed";
         state.blockedReason = "blocked_verification";
+        state.lastBlocker = "blocked_verification";
         state.reason = "Staged executable failed pre-apply version test";
+        appendHistoryRecord(state, {
+          event: isLowFrequency ? "low_frequency_recheck" : "apply_result",
+          source: isManual ? "manual" : (isLowFrequency ? "low_frequency" : "pending"),
+          outcome: "failed",
+          blocker: "blocked_verification",
+        });
         await saveState(state);
         return { applied: false, reason: "verification_failed", state };
       }
@@ -2758,27 +3391,45 @@ export async function applyUpdate(options = {}) {
             await rename(tempPrev, getPreviousLink());
           }
           if (existsSync(getStagedLink())) await rm(getStagedLink(), { force: true });
+          state.activeCheck = null;
           state.selectedVersion = newVersion;
           state.selectedDigest = integrity.digest;
           state.stagedVersion = null;
           state.candidateVersion = null;
           state.candidateDigest = null;
+          state.idleCheckCount = 0;
+          state.lowFrequencyCheckCount = 0;
+          state.nextLowFrequencyRetryAt = null;
           state.lastApplyAt = getNow().toISOString();
           state.lastBlocker = null;
           state.status = "applied";
           state.reason = `Successfully applied ${newVersion} with graceful server restart`;
           state.nextRetryAt = null;
+          appendHistoryRecord(state, {
+            event: isLowFrequency ? "low_frequency_recheck" : "apply_result",
+            source: isManual ? "manual" : (isLowFrequency ? "low_frequency" : "pending"),
+            outcome: "applied",
+            blocker: null,
+          });
           await saveState(state);
         },
       });
       if (!transaction.applied) {
+        state.activeCheck = null;
         state.status = "failed";
         state.blockedReason = "blocked_restart";
         state.reason = `Server replacement failed: ${transaction.reason}; recovery: ${transaction.recovery}`;
+        appendHistoryRecord(state, {
+          event: "apply_result",
+          source: isManual ? "manual" : (isLowFrequency ? "low_frequency" : "pending"),
+          outcome: transaction.recovery === "rollback_incomplete" ? "rollback" : "failed",
+          blocker: "inspection_failed",
+        });
         await saveState(state);
         return { applied: false, reason: transaction.recovery === "rollback_incomplete" ? "rollback_incomplete" : transaction.reason, state };
       }
 
+      state.activeCheck = null;
       await cleanupOldReleases(newVersion, previousTarget);
       return { applied: true, version: newVersion, state };
     }
@@ -2790,9 +3441,17 @@ export async function applyUpdate(options = {}) {
       encoding: "utf-8",
     });
     if (testPre.status !== 0 || !testPre.stdout.includes(`codex-cli ${newVersion}`)) {
+      state.activeCheck = null;
       state.status = "failed";
       state.blockedReason = "blocked_verification";
+      state.lastBlocker = "blocked_verification";
       state.reason = "Staged executable failed pre-apply version test";
+      appendHistoryRecord(state, {
+        event: isLowFrequency ? "low_frequency_recheck" : "apply_result",
+        source: isManual ? "manual" : (isLowFrequency ? "low_frequency" : "pending"),
+        outcome: "failed",
+        blocker: "blocked_verification",
+      });
       await saveState(state);
       return { applied: false, reason: "verification_failed", state };
     }
@@ -2813,9 +3472,16 @@ export async function applyUpdate(options = {}) {
         await symlink(previousTarget, rollbackLink);
         await rename(rollbackLink, getCurrentLink());
       }
+      state.activeCheck = null;
       state.status = "failed";
       state.blockedReason = "blocked_verification";
       state.reason = "New version verification failed; rolled back to previous";
+      appendHistoryRecord(state, {
+        event: "apply_result",
+        source: isManual ? "manual" : (isLowFrequency ? "low_frequency" : "pending"),
+        outcome: "rollback",
+        blocker: "inspection_failed",
+      });
       await saveState(state);
       return { applied: false, reason: "verification_failed", state };
     }
@@ -2831,12 +3497,15 @@ export async function applyUpdate(options = {}) {
       await unlink(getStagedLink());
     } catch {}
 
+    state.activeCheck = null;
     state.selectedVersion = newVersion;
-      state.selectedDigest = integrity.digest;
+    state.selectedDigest = integrity.digest;
     state.stagedVersion = null;
     state.candidateVersion = null;
     state.candidateDigest = null;
     state.idleCheckCount = 0;
+    state.lowFrequencyCheckCount = 0;
+    state.nextLowFrequencyRetryAt = null;
     state.restartAttemptCount = 0;
     state.blockedReason = null;
     state.lastApplyAt = getNow().toISOString();
@@ -2844,6 +3513,12 @@ export async function applyUpdate(options = {}) {
     state.status = "applied";
     state.reason = `Successfully applied stable Codex version ${newVersion}`;
     state.nextRetryAt = null;
+    appendHistoryRecord(state, {
+      event: isLowFrequency ? "low_frequency_recheck" : "apply_result",
+      source: isManual ? "manual" : (isLowFrequency ? "low_frequency" : "pending"),
+      outcome: "applied",
+      blocker: null,
+    });
     await saveState(state);
 
     await cleanupOldReleases(newVersion, previousTarget);
@@ -2853,6 +3528,26 @@ export async function applyUpdate(options = {}) {
       version: newVersion,
       state,
     };
+    } catch (err) {
+      state.activeCheck = null;
+      let failureCode = "inspection_failed";
+      if (err.name === "AbortError" || options.signal?.aborted) {
+        failureCode = "aborted";
+      }
+      state.lastError = failureCode;
+      state.lastBlocker = failureCode;
+      appendHistoryRecord(state, {
+        event: isLowFrequency ? "low_frequency_recheck" : "idle_check",
+        source: isManual ? "manual" : (isLowFrequency ? "low_frequency" : "pending"),
+        timezone: tz,
+        budgetDate: currentDate,
+        checkNumber: state.currentCheckNumber,
+        outcome: "failed",
+        blocker: failureCode,
+      });
+      await saveState(state);
+      throw err;
+    }
   });
 }
 
@@ -3042,7 +3737,7 @@ export async function getStatus() {
   let hasUnrecognizedOrUnknown =
     (sessions.counts && sessions.counts.unknown > 0) ||
     (Array.isArray(sessions.blockers) &&
-      sessions.blockers.some((b) => b.type === "unknown" || b.type === "inspection_failed"));
+      sessions.blockers.some((b) => b.type === "unknown" || b.type === "inspection_failed" || b.type === "inspection_permission_denied"));
 
   if (!procInspectionFailed) {
     for (const entry of procEntries) {
@@ -3126,8 +3821,14 @@ export async function getStatus() {
     optionsValid: options.valid,
     timezone: options.timezone,
     budgetDate: state.budgetDate || null,
+    timezone: typeof state.timezone === "string" && isValidTimezone(state.timezone) ? state.timezone : null,
+    currentCheckNumber: typeof state.currentCheckNumber === "number" ? state.currentCheckNumber : 0,
     idleCheckCount: state.idleCheckCount || 0,
     maxIdleChecks: MAX_IDLE_CHECKS,
+    lowFrequencyCheckCount: state.lowFrequencyCheckCount || 0,
+    maxLowFrequencyChecks: MAX_LOW_FREQUENCY_CHECKS,
+    nextLowFrequencyRetryAt: state.nextLowFrequencyRetryAt || null,
+    history: state.history || [],
     restartAttemptCount: state.restartAttemptCount || 0,
     maxRestartAttempts: MAX_RESTART_ATTEMPTS,
     blockedReason: state.blockedReason || (pendingRecovery ? "blocked_restart" : null),
@@ -3137,6 +3838,20 @@ export async function getStatus() {
     lastCheckAt: state.lastCheckAt,
     lastCheckSlot: state.lastCheckSlot,
     lastApplyAt: state.lastApplyAt,
+    lastIdleCheckAt: state.lastIdleCheckAt || null,
+    lastBudgetResetAt: state.lastBudgetResetAt || null,
+    nextBudgetResetAt:
+      state.nextBudgetResetAt ||
+      (state.budgetDate
+        ? (getNextSlotTimeAfterDate(state.budgetDate, state.timezone || options.timezone || DEFAULT_TIMEZONE)?.toISOString() ||
+           getNextDayFirstSlotTime(getNow(), options.timezone || state.timezone || DEFAULT_TIMEZONE).toISOString())
+        : getNextDayFirstSlotTime(getNow(), options.timezone || state.timezone || DEFAULT_TIMEZONE).toISOString()),
+    effectiveNextRetryAt:
+      state.status === "paused_busy" &&
+      (state.lowFrequencyCheckCount || 0) < MAX_LOW_FREQUENCY_CHECKS &&
+      state.nextLowFrequencyRetryAt
+        ? state.nextLowFrequencyRetryAt
+        : state.nextRetryAt || null,
     status: state.status,
     reason: state.reason,
     lastBlocker: state.lastBlocker || null,
@@ -3161,10 +3876,12 @@ export async function getStatus() {
       state.stagedVersion &&
       !pendingRecovery &&
       !state.blockedReason &&
-      state.status !== "paused_busy" &&
-      (state.idleCheckCount || 0) < MAX_IDLE_CHECKS &&
       sessions.canApply &&
-      (sessions.isIdle || !(state.reason === "restart_cooldown" || (state.nextRestartAllowedAt && new Date(state.nextRestartAllowedAt).getTime() > getNow().getTime())))
+      (sessions.isIdle || !(state.reason === "restart_cooldown" || (state.nextRestartAllowedAt && new Date(state.nextRestartAllowedAt).getTime() > getNow().getTime()))) &&
+      (
+        (state.status !== "paused_busy" && (state.idleCheckCount || 0) < MAX_IDLE_CHECKS) ||
+        (state.status === "paused_busy" && (state.lowFrequencyCheckCount || 0) < MAX_LOW_FREQUENCY_CHECKS && state.nextLowFrequencyRetryAt && new Date(state.nextLowFrequencyRetryAt).getTime() <= getNow().getTime())
+      )
     ),
     blockerTypes: sessions.blockers.map((b) => b.type),
     processSummary: sessions.counts,
@@ -3204,6 +3921,9 @@ export function formatAutoApplyReady(status) {
     return "no (live session migration is unverified)";
   }
   if (status.status === "paused_busy" || (status.idleCheckCount || 0) >= status.maxIdleChecks) {
+    if ((status.lowFrequencyCheckCount || 0) < status.maxLowFrequencyChecks && status.nextLowFrequencyRetryAt) {
+      return `paused (fast check budget exhausted; low-frequency retry ${status.lowFrequencyCheckCount}/${status.maxLowFrequencyChecks} scheduled at ${status.nextLowFrequencyRetryAt}; manual apply can re-check immediately)`;
+    }
     return `paused (daily check budget exhausted; waiting for scheduled retry at ${status.nextRetryAt || "next window"}; manual apply can re-check immediately)`;
   }
   if (!status.canApply) {
@@ -3226,8 +3946,8 @@ function printApplyGuidance(res) {
   if (types.includes("remote_stdio")) {
     console.log("  A Remote stdio session holds the current version: save your work and close the connection normally; the next check can apply after the process exits.");
   }
-  if (types.includes("unknown") || types.includes("inspection_failed")) {
-    console.log("  Some processes could not be attributed; they are held conservatively and are never killed automatically.");
+  if (types.includes("unknown") || types.includes("inspection_failed") || types.includes("inspection_permission_denied")) {
+    console.log("  Some processes could not be attributed or inspected due to permissions; they are held conservatively and are never killed automatically.");
   }
   if (types.includes("server_busy")) {
     console.log("  A managed server still has loaded conversations or in-flight work; it must drain before replacement.");
@@ -3285,19 +4005,23 @@ Options:
   Selected version:  ${status.selectedVersion}
   Staged version:    ${status.stagedVersion || "none"}
   Running version:   ${status.runningVersion}
+  Running observation: ${status.runningObservation}
   Auto-update:       ${status.autoUpdate ? "enabled" : "disabled"}${status.optionsValid ? "" : " (options invalid)"}
   Timezone:          ${status.timezone}
   Daily idle checks: ${status.idleCheckCount}/${status.maxIdleChecks} (date: ${status.budgetDate || "n/a"})
+  Low-frequency:     ${status.lowFrequencyCheckCount}/${status.maxLowFrequencyChecks} (next: ${status.nextLowFrequencyRetryAt || "n/a"})
+  Next budget reset: ${status.nextBudgetResetAt || "n/a"}
   Restart attempts:  ${status.restartAttemptCount}/${status.maxRestartAttempts} (next allowed: ${status.nextRestartAllowedAt || "immediate"})
   Blocked/Paused:    ${status.blockedReason || (status.lastBlocker ? status.status + " (" + status.lastBlocker + ")" : status.status === "paused_busy" ? "paused_busy (daily limit reached)" : "none")}
-  Next retry at:     ${status.nextRetryAt || "n/a"}
+  Next retry at:     ${status.effectiveNextRetryAt || status.nextRetryAt || "n/a"}
   Codex processes:   ${status.activeSessions} unique task process(es), ${status.processSummary.helpers} helper(s) owned [CLI/TUI ${status.processSummary.cli}, managed idle server(s) ${status.processSummary.managedIdleServers}, remote stdio ${status.processSummary.remoteStdio}, unmanaged ${status.processSummary.unmanagedAppServers}, unknown ${status.processSummary.unknown}]
   Session ready:     ${formatSessionReady(status)}
   Auto-apply ready:  ${formatAutoApplyReady(status)}
   Status:            ${status.status}
   Reason:            ${status.reason || "none"}
   Last checked:      ${status.lastCheckAt || "never"}
-  Last applied:      ${status.lastApplyAt || "never"}`);
+  Last idle checked: ${status.lastIdleCheckAt || "never"}
+  Last applied:      ${status.lastApplyAt || "never"}${status.history && status.history.length > 0 ? `\n  Recent history (${status.history.length} total, latest ${Math.min(status.history.length, 5)}):\n` + status.history.slice(-5).map((h) => `    [${h.timestamp}] ${h.event} (${h.source}) -> ${h.outcome}${h.blocker ? " [" + h.blocker + "]" : ""}`).join("\n") : ""}`);
       }
     } else if (action === "check") {
       const res = await checkUpdate(null, { isManualRetry: true });

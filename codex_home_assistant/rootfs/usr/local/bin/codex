@@ -220,14 +220,24 @@ if [[ -d "${CODEX_SESSIONS_DIR}" ]]; then
     unix_sock=""
     control_sock=""
     client_sock=""
+    default_control_sock="${CODEX_HOME:-${HOME}/.codex}/app-server-control/app-server-control.sock"
     if [[ "${is_app_server_proxy}" == true ]]; then
       session_type="app-server-proxy"
       managed="false"
-      unix_sock="${socket_path}"
+      if [[ -z "${socket_path}" ]]; then
+        unix_sock="${default_control_sock}"
+      elif [[ "${socket_path}" == unix://* ]]; then
+        unix_sock="${socket_path#unix://}"
+      else
+        unix_sock="${socket_path}"
+      fi
       control_sock=""
     elif [[ "${is_app_server}" == true ]]; then
       session_type="app-server"
-      if [[ "${socket_path}" == unix://* ]]; then
+      if [[ "${socket_path}" == "unix://" ]]; then
+        managed="true"
+        unix_sock="${default_control_sock}"
+      elif [[ "${socket_path}" == unix://* ]]; then
         managed="true"
         unix_sock="${socket_path#unix://}"
       elif [[ ( -z "${socket_path}" || "${socket_path}" == "stdio://" || "${socket_path}" == "stdio" ) && -f "/usr/local/share/codex-ha/codex-session-host.mjs" ]]; then

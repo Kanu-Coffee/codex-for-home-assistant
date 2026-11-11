@@ -2,6 +2,62 @@
 
 All notable changes to this App are documented in this file.
 
+## [Unreleased]
+
+## [0.7.4] - 2026-11-11
+
+### Added
+
+- Default Unix domain socket proxy attribution: recognize default proxy invocations without explicit `--sock` arguments via target process launch environment (`/proc/<pid>/environ`) and standard path convention, verified through kernel `UNIX_DIAG` Netlink and peer socket mapping.
+- AppArmor boundary resilience: maintain safe default proxy recognition via standard socket path and kernel peer inode verification when `/proc/*/environ` reads are restricted by AppArmor.
+- Structured update observability: persist timezone in durable state, track distinct check sequence numbers and execution numbers (`checkNumber`), and record version check outcomes including staged candidates and normalized blocker/failure codes (`fetch_error`, `invalid_release_tag`, `staging_failed`, `unclean_shutdown`, `aborted`, `blocked_integrity`, `blocked_policy`, `blocked_verification`).
+- Resilient daemon lifecycle: automatic migration of legacy 0.7.3 paused states to a two-tier retry schedule (12 fast checks at 5-minute intervals followed by up to 4 low-frequency checks at 1-hour intervals), synchronized sleep ensuring 03:00 date rollover wakeups, and clean signal termination.
+- Session rollout readiness detection (`rolloutReady`) in `codex-session-host.mjs` ensuring all conversation rollout files exist as non-empty regular files before live worker handover.
+- Resilient budget period tracking (`reconcileDailyBudget`): preserve consumed daily fast and low-frequency budgets across timezone reconfigurations and backward clock skews, accurately migrate legacy 0.7.3 budgets without 24-hour deferral upon date rollover, ensure consistent timezone preservation across `checkUpdate`, `applyUpdate`, and daemon entrypoints, and display authoritative persisted reset boundaries in status outputs.
+
+### Changed
+
+- Separated check sequence (`sequence`) from check round counter (`checkNumber`) in history schemas.
+- Text status outputs now display `Last idle checked`, `Next budget reset`, `Running observation`, and active retry time.
+
+### Fixed
+
+- Eliminated inspector environment (`process.env`) leakage during proxy helper classification; daemon, S6, and test runners with disparate `CODEX_HOME` or `HOME=/root` now accurately classify target proxies.
+- Recorded missing `version_check` history on candidate staging and prevented in-progress check state loss on unexpected termination.
+- Fixed `activeCheck` disk clearing on successful managed apply transactions and ensured durable history records across all blocked and verification failure exit paths.
+- Hardened session host rollout readiness validation to fail closed on RPC errors, thread mismatches, and non-regular rollout files.
+- Corrected 0.7.3 paused migration schedule to compute the initial low-frequency retry 60 minutes from current migration time rather than past version check timestamps.
+- Fixed timezone option shadowing in `checkUpdate` that bypassed timezone change detection in `reconcileDailyBudget`.
+- Fixed `getStatus` returning freshly computed reset estimates instead of the authoritative persisted `nextBudgetResetAt` during clock skews and westward timezone transitions.
+- Fixed legacy 0.7.3 uninitialized `nextBudgetResetAt` migration postponing date rollover by 24 hours on initial post-03:00 inspection.
+
+## [0.7.4-dev.1] - 2026-11-10
+
+### Added
+
+- Default Unix domain socket proxy attribution: recognize default proxy invocations without explicit `--sock` arguments via target process launch environment (`/proc/<pid>/environ`) and standard path convention, verified through kernel `UNIX_DIAG` Netlink and peer socket mapping.
+- AppArmor boundary resilience: maintain safe default proxy recognition via standard socket path and kernel peer inode verification when `/proc/*/environ` reads are restricted by AppArmor.
+- Structured update observability: persist timezone in durable state, track distinct check sequence numbers and execution numbers (`checkNumber`), and record version check outcomes including staged candidates and normalized blocker/failure codes (`fetch_error`, `invalid_release_tag`, `staging_failed`, `unclean_shutdown`, `aborted`, `blocked_integrity`, `blocked_policy`, `blocked_verification`).
+- Resilient daemon lifecycle: automatic migration of legacy 0.7.3 paused states to a two-tier retry schedule (12 fast checks at 5-minute intervals followed by up to 4 low-frequency checks at 1-hour intervals), synchronized sleep ensuring 03:00 date rollover wakeups, and clean signal termination.
+- Session rollout readiness detection (`rolloutReady`) in `codex-session-host.mjs` ensuring all conversation rollout files exist as non-empty regular files before live worker handover.
+- Resilient budget period tracking (`reconcileDailyBudget`): preserve consumed daily fast and low-frequency budgets across timezone reconfigurations and backward clock skews, accurately migrate legacy 0.7.3 budgets without 24-hour deferral upon date rollover, ensure consistent timezone preservation across `checkUpdate`, `applyUpdate`, and daemon entrypoints, and display authoritative persisted reset boundaries in status outputs.
+
+### Changed
+
+- Separated check sequence (`sequence`) from check round counter (`checkNumber`) in history schemas.
+- Text status outputs now display `Last idle checked`, `Next budget reset`, `Running observation`, and active retry time.
+
+### Fixed
+
+- Eliminated inspector environment (`process.env`) leakage during proxy helper classification; daemon, S6, and test runners with disparate `CODEX_HOME` or `HOME=/root` now accurately classify target proxies.
+- Recorded missing `version_check` history on candidate staging and prevented in-progress check state loss on unexpected termination.
+- Fixed `activeCheck` disk clearing on successful managed apply transactions and ensured durable history records across all blocked and verification failure exit paths.
+- Hardened session host rollout readiness validation to fail closed on RPC errors, thread mismatches, and non-regular rollout files.
+- Corrected 0.7.3 paused migration schedule to compute the initial low-frequency retry 60 minutes from current migration time rather than past version check timestamps.
+- Fixed timezone option shadowing in `checkUpdate` that bypassed timezone change detection in `reconcileDailyBudget`.
+- Fixed `getStatus` returning freshly computed reset estimates instead of the authoritative persisted `nextBudgetResetAt` during clock skews and westward timezone transitions.
+- Fixed legacy 0.7.3 uninitialized `nextBudgetResetAt` migration postponing date rollover by 24 hours on initial post-03:00 inspection.
+
 ## [0.7.3] - 2026-11-02
 
 ### Added

@@ -127,7 +127,8 @@ try:
     deadline = time.monotonic() + 40
     while time.monotonic() < deadline:
         if execute('pgrep sshd && test ! -e /run/codex-ha/ssh-disabled', False).returncode == 0:
-            break
+            if execute('ha-codex-remote status', False).stdout == identity:
+                break
         time.sleep(.25)
     else:
         raise RuntimeError('S6 did not preserve mobile SSH access after restart')

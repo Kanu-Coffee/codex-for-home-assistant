@@ -15,11 +15,13 @@ case "${ARCH}" in
     TARGET="x86_64-unknown-linux-musl"
     SHA256_162="a676f5722aae0d86cbe3764332f08eab1fdd89dc0a300b3ad4ffbf48611fa3e3"
     SHA256_166="1d44b28bc4ac9937d7d3532264baa68a507ce364956a0d4ebb856f331cdee254"
+    SHA256_167="3bbf75e83de6b58aed28f2cf6e33ad423ec31fd4700a1457b94be557ea5a7c6e"
     ;;
   aarch64|arm64)
     TARGET="aarch64-unknown-linux-musl"
     SHA256_162="53a9ce0b94beb27a63fdeb2f7704d95199e17b3898aa33b60461a1a93ac0d88b"
     SHA256_166="7821b77dda2e6283fb1f63f3165177a271da8833e857cf673c6ca1c9db3bfcc6"
+    SHA256_167="0de261ecf1e7f3028a7952f03fca2093f749277d38590b78bb32f8567756bbb7"
     ;;
   *)
     echo "Unsupported architecture for test binary preparation: ${ARCH}" >&2
@@ -84,3 +86,4 @@ provision_package() {
 mkdir -p "${REPO_ROOT}/.test-tmp"
 provision_package "0.162.1" "${SHA256_162}" "${BASELINE_DIR}"
 provision_package "0.166.0" "${SHA256_166}" "${CANDIDATE_DIR}"
+provision_package "0.167.0" "${SHA256_167}" "${CODEX_TEST_CANDIDATE_167_DIR:-"${REPO_ROOT}/.test-tmp/candidate-167"}"

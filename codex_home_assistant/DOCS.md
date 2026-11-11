@@ -455,11 +455,14 @@ flowchart LR
 - **주기 확인**: 하루 4회(기본 시간대 `Asia/Seoul` 기준 03:00, 09:00, 15:00, 21:00) 공식 GitHub Releases에서 새 stable 버전을 확인하고 SHA-256을 검증하여 `/data/codex-runtime/releases/<version>-<target>`에 준비(staging)합니다.
 - **유휴(idle) 작업 보호**: 실제 작업이 있을 때 적용을 보류합니다. 관측 불가 상태도 별도 이유와 함께 보류합니다.
   - 세션 수는 프로세스 수와 다릅니다. `status`의 분류는 `/proc/<pid>/exe`의 실제 실행 파일과 관리 등록 record 기준의 고유 프로세스를 세며, 명령줄에 `/bin/codex`·`app-server` 같은 문자열이 데이터로만 포함된 무관 프로세스나 검증된 Codex 프로세스에 종속된 helper·companion(`codex-code-mode-host`, `bwrap`, `rg` 등)은 독립 세션으로 계상하지 않습니다. package 디렉터리 내부의 미식별 실행 파일을 포함해 신원을 검증할 수 없는 잔여 프로세스는 보류 사유 `unknown`으로 명시적으로 대기시킵니다.
-  - 당일 빠른 5분 재확인은 날짜별 최대 12회(1시간 분량)로 제한됩니다.
-  - 12회 도달 시 영구 차단이 아닌 일시 보류(`paused_busy`) 상태가 되어 당일 5분 확인을 멈추고, 다음 날 첫 예약 슬롯에서 동일 후보 적용을 자동으로 재개합니다.
+  - 당일 유휴 재확인은 2단계 예산 정책을 사용합니다:
+    1. **빠른 재확인**: 세션 작업 직후 5분 간격으로 날짜별 최대 12회(약 1시간 분량) 확인합니다.
+    2. **저빈도 재확인**: 12회 소진 후에는 최소 60분 간격으로 날짜별 최대 4회(총 4시간 분량) 추가 확인합니다.
+  - 두 예산이 모두 소진되면 영구 차단이 아닌 일시 보류(`paused_busy`) 상태로 유지되며 당일 추가 자동 확인을 멈춥니다. 동일 후보는 익일 03:00 슬롯의 date rollover 시 일일 카운터가 초기화되면서 적용이 자동 재개되거나, 관리자가 `ha-codex-update apply`를 수동 실행하여 즉시 적용을 시도할 수 있습니다. 시간대(timezone)를 변경하거나 시스템 시계가 과거로 역행하더라도 당일 이미 소진된 예산 카운터는 재충전되지 않고 안전하게 보존되며, 실제 시간 경과에 따라 다음 03:00 슬롯에 도달했을 때 비로소 일일 예산이 초기화됩니다. 레거시(0.7.3) 상태에서 업그레이드될 때도 기존 날짜 경계를 보존하여 첫 03:00 도래 시 지연 없이 정확히 1회 롤오버되며, `ha-codex-update status`는 시계 역행이나 서쪽/동쪽 시간대 이동 시에도 임의 추정이 아닌 디스크에 영속화된 실제 다음 리셋 경계 시각(`nextBudgetResetAt`)을 일관되게 표시합니다.
+  - AppArmor에 의해 `/proc/<pid>/environ` 읽기가 거부(`EACCES`)되는 샌드박스 환경에서도 표준 Unix 소켓 경로 패턴과 커널 `UNIX_DIAG` Netlink 피어 소켓 매핑을 통해 helper 프로세스를 정확히 귀속하며 미식별 잔여 프로세스를 안전하게 분리합니다.
   - 유휴 Unix app-server의 자동 재시작 트랜잭션은 24시간당 최대 1회로 제한되어 불필요한 연속 재시작을 방지합니다.
 - **자동 적용**: 관리형 CLI/TUI와 Remote stdio는 창·연결·로드된 대화만으로 업데이트를 보류하지 않습니다. 진행·대기 요청, tool/승인 대기와 백그라운드 작업을 보호하고, 유휴 시 기존 스케줄·재시도 예산·cooldown에 따라 실행 worker를 교체합니다. 연결과 영속 대화를 복원한 뒤 다음 요청을 처리합니다. TUI frontend 자체는 종료 후 다음 실행부터 갱신됩니다. 이전 버전에서 직접 실행한 세션과 외부 `--remote` 서버는 자동 이관 대상이 아니며, 내용 있는 비영속 대화·미지원 작업 관측·복구 불완전 상태는 구체적인 이유와 함께 보류합니다.
-- **수동 관리**: CLI에서 `ha-codex-update status`, `ha-codex-update check`, `ha-codex-update apply`, `ha-codex-update update`를 사용할 수 있습니다. `status` 명령으로 일일 확인 횟수, 재시작 횟수, 다음 재시도 시각과 최근 적용 시도 기준 보류 원인(`lastBlocker`)을 확인할 수 있습니다. `lastBlocker`는 실제 발견한 프로세스 보류(CLI/Remote stdio/unmanaged/unknown 등)와 검사 전에 스킵된 하루 재검사 예산 소진(`daily_budget_exhausted`)·재시작 cooldown(`restart_cooldown`)을 구분하며, 예산 소진 자체는 status와 잔여 확인 횟수로도 확인됩니다. 기존 `codex update` 명령도 내부적으로 이 업데이터로 안전하게 라우팅됩니다.
+- **수동 관리**: CLI에서 `ha-codex-update status`, `ha-codex-update check`, `ha-codex-update apply`, `ha-codex-update update`를 사용할 수 있습니다. `status` 명령으로 일일 확인 횟수, 재시작 횟수, 다음 재시도 시각, 최근 적용 시도 기준 보류 원인(`lastBlocker`), 그리고 회차별(Check Number) 내구성 이력을 확인할 수 있습니다. 모든 검사 회차는 디스크에 원자적으로 영속화되며 비정상 종료 시에도 실패 사유가 안전하게 복구·보존됩니다. `lastBlocker`는 실제 발견한 프로세스 보류(CLI/Remote stdio/unmanaged/unknown 등)와 검사 전에 스킵된 하루 재검사 예산 소진(`daily_budget_exhausted`)·재시작 cooldown(`restart_cooldown`)을 구분하며, 예산 소진 자체는 status와 잔여 확인 횟수로도 확인됩니다. 기존 `codex update` 명령도 내부적으로 이 업데이터로 안전하게 라우팅됩니다.
 
 적용 직전 실제 managed config·MCP parsing, 일반 파일 쓰기, 보호 경로 열기 거부, 로컬 네트워크와 graceful 종료를 검사합니다. 실행 환경이나 후보가 검사를 지원하지 않으면 `blocked_policy`로 적용을 차단합니다. 보호 파일은 내용을 읽지 않고 열기 거부만 확인합니다. 검증된 archive의 전체 파일 inventory를 별도 private receipt에 저장하고 재사용·적용·새 세션 시작 때 확인합니다. 손상된 기존 release는 삭제하거나 덮어쓰지 않습니다. 이 검증은 관리자 root의 의도적 변조까지 격리하지는 않습니다.
 

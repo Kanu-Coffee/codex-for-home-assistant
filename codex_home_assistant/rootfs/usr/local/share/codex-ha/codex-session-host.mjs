@@ -325,6 +325,49 @@ export class StdioRelay {
     this.activitySnapshot = snapshot;
   }
 
+  async _checkRolloutReady() {
+    if (this.loadedThreadIds.size === 0) return { ready: true };
+    try {
+      for (const threadId of this.loadedThreadIds) {
+        const serverThreadId = this.clientToServerThreadMap.get(threadId) || threadId;
+        const read = await this._sendInternalRpc("thread/read", { threadId: serverThreadId }, 2000);
+        if (!read || typeof read !== "object" || read.error) {
+          return { ready: false, reason: "thread_read_rpc_error" };
+        }
+        const thread = read?.result?.thread;
+        if (!thread || typeof thread !== "object" || thread.id !== serverThreadId) {
+          return { ready: false, reason: "thread_id_mismatch" };
+        }
+        const knownEmpty = this.emptyThreadParams.has(threadId) && !this.threadsWithObservedTurns.has(threadId);
+        if (thread.ephemeral === true) {
+          if (thread.path == null && Array.isArray(thread.turns) && thread.turns.length === 0) {
+            if (!knownEmpty) return { ready: false, reason: "ephemeral_history_unverified" };
+            continue;
+          }
+          return { ready: false, reason: "ephemeral_turns_present" };
+        }
+        if (typeof thread.path !== "string" || !thread.path) {
+          return { ready: false, reason: "missing_rollout_path" };
+        }
+        let file = null;
+        try {
+          file = lstatSync(resolve(thread.path));
+        } catch (e) {
+          return { ready: false, reason: `thread_stat_pending_${e.code || "unknown"}` };
+        }
+        if (!file.isFile() || file.isSymbolicLink()) {
+          return { ready: false, reason: "thread_rollout_not_regular_file" };
+        }
+        if (file.size === 0 && (!knownEmpty || (thread.turns && thread.turns.length > 0))) {
+          return { ready: false, reason: "thread_empty_rollout_flush_pending" };
+        }
+      }
+      return { ready: true };
+    } catch {
+      return { ready: false, reason: "thread_read_error" };
+    }
+  }
+
   async _handleControlCommand(req) {
     const cmd = req.cmd;
     if (cmd === "inspect") {
@@ -344,9 +387,12 @@ export class StdioRelay {
           activeTurns: this._workState().active,
           loadedThreads: Array.from(this.loadedThreadIds),
           exe: this.childExe,
+          rolloutReady: false,
+          rolloutReason: "worker_not_running",
         };
       }
       const work = this._workState();
+      const rollout = await this._checkRolloutReady();
       return {
         busy: work.busy,
         unknown: work.unknown,
@@ -360,6 +406,8 @@ export class StdioRelay {
         relayPid: process.pid,
         version: this.currentVersion,
         exe: this.childExe,
+        rolloutReady: rollout.ready,
+        rolloutReason: rollout.reason || null,
       };
     }
 
@@ -586,7 +634,8 @@ export class StdioRelay {
         this.barrier = false;
         this._flushHeldClientChunks();
       }
-      return { error: "thread_restorability_unverified", busy: true, rollbackStatus: "restored" };
+      this.log("worker_switch_preflight_failed", { reason: e.message });
+      return { error: "thread_restorability_unverified", detail: e.message, busy: true, rollbackStatus: "restored" };
     }
 
     // Drain and stop current child completely
