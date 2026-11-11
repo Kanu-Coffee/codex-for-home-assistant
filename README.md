@@ -1,6 +1,4 @@
-**DEV `0.7.4-dev.1`가 공개되었습니다. 기본 Unix 도메인 소켓 프록시 귀속, 2단계 재검사 스케줄/데몬 수명주기, 시간대·시계 역행 예산 보존을 구현하며 HAOS 실기 수용은 아직 수행하지 않았습니다.**
-
-> 정식판 `0.7.3` — 실기기 수용을 마친 `0.7.3-dev.6`의 모바일 SSH 프록시 분리, 커널 Netlink 피어 식별, 런타임 자동 업데이트 대화 복원 및 영속 키 설정을 승격합니다. 설치 저장소는 `https://github.com/Kanu-Coffee/codex-for-home-assistant`입니다.
+> 정식판 `0.7.4` — 사용자 실기 수용을 마친 `0.7.4-dev.1`의 기본 Unix 도메인 소켓 프록시 귀속, 2단계 재검사 스케줄/데몬 수명주기, 시간대·시계 역행 예산 보존 및 진단 관측성을 정식 승격합니다. 설치 저장소는 `https://github.com/Kanu-Coffee/codex-for-home-assistant`입니다.
 
 <p align="right">
   <strong>한국어</strong> · <a href="README.en.md">English</a>

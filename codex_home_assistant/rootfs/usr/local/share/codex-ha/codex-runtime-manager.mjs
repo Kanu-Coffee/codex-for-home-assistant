@@ -29,7 +29,7 @@ import { get as httpGet } from "node:http";
 const execFileAsync = promisify(execFile);
 
 export const BASELINE_VERSION = "0.162.1";
-export const APP_VERSION = "0.7.4-dev.1";
+export const APP_VERSION = "0.7.4";
 export const DEFAULT_TIMEZONE = "Asia/Seoul";
 export const UPDATE_SLOTS = [3, 9, 15, 21];
 export const MAX_IDLE_CHECKS = 12;
